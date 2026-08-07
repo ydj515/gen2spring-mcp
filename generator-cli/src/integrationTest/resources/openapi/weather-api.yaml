@@ -1,0 +1,117 @@
+openapi: 3.0.3
+info:
+  title: Weather Forecast API
+  version: 1.0.0
+servers:
+  - url: https://weather.example.test
+paths:
+  /stations/{stationId}/forecast:
+    post:
+      operationId: getForecast
+      summary: Get the public weather forecast for a station.
+      parameters:
+        - name: stationId
+          in: path
+          required: true
+          description: Station identifier.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 12
+            pattern: '^[A-Z0-9]+$'
+        - name: days
+          in: query
+          required: true
+          description: Number of forecast days.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 7
+        - name: mode
+          in: query
+          required: false
+          description: Forecast detail mode.
+          schema:
+            type: string
+            enum: [brief, full-detail]
+        - name: tags
+          in: query
+          required: false
+          description: Optional forecast tags.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: clientVersion
+          in: header
+          required: false
+          description: Calling client version.
+          schema:
+            type: string
+        - name: serviceKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: X-Weather-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      security:
+        - WeatherQueryKey: []
+          WeatherHeaderKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForecastRequest'
+      responses:
+        '200':
+          description: Forecast response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+components:
+  securitySchemes:
+    WeatherHeaderKey:
+      type: apiKey
+      in: header
+      name: X-Weather-Key
+    WeatherQueryKey:
+      type: apiKey
+      in: query
+      name: serviceKey
+  schemas:
+    ForecastRequest:
+      type: object
+      required: [location]
+      properties:
+        location:
+          $ref: '#/components/schemas/Location'
+        note:
+          type: string
+          minLength: 1
+          maxLength: 80
+        includeAlerts:
+          type: boolean
+    Location:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        label:
+          type: string
