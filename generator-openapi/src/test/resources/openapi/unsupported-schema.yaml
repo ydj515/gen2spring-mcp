@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: Unsupported Schema API
+  version: 1.0.0
+paths:
+  /forecast:
+    post:
+      operationId: saveForecast
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent:
+                  $ref: '#/components/schemas/Node'
+              allOf:
+                - type: object
+                  properties:
+                    city:
+                      type: string
+                - type: object
+                  properties:
+                    temperature:
+                      type: number
+      responses:
+        '200': { description: OK }
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        next:
+          $ref: '#/components/schemas/Node'
