@@ -1,0 +1,20 @@
+project:
+  groupId: com.example
+  artifactId: weather-mcp-server
+  packageName: com.example.weather
+provider: kma
+domain: weather
+targetProfileId: spring-ai-2.0-java21-mvc-streamable
+validationLevel: MCP_PROTOCOL
+operations:
+  - operationId: getForecast
+    enabled: true
+    toolName: kma_weather_get_forecast
+    toolDescription: Get the public weather forecast for a grid location.
+    parameters:
+      serviceKey:
+        source: SERVER_SECRET
+        environmentVariable: KMA_SERVICE_KEY
+      X-Weather-Key:
+        source: SERVER_SECRET
+        environmentVariable: WEATHER_HEADER_KEY

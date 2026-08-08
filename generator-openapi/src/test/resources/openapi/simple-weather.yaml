@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: Weather API
+  version: 1.0.0
+servers:
+  - url: https://api.weather.example.com
+paths:
+  /forecast:
+    get:
+      operationId: getForecast
+      summary: Get forecast
+      parameters:
+        - name: nx
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [short, detailed]
+      security:
+        - serviceKeyAuth: []
+      responses:
+        '200':
+          description: OK
+components:
+  securitySchemes:
+    serviceKeyAuth:
+      type: apiKey
+      in: query
+      name: serviceKey

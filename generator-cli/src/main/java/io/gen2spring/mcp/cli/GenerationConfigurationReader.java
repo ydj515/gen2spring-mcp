@@ -1,0 +1,445 @@
+package io.gen2spring.mcp.cli;
+
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
+import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
+import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
+import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+import javax.lang.model.SourceVersion;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.events.AliasEvent;
+import org.yaml.snakeyaml.events.CollectionStartEvent;
+import org.yaml.snakeyaml.events.Event;
+import org.yaml.snakeyaml.events.MappingEndEvent;
+import org.yaml.snakeyaml.events.MappingStartEvent;
+import org.yaml.snakeyaml.events.NodeEvent;
+import org.yaml.snakeyaml.events.ScalarEvent;
+import org.yaml.snakeyaml.events.SequenceEndEvent;
+import org.yaml.snakeyaml.events.SequenceStartEvent;
+import org.yaml.snakeyaml.nodes.NodeId;
+import org.yaml.snakeyaml.nodes.Tag;
+import org.yaml.snakeyaml.parser.Parser;
+import org.yaml.snakeyaml.parser.ParserImpl;
+import org.yaml.snakeyaml.reader.StreamReader;
+import org.yaml.snakeyaml.resolver.Resolver;
+
+public final class GenerationConfigurationReader {
+    static final int MAX_BYTES = 1024 * 1024;
+    private static final Pattern ARTIFACT_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
+    private static final Pattern COMPONENT = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,63}");
+    private static final Pattern OPERATION_ID = Pattern.compile("[A-Za-z_][A-Za-z0-9_.-]{0,127}");
+    private static final Pattern TOOL_NAME = Pattern.compile("[a-z][a-z0-9_]{0,63}");
+    private static final Pattern PARAMETER_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_.-]{0,127}");
+    private static final Pattern ENVIRONMENT_VARIABLE = Pattern.compile("[A-Z][A-Z0-9_]{0,127}");
+    private static final Pattern JAVA_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+    private static final int MAX_OPERATIONS = 1_000;
+    private static final int MAX_DESCRIPTION_CHARACTERS = 2_048;
+    private static final Set<String> ROOT_FIELDS = Set.of(
+            "project", "provider", "domain", "targetProfileId", "validationLevel", "operations");
+    private static final Set<String> PROJECT_FIELDS = Set.of("groupId", "artifactId", "packageName");
+    private static final Set<String> OPERATION_FIELDS = Set.of(
+            "operationId", "enabled", "toolName", "toolDescription", "parameters");
+    private static final Set<String> PARAMETER_FIELDS = Set.of("source", "environmentVariable");
+
+    private final ObjectMapper yaml;
+    private final LocalPathBoundary pathBoundary;
+
+    public GenerationConfigurationReader() {
+        this(new LocalPathBoundary());
+    }
+
+    GenerationConfigurationReader(LocalPathBoundary pathBoundary) {
+        YAMLFactory factory = YAMLFactory.builder()
+                .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .build();
+        this.yaml = JsonMapper.builder(factory)
+                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .enable(MapperFeature.BLOCK_UNSAFE_POLYMORPHIC_BASE_TYPES)
+                .build();
+        this.pathBoundary = java.util.Objects.requireNonNull(pathBoundary, "pathBoundary");
+    }
+
+    public GenerationRequest read(Path configuration) {
+        byte[] bytes = readBoundedRegularFile(configuration);
+        RawConfiguration raw;
+        try {
+            validateYamlEvents(bytes);
+            JsonNode tree = yaml.readTree(bytes);
+            validateTokenTypes(tree);
+            raw = yaml.treeToValue(tree, RawConfiguration.class);
+        } catch (IOException | RuntimeException exception) {
+            throw new CliConfigurationException("Generation configuration is invalid", exception);
+        }
+        return validate(raw);
+    }
+
+    private void validateYamlEvents(byte[] bytes) {
+        Parser parser = new ParserImpl(
+                new StreamReader(new String(bytes, java.nio.charset.StandardCharsets.UTF_8)),
+                new LoaderOptions());
+        Resolver resolver = new Resolver();
+        Deque<YamlContainer> containers = new ArrayDeque<>();
+        Event event;
+        while ((event = parser.getEvent()) != null) {
+            if (event instanceof AliasEvent) {
+                throw invalid("YAML aliases and explicit type tags are not supported");
+            }
+            if (event instanceof NodeEvent node && node.getAnchor() != null) {
+                throw invalid("YAML anchors and aliases are not supported");
+            }
+            if (event instanceof MappingStartEvent mapping) {
+                rejectExplicitTag(mapping);
+                beginContainer(containers, true);
+                continue;
+            }
+            if (event instanceof SequenceStartEvent sequence) {
+                rejectExplicitTag(sequence);
+                beginContainer(containers, false);
+                continue;
+            }
+            if (event instanceof ScalarEvent scalar) {
+                validateScalar(containers, scalar, resolver);
+                continue;
+            }
+            if (event instanceof MappingEndEvent || event instanceof SequenceEndEvent) {
+                if (containers.isEmpty()) {
+                    throw invalid("Generation configuration has invalid YAML structure");
+                }
+                YamlContainer completed = containers.pop();
+                if (completed.mapping() && !completed.expectsKey()) {
+                    throw invalid("Generation configuration has an incomplete YAML mapping");
+                }
+            }
+        }
+        if (!containers.isEmpty()) {
+            throw invalid("Generation configuration has invalid YAML structure");
+        }
+    }
+
+    private void rejectExplicitTag(CollectionStartEvent event) {
+        if (event.getTag() != null) {
+            throw invalid("YAML explicit type tags are not supported for this value");
+        }
+    }
+
+    private void beginContainer(Deque<YamlContainer> containers, boolean mapping) {
+        if (!containers.isEmpty()) {
+            YamlContainer parent = containers.peek();
+            if (parent.mapping() && parent.expectsKey()) {
+                throw invalid("Generation configuration keys must be strings");
+            }
+            parent.completeValue();
+        }
+        containers.push(new YamlContainer(mapping));
+    }
+
+    private void validateScalar(Deque<YamlContainer> containers, ScalarEvent scalar, Resolver resolver) {
+        if (scalar.getTag() != null) {
+            throw invalid("YAML explicit type tags are not supported for this value");
+        }
+        Tag tag = resolver.resolve(NodeId.scalar, scalar.getValue(),
+                scalar.isPlain() && scalar.getImplicit().canOmitTagInPlainScalar());
+        YamlContainer container = containers.peek();
+        if (container != null && container.mapping() && container.expectsKey()) {
+            if (!Tag.STR.equals(tag)) {
+                throw invalid("Generation configuration keys must be strings");
+            }
+            container.recordKey(scalar.getValue());
+            return;
+        }
+
+        String field = container != null && container.mapping() ? container.pendingKey() : null;
+        Tag expected = "enabled".equals(field) ? Tag.BOOL : Tag.STR;
+        if (!expected.equals(tag)) {
+            throw invalid("Generation configuration scalar types must match the schema");
+        }
+        if (container != null) {
+            container.completeValue();
+        }
+    }
+
+    private static final class YamlContainer {
+        private final boolean mapping;
+        private boolean expectsKey;
+        private String pendingKey;
+
+        private YamlContainer(boolean mapping) {
+            this.mapping = mapping;
+            this.expectsKey = mapping;
+        }
+
+        boolean mapping() {
+            return mapping;
+        }
+
+        boolean expectsKey() {
+            return expectsKey;
+        }
+
+        String pendingKey() {
+            return pendingKey;
+        }
+
+        void recordKey(String key) {
+            pendingKey = key;
+            expectsKey = false;
+        }
+
+        void completeValue() {
+            if (mapping) {
+                pendingKey = null;
+                expectsKey = true;
+            }
+        }
+    }
+
+    private byte[] readBoundedRegularFile(Path configuration) {
+        try {
+            return pathBoundary.regularFile(configuration, "Generation configuration").readBounded(MAX_BYTES);
+        } catch (LocalPathBoundary.PathBoundaryException exception) {
+            throw new CliConfigurationException(exception.getMessage(), exception);
+        }
+    }
+
+    private void validateTokenTypes(JsonNode root) {
+        requireObject(root, "Generation configuration");
+        requireFields(root, ROOT_FIELDS, ROOT_FIELDS, "Generation configuration");
+        JsonNode project = root.get("project");
+        requireObject(project, "Project");
+        requireFields(project, PROJECT_FIELDS, PROJECT_FIELDS, "Project");
+        requireString(project, "groupId", "Project groupId");
+        requireString(project, "artifactId", "Project artifactId");
+        requireString(project, "packageName", "Project packageName");
+        requireString(root, "provider", "Provider");
+        requireString(root, "domain", "Domain");
+        requireString(root, "targetProfileId", "Target profile");
+        requireString(root, "validationLevel", "Validation level");
+
+        JsonNode operations = root.get("operations");
+        if (operations == null || !operations.isArray()) {
+            throw invalid("Operations must be an array");
+        }
+        for (JsonNode operation : operations) {
+            requireObject(operation, "Operation selection");
+            requireFields(operation, OPERATION_FIELDS, Set.of("operationId", "enabled"), "Operation selection");
+            requireString(operation, "operationId", "Operation ID");
+            requireBoolean(operation, "enabled", "Operation enabled state");
+            optionalString(operation, "toolName", "Tool name");
+            optionalString(operation, "toolDescription", "Tool description");
+            if (operation.has("parameters")) {
+                JsonNode parameters = operation.get("parameters");
+                requireObject(parameters, "Operation parameters");
+                parameters.properties().forEach(entry -> {
+                    JsonNode override = entry.getValue();
+                    requireObject(override, "Parameter override");
+                    requireFields(override, PARAMETER_FIELDS, Set.of("source"), "Parameter override");
+                    requireString(override, "source", "Parameter source");
+                    optionalString(override, "environmentVariable", "Secret environment variable");
+                });
+            }
+        }
+    }
+
+    private void requireFields(JsonNode object, Set<String> allowed, Set<String> required, String label) {
+        object.fieldNames().forEachRemaining(name -> {
+            if (!allowed.contains(name)) {
+                throw invalid(label + " contains an unknown property");
+            }
+        });
+        for (String name : required) {
+            if (!object.has(name) || object.get(name) == null || object.get(name).isNull()) {
+                throw invalid(label + " is missing a required property");
+            }
+        }
+    }
+
+    private void requireObject(JsonNode value, String label) {
+        if (value == null || !value.isObject()) {
+            throw invalid(label + " must be an object");
+        }
+    }
+
+    private void requireString(JsonNode object, String field, String label) {
+        JsonNode value = object.get(field);
+        if (value == null || !value.isTextual()) {
+            throw invalid(label + " must be a string");
+        }
+    }
+
+    private void optionalString(JsonNode object, String field, String label) {
+        if (object.has(field)) {
+            requireString(object, field, label);
+        }
+    }
+
+    private void requireBoolean(JsonNode object, String field, String label) {
+        JsonNode value = object.get(field);
+        if (value == null || !value.isBoolean()) {
+            throw invalid(label + " must be a boolean");
+        }
+    }
+
+    private GenerationRequest validate(RawConfiguration raw) {
+        if (raw == null || raw.project() == null) {
+            throw invalid("Generation project coordinates are required");
+        }
+        String groupId = javaPackage(raw.project().groupId(), "Project groupId");
+        String artifactId = matches(raw.project().artifactId(), ARTIFACT_ID, "Project artifactId");
+        String packageName = javaPackage(raw.project().packageName(), "Project packageName");
+        String provider = matches(raw.provider(), COMPONENT, "Provider");
+        String domain = matches(raw.domain(), COMPONENT, "Domain");
+        if (!CompatibilityProfile.p0().id().equals(raw.targetProfileId())) {
+            throw invalid("Target profile is unavailable");
+        }
+        if (raw.validationLevel() != ValidationLevel.MCP_PROTOCOL) {
+            throw invalid("Validation level must be MCP_PROTOCOL");
+        }
+        List<OperationSelection> operations = operations(raw.operations());
+        return new GenerationRequest(new ProjectCoordinates(groupId, artifactId, packageName), provider, domain,
+                raw.targetProfileId(), raw.validationLevel(), operations);
+    }
+
+    private List<OperationSelection> operations(List<RawOperation> rawOperations) {
+        if (rawOperations == null || rawOperations.isEmpty() || rawOperations.size() > MAX_OPERATIONS) {
+            throw invalid("At least one bounded operation selection is required");
+        }
+        List<OperationSelection> operations = new ArrayList<>();
+        Set<String> operationIds = new HashSet<>();
+        boolean enabled = false;
+        for (RawOperation raw : rawOperations) {
+            if (raw == null) {
+                throw invalid("Operation selection is invalid");
+            }
+            String operationId = matches(raw.operationId(), OPERATION_ID, "Operation ID");
+            if (!operationIds.add(operationId)) {
+                throw invalid("Operation IDs must be unique");
+            }
+            if (raw.enabled() == null) {
+                throw invalid("Operation enabled state is required");
+            }
+            enabled |= raw.enabled();
+            String toolName = optionalMatch(raw.toolName(), TOOL_NAME, "Tool name");
+            String description = optionalDescription(raw.toolDescription());
+            operations.add(new OperationSelection(operationId, raw.enabled(), toolName, description,
+                    parameters(raw.parameters())));
+        }
+        if (!enabled) {
+            throw invalid("At least one operation must be enabled");
+        }
+        return List.copyOf(operations);
+    }
+
+    private Map<String, ParameterOverride> parameters(Map<String, RawParameterOverride> rawParameters) {
+        if (rawParameters == null) {
+            return Map.of();
+        }
+        Map<String, ParameterOverride> parameters = new LinkedHashMap<>();
+        rawParameters.forEach((name, raw) -> {
+            String parameterName = matches(name, PARAMETER_NAME, "Parameter name");
+            if (raw == null || raw.source() == null) {
+                throw invalid("Parameter source is required");
+            }
+            String environmentVariable = raw.environmentVariable();
+            if (raw.source() != ParameterSource.SERVER_SECRET && raw.source() != ParameterSource.USER_INPUT) {
+                throw invalid("Only USER_INPUT and SERVER_SECRET parameter sources are supported");
+            }
+            if (raw.source() == ParameterSource.SERVER_SECRET) {
+                environmentVariable = matches(environmentVariable, ENVIRONMENT_VARIABLE,
+                        "Secret environment variable");
+            } else if (environmentVariable != null) {
+                throw invalid("User input parameters cannot declare secret environment variables");
+            }
+            parameters.put(parameterName, new ParameterOverride(raw.source(), environmentVariable));
+        });
+        return Collections.unmodifiableMap(parameters);
+    }
+
+    private String javaPackage(String value, String label) {
+        String safe = exact(value, label);
+        if (safe.length() > 255) {
+            throw invalid(label + " is too long");
+        }
+        for (String segment : safe.split("\\.", -1)) {
+            if (!JAVA_IDENTIFIER.matcher(segment).matches() || !SourceVersion.isIdentifier(segment)
+                    || SourceVersion.isKeyword(segment)) {
+                throw invalid(label + " must contain valid Java identifiers");
+            }
+        }
+        return safe;
+    }
+
+    private String matches(String value, Pattern pattern, String label) {
+        String safe = exact(value, label);
+        if (!pattern.matcher(safe).matches()) {
+            throw invalid(label + " contains unsupported characters");
+        }
+        return safe;
+    }
+
+    private String optionalMatch(String value, Pattern pattern, String label) {
+        return value == null ? null : matches(value, pattern, label);
+    }
+
+    private String optionalDescription(String value) {
+        if (value == null) {
+            return null;
+        }
+        if (value.isBlank() || value.length() > MAX_DESCRIPTION_CHARACTERS || value.chars().anyMatch(character ->
+                Character.isISOControl(character) && character != '\n' && character != '\r' && character != '\t')) {
+            throw invalid("Tool description is invalid");
+        }
+        return value;
+    }
+
+    private String exact(String value, String label) {
+        if (value == null || value.isBlank() || !value.equals(value.trim())) {
+            throw invalid(label + " is required without surrounding whitespace");
+        }
+        return value;
+    }
+
+    private CliConfigurationException invalid(String message) {
+        return new CliConfigurationException(message);
+    }
+
+    private record RawConfiguration(
+            RawProject project,
+            String provider,
+            String domain,
+            String targetProfileId,
+            ValidationLevel validationLevel,
+            List<RawOperation> operations) {}
+
+    private record RawProject(String groupId, String artifactId, String packageName) {}
+
+    private record RawOperation(
+            String operationId,
+            Boolean enabled,
+            String toolName,
+            String toolDescription,
+            Map<String, RawParameterOverride> parameters) {}
+
+    private record RawParameterOverride(ParameterSource source, String environmentVariable) {}
+}

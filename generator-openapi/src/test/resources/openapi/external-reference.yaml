@@ -1,0 +1,15 @@
+openapi: 3.0.3
+info:
+  title: External Reference API
+  version: 1.0.0
+paths:
+  /forecast:
+    get:
+      operationId: getForecast
+      parameters:
+        - name: request
+          in: query
+          schema:
+            $ref: https://example.com/remote-schema.yaml#/WeatherRequest
+      responses:
+        '200': { description: OK }
