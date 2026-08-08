@@ -64,6 +64,19 @@ class ToolModelFactoryTest {
     }
 
     @Test
+    void rejectsOperationsWithoutAnyUsableToolDescription() {
+        var operation = new ApiOperation(
+                "undocumented", HttpMethod.GET, "/undocumented", null, null,
+                List.of(parameter("id")), null, false, List.of(), true, List.of());
+
+        GeneratorException exception = assertThrows(GeneratorException.class,
+                () -> factory.create(document(List.of(operation)), request(List.of(selection(
+                        "undocumented", null, Map.of())))));
+
+        assertEquals(OPERATION_UNSUPPORTED, exception.code());
+    }
+
+    @Test
     void rejectsMissingUnsupportedAndVisibleConfirmedSecrets() {
         var missing = request(List.of(selection("missing", null, Map.of())));
         var missingException = assertThrows(GeneratorException.class, () -> factory.create(weatherDocument(), missing));
@@ -407,6 +420,28 @@ class ToolModelFactoryTest {
                 () -> factory.create(document, request(List.of(selection(
                         "lookupCredential", null,
                         Map.of("nonstandardCredentail", new ParameterOverride(SERVER_SECRET, "API_KEY")))))));
+
+        assertEquals(OPERATION_UNSUPPORTED, exception.code());
+    }
+
+    @Test
+    void rejectsAnOverrideAliasThatTargetsSameNamedParametersInDifferentLocations() {
+        ApiOperation operation = new ApiOperation(
+                "lookupToken", HttpMethod.GET, "/tokens", "Lookup token", null,
+                List.of(
+                        new ApiParameter("token", ParameterLocation.QUERY, true, "Lookup token", textSchema()),
+                        new ApiParameter("token", ParameterLocation.HEADER, false, "API key", textSchema())),
+                null, false, List.of("tokenAuth"), true, List.of());
+        OpenApiDocument document = new OpenApiDocument(
+                "3.0.3", "checksum", "yaml", URI.create("https://api.weather.example.com"), List.of(operation),
+                Map.of("tokenAuth", new ApiSecurityScheme(
+                        "tokenAuth", "apiKey", ParameterLocation.HEADER, "token")),
+                List.of());
+
+        GeneratorException exception = assertThrows(GeneratorException.class,
+                () -> factory.create(document, request(List.of(selection(
+                        "lookupToken", null,
+                        Map.of("token", new ParameterOverride(SERVER_SECRET, "TOKEN_KEY")))))));
 
         assertEquals(OPERATION_UNSUPPORTED, exception.code());
     }

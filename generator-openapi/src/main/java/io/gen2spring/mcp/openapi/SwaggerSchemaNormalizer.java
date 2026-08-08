@@ -49,6 +49,7 @@ public final class SwaggerSchemaNormalizer {
         }
         try {
             List<String> warnings = unsupportedCompositionWarnings(schema);
+            warnings.addAll(unsupportedSemanticWarnings(schema));
             SchemaType type = mapType(schema.getType(), schema.getProperties());
             List<String> enumValues = enumValues(schema.getEnum());
             if (type == null) {
@@ -60,8 +61,11 @@ public final class SwaggerSchemaNormalizer {
 
             Map<String, ApiSchema> properties = new LinkedHashMap<>();
             if (schema.getProperties() != null) {
-                schema.getProperties().forEach((name, property) -> properties.put(name,
-                        normalize(property, componentSchemas, ancestors, ancestorReferences)));
+                schema.getProperties().forEach((name, property) -> {
+                    if (property == null || !Boolean.TRUE.equals(property.getReadOnly())) {
+                        properties.put(name, normalize(property, componentSchemas, ancestors, ancestorReferences));
+                    }
+                });
             }
             ApiSchema items = schema.getItems() == null ? null
                     : normalize(schema.getItems(), componentSchemas, ancestors, ancestorReferences);
@@ -85,7 +89,9 @@ public final class SwaggerSchemaNormalizer {
                     schema.getPattern(),
                     schema.getDefault(),
                     Collections.unmodifiableMap(new LinkedHashMap<>(properties)),
-                    schema.getRequired() == null ? List.of() : List.copyOf(schema.getRequired()),
+                    schema.getRequired() == null ? List.of() : schema.getRequired().stream()
+                            .filter(properties::containsKey)
+                            .toList(),
                     items,
                     warnings.isEmpty(),
                     List.copyOf(warnings));
@@ -107,6 +113,21 @@ public final class SwaggerSchemaNormalizer {
         }
         if (schema.getDiscriminator() != null) {
             warnings.add("Discriminator schemas are not supported");
+        }
+        return warnings;
+    }
+
+    private List<String> unsupportedSemanticWarnings(Schema<?> schema) {
+        List<String> warnings = new ArrayList<>();
+        Object additionalProperties = schema.getAdditionalProperties();
+        if (additionalProperties != null && !Boolean.FALSE.equals(additionalProperties)) {
+            warnings.add("Schemas with additionalProperties are not supported");
+        }
+        if (Boolean.TRUE.equals(schema.getNullable())) {
+            warnings.add("Nullable schemas are not supported");
+        }
+        if (Boolean.TRUE.equals(schema.getExclusiveMinimum()) || Boolean.TRUE.equals(schema.getExclusiveMaximum())) {
+            warnings.add("Schemas with exclusive numeric bounds are not supported");
         }
         return warnings;
     }

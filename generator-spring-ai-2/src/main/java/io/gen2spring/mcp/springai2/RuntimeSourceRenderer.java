@@ -254,7 +254,7 @@ final class RuntimeSourceRenderer {
                                     binding.targetName(), value, requestBody, operation.objectRequestBody());
                         }
 
-                        URI uri = uriBuilder.buildAndExpand(pathVariables).encode().toUri();
+                        URI uri = uriBuilder.encode().buildAndExpand(pathVariables).toUri();
                         RestClient.RequestBodySpec request = restClient
                                 .method(HttpMethod.valueOf(operation.method()))
                                 .uri(uri);

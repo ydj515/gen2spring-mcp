@@ -156,6 +156,30 @@ class GeneratedProjectSmokeTest {
 
     @Test
     @Timeout(value = 5, unit = MINUTES)
+    void generatedProjectEncodesReservedPathParameterCharactersBeforeExpansion() throws Exception {
+        ApiSchema text = new ApiSchema(
+                SchemaType.STRING, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        var tool = new McpToolDefinition(
+                "getResource", "kma_weather_get_resource", "Get a resource.",
+                List.of(new McpInputDefinition("resourceId", "resourceId", "Resource identifier", true, text)),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), "/resources/{resourceId}",
+                        List.of(new ParameterBinding("resourceId", ParameterLocation.PATH, "resourceId"))),
+                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .files();
+        java.util.Map<String, byte[]> filesWithPathTest = new java.util.LinkedHashMap<>(files);
+        filesWithPathTest.put(
+                "src/test/java/com/example/weather/application/GeneratedPathEncodingContractTest.java",
+                pathEncodingContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("path-encoding"), filesWithPathTest);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
     void generatedProjectMapsFlattenedJavaSafeInputsToOriginalObjectBodyProperties() throws Exception {
         ApiSchema postalCode = new ApiSchema(
                 SchemaType.STRING, null, false, List.of(), null, null,
@@ -554,6 +578,71 @@ class GeneratedProjectSmokeTest {
 
                         assertEquals("\\\"hello\\\"", body.get());
                         assertEquals("application/json", contentType.get());
+                    }
+
+                    @AfterAll
+                    static void stopProvider() {
+                        if (server != null) {
+                            server.stop(0);
+                        }
+                    }
+                }
+                """;
+    }
+
+    private String pathEncodingContractTest() {
+        return """
+                package com.example.weather.application;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import com.example.weather.generated.tool.WeatherMcpTools;
+                import com.sun.net.httpserver.HttpServer;
+                import java.net.InetSocketAddress;
+                import java.util.concurrent.atomic.AtomicReference;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.boot.test.context.SpringBootTest;
+                import org.springframework.test.context.DynamicPropertyRegistry;
+                import org.springframework.test.context.DynamicPropertySource;
+
+                @SpringBootTest(properties = {
+                        "provider.response-max-bytes=1024",
+                        "provider.connect-timeout-millis=1000",
+                        "provider.read-timeout-millis=1000",
+                        "provider.total-timeout-millis=1000"
+                })
+                class GeneratedPathEncodingContractTest {
+                    private static HttpServer server;
+                    private static final AtomicReference<String> rawPath = new AtomicReference<>();
+
+                    @Autowired
+                    private WeatherMcpTools tools;
+
+                    @DynamicPropertySource
+                    static void provider(DynamicPropertyRegistry registry) {
+                        try {
+                            server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                            server.createContext("/resources/", exchange -> {
+                                rawPath.set(exchange.getRequestURI().getRawPath());
+                                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                                exchange.sendResponseHeaders(200, 2);
+                                exchange.getResponseBody().write("{}".getBytes());
+                                exchange.close();
+                            });
+                            server.start();
+                        } catch (java.io.IOException exception) {
+                            throw new IllegalStateException(exception);
+                        }
+                        registry.add("provider.base-url", () -> "http://127.0.0.1:" + server.getAddress().getPort());
+                    }
+
+                    @Test
+                    void keepsAPathParameterSlashInsideOneRouteSegment() {
+                        tools.getResource("a/b");
+
+                        assertEquals("/resources/a%2Fb", rawPath.get());
                     }
 
                     @AfterAll

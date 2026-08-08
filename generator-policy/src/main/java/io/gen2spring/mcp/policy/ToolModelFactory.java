@@ -95,6 +95,11 @@ public final class ToolModelFactory {
                 ? namingPolicy.generate(selection.toolName())
                 : namingPolicy.generate(request.provider(), request.domain(), operation.operationId());
         namingPolicy.requireUnique(name, finalNames);
+        String description = descriptionPolicy.describe(
+                selection.toolDescription(), operation.summary(), operation.description());
+        if (!hasText(description)) {
+            throw unsupportedOperation(operation.operationId());
+        }
 
         List<McpInputDefinition> inputs = new ArrayList<>();
         List<ParameterBinding> bindings = new ArrayList<>();
@@ -102,9 +107,9 @@ public final class ToolModelFactory {
         Set<String> inputNames = new HashSet<>();
         Map<String, ParameterOverride> overrides = selection.parameters() == null ? Map.of() : selection.parameters();
 
+        validateSecretOverrideConflicts(operation, document, overrides);
         validateOverrideKeys(operation, document, overrides);
         validateRequestBody(operation);
-        validateSecretOverrideConflicts(operation, document, overrides);
         Map<String, ResolvedApiKeySecret> apiKeySecrets = resolveApiKeySecrets(operation, document, overrides);
         Set<String> secretTargets = new HashSet<>();
         for (ApiParameter parameter : operation.parameters()) {
@@ -169,7 +174,7 @@ public final class ToolModelFactory {
         return new McpToolDefinition(
                 operation.operationId(),
                 name,
-                descriptionPolicy.describe(selection.toolDescription(), operation.summary(), operation.description()),
+                description,
                 List.copyOf(inputs),
                 new HttpExecutionDefinition(
                         operation.method(), document.baseUrl(), operation.path(), List.copyOf(bindings),
@@ -230,20 +235,27 @@ public final class ToolModelFactory {
             ApiOperation operation,
             OpenApiDocument document,
             Map<String, ParameterOverride> overrides) {
-        Set<String> allowed = new HashSet<>();
+        Map<String, Set<String>> targetsByAlias = new HashMap<>();
         for (ApiParameter parameter : operation.parameters()) {
             if (parameter.name() != null) {
-                allowed.add(parameter.name());
+                targetsByAlias.computeIfAbsent(parameter.name(), ignored -> new HashSet<>())
+                        .add(secretTarget(parameter.location(), parameter.name()));
             }
         }
         for (OpenApiDocument.ApiSecurityScheme scheme : applicableApiKeySchemes(document, operation)) {
-            allowed.add(scheme.name());
-            allowed.add(scheme.parameterName());
+            String target = secretTarget(scheme.location(), scheme.parameterName());
+            targetsByAlias.computeIfAbsent(scheme.name(), ignored -> new HashSet<>()).add(target);
+            targetsByAlias.computeIfAbsent(scheme.parameterName(), ignored -> new HashSet<>()).add(target);
         }
         for (String overrideName : overrides.keySet()) {
-            if (!allowed.contains(overrideName)) {
+            Set<String> targets = targetsByAlias.get(overrideName);
+            if (targets == null) {
                 throw GeneratorException.user(OPERATION_UNSUPPORTED, "tool-policy",
                         "Configured parameter overrides must match an operation parameter or applicable security scheme");
+            }
+            if (targets.size() != 1) {
+                throw GeneratorException.user(OPERATION_UNSUPPORTED, "tool-policy",
+                        "Configured parameter override is ambiguous across parameter locations");
             }
         }
     }

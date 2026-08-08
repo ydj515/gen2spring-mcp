@@ -104,6 +104,112 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
+    void rejectsFreeFormObjectRequestBodiesThatCannotBeRepresentedByP0Tools() throws Exception {
+        Path specification = Files.createTempFile("additional-properties", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Map API, version: '1.0' }
+                paths:
+                  /labels:
+                    post:
+                      operationId: replaceLabels
+                      requestBody:
+                        required: true
+                        content:
+                          application/json:
+                            schema:
+                              type: object
+                              additionalProperties: { type: string }
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertFalse(operation.supported());
+        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("additionalProperties")));
+    }
+
+    @Test
+    void rejectsNullableSchemasUntilGeneratedContractsCanPreserveExplicitNulls() throws Exception {
+        Path specification = Files.createTempFile("nullable-parameter", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Nullable API, version: '1.0' }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      parameters:
+                        - name: revision
+                          in: query
+                          required: true
+                          schema: { type: string, nullable: true }
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertFalse(operation.supported());
+        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("Nullable")));
+    }
+
+    @Test
+    void omitsReadOnlyPropertiesAndTheirRequestRequirements() throws Exception {
+        Path specification = Files.createTempFile("read-only-request", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Widget API, version: '1.0' }
+                paths:
+                  /widgets:
+                    post:
+                      operationId: createWidget
+                      requestBody:
+                        required: true
+                        content:
+                          application/json:
+                            schema:
+                              type: object
+                              required: [id, name]
+                              properties:
+                                id: { type: string, readOnly: true }
+                                name: { type: string }
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertTrue(operation.supported(), operation.warnings().toString());
+        assertEquals(java.util.Set.of("name"), operation.requestBody().properties().keySet());
+        assertEquals(java.util.List.of("name"), operation.requestBody().requiredProperties());
+    }
+
+    @Test
+    void rejectsExclusiveNumericBoundsUntilTheirSemanticsCanBePreserved() throws Exception {
+        Path specification = Files.createTempFile("exclusive-bound", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Score API, version: '1.0' }
+                paths:
+                  /scores:
+                    get:
+                      operationId: getScores
+                      parameters:
+                        - name: minimumScore
+                          in: query
+                          schema:
+                            type: number
+                            minimum: 0
+                            exclusiveMinimum: true
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertFalse(operation.supported());
+        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("exclusive numeric bounds")));
+    }
+
+    @Test
     void rejectsRequestBodiesWithoutAnApplicationJsonMediaType() throws Exception {
         Path specification = Files.createTempFile("non-json-request", ".yaml");
         Files.writeString(specification, """
