@@ -21,6 +21,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 
@@ -169,7 +170,10 @@ class ProjectFileRendererTest {
 
     private GenerationContext contextWithSecrets(List<McpToolDefinition> tools) {
         var request = new GenerationRequest(projectCoordinates(), "weather", "weather",
-                CompatibilityProfile.p0().id(), GenerationRequest.ValidationLevel.MCP_PROTOCOL, List.of());
+                CompatibilityProfile.p0().id(), GenerationRequest.ValidationLevel.MCP_PROTOCOL,
+                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+                        "getForecast", Map.of("nx", 60, "ny", 127))),
+                List.of());
         return new GenerationContext(null, tools, request, CompatibilityProfile.p0(), new byte[0]);
     }
 

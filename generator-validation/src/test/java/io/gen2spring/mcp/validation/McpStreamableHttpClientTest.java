@@ -6,7 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.validation.McpStreamableHttpClient.McpStage;
 import io.gen2spring.mcp.validation.support.McpTestServer;
 import io.gen2spring.mcp.validation.support.McpTestServer.Scenario;
@@ -34,8 +37,80 @@ class McpStreamableHttpClientTest {
                                     "format", "int32",
                                     "description", "Grid x coordinate")),
                             "required", List.of("nx"))));
+    private static final ExpectedToolCall EXPECTED_CALL = new ExpectedToolCall(
+            new McpToolDefinition(
+                    "getForecast",
+                    "kma_weather_get_forecast",
+                    "Get the public weather forecast for a grid location.",
+                    List.of(),
+                    null,
+                    List.of(),
+                    McpToolDefinition.OutputKind.GENERIC_JSON),
+            Map.of("nx", 60, "ny", 127));
 
     private final McpStreamableHttpClient client = new McpStreamableHttpClient(Duration.ofSeconds(2), 64 * 1024);
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    @Test
+    void invokesTheExpectedToolWithTheInitializedSessionAndValidatesTheMockResult() throws Exception {
+        try (var server = McpTestServer.startWithJsonInitializeAndSseToolsList()) {
+            var result = client.validate(server.uri(), EXPECTED, EXPECTED_CALL);
+
+            assertEquals("tools/call", server.request(3).path("method").textValue());
+            assertEquals("kma_weather_get_forecast",
+                    server.request(3).path("params").path("name").textValue());
+            assertEquals(EXPECTED_CALL.arguments(),
+                    mapper.convertValue(server.request(3).path("params").path("arguments"), Map.class));
+            assertEquals(server.sessionId(), server.requestHeader(3, "Mcp-Session-Id"));
+            assertTrue(result.toolsCallDurationMillis() >= 0);
+        }
+    }
+
+    @Test
+    void rejectsToolCallResponsesThatViolateTheMockContract() throws Exception {
+        for (Scenario scenario : List.of(
+                Scenario.TOOLS_CALL_ERROR,
+                Scenario.TOOLS_CALL_WRONG_ID,
+                Scenario.TOOLS_CALL_OVERSIZED_ID,
+                Scenario.TOOLS_CALL_MISSING_RESULT,
+                Scenario.TOOLS_CALL_IS_ERROR,
+                Scenario.TOOLS_CALL_EMPTY_CONTENT,
+                Scenario.TOOLS_CALL_NON_TEXT_CONTENT,
+                Scenario.TOOLS_CALL_INVALID_TEXT_JSON,
+                Scenario.TOOLS_CALL_TRAILING_TEXT_JSON,
+                Scenario.TOOLS_CALL_MISMATCHED_JSON,
+                Scenario.TOOLS_CALL_MULTIPLE_TEXT)) {
+            try (var server = McpTestServer.start(scenario)) {
+                var failure = assertThrows(McpStreamableHttpClient.McpValidationException.class,
+                        () -> client.validate(server.uri(), EXPECTED, EXPECTED_CALL), scenario.name());
+
+                assertEquals(McpStage.TOOL_CALL, failure.stage(), scenario.name());
+            }
+        }
+    }
+
+    @Test
+    void appliesTheCallDeadlineAndResponseSizeLimitToToolCalls() throws Exception {
+        try (var slowServer = McpTestServer.start(Scenario.TOOLS_CALL_SLOW_BODY)) {
+            var shortClient = new McpStreamableHttpClient(Duration.ofMillis(200), 64 * 1024);
+
+            var failure = assertTimeoutPreemptively(Duration.ofSeconds(1),
+                    () -> assertThrows(McpStreamableHttpClient.McpValidationException.class,
+                            () -> shortClient.validate(slowServer.uri(), EXPECTED, EXPECTED_CALL)));
+
+            assertEquals(McpStage.TOOL_CALL, failure.stage());
+            assertTrue(failure.getMessage().contains("deadline"));
+        }
+        try (var oversizedServer = McpTestServer.start(Scenario.TOOLS_CALL_OVERSIZE)) {
+            var smallClient = new McpStreamableHttpClient(Duration.ofSeconds(2), 1_024);
+
+            var failure = assertThrows(McpStreamableHttpClient.McpValidationException.class,
+                    () -> smallClient.validate(oversizedServer.uri(), EXPECTED, EXPECTED_CALL));
+
+            assertEquals(McpStage.TOOL_CALL, failure.stage());
+            assertTrue(failure.getMessage().contains("size limit"));
+        }
+    }
 
     @Test
     void initializesThenListsToolsAcrossJsonAndSseResponses() throws Exception {

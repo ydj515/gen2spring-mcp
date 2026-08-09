@@ -6,10 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class GenerationConfigurationReaderTest {
     @TempDir
@@ -30,6 +36,36 @@ class GenerationConfigurationReaderTest {
                 request.operations().getFirst().parameters().get("serviceKey").source());
         assertEquals("KMA_SERVICE_KEY",
                 request.operations().getFirst().parameters().get("serviceKey").environmentVariable());
+
+        var call = request.validation().toolCall();
+        assertEquals("getForecast", call.operationId());
+        assertEquals(BigInteger.valueOf(3), call.arguments().get("days"));
+        assertEquals(List.of("public"), call.arguments().get("tags"));
+        assertEquals(Map.of("latitude", new BigDecimal("37.5"), "longitude", new BigDecimal("127.0")),
+                call.arguments().get("location"));
+        assertThrows(UnsupportedOperationException.class, () -> call.arguments().put("days", 4));
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidValidationConfigurations")
+    void rejectsInvalidRepresentativeToolCallValidation(String yaml) throws Exception {
+        assertInvalid(yaml);
+    }
+
+    private static List<String> invalidValidationConfigurations() {
+        String valid = validConfiguration();
+        return List.of(
+                valid.replace(validationBlock(), ""),
+                valid.replace("  toolCall:\n", "  unsupported: value\n  toolCall:\n"),
+                valid.replace("      days: 3", "      days: null"),
+                valid.replace("      days: 3", "      nested:\n" + nestedMapping(17, "        ") + "      days: 3"),
+                valid.replace("      days: 3", members(257)),
+                valid.replace("        - public", arrayItems(257)),
+                valid.replace("        - public", "        - " + "x".repeat(2_049)),
+                valid.replace("      days: 3", "      days: &days 3"),
+                valid.replace("      days: 3", "      days: !!int 3"),
+                valid.replace("provider: kma", "provider: 3"),
+                valid.replace("domain: weather", "domain: true"));
     }
 
     @Test
@@ -204,7 +240,7 @@ class GenerationConfigurationReaderTest {
         return Files.writeString(tempDir.toRealPath().resolve(fileName), content);
     }
 
-    private String validConfiguration() {
+    private static String validConfiguration() {
         return """
                 project:
                   groupId: com.example
@@ -214,6 +250,7 @@ class GenerationConfigurationReaderTest {
                 domain: weather
                 targetProfileId: spring-ai-2.0-java21-mvc-streamable
                 validationLevel: MCP_PROTOCOL
+                """ + validationBlock() + """
                 operations:
                   - operationId: getForecast
                     enabled: true
@@ -224,5 +261,46 @@ class GenerationConfigurationReaderTest {
                         source: SERVER_SECRET
                         environmentVariable: KMA_SERVICE_KEY
                 """;
+    }
+
+    private static String validationBlock() {
+        return """
+                validation:
+                  toolCall:
+                    operationId: getForecast
+                    arguments:
+                      days: 3
+                      tags:
+                        - public
+                      location:
+                        latitude: 37.5
+                        longitude: 127.0
+                """;
+    }
+
+    private static String nestedMapping(int depth, String indentation) {
+        StringBuilder yaml = new StringBuilder();
+        String current = indentation;
+        for (int index = 0; index < depth; index++) {
+            yaml.append(current).append("value:").append('\n');
+            current += "  ";
+        }
+        return yaml.append(current).append("leaf: true").append('\n').toString();
+    }
+
+    private static String members(int count) {
+        StringBuilder yaml = new StringBuilder();
+        for (int index = 0; index < count; index++) {
+            yaml.append("      member").append(index).append(": ").append(index).append('\n');
+        }
+        return yaml.toString();
+    }
+
+    private static String arrayItems(int count) {
+        StringBuilder yaml = new StringBuilder();
+        for (int index = 0; index < count; index++) {
+            yaml.append("        - item").append(index).append('\n');
+        }
+        return yaml.toString();
     }
 }

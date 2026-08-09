@@ -20,10 +20,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Pattern;
 
 public final class BoundedProcessRunner {
     private static final Duration CLEANUP_TIMEOUT = Duration.ofSeconds(2);
     private static final long POLL_NANOS = Duration.ofMillis(25).toNanos();
+    private static final Pattern ENVIRONMENT_KEY = Pattern.compile("[A-Z][A-Z0-9_]{0,127}");
+    private static final int MAX_ENVIRONMENT_VALUE_CHARACTERS = 2_048;
 
     private final OutputCollector collector;
 
@@ -64,15 +67,26 @@ public final class BoundedProcessRunner {
     }
 
     public RunningProcess start(List<String> command, Path workingRoot, int maxBytes) throws IOException {
-        List<String> safeCommand = validateCommand(command);
-        Path fixedRoot = fixedWorkingRoot(workingRoot);
+        return start(processBuilder(command, workingRoot), maxBytes);
+    }
+
+    public RunningProcess start(
+            List<String> command,
+            Path workingRoot,
+            int maxBytes,
+            Map<String, String> environmentOverrides) throws IOException {
+        ProcessBuilder builder = processBuilder(command, workingRoot);
+        Map<String, String> environment = builder.environment();
+        environment.clear();
+        environment.putAll(validatedEnvironment(environmentOverrides));
+        return start(builder, maxBytes);
+    }
+
+    private RunningProcess start(ProcessBuilder builder, int maxBytes) throws IOException {
         if (maxBytes <= 0) {
             throw new IllegalArgumentException("maxBytes must be positive");
         }
-        Process process = new ProcessBuilder(safeCommand)
-                .directory(fixedRoot.toFile())
-                .redirectErrorStream(false)
-                .start();
+        Process process = builder.start();
         ExecutorService executor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("bounded-process-output-", 0).factory());
         OutputSnapshot stdoutSnapshot = new OutputSnapshot(maxBytes);
@@ -86,6 +100,33 @@ public final class BoundedProcessRunner {
             executor.shutdownNow();
             throw failure;
         }
+    }
+
+    private static ProcessBuilder processBuilder(List<String> command, Path workingRoot) throws IOException {
+        List<String> safeCommand = validateCommand(command);
+        Path fixedRoot = fixedWorkingRoot(workingRoot);
+        return new ProcessBuilder(safeCommand)
+                .directory(fixedRoot.toFile())
+                .redirectErrorStream(false);
+    }
+
+    private static Map<String, String> validatedEnvironment(Map<String, String> environmentOverrides) {
+        if (environmentOverrides == null) {
+            throw new IllegalArgumentException("Environment overrides are required");
+        }
+        Map<String, String> validated = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : environmentOverrides.entrySet()) {
+            if (entry == null || entry.getKey() == null || !ENVIRONMENT_KEY.matcher(entry.getKey()).matches()) {
+                throw new IllegalArgumentException("Environment override key is invalid");
+            }
+            String value = entry.getValue();
+            if (value == null || value.length() > MAX_ENVIRONMENT_VALUE_CHARACTERS
+                    || value.codePoints().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("Environment override value is invalid");
+            }
+            validated.put(entry.getKey(), value);
+        }
+        return Map.copyOf(validated);
     }
 
     private static List<String> validateCommand(List<String> command) {

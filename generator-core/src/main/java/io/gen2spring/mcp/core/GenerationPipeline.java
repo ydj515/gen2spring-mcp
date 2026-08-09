@@ -15,6 +15,7 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectF
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
@@ -47,6 +48,7 @@ public final class GenerationPipeline {
     private final ValidationReportWriter reportWriter;
     private final DeterministicZipPackager zipPackager;
     private final ExpectedToolSchemaFactory expectedToolSchemaFactory = new ExpectedToolSchemaFactory();
+    private final ExpectedToolCallFactory expectedToolCallFactory = new ExpectedToolCallFactory();
 
     public GenerationPipeline(
             SpecificationAnalyzer analyzer,
@@ -78,6 +80,7 @@ public final class GenerationPipeline {
         var analysis = analyzer.analyze(specification, DEFAULT_MAX_SPECIFICATION_BYTES);
         List<McpToolDefinition> tools = toolModelFactory.create(analysis.document(), request);
         validateTarget(request);
+        ExpectedToolCall expectedCall = expectedToolCallFactory.create(tools, request.validation());
         List<String> sensitiveNames = sensitiveNames(request, tools);
 
         GenerationContext context = new GenerationContext(
@@ -97,7 +100,7 @@ public final class GenerationPipeline {
         try (ValidationWorkspace workspace = ValidationWorkspace.copyOf(projectRoot, projectWriter)) {
             report = validator.validate(new ValidationRequest(
                     workspace.root(), request.project().artifactId(), request.validationLevel(),
-                    expectedToolSchemaFactory.create(tools)));
+                    expectedToolSchemaFactory.create(tools), expectedCall));
             if (report == null) {
                 throw GeneratorException.system(
                         INTERNAL_ERROR, "VALIDATION", "Generated project validation returned no report", null);

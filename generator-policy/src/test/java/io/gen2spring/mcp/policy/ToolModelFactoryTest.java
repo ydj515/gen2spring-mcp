@@ -93,6 +93,33 @@ class ToolModelFactoryTest {
     }
 
     @Test
+    void rejectsApplicationReservedSecretEnvironmentNamesDuringToolModelValidation() {
+        for (String reserved : List.of(
+                "PROVIDER_BASE_URL",
+                "JAVA_TOOL_OPTIONS",
+                "JDK_JAVA_OPTIONS",
+                "SPRING_APPLICATION_JSON")) {
+            var request = request(List.of(selection(
+                    "getForecast",
+                    null,
+                    Map.of("serviceKey", new ParameterOverride(SERVER_SECRET, reserved)))));
+
+            GeneratorException exception = assertThrows(
+                    GeneratorException.class,
+                    () -> factory.create(weatherDocument(), request),
+                    reserved);
+
+            assertEquals(SECRET_EXPOSURE_DETECTED, exception.code(), reserved);
+            assertEquals("tool-policy", exception.stage(), reserved);
+            assertEquals(
+                    "Server secrets cannot use an application-reserved environment variable name",
+                    exception.safeMessage(),
+                    reserved);
+            assertFalse(exception.safeMessage().contains(reserved), reserved);
+        }
+    }
+
+    @Test
     void bindsAnApplicableSchemeOnlyApiKeyFromItsExplicitSecretOverride() {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
@@ -485,7 +512,10 @@ class ToolModelFactoryTest {
         return new GenerationRequest(
                 new GenerationRequest.ProjectCoordinates("io.example", "weather", "io.example.weather"),
                 "KMA", "weather", "spring-ai-2.0-java21-mvc-streamable",
-                GenerationRequest.ValidationLevel.MCP_PROTOCOL, selections);
+                GenerationRequest.ValidationLevel.MCP_PROTOCOL,
+                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+                        "getForecast", Map.of("nx", 60, "ny", 127))),
+                selections);
     }
 
     private OperationSelection selection(String operationId, String toolName, Map<String, ParameterOverride> parameters) {

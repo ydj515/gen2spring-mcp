@@ -116,6 +116,7 @@ final class RuntimeSourceRenderer {
         return """
                 package %s.runtime;
 
+                import com.fasterxml.jackson.annotation.JsonInclude;
                 import java.io.IOException;
                 import java.io.InputStream;
                 import java.lang.reflect.Array;
@@ -165,7 +166,10 @@ final class RuntimeSourceRenderer {
 
                     public OpenApiOperationExecutor(RestClient.Builder builder, Environment environment) {
                         this.environment = environment;
-                        this.jsonMapper = JsonMapper.builder().build();
+                        this.jsonMapper = JsonMapper.builder()
+                                .changeDefaultPropertyInclusion(inclusion ->
+                                        inclusion.withValueInclusion(JsonInclude.Include.NON_NULL))
+                                .build();
                         this.baseUrl = requireHttpUri(environment.getRequiredProperty("provider.base-url"));
                         this.responseMaxBytes = requireResponseLimit(
                                 environment.getRequiredProperty("provider.response-max-bytes", Integer.class));

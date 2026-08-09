@@ -6,11 +6,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
+import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
+import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource;
@@ -55,9 +58,15 @@ public final class GenerationConfigurationReader {
     private static final Pattern JAVA_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final int MAX_OPERATIONS = 1_000;
     private static final int MAX_DESCRIPTION_CHARACTERS = 2_048;
+    private static final int MAX_ARGUMENT_DEPTH = 16;
+    private static final int MAX_ARGUMENT_MEMBERS = 256;
+    private static final int MAX_ARGUMENT_ITEMS = 256;
+    private static final int MAX_ARGUMENT_STRING_CHARACTERS = 2_048;
     private static final Set<String> ROOT_FIELDS = Set.of(
-            "project", "provider", "domain", "targetProfileId", "validationLevel", "operations");
+            "project", "provider", "domain", "targetProfileId", "validationLevel", "validation", "operations");
     private static final Set<String> PROJECT_FIELDS = Set.of("groupId", "artifactId", "packageName");
+    private static final Set<String> VALIDATION_FIELDS = Set.of("toolCall");
+    private static final Set<String> TOOL_CALL_FIELDS = Set.of("operationId", "arguments");
     private static final Set<String> OPERATION_FIELDS = Set.of(
             "operationId", "enabled", "toolName", "toolDescription", "parameters");
     private static final Set<String> PARAMETER_FIELDS = Set.of("source", "environmentVariable");
@@ -76,6 +85,9 @@ public final class GenerationConfigurationReader {
         this.yaml = JsonMapper.builder(factory)
                 .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .enable(DeserializationFeature.USE_BIG_INTEGER_FOR_INTS)
+                .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                .nodeFactory(new JsonNodeFactory(true))
                 .enable(MapperFeature.BLOCK_UNSAFE_POLYMORPHIC_BASE_TYPES)
                 .build();
         this.pathBoundary = java.util.Objects.requireNonNull(pathBoundary, "pathBoundary");
@@ -145,14 +157,17 @@ public final class GenerationConfigurationReader {
     }
 
     private void beginContainer(Deque<YamlContainer> containers, boolean mapping) {
+        boolean jsonValueMode = false;
         if (!containers.isEmpty()) {
             YamlContainer parent = containers.peek();
             if (parent.mapping() && parent.expectsKey()) {
                 throw invalid("Generation configuration keys must be strings");
             }
+            jsonValueMode = parent.jsonValueMode()
+                    || (parent.mapping() && "arguments".equals(parent.pendingKey()));
             parent.completeValue();
         }
-        containers.push(new YamlContainer(mapping));
+        containers.push(new YamlContainer(mapping, jsonValueMode));
     }
 
     private void validateScalar(Deque<YamlContainer> containers, ScalarEvent scalar, Resolver resolver) {
@@ -171,8 +186,11 @@ public final class GenerationConfigurationReader {
         }
 
         String field = container != null && container.mapping() ? container.pendingKey() : null;
+        boolean isJsonValue = container != null && container.jsonValueMode();
+        boolean supportedJsonScalar = Tag.STR.equals(tag) || Tag.INT.equals(tag)
+                || Tag.FLOAT.equals(tag) || Tag.BOOL.equals(tag);
         Tag expected = "enabled".equals(field) ? Tag.BOOL : Tag.STR;
-        if (!expected.equals(tag)) {
+        if (!(isJsonValue && supportedJsonScalar) && !expected.equals(tag)) {
             throw invalid("Generation configuration scalar types must match the schema");
         }
         if (container != null) {
@@ -182,11 +200,13 @@ public final class GenerationConfigurationReader {
 
     private static final class YamlContainer {
         private final boolean mapping;
+        private final boolean jsonValueMode;
         private boolean expectsKey;
         private String pendingKey;
 
-        private YamlContainer(boolean mapping) {
+        private YamlContainer(boolean mapping, boolean jsonValueMode) {
             this.mapping = mapping;
+            this.jsonValueMode = jsonValueMode;
             this.expectsKey = mapping;
         }
 
@@ -196,6 +216,10 @@ public final class GenerationConfigurationReader {
 
         boolean expectsKey() {
             return expectsKey;
+        }
+
+        boolean jsonValueMode() {
+            return jsonValueMode;
         }
 
         String pendingKey() {
@@ -236,6 +260,15 @@ public final class GenerationConfigurationReader {
         requireString(root, "domain", "Domain");
         requireString(root, "targetProfileId", "Target profile");
         requireString(root, "validationLevel", "Validation level");
+
+        JsonNode validation = root.get("validation");
+        requireObject(validation, "Validation");
+        requireFields(validation, VALIDATION_FIELDS, VALIDATION_FIELDS, "Validation");
+        JsonNode toolCall = validation.get("toolCall");
+        requireObject(toolCall, "Tool call validation");
+        requireFields(toolCall, TOOL_CALL_FIELDS, TOOL_CALL_FIELDS, "Tool call validation");
+        requireString(toolCall, "operationId", "Tool call operation ID");
+        requireObject(toolCall.get("arguments"), "Tool call arguments");
 
         JsonNode operations = root.get("operations");
         if (operations == null || !operations.isArray()) {
@@ -316,9 +349,81 @@ public final class GenerationConfigurationReader {
         if (raw.validationLevel() != ValidationLevel.MCP_PROTOCOL) {
             throw invalid("Validation level must be MCP_PROTOCOL");
         }
+        ValidationConfiguration validation = validation(raw.validation());
         List<OperationSelection> operations = operations(raw.operations());
         return new GenerationRequest(new ProjectCoordinates(groupId, artifactId, packageName), provider, domain,
-                raw.targetProfileId(), raw.validationLevel(), operations);
+                raw.targetProfileId(), raw.validationLevel(), validation, operations);
+    }
+
+    private ValidationConfiguration validation(RawValidation rawValidation) {
+        if (rawValidation == null || rawValidation.toolCall() == null) {
+            throw invalid("Tool call validation is required");
+        }
+        RawToolCall rawToolCall = rawValidation.toolCall();
+        String operationId = matches(rawToolCall.operationId(), OPERATION_ID, "Tool call operation ID");
+        return new ValidationConfiguration(new ToolCallValidation(operationId,
+                argumentMap(rawToolCall.arguments(), 0)));
+    }
+
+    private Map<String, Object> argumentMap(JsonNode node, int depth) {
+        if (node == null || !node.isObject()) {
+            throw invalid("Tool call arguments must be an object");
+        }
+        if (depth > MAX_ARGUMENT_DEPTH || node.size() > MAX_ARGUMENT_MEMBERS) {
+            throw invalid("Tool call arguments exceed configured bounds");
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        node.properties().forEach(entry -> {
+            String key = entry.getKey();
+            if (key.isBlank() || key.length() > MAX_ARGUMENT_STRING_CHARACTERS) {
+                throw invalid("Tool call arguments contain an invalid key");
+            }
+            values.put(key, argumentValue(entry.getValue(), depth + 1));
+        });
+        return values;
+    }
+
+    private List<Object> argumentList(JsonNode node, int depth) {
+        if (depth > MAX_ARGUMENT_DEPTH || node.size() > MAX_ARGUMENT_ITEMS) {
+            throw invalid("Tool call arguments exceed configured bounds");
+        }
+        List<Object> values = new ArrayList<>();
+        for (JsonNode item : node) {
+            values.add(argumentValue(item, depth + 1));
+        }
+        return values;
+    }
+
+    private Object argumentValue(JsonNode node, int depth) {
+        if (depth > MAX_ARGUMENT_DEPTH) {
+            throw invalid("Tool call arguments exceed configured bounds");
+        }
+        if (node == null || node.isNull()) {
+            throw invalid("Tool call arguments cannot contain null values");
+        }
+        if (node.isObject()) {
+            return argumentMap(node, depth);
+        }
+        if (node.isArray()) {
+            return argumentList(node, depth);
+        }
+        if (node.isTextual()) {
+            String value = node.textValue();
+            if (value.length() > MAX_ARGUMENT_STRING_CHARACTERS) {
+                throw invalid("Tool call argument string is too long");
+            }
+            return value;
+        }
+        if (node.isIntegralNumber()) {
+            return node.bigIntegerValue();
+        }
+        if (node.isFloatingPointNumber()) {
+            return node.decimalValue();
+        }
+        if (node.isBoolean()) {
+            return node.booleanValue();
+        }
+        throw invalid("Tool call arguments must contain JSON-compatible values");
     }
 
     private List<OperationSelection> operations(List<RawOperation> rawOperations) {
@@ -430,7 +535,12 @@ public final class GenerationConfigurationReader {
             String domain,
             String targetProfileId,
             ValidationLevel validationLevel,
+            RawValidation validation,
             List<RawOperation> operations) {}
+
+    private record RawValidation(RawToolCall toolCall) {}
+
+    private record RawToolCall(String operationId, JsonNode arguments) {}
 
     private record RawProject(String groupId, String artifactId, String packageName) {}
 

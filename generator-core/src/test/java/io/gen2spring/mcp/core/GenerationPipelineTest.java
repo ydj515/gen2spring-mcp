@@ -37,6 +37,7 @@ import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.policy.ToolModelFactory;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -46,6 +47,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -345,7 +347,7 @@ class GenerationPipelineTest {
         GenerationRequest valid = weatherGenerationRequest();
         GenerationRequest unsupported = new GenerationRequest(
                 valid.project(), valid.provider(), valid.domain(), "spring-ai-latest", valid.validationLevel(),
-                valid.operations());
+                valid.validation(), valid.operations());
         Path root = safeTempDir.resolve("weather");
 
         GeneratorException failure = assertThrows(GeneratorException.class,
@@ -473,6 +475,35 @@ class GenerationPipelineTest {
                 "required", List.of("nx")), expected.inputSchema());
         assertFalse(expected.inputSchema().toString().contains("serviceKey"));
         assertFalse(expected.inputSchema().toString().contains("tenantCredential"));
+        assertEquals("getForecast", captured.get().expectedToolCall().tool().operationId());
+        assertEquals(TOOL_NAME, captured.get().expectedToolCall().tool().name());
+        assertEquals(Map.of("nx", 60),
+                captured.get().expectedToolCall().arguments());
+        assertThrows(UnsupportedOperationException.class,
+                () -> captured.get().expectedToolCall().arguments().put("nx", 61));
+    }
+
+    @Test
+    void rejectsInvalidRepresentativeArgumentsBeforeGeneratingSources() {
+        AtomicBoolean generated = new AtomicBoolean();
+        ProjectGenerator generator = context -> {
+            generated.set(true);
+            return new GeneratedProjectFiles(Map.of());
+        };
+        GenerationRequest valid = weatherGenerationRequest();
+        GenerationRequest invalid = new GenerationRequest(
+                valid.project(), valid.provider(), valid.domain(), valid.targetProfileId(), valid.validationLevel(),
+                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+                        "getForecast", Map.of("nx", "not-a-number"))),
+                valid.operations());
+
+        GeneratorException exception = assertThrows(GeneratorException.class,
+                () -> pipelineWith(generator, request -> validatedReport())
+                        .generate(specification, invalid, safeTempDir.resolve("invalid-call")));
+
+        assertEquals("TOOL_MODEL_VALIDATE", exception.stage());
+        assertFalse(generated.get());
+        assertFalse(Files.exists(safeTempDir.resolve("invalid-call")));
     }
 
     @Test
@@ -520,6 +551,10 @@ class GenerationPipelineTest {
                 "README.md", "# Weather MCP\n".getBytes(UTF_8),
                 "settings.gradle.kts", "rootProject.name = \"weather-mcp-server\"\n".getBytes(UTF_8),
                 "build.gradle.kts", "plugins { java }\n".getBytes(UTF_8)));
+        return pipelineWith(generator, validator);
+    }
+
+    private GenerationPipeline pipelineWith(ProjectGenerator generator, GeneratedProjectValidator validator) {
         return new GenerationPipeline(
                 new SwaggerOpenApiAnalyzer(),
                 new ToolModelFactory(),
@@ -547,6 +582,7 @@ class GenerationPipelineTest {
                 "weather",
                 CompatibilityProfile.p0().id(),
                 GenerationRequest.ValidationLevel.MCP_PROTOCOL,
+                representativeToolCallValidation(),
                 List.of(new OperationSelection(
                         "getForecast",
                         true,
@@ -556,6 +592,11 @@ class GenerationPipelineTest {
                                 "serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY"),
                                 "tenantCredential", new ParameterOverride(
                                         SERVER_SECRET, "WEATHER_CREDENTIAL_42")))));
+    }
+
+    private GenerationRequest.ValidationConfiguration representativeToolCallValidation() {
+        return new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+                "getForecast", Map.of("nx", new BigDecimal("60.0"))));
     }
 
     private void assertSecretsAbsent(byte[] bytes, String... secrets) {

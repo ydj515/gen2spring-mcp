@@ -3,11 +3,13 @@ package io.gen2spring.mcp.policy;
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SERVER_SECRET;
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.USER_INPUT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class SecretParameterPolicyTest {
@@ -31,5 +33,26 @@ class SecretParameterPolicyTest {
     void acceptsOnlySafeEnvironmentVariableNamesForSecrets() {
         assertEquals("KMA_SERVICE_KEY", policy.requireEnvironmentVariable("KMA_SERVICE_KEY"));
         assertThrows(GeneratorException.class, () -> policy.requireEnvironmentVariable("kma-service-key"));
+    }
+
+    @Test
+    void rejectsApplicationReservedEnvironmentVariableNamesWithoutEchoingThem() {
+        for (String reserved : List.of(
+                "PROVIDER_BASE_URL",
+                "JAVA_TOOL_OPTIONS",
+                "JDK_JAVA_OPTIONS",
+                "SPRING_APPLICATION_JSON")) {
+            GeneratorException exception = assertThrows(
+                    GeneratorException.class,
+                    () -> policy.requireEnvironmentVariable(reserved),
+                    reserved);
+
+            assertEquals("tool-policy", exception.stage(), reserved);
+            assertEquals(
+                    "Server secrets cannot use an application-reserved environment variable name",
+                    exception.safeMessage(),
+                    reserved);
+            assertFalse(exception.safeMessage().contains(reserved), reserved);
+        }
     }
 }

@@ -1,8 +1,10 @@
 package io.gen2spring.mcp.validation;
 
 import static io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel.MCP_PROTOCOL;
+import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SUCCESS;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod.GET;
+import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.HEADER;
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.QUERY;
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.ARRAY;
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.INTEGER;
@@ -16,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
@@ -51,7 +54,10 @@ class GeneratedWeatherValidationSmokeTest {
         var coordinates = new ProjectCoordinates(
                 "com.example", "weather-mcp-server", "com.example.weather");
         var generationRequest = new GenerationRequest(
-                coordinates, "kma", "weather", CompatibilityProfile.p0().id(), MCP_PROTOCOL, List.of());
+                coordinates, "kma", "weather", CompatibilityProfile.p0().id(), MCP_PROTOCOL,
+                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+                        "getForecast", weatherArguments())),
+                List.of());
         var files = new SpringAi2ProjectGenerator().generate(new GenerationContext(
                 null, List.of(tool), generationRequest, CompatibilityProfile.p0(), new byte[0]));
         assertTrue(files.files().containsKey(
@@ -80,9 +86,17 @@ class GeneratedWeatherValidationSmokeTest {
         assertEquals("[a-z]+", region.get("pattern"));
 
         var report = new GradleMcpProjectValidator().validate(new ValidationRequest(
-                root, coordinates.artifactId(), MCP_PROTOCOL, expectedTools));
+                root, coordinates.artifactId(), MCP_PROTOCOL, expectedTools,
+                new ExpectedToolCall(tool, weatherArguments())));
 
         assertEquals(VALIDATED, report.status(), report.toString());
+        assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),
+                report.stages().stream().map(stage -> stage.stage()).toList());
+        assertTrue(report.stages().stream().allMatch(stage -> stage.status() == SUCCESS));
+        assertTrue(report.stages().get(4).summary().contains("mock upstream contract"));
+        assertTrue(report.stages().get(4).summary().chars().noneMatch(Character::isDigit));
+        assertTrue(report.stages().stream().noneMatch(stage -> stage.summary().contains("seoul")));
+        assertTrue(report.stages().stream().noneMatch(stage -> stage.summary().contains("mcp-validation-secret")));
         assertEquals(List.of(TOOL_NAME), report.tools().stream().map(toolResult -> toolResult.name()).toList());
     }
 
@@ -117,11 +131,21 @@ class GeneratedWeatherValidationSmokeTest {
                         List.of(
                                 new ParameterBinding("nx", QUERY, "nx"),
                                 new ParameterBinding("ny", QUERY, "ny"),
-                                new ParameterBinding("options", QUERY, "options"),
                                 new ParameterBinding("mode", QUERY, "mode"),
                                 new ParameterBinding("tags", QUERY, "tags"))),
-                List.of(new SecretBinding("KMA_SERVICE_KEY", "service-key", QUERY, "serviceKey", true)),
+                List.of(
+                        new SecretBinding("KMA_SERVICE_KEY", "service-key", QUERY, "serviceKey", true),
+                        new SecretBinding("KMA_HEADER_KEY", "header-key", HEADER, "X-Weather-Key", true)),
                 McpToolDefinition.OutputKind.GENERIC_JSON);
+    }
+
+    private Map<String, Object> weatherArguments() {
+        return Map.of(
+                "nx", 60,
+                "ny", 127,
+                "options", Map.of("region", "seoul"),
+                "mode", "brief",
+                "tags", List.of("public", "forecast"));
     }
 
 }

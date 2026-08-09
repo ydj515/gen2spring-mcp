@@ -16,6 +16,11 @@ import java.util.regex.Pattern;
 public final class SecretParameterPolicy {
     private static final Set<String> SECRET_CANDIDATES = Set.of(
             "apikey", "servicekey", "accesstoken", "clientsecret", "authorization", "xapikey");
+    private static final Set<String> RESERVED_APPLICATION_ENVIRONMENT_VARIABLES = Set.of(
+            "PROVIDER_BASE_URL",
+            "JAVA_TOOL_OPTIONS",
+            "JDK_JAVA_OPTIONS",
+            "SPRING_APPLICATION_JSON");
     private static final Pattern ENVIRONMENT_VARIABLE = Pattern.compile("[A-Z][A-Z0-9_]{0,127}");
 
     public ParameterSource classify(String name, ParameterLocation location, boolean apiKeyParameter) {
@@ -44,6 +49,10 @@ public final class SecretParameterPolicy {
         if (environmentVariable == null || !ENVIRONMENT_VARIABLE.matcher(environmentVariable).matches()) {
             throw GeneratorException.user(SECRET_EXPOSURE_DETECTED, "tool-policy",
                     "Server secrets require a valid environment variable name");
+        }
+        if (RESERVED_APPLICATION_ENVIRONMENT_VARIABLES.contains(environmentVariable)) {
+            throw GeneratorException.user(SECRET_EXPOSURE_DETECTED, "tool-policy",
+                    "Server secrets cannot use an application-reserved environment variable name");
         }
         return environmentVariable;
     }

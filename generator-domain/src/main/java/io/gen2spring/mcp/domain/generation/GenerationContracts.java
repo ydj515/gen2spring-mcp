@@ -35,7 +35,14 @@ public final class GenerationContracts {
             Path projectRoot,
             String artifactId,
             GenerationRequest.ValidationLevel level,
-            Map<String, ExpectedTool> expectedTools) {}
+            Map<String, ExpectedTool> expectedTools,
+            ExpectedToolCall expectedToolCall) {
+        public ValidationRequest {
+            if (expectedToolCall == null) {
+                throw new IllegalArgumentException("Validation request expected Tool call is incomplete");
+            }
+        }
+    }
 
     public record ExpectedTool(String description, Map<String, Object> inputSchema) {
         public ExpectedTool {
@@ -43,6 +50,15 @@ public final class GenerationContracts {
                 throw new IllegalArgumentException("Expected Tool metadata is incomplete");
             }
             inputSchema = immutableMap(inputSchema);
+        }
+    }
+
+    public record ExpectedToolCall(McpToolDefinition tool, Map<String, Object> arguments) {
+        public ExpectedToolCall {
+            if (tool == null || arguments == null) {
+                throw new IllegalArgumentException("Expected Tool call is incomplete");
+            }
+            arguments = immutableMap(arguments);
         }
     }
     public enum ValidationStatus { VALIDATED, UNVERIFIED }
