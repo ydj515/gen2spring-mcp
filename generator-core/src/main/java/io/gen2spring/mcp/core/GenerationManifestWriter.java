@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -60,6 +61,17 @@ public final class GenerationManifestWriter {
             ObjectNode mapping = mappings.addObject();
             mapping.put("operationId", tool.operationId());
             mapping.put("toolName", tool.name());
+            ResponseNormalizationPolicy policy = tool.execution().responseNormalization();
+            if (policy != null) {
+                ObjectNode normalization = mapping.putObject("responseNormalization");
+                putOptional(normalization, "dataPath", policy.dataPointer());
+                putOptional(normalization, "successCodePath", policy.successCodePointer());
+                if (!policy.successValues().isEmpty()) {
+                    normalization.set("successValues", objectMapper.valueToTree(policy.successValues()));
+                }
+                putOptional(normalization, "errorMessagePath", policy.errorMessagePointer());
+                putOptional(normalization, "totalCountPath", policy.totalCountPointer());
+            }
         });
         writeJson(target, manifest);
         return target;
@@ -72,6 +84,12 @@ public final class GenerationManifestWriter {
             List<McpToolDefinition> tools) {
         if (profile == null || document == null || sourceChecksum == null || sourceChecksum.isBlank() || tools == null) {
             throw failure("Generation manifest input is incomplete", null);
+        }
+    }
+
+    private void putOptional(ObjectNode object, String field, String value) {
+        if (value != null) {
+            object.put(field, value);
         }
     }
 

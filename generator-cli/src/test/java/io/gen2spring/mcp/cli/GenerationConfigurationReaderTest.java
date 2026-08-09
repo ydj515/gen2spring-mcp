@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -44,6 +46,34 @@ class GenerationConfigurationReaderTest {
         assertEquals(Map.of("latitude", new BigDecimal("37.5"), "longitude", new BigDecimal("127.0")),
                 call.arguments().get("location"));
         assertThrows(UnsupportedOperationException.class, () -> call.arguments().put("days", 4));
+    }
+
+    @Test
+    void readsTypedResponseNormalization() throws IOException {
+        GenerationRequest request = reader.read(write("normalization.yaml", validConfiguration().replace(
+                "    parameters:\n", "    responseNormalization:\n"
+                        + "      dataPath: /response/body/items/0\n"
+                        + "      successCodePath: /response/header/resultCode\n"
+                        + "      successValues: [\"00\", 0, false]\n"
+                        + "      errorMessagePath: /response/header/resultMsg\n"
+                        + "      totalCountPath: /response/body/totalCount\n"
+                        + "    parameters:\n")));
+
+        assertEquals(new ResponseNormalizationPolicy(
+                "/response/body/items/0", "/response/header/resultCode", List.of("00", BigInteger.ZERO, false),
+                "/response/header/resultMsg", "/response/body/totalCount"),
+                request.operations().getFirst().responseNormalization());
+    }
+
+    @Test
+    void rejectsUnknownNormalizationFieldsAndNonScalarSuccessValues() throws IOException {
+        assertThrows(CliConfigurationException.class,
+                () -> reader.read(write("unknown-normalization.yaml", validConfiguration().replace(
+                        "    parameters:\n", "    responseNormalization: {jsonPath: $.items}\n    parameters:\n"))));
+        assertThrows(CliConfigurationException.class,
+                () -> reader.read(write("nested-normalization.yaml", validConfiguration().replace(
+                        "    parameters:\n", "    responseNormalization: {successCodePath: /code, successValues: [[00]]}\n"
+                                + "    parameters:\n"))));
     }
 
     @ParameterizedTest

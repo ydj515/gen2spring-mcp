@@ -34,6 +34,7 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.policy.ToolModelFactory;
 import java.io.IOException;
@@ -86,6 +87,10 @@ class GenerationPipelineTest {
                       required: true
                       schema:
                         type: string
+              /health:
+                get:
+                  operationId: getHealth
+                  summary: Get service health
             components:
               securitySchemes:
                 serviceKey:
@@ -167,6 +172,23 @@ class GenerationPipelineTest {
             assertEquals(outcome.sourceChecksum(),
                     new SourceTreeChecksum().calculate(new GeneratedProjectFiles(archivedFiles)));
         }
+    }
+
+    @Test
+    void writesResponseNormalizationOnlyForOperationsThatDeclareIt() throws IOException {
+        var outcome = pipelineWithValidator(request -> new ValidationReport(UNVERIFIED, List.of(), List.of()))
+                .generate(specification, normalizationGenerationRequest(), safeTempDir.resolve("normalization"));
+
+        JsonNode manifest = objectMapper.readTree(outcome.projectRoot().resolve("GENERATION_MANIFEST.json").toFile());
+        JsonNode normalization = manifest.path("operationMappings").get(0).path("responseNormalization");
+        assertEquals("/response/body/items", normalization.path("dataPath").asText());
+        assertEquals("/response/header/code", normalization.path("successCodePath").asText());
+        assertEquals(List.of("00", 0, false),
+                objectMapper.convertValue(normalization.path("successValues"), List.class));
+        assertEquals("/response/header/message", normalization.path("errorMessagePath").asText());
+        assertEquals("/response/body/totalCount", normalization.path("totalCountPath").asText());
+        JsonNode rawOperation = manifest.path("operationMappings").get(1);
+        assertFalse(rawOperation.path("responseNormalization").isObject());
     }
 
     @Test
@@ -592,6 +614,23 @@ class GenerationPipelineTest {
                                 "serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY"),
                                 "tenantCredential", new ParameterOverride(
                                         SERVER_SECRET, "WEATHER_CREDENTIAL_42")))));
+    }
+
+    private GenerationRequest normalizationGenerationRequest() {
+        GenerationRequest request = weatherGenerationRequest();
+        return new GenerationRequest(
+                request.project(), request.provider(), request.domain(), request.targetProfileId(), request.validationLevel(),
+                request.validation(), List.of(
+                        new OperationSelection(
+                                "getForecast", true, TOOL_NAME, TOOL_DESCRIPTION,
+                                Map.of(
+                                        "serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY"),
+                                        "tenantCredential", new ParameterOverride(
+                                                SERVER_SECRET, "WEATHER_CREDENTIAL_42")),
+                                new ResponseNormalizationPolicy(
+                                        "/response/body/items", "/response/header/code", List.of("00", 0, false),
+                                        "/response/header/message", "/response/body/totalCount")),
+                        new OperationSelection("getHealth", true, null, null, Map.of())));
     }
 
     private GenerationRequest.ValidationConfiguration representativeToolCallValidation() {

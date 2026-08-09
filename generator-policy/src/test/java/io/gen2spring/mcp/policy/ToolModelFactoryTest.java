@@ -6,6 +6,7 @@ import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SE
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.USER_INPUT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,6 +22,7 @@ import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSecurityScheme;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
 import java.net.URI;
 import java.util.List;
@@ -39,6 +41,31 @@ class ToolModelFactoryTest {
         assertEquals("KMA_SERVICE_KEY", tools.getFirst().secretBindings().getFirst().environmentVariable());
         assertEquals("serviceKey", tools.getFirst().secretBindings().getFirst().targetName());
         assertEquals("nx", tools.getFirst().execution().bindings().getFirst().sourceName());
+    }
+
+    @Test
+    void attachesValidatedResponsePolicyToHttpExecution() {
+        ResponseNormalizationPolicy policy = normalization();
+        GenerationRequest request = request(List.of(new OperationSelection(
+                "getForecast", true, null, null,
+                Map.of("serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY")), policy)));
+
+        var tool = factory.create(weatherDocument(), request).getFirst();
+
+        assertSame(policy, tool.execution().responseNormalization());
+    }
+
+    @Test
+    void rejectsInvalidProgrammaticResponsePolicyBeforeRendering() {
+        var invalid = new ResponseNormalizationPolicy("bad", null, List.of(), null, null);
+
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> factory.create(weatherDocument(), request(List.of(new OperationSelection(
+                        "getForecast", true, null, null,
+                        Map.of("serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY")), invalid)))));
+
+        assertEquals(OPERATION_UNSUPPORTED, failure.code());
+        assertFalse(failure.getMessage().contains("bad"));
     }
 
     @Test
@@ -520,6 +547,12 @@ class ToolModelFactoryTest {
 
     private OperationSelection selection(String operationId, String toolName, Map<String, ParameterOverride> parameters) {
         return new OperationSelection(operationId, true, toolName, null, parameters);
+    }
+
+    private ResponseNormalizationPolicy normalization() {
+        return new ResponseNormalizationPolicy(
+                "/response/body/items", "/response/header/code", List.of("00", 0, false),
+                "/response/header/message", "/response/body/totalCount");
     }
 
     private OpenApiDocument weatherDocument() {

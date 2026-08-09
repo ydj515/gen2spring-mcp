@@ -13,6 +13,8 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiParameter;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
@@ -83,6 +85,18 @@ public final class ToolModelFactory {
             return List.of();
         }
         return request.operations().stream().filter(OperationSelection::enabled).toList();
+    }
+
+    private ResponseNormalizationPolicy responsePolicy(OperationSelection selection) {
+        if (selection.responseNormalization() == null) {
+            return null;
+        }
+        try {
+            return new ResponseNormalizationPolicyValidator().requireValid(selection.responseNormalization());
+        } catch (IllegalArgumentException failure) {
+            throw GeneratorException.user(OPERATION_UNSUPPORTED, "tool-policy",
+                    "Response normalization policy is invalid");
+        }
     }
 
     private McpToolDefinition createTool(
@@ -180,7 +194,8 @@ public final class ToolModelFactory {
                         operation.method(), document.baseUrl(), operation.path(), List.copyOf(bindings),
                         operation.requestBody() != null
                                 && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT,
-                        operation.requestBodyRequired()),
+                        operation.requestBodyRequired(),
+                        responsePolicy(selection)),
                 List.copyOf(secretBindings),
                 GENERIC_JSON);
     }

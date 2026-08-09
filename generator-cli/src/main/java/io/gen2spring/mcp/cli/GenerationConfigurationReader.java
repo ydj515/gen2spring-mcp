@@ -16,6 +16,8 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -68,8 +70,10 @@ public final class GenerationConfigurationReader {
     private static final Set<String> VALIDATION_FIELDS = Set.of("toolCall");
     private static final Set<String> TOOL_CALL_FIELDS = Set.of("operationId", "arguments");
     private static final Set<String> OPERATION_FIELDS = Set.of(
-            "operationId", "enabled", "toolName", "toolDescription", "parameters");
+            "operationId", "enabled", "toolName", "toolDescription", "parameters", "responseNormalization");
     private static final Set<String> PARAMETER_FIELDS = Set.of("source", "environmentVariable");
+    private static final Set<String> RESPONSE_NORMALIZATION_FIELDS = Set.of(
+            "dataPath", "successCodePath", "successValues", "errorMessagePath", "totalCountPath");
 
     private final ObjectMapper yaml;
     private final LocalPathBoundary pathBoundary;
@@ -164,7 +168,8 @@ public final class GenerationConfigurationReader {
                 throw invalid("Generation configuration keys must be strings");
             }
             jsonValueMode = parent.jsonValueMode()
-                    || (parent.mapping() && "arguments".equals(parent.pendingKey()));
+                    || (parent.mapping() && ("arguments".equals(parent.pendingKey())
+                    || "successValues".equals(parent.pendingKey())));
             parent.completeValue();
         }
         containers.push(new YamlContainer(mapping, jsonValueMode));
@@ -281,6 +286,26 @@ public final class GenerationConfigurationReader {
             requireBoolean(operation, "enabled", "Operation enabled state");
             optionalString(operation, "toolName", "Tool name");
             optionalString(operation, "toolDescription", "Tool description");
+            if (operation.has("responseNormalization")) {
+                JsonNode normalization = operation.get("responseNormalization");
+                requireObject(normalization, "Response normalization");
+                requireFields(normalization, RESPONSE_NORMALIZATION_FIELDS, Set.of(), "Response normalization");
+                optionalString(normalization, "dataPath", "Response normalization data path");
+                optionalString(normalization, "successCodePath", "Response normalization success code path");
+                optionalString(normalization, "errorMessagePath", "Response normalization error message path");
+                optionalString(normalization, "totalCountPath", "Response normalization total count path");
+                if (normalization.has("successValues")) {
+                    JsonNode successValues = normalization.get("successValues");
+                    if (!successValues.isArray()) {
+                        throw invalid("Response normalization success values must be scalar values");
+                    }
+                    for (JsonNode value : successValues) {
+                        if (!value.isTextual() && !value.isNumber() && !value.isBoolean()) {
+                            throw invalid("Response normalization success values must be scalar values");
+                        }
+                    }
+                }
+            }
             if (operation.has("parameters")) {
                 JsonNode parameters = operation.get("parameters");
                 requireObject(parameters, "Operation parameters");
@@ -448,7 +473,7 @@ public final class GenerationConfigurationReader {
             String toolName = optionalMatch(raw.toolName(), TOOL_NAME, "Tool name");
             String description = optionalDescription(raw.toolDescription());
             operations.add(new OperationSelection(operationId, raw.enabled(), toolName, description,
-                    parameters(raw.parameters())));
+                    parameters(raw.parameters()), responseNormalization(raw.responseNormalization())));
         }
         if (!enabled) {
             throw invalid("At least one operation must be enabled");
@@ -479,6 +504,37 @@ public final class GenerationConfigurationReader {
             parameters.put(parameterName, new ParameterOverride(raw.source(), environmentVariable));
         });
         return Collections.unmodifiableMap(parameters);
+    }
+
+    private ResponseNormalizationPolicy responseNormalization(RawResponseNormalization raw) {
+        if (raw == null) {
+            return null;
+        }
+        List<Object> successValues = raw.successValues() == null ? List.of()
+                : raw.successValues().stream().map(this::scalarValue).toList();
+        try {
+            return new ResponseNormalizationPolicyValidator().requireValid(new ResponseNormalizationPolicy(
+                    raw.dataPath(), raw.successCodePath(), successValues,
+                    raw.errorMessagePath(), raw.totalCountPath()));
+        } catch (IllegalArgumentException failure) {
+            throw invalid("Response normalization policy is invalid");
+        }
+    }
+
+    private Object scalarValue(JsonNode value) {
+        if (value.isTextual()) {
+            return value.textValue();
+        }
+        if (value.isIntegralNumber()) {
+            return value.bigIntegerValue();
+        }
+        if (value.isFloatingPointNumber()) {
+            return value.decimalValue();
+        }
+        if (value.isBoolean()) {
+            return value.booleanValue();
+        }
+        throw invalid("Response normalization success values must be scalar values");
     }
 
     private String javaPackage(String value, String label) {
@@ -549,7 +605,15 @@ public final class GenerationConfigurationReader {
             Boolean enabled,
             String toolName,
             String toolDescription,
-            Map<String, RawParameterOverride> parameters) {}
+            Map<String, RawParameterOverride> parameters,
+            RawResponseNormalization responseNormalization) {}
+
+    private record RawResponseNormalization(
+            String dataPath,
+            String successCodePath,
+            List<JsonNode> successValues,
+            String errorMessagePath,
+            String totalCountPath) {}
 
     private record RawParameterOverride(ParameterSource source, String environmentVariable) {}
 }
