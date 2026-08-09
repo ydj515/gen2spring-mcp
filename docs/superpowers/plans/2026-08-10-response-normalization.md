@@ -487,6 +487,7 @@ git commit -m "feat(config): propagate response normalization policy"
 **Interfaces:**
 - Consumes: Tool IR `HttpExecutionDefinition.responseNormalization()` from Task 2.
 - Produces generated runtime types `ResponseNormalizationPolicy`, `OperationOutcome`, `NormalizedSuccess`, `ProviderErrorCategory`, `ProviderError`, `ProviderErrorException`, and `ResponseNormalizer` under `<package>.runtime`.
+- Produces generated `OperationDefinition(String operationId, String method, String path, List<ParameterBinding> parameterBindings, List<SecretBinding> secretBindings, boolean objectRequestBody, boolean requestBodyRequired, ResponseNormalizationPolicy responseNormalization)`; actual generated metadata always supplies the exact Tool IR operation ID.
 - Produces generated `ResponseNormalizer.normalize(OperationDefinition operation, int status, MediaType contentType, byte[] body, List<String> secretNames, List<String> secretValues): OperationOutcome`.
 - Produces generated `ResponseNormalizer.error(OperationDefinition operation, ProviderErrorCategory category, Integer status, JsonNode providerCode, String providerMessage, List<String> secretNames, List<String> secretValues): ProviderError`.
 
@@ -570,7 +571,9 @@ Move only response-specific generated source templates into this new renderer. `
 
 - [ ] **Step 4: Render literal policy values into `OperationDefinition`**
 
-Add nullable `ResponseNormalizationPolicy responseNormalization` to the generated `OperationDefinition` record and route compatibility constructors to `null`. In `OperationMetadataRenderer`, import the generated policy and Jackson node types only if one or more tools use normalization. Render values by type:
+Add `String operationId` as the first generated `OperationDefinition` component and nullable `ResponseNormalizationPolicy responseNormalization` as the last component. `OperationMetadataRenderer` must always pass `tool.operationId()` to the canonical constructor, so every real generated execution and error envelope carries the exact ID. Preserve the existing four-, five-, and six-argument source-compatible constructors by routing them to `operationId = "unknown"` and `responseNormalization = null`; they exist only for legacy direct construction and must not be used by generated metadata or normalization error tests. Add a constructor test that proves legacy construction uses the fixed non-sensitive fallback while canonical construction preserves the exact ID.
+
+In `OperationMetadataRenderer`, import the generated policy and Jackson node types only if one or more tools use normalization. Render values by type:
 
 ```java
 private void appendSuccessValue(StringBuilder source, Object value) {
