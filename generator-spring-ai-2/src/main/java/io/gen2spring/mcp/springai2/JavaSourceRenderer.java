@@ -32,6 +32,7 @@ public final class JavaSourceRenderer {
     private final ToolCallbackConfigurationRenderer toolCallbackConfigurationRenderer;
     private final OperationMetadataRenderer metadataRenderer;
     private final RuntimeSourceRenderer runtimeRenderer;
+    private final ResponseRuntimeRenderer responseRuntimeRenderer;
     private final ExpectedToolSchemaFactory expectedToolSchemaFactory;
     private final ObjectMapper objectMapper;
 
@@ -43,6 +44,7 @@ public final class JavaSourceRenderer {
         this.toolCallbackConfigurationRenderer = new ToolCallbackConfigurationRenderer();
         this.metadataRenderer = new OperationMetadataRenderer();
         this.runtimeRenderer = new RuntimeSourceRenderer();
+        this.responseRuntimeRenderer = new ResponseRuntimeRenderer();
         this.expectedToolSchemaFactory = new ExpectedToolSchemaFactory();
         this.objectMapper = new ObjectMapper();
     }
@@ -67,6 +69,7 @@ public final class JavaSourceRenderer {
         put(sources, "src/main/java/" + packagePath + "/generated/metadata/" + domainClass + "Operations.java",
                 metadataRenderer.render(packageName, domainClass, tools));
         putAll(sources, runtimeRenderer.render(packageName, packagePath, domainClass));
+        putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
 
         Map<String, byte[]> result = new LinkedHashMap<>();
         sources.entrySet().stream().sorted(Map.Entry.comparingByKey())

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
@@ -35,6 +36,21 @@ class GeneratedProjectSmokeTest {
                 .generate(JavaSourceRendererTest.contextWithWeatherTool())
                 .files();
         assertProjectBuilds(tempDir.resolve("weather"), files);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedResponseNormalizerEnforcesTheContract() throws Exception {
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(List.of(
+                        JavaSourceRendererTest.weatherTool(JavaSourceRendererTest.normalization()))))
+                .files();
+        java.util.Map<String, byte[]> filesWithNormalizerTest = new java.util.LinkedHashMap<>(files);
+        filesWithNormalizerTest.put(
+                "src/test/java/com/example/weather/runtime/GeneratedResponseNormalizerContractTest.java",
+                responseNormalizerContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("response-normalizer"), filesWithNormalizerTest);
     }
 
     @Test
@@ -313,6 +329,226 @@ class GeneratedProjectSmokeTest {
         String buildOutput = result.output();
         assertEquals(0, result.exitCode(), buildOutput);
         assertTrue(buildOutput.contains("BUILD SUCCESSFUL"), buildOutput);
+    }
+
+    private String responseNormalizerContractTest() {
+        return """
+                package com.example.weather.runtime;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+                import static org.junit.jupiter.api.Assertions.assertTrue;
+
+                import com.example.weather.generated.metadata.WeatherOperations;
+                import java.math.BigDecimal;
+                import java.nio.charset.StandardCharsets;
+                import java.util.List;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.http.MediaType;
+                import tools.jackson.databind.JsonNode;
+                import tools.jackson.databind.json.JsonMapper;
+                import tools.jackson.databind.node.BooleanNode;
+                import tools.jackson.databind.node.JsonNodeFactory;
+                import tools.jackson.databind.node.StringNode;
+
+                class GeneratedResponseNormalizerContractTest {
+                    private final ResponseNormalizer normalizer = new ResponseNormalizer();
+                    private final JsonMapper mapper = JsonMapper.builder().build();
+
+                    @Test
+                    void preservesExactAndLegacyOperationIdentity() {
+                        assertEquals("getForecast", operation().operationId());
+                        assertEquals("unknown",
+                                new OperationDefinition("GET", "/legacy", List.of(), List.of()).operationId());
+                        assertEquals("customOperation",
+                                operation("customOperation", null).operationId());
+                    }
+
+                    @Test
+                    void normalizesSuccessAndPreservesTypedMetadata() throws Exception {
+                        OperationOutcome outcome = normalizer.normalize(operation(), 200,
+                                MediaType.parseMediaType("application/problem+json; charset=UTF-8"),
+                                json("{'response':{'header':{'code':'00','message':'NORMAL_SERVICE'},"
+                                        + "'body':{'items':[{'id':1}],'totalCount':1}}}"),
+                                List.of(), List.of());
+
+                        assertEquals(jsonNode("{'data':[{'id':1}],'page':{'totalCount':1},"
+                                + "'provider':{'code':'00','message':'NORMAL_SERVICE'}}"),
+                                assertInstanceOf(NormalizedSuccess.class, outcome).payload());
+                    }
+
+                    @Test
+                    void failsClosedForBusinessAndProtocolFailures() {
+                        ProviderError business = assertInstanceOf(ProviderError.class,
+                                normalizer.normalize(operation(), 200, MediaType.APPLICATION_JSON,
+                                        json("{'response':{'header':{'code':30,'message':'INVALID'}}}"),
+                                        List.of(), List.of()));
+                        assertEquals("PROVIDER_BUSINESS", business.payload().at("/error/category").stringValue());
+                        assertTrue(business.payload().at("/error/providerCode").isIntegralNumber());
+                        assertEquals("INVALID", business.payload().at("/error/providerMessage").stringValue());
+                        assertErrorShape(business, 200, false, "getForecast");
+
+                        for (byte[] body : List.of(
+                                json("{}"),
+                                json("{'response':{'header':{'code':'00'}}}"))) {
+                            ProviderError protocol = assertInstanceOf(ProviderError.class,
+                                    normalizer.normalize(operation(), 200, MediaType.APPLICATION_JSON,
+                                            body, List.of(), List.of()));
+                            assertEquals("UPSTREAM_PROTOCOL",
+                                    protocol.payload().at("/error/category").stringValue());
+                        }
+                    }
+
+                    @Test
+                    void preservesRawNoPolicyJsonAndEmptyBodyCompatibility() throws Exception {
+                        OperationDefinition raw = operation("rawOperation", null);
+                        NormalizedSuccess json = assertInstanceOf(NormalizedSuccess.class,
+                                normalizer.normalize(raw, 204, MediaType.APPLICATION_JSON,
+                                        json("{'raw':true}"), List.of(), List.of()));
+                        NormalizedSuccess empty = assertInstanceOf(NormalizedSuccess.class,
+                                normalizer.normalize(raw, 204, null, new byte[0], List.of(), List.of()));
+
+                        assertEquals(jsonNode("{'raw':true}"), json.payload());
+                        assertTrue(empty.payload().isNull());
+                    }
+
+                    @Test
+                    void evaluatesEscapedObjectAndArrayPointerTokens() throws Exception {
+                        assertEquals(jsonNode("{'id':1}"), successData(
+                                policy("/a~1b", null, List.of(), null, null),
+                                "{'a/b':{'id':1}}"));
+                        assertEquals(StringNode.valueOf("object-property"), successData(
+                                policy("/items/01", null, List.of(), null, null),
+                                "{'items':{'01':'object-property'}}"));
+                        assertEquals(StringNode.valueOf("first"), successData(
+                                policy("/items/0", null, List.of(), null, null),
+                                "{'items':['first']}"));
+
+                        ProviderError leadingZero = assertInstanceOf(ProviderError.class,
+                                normalizer.normalize(
+                                        operation("leadingZeroArray", policy(
+                                                "/items/01", null, List.of(), null, null)),
+                                        200, MediaType.APPLICATION_JSON,
+                                        json("{'items':['first','second']}"), List.of(), List.of()));
+                        assertEquals("UPSTREAM_PROTOCOL",
+                                leadingZero.payload().at("/error/category").stringValue());
+                    }
+
+                    @Test
+                    void comparesDecimalSuccessCodesExactlyByNumericValue() {
+                        ResponseNormalizationPolicy policy = policy(
+                                null,
+                                "/code",
+                                List.of(JsonNodeFactory.instance.numberNode(new BigDecimal("90"))),
+                                null,
+                                null);
+
+                        assertInstanceOf(NormalizedSuccess.class,
+                                normalizer.normalize(operation("decimal", policy), 200,
+                                        MediaType.APPLICATION_JSON, json("{'code':9E+1}"),
+                                        List.of(), List.of()));
+                    }
+
+                    @Test
+                    void rejectsInvalidJsonTrailingTokensAndUnsupportedMediaTypes() {
+                        for (byte[] invalid : List.of(json("{"), json("{} {}"))) {
+                            assertCategory("UPSTREAM_PROTOCOL",
+                                    normalizer.normalize(operation(), 200, MediaType.APPLICATION_JSON,
+                                            invalid, List.of(), List.of()));
+                        }
+                        assertCategory("UPSTREAM_PROTOCOL",
+                                normalizer.normalize(operation(), 200, null,
+                                        json("{}"), List.of(), List.of()));
+                        assertCategory("UPSTREAM_PROTOCOL",
+                                normalizer.normalize(operation(), 200, MediaType.TEXT_PLAIN,
+                                        json("{}"), List.of(), List.of()));
+                    }
+
+                    @Test
+                    void rejectsInvalidTotalCounts() {
+                        ResponseNormalizationPolicy policy = policy(null, null, List.of(), null, "/count");
+                        for (String count : List.of("-1", "1.5", "9223372036854775808", "'1'")) {
+                            assertCategory("UPSTREAM_PROTOCOL", normalizer.normalize(
+                                    operation("count", policy), 200, MediaType.APPLICATION_JSON,
+                                    json("{'count':" + count + "}"), List.of(), List.of()));
+                        }
+                    }
+
+                    @Test
+                    void classifiesHttpStatusBeforeParsingProviderMetadata() {
+                        assertHttp(400, "UPSTREAM_CLIENT", false);
+                        assertHttp(408, "UPSTREAM_CLIENT", true);
+                        assertHttp(425, "UPSTREAM_CLIENT", true);
+                        assertHttp(429, "UPSTREAM_CLIENT", true);
+                        assertHttp(500, "UPSTREAM_SERVER", true);
+                        assertHttp(302, "UPSTREAM_PROTOCOL", false);
+                    }
+
+                    private void assertHttp(int status, String category, boolean retryable) {
+                        ProviderError error = assertInstanceOf(ProviderError.class,
+                                normalizer.normalize(operation(), status, MediaType.TEXT_PLAIN,
+                                        json("private invalid body"), List.of(), List.of()));
+                        assertEquals(category, error.payload().at("/error/category").stringValue());
+                        assertErrorShape(error, status, retryable, "getForecast");
+                    }
+
+                    private JsonNode successData(ResponseNormalizationPolicy policy, String body) {
+                        NormalizedSuccess success = assertInstanceOf(NormalizedSuccess.class,
+                                normalizer.normalize(operation("pointer", policy), 200,
+                                        MediaType.APPLICATION_JSON, json(body), List.of(), List.of()));
+                        return success.payload().get("data");
+                    }
+
+                    private void assertCategory(String category, OperationOutcome outcome) {
+                        ProviderError error = assertInstanceOf(ProviderError.class, outcome);
+                        assertEquals(category, error.payload().at("/error/category").stringValue());
+                    }
+
+                    private void assertErrorShape(
+                            ProviderError outcome, int status, boolean retryable, String operationId) {
+                        JsonNode error = outcome.payload().get("error");
+                        assertEquals(retryable, error.get("retryable").booleanValue());
+                        assertEquals(status, error.get("httpStatus").intValue());
+                        assertEquals(operationId, error.get("operationId").stringValue());
+                        assertTrue(error.get("traceId").stringValue().matches("[0-9a-f]{32}"));
+                        String serialized = error.toString();
+                        assertTrue(serialized.indexOf("category") < serialized.indexOf("providerCode"));
+                        assertTrue(serialized.indexOf("providerCode") < serialized.indexOf("providerMessage"));
+                        assertTrue(serialized.indexOf("providerMessage") < serialized.indexOf("retryable"));
+                        assertTrue(serialized.indexOf("retryable") < serialized.indexOf("httpStatus"));
+                        assertTrue(serialized.indexOf("httpStatus") < serialized.indexOf("operationId"));
+                        assertTrue(serialized.indexOf("operationId") < serialized.indexOf("traceId"));
+                    }
+
+                    private OperationDefinition operation() {
+                        return WeatherOperations.GET_FORECAST;
+                    }
+
+                    private OperationDefinition operation(String operationId, ResponseNormalizationPolicy policy) {
+                        return new OperationDefinition(
+                                operationId, "GET", "/test", List.of(), List.of(), false, false, policy);
+                    }
+
+                    private ResponseNormalizationPolicy policy(
+                            String dataPointer,
+                            String successCodePointer,
+                            List<JsonNode> successValues,
+                            String errorMessagePointer,
+                            String totalCountPointer) {
+                        return new ResponseNormalizationPolicy(
+                                dataPointer, successCodePointer, successValues,
+                                errorMessagePointer, totalCountPointer);
+                    }
+
+                    private byte[] json(String value) {
+                        return value.replace('\\'', '"').getBytes(StandardCharsets.UTF_8);
+                    }
+
+                    private JsonNode jsonNode(String value) throws Exception {
+                        return mapper.readTree(value.replace('\\'', '"'));
+                    }
+                }
+                """;
     }
 
     private String enumCallbackContractTest() {

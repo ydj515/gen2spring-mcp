@@ -17,6 +17,7 @@ import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
@@ -55,9 +56,16 @@ class JavaSourceRendererTest {
                 "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java",
                 "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java",
                 "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java",
+                "src/main/java/com/example/weather/runtime/NormalizedSuccess.java",
                 "src/main/java/com/example/weather/runtime/OperationDefinition.java",
+                "src/main/java/com/example/weather/runtime/OperationOutcome.java",
                 "src/main/java/com/example/weather/runtime/ParameterBinding.java",
                 "src/main/java/com/example/weather/runtime/ParameterLocation.java",
+                "src/main/java/com/example/weather/runtime/ProviderError.java",
+                "src/main/java/com/example/weather/runtime/ProviderErrorCategory.java",
+                "src/main/java/com/example/weather/runtime/ProviderErrorException.java",
+                "src/main/java/com/example/weather/runtime/ResponseNormalizationPolicy.java",
+                "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
                 "src/main/java/com/example/weather/runtime/SecretBinding.java",
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java")),
                 new TreeSet<>(files.keySet()));
@@ -83,6 +91,20 @@ class JavaSourceRendererTest {
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java"));
         assertTrue(contextTest.contains("webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT"));
         assertTrue(contextTest.contains("void contextLoads()"));
+    }
+
+    @Test
+    void emitsTypedNormalizationMetadataAndFocusedRuntimeSources() {
+        var files = renderer.render(context(List.of(weatherTool(normalization()))));
+
+        String metadata = utf8(files.get(
+                "src/main/java/com/example/weather/generated/metadata/WeatherOperations.java"));
+        assertTrue(metadata.contains("new ResponseNormalizationPolicy("));
+        assertTrue(metadata.contains("StringNode.valueOf(\"00\")"));
+        assertTrue(metadata.contains("JsonNodeFactory.instance.numberNode(new BigDecimal(\"1.50\"))"));
+        assertTrue(metadata.contains("BooleanNode.TRUE"));
+        assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/ResponseNormalizer.java"));
+        assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/ProviderErrorException.java"));
     }
 
     @Test
@@ -380,6 +402,35 @@ class JavaSourceRendererTest {
                 List.of(
                         new ParameterBinding("nx", ParameterLocation.QUERY, "nx"),
                         new ParameterBinding("ny", ParameterLocation.QUERY, "ny")));
+    }
+
+    static McpToolDefinition weatherTool(ResponseNormalizationPolicy normalization) {
+        McpToolDefinition tool = weatherTool();
+        HttpExecutionDefinition execution = tool.execution();
+        return new McpToolDefinition(
+                tool.operationId(),
+                tool.name(),
+                tool.description(),
+                tool.inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(),
+                        execution.baseUrl(),
+                        execution.path(),
+                        execution.bindings(),
+                        execution.objectRequestBody(),
+                        execution.requestBodyRequired(),
+                        normalization),
+                tool.secretBindings(),
+                tool.outputKind());
+    }
+
+    static ResponseNormalizationPolicy normalization() {
+        return new ResponseNormalizationPolicy(
+                "/response/body/items",
+                "/response/header/code",
+                List.of("00", new BigDecimal("1.50"), true),
+                "/response/header/message",
+                "/response/body/totalCount");
     }
 
     static McpToolDefinition weatherTool(

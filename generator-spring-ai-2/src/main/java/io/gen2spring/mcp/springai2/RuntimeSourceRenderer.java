@@ -79,18 +79,20 @@ final class RuntimeSourceRenderer {
                 import java.util.Objects;
 
                 public record OperationDefinition(
+                        String operationId,
                         String method,
                         String path,
                         List<ParameterBinding> parameterBindings,
                         List<SecretBinding> secretBindings,
                         boolean objectRequestBody,
-                        boolean requestBodyRequired) {
+                        boolean requestBodyRequired,
+                        ResponseNormalizationPolicy responseNormalization) {
                     public OperationDefinition(
                             String method,
                             String path,
                             List<ParameterBinding> parameterBindings,
                             List<SecretBinding> secretBindings) {
-                        this(method, path, parameterBindings, secretBindings, false, false);
+                        this("unknown", method, path, parameterBindings, secretBindings, false, false, null);
                     }
 
                     public OperationDefinition(
@@ -99,10 +101,23 @@ final class RuntimeSourceRenderer {
                             List<ParameterBinding> parameterBindings,
                             List<SecretBinding> secretBindings,
                             boolean objectRequestBody) {
-                        this(method, path, parameterBindings, secretBindings, objectRequestBody, objectRequestBody);
+                        this("unknown", method, path, parameterBindings, secretBindings,
+                                objectRequestBody, objectRequestBody, null);
+                    }
+
+                    public OperationDefinition(
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings,
+                            boolean objectRequestBody,
+                            boolean requestBodyRequired) {
+                        this("unknown", method, path, parameterBindings, secretBindings,
+                                objectRequestBody, requestBodyRequired, null);
                     }
 
                     public OperationDefinition {
+                        Objects.requireNonNull(operationId, "operationId");
                         Objects.requireNonNull(method, "method");
                         Objects.requireNonNull(path, "path");
                         parameterBindings = List.copyOf(parameterBindings);
