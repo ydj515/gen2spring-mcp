@@ -9,6 +9,7 @@ import static io.gen2spring.mcp.domain.generation.GenerationContracts.Validation
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
@@ -29,6 +30,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -42,7 +44,12 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private static final Pattern TOMCAT_STARTUP_PORT = Pattern.compile(
             "(?m)^.*\\bTomcat started on port ([1-9][0-9]{0,4}) \\(http\\) with context path '.*'$");
     private static final List<String> ORDERED_STAGES = List.of(
-            "COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST");
+            "COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL");
+    private static final String INITIALIZE_SUCCESS = "MCP initialize contract matched";
+    private static final String TOOLS_LIST_SUCCESS = "MCP Tool metadata matched the generated contract";
+    private static final String TOOL_CALL_SUCCESS =
+            "Representative MCP Tool call matched the mock upstream contract";
+    private static final String TOOL_CALL_FAILURE = "MCP Tool call validation failed safely";
 
     private final BoundedProcessRunner processRunner;
     private final LoopbackPortAllocator portAllocator;
@@ -53,11 +60,14 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private final int maxProcessOutputBytes;
     private final WrapperSnapshotHook wrapperSnapshotHook;
     private final ApplicationLaunchHook applicationLaunchHook;
+    private final MockUpstreamFactory mockUpstreamFactory;
+    private final ApplicationCleanupHook applicationCleanupHook;
 
     public GradleMcpProjectValidator() {
         this(new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
                 DEFAULT_BUILD_TIMEOUT, DEFAULT_STARTUP_TIMEOUT, DEFAULT_POLL_INTERVAL,
-                DEFAULT_MAX_PROCESS_OUTPUT_BYTES, WrapperSnapshotHook.NOOP, ApplicationLaunchHook.NOOP);
+                DEFAULT_MAX_PROCESS_OUTPUT_BYTES, WrapperSnapshotHook.NOOP, ApplicationLaunchHook.NOOP,
+                GradleMcpProjectValidator::startMockUpstream);
     }
 
     GradleMcpProjectValidator(
@@ -67,7 +77,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             int maxProcessOutputBytes) {
         this(new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
                 buildTimeout, startupTimeout, pollInterval, maxProcessOutputBytes, WrapperSnapshotHook.NOOP,
-                ApplicationLaunchHook.NOOP);
+                ApplicationLaunchHook.NOOP, GradleMcpProjectValidator::startMockUpstream);
     }
 
     GradleMcpProjectValidator(
@@ -89,7 +99,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             ApplicationLaunchHook applicationLaunchHook) {
         this(new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
                 buildTimeout, startupTimeout, pollInterval, maxProcessOutputBytes, wrapperSnapshotHook,
-                applicationLaunchHook);
+                applicationLaunchHook, GradleMcpProjectValidator::startMockUpstream);
     }
 
     GradleMcpProjectValidator(
@@ -102,6 +112,39 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             int maxProcessOutputBytes,
             WrapperSnapshotHook wrapperSnapshotHook,
             ApplicationLaunchHook applicationLaunchHook) {
+        this(processRunner, portAllocator, mcpClient, buildTimeout, startupTimeout, pollInterval,
+                maxProcessOutputBytes, wrapperSnapshotHook, applicationLaunchHook,
+                GradleMcpProjectValidator::startMockUpstream);
+    }
+
+    GradleMcpProjectValidator(
+            BoundedProcessRunner processRunner,
+            LoopbackPortAllocator portAllocator,
+            McpStreamableHttpClient mcpClient,
+            Duration buildTimeout,
+            Duration startupTimeout,
+            Duration pollInterval,
+            int maxProcessOutputBytes,
+            WrapperSnapshotHook wrapperSnapshotHook,
+            ApplicationLaunchHook applicationLaunchHook,
+            MockUpstreamFactory mockUpstreamFactory) {
+        this(processRunner, portAllocator, mcpClient, buildTimeout, startupTimeout, pollInterval,
+                maxProcessOutputBytes, wrapperSnapshotHook, applicationLaunchHook, mockUpstreamFactory,
+                ApplicationCleanupHook.NOOP);
+    }
+
+    GradleMcpProjectValidator(
+            BoundedProcessRunner processRunner,
+            LoopbackPortAllocator portAllocator,
+            McpStreamableHttpClient mcpClient,
+            Duration buildTimeout,
+            Duration startupTimeout,
+            Duration pollInterval,
+            int maxProcessOutputBytes,
+            WrapperSnapshotHook wrapperSnapshotHook,
+            ApplicationLaunchHook applicationLaunchHook,
+            MockUpstreamFactory mockUpstreamFactory,
+            ApplicationCleanupHook applicationCleanupHook) {
         this.processRunner = Objects.requireNonNull(processRunner, "processRunner");
         this.portAllocator = Objects.requireNonNull(portAllocator, "portAllocator");
         this.mcpClient = Objects.requireNonNull(mcpClient, "mcpClient");
@@ -110,6 +153,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         this.pollInterval = positive(pollInterval, "pollInterval");
         this.wrapperSnapshotHook = Objects.requireNonNull(wrapperSnapshotHook, "wrapperSnapshotHook");
         this.applicationLaunchHook = Objects.requireNonNull(applicationLaunchHook, "applicationLaunchHook");
+        this.mockUpstreamFactory = Objects.requireNonNull(mockUpstreamFactory, "mockUpstreamFactory");
+        this.applicationCleanupHook = Objects.requireNonNull(applicationCleanupHook, "applicationCleanupHook");
         if (maxProcessOutputBytes <= 0) {
             throw new IllegalArgumentException("maxProcessOutputBytes must be positive");
         }
@@ -173,46 +218,122 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         McpStreamableHttpClient.Result mcpResult = null;
         McpStreamableHttpClient.McpValidationException mcpFailure = null;
         String applicationFailure = null;
+        Throwable toolCallFailure = null;
+        Throwable primaryFailure = null;
+        ValidationPhase phase = ValidationPhase.MOCK_START;
         try {
-            List<String> command = List.of(
-                    javaExecutable(), "-jar", jar.toString(),
-                    "--server.address=127.0.0.1", "--server.port=0");
-            applicationLaunchHook.beforeLaunch(command);
-            application = processRunner.start(command, request.root(), maxProcessOutputBytes);
-            ReadinessResult readinessResult = awaitReadiness(application);
-            readiness = readinessResult.status();
-            applicationDurationMillis = elapsedMillis(applicationStarted);
-            if (readiness == Readiness.READY) {
-                try {
-                    if (!application.isAlive()) {
-                        throw new IOException("application exited after publishing its endpoint");
-                    }
-                    mcpResult = mcpClient.validate(readinessResult.endpoint(), request.expectedTools());
-                } catch (McpStreamableHttpClient.McpValidationException exception) {
-                    mcpFailure = exception;
-                } catch (IOException exception) {
-                    applicationFailure = "application exited before MCP validation";
+            UpstreamCallExpectation expectation = UpstreamCallExpectation.from(request.expectedToolCall());
+            RunningMockUpstream upstream = mockUpstreamFactory.start(expectation);
+            Throwable upstreamFailure = null;
+            try {
+                phase = ValidationPhase.APPLICATION_START;
+                Map<String, String> environment = new TreeMap<>(upstream.environmentOverrides());
+                environment.put("PROVIDER_BASE_URL", upstream.baseUri().toString());
+                List<String> command = List.of(
+                        javaExecutable(), "-jar", jar.toString(),
+                        "--server.address=127.0.0.1", "--server.port=0");
+                applicationLaunchHook.beforeLaunch(command);
+                application = processRunner.start(command, request.root(), maxProcessOutputBytes, environment);
+                phase = ValidationPhase.APPLICATION_READINESS;
+                ReadinessResult readinessResult = awaitReadiness(application);
+                readiness = readinessResult.status();
+                applicationDurationMillis = elapsedMillis(applicationStarted);
+                if (readiness != Readiness.READY) {
+                    throw new ApplicationStageException(readinessFailure(readiness));
                 }
-                if (applicationFailure == null && mcpFailure == null && mcpResult != null) {
-                    try {
-                        applicationFailure = verifyApplicationAfterMcpRoundTrip(application, readinessResult.endpoint());
-                    } catch (IOException exception) {
-                        applicationFailure = "application post-MCP verification failed safely";
+                if (!application.isAlive()) {
+                    throw new ApplicationStageException("application exited after publishing its endpoint");
+                }
+
+                phase = ValidationPhase.MCP_VALIDATION;
+                mcpResult = mcpClient.validate(
+                        readinessResult.endpoint(), request.expectedTools(), request.expectedToolCall());
+                phase = ValidationPhase.UPSTREAM_VERIFICATION;
+                upstream.sealAndAwaitVerified(startupTimeout);
+                phase = ValidationPhase.APPLICATION_INTEGRITY;
+                String integrityFailure = verifyApplicationAfterMcpRoundTrip(application, readinessResult.endpoint());
+                if (integrityFailure != null) {
+                    throw new ApplicationStageException(integrityFailure);
+                }
+                phase = ValidationPhase.COMPLETE;
+            } catch (Throwable failure) {
+                upstreamFailure = failure;
+                throw failure;
+            } finally {
+                try {
+                    upstream.close();
+                } catch (Error cleanupFailure) {
+                    if (upstreamFailure instanceof Error fatal) {
+                        addSuppressedSafely(fatal, cleanupFailure);
+                    } else {
+                        if (upstreamFailure != null) {
+                            addSuppressedSafely(cleanupFailure, upstreamFailure);
+                            restoreInterruptedFlag(upstreamFailure);
+                        }
+                        throw cleanupFailure;
+                    }
+                } catch (IOException | RuntimeException cleanupFailure) {
+                    if (upstreamFailure != null) {
+                        addSuppressedSafely(upstreamFailure, cleanupFailure);
+                    } else {
+                        throw cleanupFailure;
                     }
                 }
             }
+        } catch (McpStreamableHttpClient.McpValidationException exception) {
+            mcpFailure = exception;
+            primaryFailure = exception;
+        } catch (ApplicationStageException exception) {
+            applicationFailure = exception.safeSummary();
+            primaryFailure = exception;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            applicationFailure = "application startup was interrupted";
+            primaryFailure = exception;
+            if (phase == ValidationPhase.UPSTREAM_VERIFICATION || phase == ValidationPhase.MCP_VALIDATION) {
+                toolCallFailure = exception;
+            } else {
+                applicationFailure = "application startup was interrupted";
+            }
+        } catch (Error fatal) {
+            primaryFailure = fatal;
+            throw fatal;
         } catch (IOException | RuntimeException exception) {
-            applicationFailure = "application process failed safely";
+            primaryFailure = exception;
+            if (phase == ValidationPhase.MOCK_START) {
+                toolCallFailure = exception;
+            } else if (phase == ValidationPhase.UPSTREAM_VERIFICATION || phase == ValidationPhase.COMPLETE) {
+                toolCallFailure = exception;
+            } else {
+                applicationFailure = phase == ValidationPhase.APPLICATION_INTEGRITY
+                        ? "application post-MCP verification failed safely"
+                        : "application process failed safely";
+            }
         } finally {
             if (application != null) {
                 try {
                     application.close();
+                    applicationCleanupHook.afterClose();
                     applicationResult = application.result(false);
-                } catch (IOException | RuntimeException exception) {
-                    applicationFailure = "application cleanup failed safely";
+                } catch (Error cleanupFailure) {
+                    if (primaryFailure instanceof Error fatal) {
+                        addSuppressedSafely(fatal, cleanupFailure);
+                    } else {
+                        if (primaryFailure != null) {
+                            addSuppressedSafely(cleanupFailure, primaryFailure);
+                        }
+                        throw cleanupFailure;
+                    }
+                } catch (IOException | RuntimeException cleanupFailure) {
+                    if (primaryFailure != null) {
+                        addSuppressedSafely(primaryFailure, cleanupFailure);
+                    } else {
+                        primaryFailure = cleanupFailure;
+                        if (readiness == Readiness.READY) {
+                            toolCallFailure = cleanupFailure;
+                        } else {
+                            applicationFailure = "application cleanup failed safely";
+                        }
+                    }
                 }
             }
         }
@@ -220,21 +341,18 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             applicationDurationMillis = elapsedMillis(applicationStarted);
         }
 
+        if (phase == ValidationPhase.MOCK_START && toolCallFailure != null) {
+            return unavailableToolCallReport(stages, applicationStarted);
+        }
         if (applicationFailure != null) {
             stages.add(new ValidationStageResult(
                     "APPLICATION_CONTEXT", FAILED, applicationDurationMillis, 0, 1, applicationFailure));
             return failedReport(stages, List.of());
         }
         if (readiness != Readiness.READY) {
-            String reason = switch (readiness) {
-                case TIMED_OUT -> "application startup timeout";
-                case OUTPUT_LIMIT_REACHED -> "application startup output exceeded the discovery limit";
-                case PORT_DISCOVERY_INVALID -> "application did not publish one valid bound loopback port";
-                default -> "application exited before readiness";
-            };
             stages.add(new ValidationStageResult(
                     "APPLICATION_CONTEXT", FAILED, applicationDurationMillis, 0, 1,
-                    reason + safeApplicationSuffix(applicationResult)));
+                    readinessFailure(readiness) + safeApplicationSuffix(applicationResult)));
             return failedReport(stages, List.of());
         }
         stages.add(new ValidationStageResult(
@@ -244,17 +362,70 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         if (mcpFailure != null) {
             return mcpFailureReport(stages, mcpFailure);
         }
+        if (toolCallFailure != null) {
+            if (mcpResult == null) {
+                stages.add(failed("MCP_INITIALIZE", System.nanoTime(), "MCP validation did not return a result"));
+                return failedReport(stages, List.of());
+            }
+            appendSuccessfulMcpPrerequisites(stages, mcpResult);
+            stages.add(new ValidationStageResult(
+                    "MCP_TOOL_CALL", FAILED, mcpResult.toolsCallDurationMillis(), 0, 1, TOOL_CALL_FAILURE));
+            return failedReport(stages, mcpResult.tools());
+        }
         if (mcpResult == null) {
             stages.add(failed("MCP_INITIALIZE", System.nanoTime(), "MCP validation did not return a result"));
             return failedReport(stages, List.of());
         }
+        appendSuccessfulMcpPrerequisites(stages, mcpResult);
         stages.add(new ValidationStageResult(
-                "MCP_INITIALIZE", SUCCESS, mcpResult.initializeDurationMillis(), 0, 0,
-                "MCP initialize and initialized notification succeeded"));
-        stages.add(new ValidationStageResult(
-                "MCP_TOOLS_LIST", SUCCESS, mcpResult.toolsListDurationMillis(), 0, 0,
-                "validated toolCount=" + mcpResult.tools().size()));
+                "MCP_TOOL_CALL", SUCCESS, mcpResult.toolsCallDurationMillis(), 0, 0, TOOL_CALL_SUCCESS));
         return new ValidationReport(VALIDATED, List.copyOf(stages), mcpResult.tools());
+    }
+
+    private static void addSuppressedSafely(Throwable primary, Throwable suppressed) {
+        if (primary == suppressed) {
+            return;
+        }
+        for (Throwable existing : primary.getSuppressed()) {
+            if (existing == suppressed) {
+                return;
+            }
+        }
+        primary.addSuppressed(suppressed);
+    }
+
+    private static void restoreInterruptedFlag(Throwable failure) {
+        if (failure instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String readinessFailure(Readiness readiness) {
+        return switch (readiness) {
+            case TIMED_OUT -> "application startup timeout";
+            case OUTPUT_LIMIT_REACHED -> "application startup output exceeded the discovery limit";
+            case PORT_DISCOVERY_INVALID -> "application did not publish one valid bound loopback port";
+            default -> "application exited before readiness";
+        };
+    }
+
+    private void appendSuccessfulMcpPrerequisites(
+            List<ValidationStageResult> stages,
+            McpStreamableHttpClient.Result result) {
+        stages.add(new ValidationStageResult(
+                "MCP_INITIALIZE", SUCCESS, result.initializeDurationMillis(), 0, 0, INITIALIZE_SUCCESS));
+        stages.add(new ValidationStageResult(
+                "MCP_TOOLS_LIST", SUCCESS, result.toolsListDurationMillis(), 0, 0, TOOLS_LIST_SUCCESS));
+    }
+
+    private ValidationReport unavailableToolCallReport(List<ValidationStageResult> stages, long started) {
+        while (stages.size() < ORDERED_STAGES.size() - 1) {
+            stages.add(new ValidationStageResult(
+                    ORDERED_STAGES.get(stages.size()), SKIPPED, 0, 0, 0,
+                    "skipped because the loopback mock upstream was unavailable"));
+        }
+        stages.add(stage("MCP_TOOL_CALL", FAILED, started, 1, TOOL_CALL_FAILURE));
+        return new ValidationReport(UNVERIFIED, List.copyOf(stages), List.of());
     }
 
     private String verifyApplicationAfterMcpRoundTrip(
@@ -290,12 +461,19 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         if (failure.stage() == McpStreamableHttpClient.McpStage.INITIALIZE) {
             stages.add(new ValidationStageResult(
                     "MCP_INITIALIZE", FAILED, failure.initializeDurationMillis(), 0, 1, failure.getMessage()));
-        } else {
+        } else if (failure.stage() == McpStreamableHttpClient.McpStage.TOOLS_LIST) {
             stages.add(new ValidationStageResult(
                     "MCP_INITIALIZE", SUCCESS, failure.initializeDurationMillis(), 0, 0,
-                    "MCP initialize and initialized notification succeeded"));
+                    INITIALIZE_SUCCESS));
             stages.add(new ValidationStageResult(
                     "MCP_TOOLS_LIST", FAILED, failure.toolsListDurationMillis(), 0, 1, failure.getMessage()));
+        } else {
+            stages.add(new ValidationStageResult(
+                    "MCP_INITIALIZE", SUCCESS, failure.initializeDurationMillis(), 0, 0, INITIALIZE_SUCCESS));
+            stages.add(new ValidationStageResult(
+                    "MCP_TOOLS_LIST", SUCCESS, failure.toolsListDurationMillis(), 0, 0, TOOLS_LIST_SUCCESS));
+            stages.add(new ValidationStageResult(
+                    "MCP_TOOL_CALL", FAILED, failure.toolsCallDurationMillis(), 0, 1, TOOL_CALL_FAILURE));
         }
         return failedReport(stages, List.of());
     }
@@ -501,7 +679,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     private ValidatedRequest validateRequest(ValidationRequest request) {
         if (request == null || request.projectRoot() == null || request.level() != MCP_PROTOCOL
-                || request.expectedTools() == null || request.artifactId() == null
+                || request.expectedTools() == null || request.expectedToolCall() == null || request.artifactId() == null
                 || !ARTIFACT_ID.matcher(request.artifactId()).matches()) {
             throw new IllegalArgumentException("Validation request is incomplete or unsupported");
         }
@@ -522,7 +700,14 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             }
             expected.put(name, tool);
         });
-        return new ValidatedRequest(root, request.artifactId(), Collections.unmodifiableMap(expected));
+        ExpectedToolCall expectedToolCall = request.expectedToolCall();
+        if (expectedToolCall.tool() == null
+                || expectedToolCall.tool().name() == null
+                || !expected.containsKey(expectedToolCall.tool().name())) {
+            throw new IllegalArgumentException("Expected Tool call is not bound to expected Tool metadata");
+        }
+        return new ValidatedRequest(
+                root, request.artifactId(), Collections.unmodifiableMap(expected), expectedToolCall);
     }
 
     private ValidationReport failedReport(List<ValidationStageResult> attempted, List<ObservedTool> observed) {
@@ -596,6 +781,54 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         void beforeLaunch(List<String> command) throws IOException;
     }
 
+    @FunctionalInterface
+    interface MockUpstreamFactory {
+        RunningMockUpstream start(UpstreamCallExpectation expectation) throws IOException;
+    }
+
+    interface RunningMockUpstream extends AutoCloseable {
+        URI baseUri();
+
+        Map<String, String> environmentOverrides();
+
+        void sealAndAwaitVerified(Duration timeout);
+
+        @Override
+        void close() throws IOException;
+    }
+
+    @FunctionalInterface
+    interface ApplicationCleanupHook {
+        ApplicationCleanupHook NOOP = () -> {};
+
+        void afterClose() throws IOException;
+    }
+
+    private static RunningMockUpstream startMockUpstream(UpstreamCallExpectation expectation) throws IOException {
+        MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+        return new RunningMockUpstream() {
+            @Override
+            public URI baseUri() {
+                return delegate.baseUri();
+            }
+
+            @Override
+            public Map<String, String> environmentOverrides() {
+                return delegate.environmentOverrides();
+            }
+
+            @Override
+            public void sealAndAwaitVerified(Duration timeout) {
+                delegate.sealAndAwaitVerified(timeout);
+            }
+
+            @Override
+            public void close() {
+                delegate.close();
+            }
+        };
+    }
+
     static final class VerifiedGradleWrapper implements AutoCloseable {
         private final Path root;
         private final Object rootFileKey;
@@ -660,7 +893,31 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private record ValidatedRequest(
             Path root,
             String artifactId,
-            Map<String, ExpectedTool> expectedTools) {}
+            Map<String, ExpectedTool> expectedTools,
+            ExpectedToolCall expectedToolCall) {}
+
+    private enum ValidationPhase {
+        MOCK_START,
+        APPLICATION_START,
+        APPLICATION_READINESS,
+        MCP_VALIDATION,
+        UPSTREAM_VERIFICATION,
+        APPLICATION_INTEGRITY,
+        COMPLETE
+    }
+
+    private static final class ApplicationStageException extends RuntimeException {
+        private final String safeSummary;
+
+        private ApplicationStageException(String safeSummary) {
+            super(safeSummary);
+            this.safeSummary = safeSummary;
+        }
+
+        private String safeSummary() {
+            return safeSummary;
+        }
+    }
 
     private static final class ArtifactResolutionException extends RuntimeException {
         private ArtifactResolutionException(String message) {

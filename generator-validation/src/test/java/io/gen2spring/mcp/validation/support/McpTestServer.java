@@ -9,6 +9,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class McpTestServer implements AutoCloseable {
@@ -37,7 +40,20 @@ public final class McpTestServer implements AutoCloseable {
         EXTRA_PROPERTY,
         NUMERIC_EQUIVALENT,
         NUMERIC_MISMATCH,
-        NUMERIC_PRECISION_MISMATCH
+        NUMERIC_PRECISION_MISMATCH,
+        TOOLS_CALL_ERROR,
+        TOOLS_CALL_WRONG_ID,
+        TOOLS_CALL_OVERSIZED_ID,
+        TOOLS_CALL_MISSING_RESULT,
+        TOOLS_CALL_IS_ERROR,
+        TOOLS_CALL_EMPTY_CONTENT,
+        TOOLS_CALL_NON_TEXT_CONTENT,
+        TOOLS_CALL_INVALID_TEXT_JSON,
+        TOOLS_CALL_TRAILING_TEXT_JSON,
+        TOOLS_CALL_MISMATCHED_JSON,
+        TOOLS_CALL_MULTIPLE_TEXT,
+        TOOLS_CALL_SLOW_BODY,
+        TOOLS_CALL_OVERSIZE
     }
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -49,6 +65,9 @@ public final class McpTestServer implements AutoCloseable {
     private final AtomicBoolean initializedNotification = new AtomicBoolean();
     private final AtomicBoolean sessionHeaderOnInitializedNotification = new AtomicBoolean();
     private final AtomicBoolean sessionHeaderOnToolsList = new AtomicBoolean();
+    private final List<JsonNode> requests = Collections.synchronizedList(new ArrayList<>());
+    private final List<java.util.Map<String, List<String>>> requestHeaders =
+            Collections.synchronizedList(new ArrayList<>());
 
     private McpTestServer(HttpServer server, Scenario scenario, Runnable beforeToolsListResponse) {
         this.server = server;
@@ -96,6 +115,22 @@ public final class McpTestServer implements AutoCloseable {
         return sessionHeaderOnInitializedNotification.get();
     }
 
+    public JsonNode request(int index) {
+        return requests.get(index);
+    }
+
+    public String requestHeader(int index, String name) {
+        return requestHeaders.get(index).entrySet().stream()
+                .filter(header -> name.equalsIgnoreCase(header.getKey()))
+                .flatMap(header -> header.getValue().stream())
+                .findFirst()
+                .orElse(null);
+    }
+
+    public String sessionId() {
+        return SESSION_ID;
+    }
+
     @Override
     public void close() {
         server.stop(0);
@@ -104,6 +139,8 @@ public final class McpTestServer implements AutoCloseable {
     private void handle(HttpExchange exchange) throws IOException {
         try (exchange) {
             JsonNode request = OBJECT_MAPPER.readTree(exchange.getRequestBody());
+            requests.add(request);
+            requestHeaders.add(java.util.Map.copyOf(exchange.getRequestHeaders()));
             String method = request.path("method").asText();
             if ("initialize".equals(method)) {
                 initialize(exchange);
@@ -115,6 +152,8 @@ public final class McpTestServer implements AutoCloseable {
             } else if ("tools/list".equals(method)) {
                 sessionHeaderOnToolsList.set(SESSION_ID.equals(exchange.getRequestHeaders().getFirst("Mcp-Session-Id")));
                 toolsList(exchange);
+            } else if ("tools/call".equals(method)) {
+                toolsCall(exchange);
             } else {
                 send(exchange, 400, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
             }
@@ -206,6 +245,33 @@ public final class McpTestServer implements AutoCloseable {
     private static String numericSchema(String minimum) {
         return ",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"latitude\":{\"type\":\"number\",\"minimum\":"
                 + minimum + "}},\"required\":[\"latitude\"]}";
+    }
+
+    private void toolsCall(HttpExchange exchange) throws IOException {
+        String response = switch (scenario) {
+            case TOOLS_CALL_ERROR -> "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-1,\"message\":\"private\"}}";
+            case TOOLS_CALL_WRONG_ID -> "{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{}}";
+            case TOOLS_CALL_OVERSIZED_ID -> "{\"jsonrpc\":\"2.0\",\"id\":18446744073709551617,\"result\":{}}";
+            case TOOLS_CALL_MISSING_RESULT -> "{\"jsonrpc\":\"2.0\",\"id\":3}";
+            case TOOLS_CALL_IS_ERROR -> toolsCallResult("{\"isError\":true,\"content\":[{\"type\":\"text\",\"text\":\"{\\\"validated\\\":true,\\\"operationId\\\":\\\"getForecast\\\"}\"}]}");
+            case TOOLS_CALL_EMPTY_CONTENT -> toolsCallResult("{\"content\":[]}");
+            case TOOLS_CALL_NON_TEXT_CONTENT -> toolsCallResult("{\"content\":[{\"type\":\"image\",\"data\":\"aGVsbG8=\",\"mimeType\":\"text/plain\"}]}");
+            case TOOLS_CALL_INVALID_TEXT_JSON -> toolsCallResult("{\"content\":[{\"type\":\"text\",\"text\":\"not-json\"}]}");
+            case TOOLS_CALL_TRAILING_TEXT_JSON -> toolsCallResult("{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"validated\\\":true,\\\"operationId\\\":\\\"getForecast\\\"} trailing\"}]}");
+            case TOOLS_CALL_MISMATCHED_JSON -> toolsCallResult("{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"validated\\\":false,\\\"operationId\\\":\\\"getForecast\\\"}\"}]}");
+            case TOOLS_CALL_MULTIPLE_TEXT -> toolsCallResult("{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"validated\\\":true,\\\"operationId\\\":\\\"getForecast\\\"}\"},{\"type\":\"text\",\"text\":\"{}\"}]}");
+            case TOOLS_CALL_OVERSIZE -> "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"padding\":\"" + "x".repeat(4_096) + "\"}}";
+            default -> toolsCallResult("{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"operationId\\\":\\\"getForecast\\\",\\\"validated\\\":true}\"}]}");
+        };
+        if (scenario == Scenario.TOOLS_CALL_SLOW_BODY) {
+            slowSend(exchange, response);
+            return;
+        }
+        send(exchange, 200, "application/json", response.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String toolsCallResult(String result) {
+        return "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":" + result + "}";
     }
 
     private static void send(HttpExchange exchange, int status, String contentType, byte[] body) throws IOException {

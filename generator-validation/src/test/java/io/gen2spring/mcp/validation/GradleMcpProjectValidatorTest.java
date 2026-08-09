@@ -6,26 +6,36 @@ import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatu
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SUCCESS;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.UNVERIFIED;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod.GET;
+import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.QUERY;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
 import io.gen2spring.mcp.validation.support.McpTestApplication;
 import io.gen2spring.mcp.validation.support.McpTestServer;
 import io.gen2spring.mcp.validation.support.PortBindFailureApplication;
 import io.gen2spring.mcp.validation.support.StartupDelayApplication;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
@@ -58,9 +68,9 @@ class GradleMcpProjectValidatorTest {
         var report = validator().validate(request(root, EXPECTED));
 
         assertEquals(UNVERIFIED, report.status());
-        assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST"),
+        assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),
                 report.stages().stream().map(stage -> stage.stage()).toList());
-        assertEquals(List.of(FAILED, SKIPPED, SKIPPED, SKIPPED),
+        assertEquals(List.of(FAILED, SKIPPED, SKIPPED, SKIPPED, SKIPPED),
                 report.stages().stream().map(stage -> stage.status()).toList());
         assertTrue(report.stages().getFirst().summary().contains("exitCode=7"));
         assertFalse(report.stages().getFirst().summary().contains("secret-value"));
@@ -205,7 +215,9 @@ class GradleMcpProjectValidatorTest {
             var report = validator().validate(request(root, EXPECTED));
 
             assertEquals(UNVERIFIED, report.status(), report.toString());
-            assertEquals(FAILED, report.stages().get(1).status());
+            assertEquals(List.of(SUCCESS, SUCCESS, SUCCESS, SUCCESS, FAILED),
+                    report.stages().stream().map(stage -> stage.status()).toList());
+            assertTrue(waitUntilDead(readPid(root)));
         }
     }
 
@@ -244,7 +256,7 @@ class GradleMcpProjectValidatorTest {
         var report = validator().validate(request(root, EXPECTED));
 
         assertEquals(VALIDATED, report.status());
-        assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST"),
+        assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),
                 report.stages().stream().map(stage -> stage.stage()).toList());
         assertTrue(report.stages().stream().allMatch(stage -> stage.status() == SUCCESS));
         assertEquals(List.of("kma_weather_get_forecast"),
@@ -261,6 +273,430 @@ class GradleMcpProjectValidatorTest {
                                 || argument.startsWith("--server.port="))
                         .toList());
         assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void rejectsAnExpectedToolCallThatIsNotBoundToExpectedToolMetadata() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        ExpectedToolCall unbound = new ExpectedToolCall(new McpToolDefinition(
+                "otherOperation", "other_tool", "Other Tool", List.of(),
+                new HttpExecutionDefinition(GET, URI.create("https://api.example.test"), "/forecast", List.of()),
+                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON), Map.of());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> validator().validate(new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, EXPECTED, unbound)));
+    }
+
+    @Test
+    void reportsMockBindFailureAtTheToolCallGateWithoutLaunchingTheApplication() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
+        var validator = validator((GradleMcpProjectValidator.MockUpstreamFactory) expectation -> {
+            throw new IOException("bind failed near configured-secret-like-value");
+        });
+
+        var report = validator.validate(request(root, EXPECTED));
+
+        assertEquals(UNVERIFIED, report.status());
+        assertEquals(List.of(SUCCESS, SKIPPED, SKIPPED, SKIPPED, FAILED),
+                report.stages().stream().map(stage -> stage.status()).toList());
+        assertEquals("MCP Tool call validation failed safely", report.stages().get(4).summary());
+        assertFalse(Files.exists(root.resolve("app.pid")));
+        assertSummariesExclude(report, "configured-secret-like-value", "mcp-validation-secret-1");
+    }
+
+    @Test
+    void rethrowsFatalMockStartupErrorsInsteadOfConvertingThemToAValidationReport() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
+        AssertionError fatal = new AssertionError("fatal-startup-secret-like-value");
+        var validator = validator((GradleMcpProjectValidator.MockUpstreamFactory) expectation -> {
+            throw fatal;
+        });
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator.validate(request(root, EXPECTED)));
+
+        assertSame(fatal, thrown);
+        assertFalse(Files.exists(root.resolve("app.pid")));
+    }
+
+    @Test
+    void rethrowsThePrimaryFatalErrorWithMockCleanupFailureSuppressed() throws Exception {
+        Path root = runnableProject("");
+        AssertionError primary = new AssertionError("fatal-primary-secret-like-value");
+        AssertionError cleanup = new AssertionError("fatal-cleanup-secret-like-value");
+        AtomicBoolean closed = new AtomicBoolean();
+        GradleMcpProjectValidator.MockUpstreamFactory factory = expectation -> {
+            MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+            return new GradleMcpProjectValidator.RunningMockUpstream() {
+                @Override
+                public URI baseUri() {
+                    return delegate.baseUri();
+                }
+
+                @Override
+                public Map<String, String> environmentOverrides() {
+                    return delegate.environmentOverrides();
+                }
+
+                @Override
+                public void sealAndAwaitVerified(Duration timeout) {
+                    delegate.sealAndAwaitVerified(timeout);
+                    throw primary;
+                }
+
+                @Override
+                public void close() {
+                    delegate.close();
+                    closed.set(true);
+                    throw cleanup;
+                }
+            };
+        };
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator(factory).validate(request(root, EXPECTED)));
+
+        assertSame(primary, thrown);
+        assertEquals(List.of(cleanup), List.of(thrown.getSuppressed()));
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void rethrowsTheSameFatalInstanceFromAwaitAndMockCloseWithoutSelfSuppression() throws Exception {
+        Path root = runnableProject("");
+        AssertionError fatal = new AssertionError("shared-fatal-secret-like-value");
+        TrackingMockFactory mocks = new TrackingMockFactory(false, fatal, false, fatal);
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator(mocks).validate(request(root, EXPECTED)));
+
+        assertSame(fatal, thrown);
+        assertEquals(0, thrown.getSuppressed().length);
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(mocks.closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void rethrowsTheSameFatalInstanceFromAwaitAndApplicationCleanupWithoutSelfSuppression() throws Exception {
+        Path root = runnableProject("");
+        AssertionError fatal = new AssertionError("shared-fatal-secret-like-value");
+        TrackingMockFactory mocks = new TrackingMockFactory(false, fatal, false);
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator(mocks, () -> {
+                    throw fatal;
+                }).validate(request(root, EXPECTED)));
+
+        assertSame(fatal, thrown);
+        assertEquals(0, thrown.getSuppressed().length);
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(mocks.closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void suppressesTheSameCleanupFatalOnlyOnceAcrossMockAndApplicationCleanup() throws Exception {
+        Path root = runnableProject("");
+        AssertionError primary = new AssertionError("primary-fatal-secret-like-value");
+        AssertionError cleanup = new AssertionError("shared-cleanup-secret-like-value");
+        TrackingMockFactory mocks = new TrackingMockFactory(false, primary, false, cleanup);
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator(mocks, () -> {
+                    throw cleanup;
+                }).validate(request(root, EXPECTED)));
+
+        assertSame(primary, thrown);
+        assertEquals(List.of(cleanup), List.of(thrown.getSuppressed()));
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(mocks.closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void rethrowsMockCleanupFatalErrorWithEarlierNonFatalFailureSuppressed() throws Exception {
+        Path root = runnableProject("");
+        RuntimeException primary = new RuntimeException("primary-secret-like-value");
+        AssertionError cleanup = new AssertionError("fatal-cleanup-secret-like-value");
+        AtomicBoolean closed = new AtomicBoolean();
+        GradleMcpProjectValidator.MockUpstreamFactory factory = expectation -> {
+            MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+            return new GradleMcpProjectValidator.RunningMockUpstream() {
+                @Override
+                public URI baseUri() {
+                    return delegate.baseUri();
+                }
+
+                @Override
+                public Map<String, String> environmentOverrides() {
+                    return delegate.environmentOverrides();
+                }
+
+                @Override
+                public void sealAndAwaitVerified(Duration timeout) {
+                    delegate.sealAndAwaitVerified(timeout);
+                    throw primary;
+                }
+
+                @Override
+                public void close() {
+                    delegate.close();
+                    closed.set(true);
+                    throw cleanup;
+                }
+            };
+        };
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator(factory).validate(request(root, EXPECTED)));
+
+        assertSame(cleanup, thrown);
+        assertEquals(List.of(primary), List.of(thrown.getSuppressed()));
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void rethrowsThePrimaryFatalErrorWithApplicationCleanupFailureSuppressed() throws Exception {
+        Path root = runnableProject("");
+        AssertionError primary = new AssertionError("fatal-primary-secret-like-value");
+        AssertionError cleanup = new AssertionError("fatal-application-cleanup-secret-like-value");
+        TrackingMockFactory mocks = new TrackingMockFactory(false, primary, false);
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator(mocks, () -> {
+                    throw cleanup;
+                }).validate(request(root, EXPECTED)));
+
+        assertSame(primary, thrown);
+        assertEquals(List.of(cleanup), List.of(thrown.getSuppressed()));
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(mocks.closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void rethrowsAnApplicationCleanupFatalErrorWhenNoEarlierFailureExists() throws Exception {
+        Path root = runnableProject("");
+        AssertionError cleanup = new AssertionError("fatal-application-cleanup-secret-like-value");
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator(mocks, () -> {
+                    throw cleanup;
+                }).validate(request(root, EXPECTED)));
+
+        assertSame(cleanup, thrown);
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(mocks.closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void rethrowsApplicationCleanupFatalErrorWithEarlierNonFatalFailureSuppressed() throws Exception {
+        Path root = runnableProject("");
+        RuntimeException primary = new RuntimeException("primary-secret-like-value");
+        AssertionError cleanup = new AssertionError("fatal-application-cleanup-secret-like-value");
+        TrackingMockFactory mocks = new TrackingMockFactory(false, primary, false);
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> validator(mocks, () -> {
+                    throw cleanup;
+                }).validate(request(root, EXPECTED)));
+
+        assertSame(cleanup, thrown);
+        assertEquals(List.of(primary), List.of(thrown.getSuppressed()));
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(mocks.closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void reportsApplicationCleanupExceptionsSafely() throws Exception {
+        Path root = runnableProject("");
+        IOException cleanup = new IOException("application-cleanup-secret-like-value");
+        AtomicBoolean cleanupAttempted = new AtomicBoolean();
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+
+        var report = validator(mocks, () -> {
+            cleanupAttempted.set(true);
+            throw cleanup;
+        }).validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+        assertTrue(cleanupAttempted.get());
+        assertSummariesExclude(report, "application-cleanup-secret-like-value", "mcp-validation-secret-1");
+    }
+
+    @Test
+    void preservesTheInterruptFlagWhileCleaningUpAfterUpstreamVerification() throws Exception {
+        Path root = runnableProject("");
+        TrackingMockFactory mocks = new TrackingMockFactory(
+                false, new RuntimeException("interrupted-secret-like-value"), true);
+        io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport report;
+
+        try {
+            report = validator(mocks).validate(request(root, EXPECTED));
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
+
+        assertCallFailureAndCleanup(report, root, mocks);
+        assertSummariesExclude(report, "interrupted-secret-like-value", "mcp-validation-secret-1");
+    }
+
+    @Test
+    void restoresTheInterruptFlagWhenFatalMockCleanupOverridesAnInterruptedReadinessWait() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        writeJar(root, ARTIFACT_ID + ".jar", StartupDelayApplication.class);
+        AssertionError fatal = new AssertionError("fatal-cleanup-secret-like-value");
+        TrackingMockFactory mocks = new TrackingMockFactory(false, null, false, fatal);
+        AtomicReference<Throwable> interrupterFailure = new AtomicReference<>();
+        AtomicReference<Thread> interrupter = new AtomicReference<>();
+        Thread validationThread = Thread.currentThread();
+        boolean interrupted;
+        AssertionError thrown;
+
+        try {
+            thrown = assertThrows(AssertionError.class,
+                    () -> validator(mocks, command -> interrupter.set(Thread.ofPlatform()
+                            .name("validator-test-interrupter")
+                            .start(() -> {
+                                try {
+                                    waitForText(root.resolve("app.pid"));
+                                    validationThread.interrupt();
+                                } catch (Throwable failure) {
+                                    interrupterFailure.set(failure);
+                                }
+                            }))).validate(request(root, EXPECTED)));
+            interrupted = Thread.currentThread().isInterrupted();
+        } finally {
+            Thread.interrupted();
+            Thread interruptingThread = interrupter.get();
+            if (interruptingThread != null) {
+                interruptingThread.join(3_000);
+            }
+        }
+
+        assertSame(fatal, thrown);
+        assertEquals(1, thrown.getSuppressed().length);
+        assertTrue(thrown.getSuppressed()[0] instanceof InterruptedException);
+        assertTrue(interrupted);
+        assertTrue(interrupterFailure.get() == null, String.valueOf(interrupterFailure.get()));
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(mocks.closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void failsClosedWhenTheApplicationDoesNotSendAnUpstreamRequestBeforeTheMockTimeout() throws Exception {
+        Path root = runnableProject("no-upstream");
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+
+        var report = validator(Duration.ofSeconds(3), Duration.ofMillis(600), mocks)
+                .validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+    }
+
+    @Test
+    void failsClosedOnAnObservedUpstreamRequestMismatch() throws Exception {
+        Path root = runnableProject("upstream-mismatch");
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+
+        var report = validator(mocks).validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+    }
+
+    @Test
+    void failsClosedWhenAValidUpstreamRequestIsFollowedByADuplicate() throws Exception {
+        Path root = runnableProject("duplicate-upstream");
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+
+        var report = validator(mocks).validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+        assertEquals("200", waitForText(root.resolve("upstream.status")));
+        assertEquals("409", waitForText(root.resolve("duplicate-upstream.status")));
+    }
+
+    @Test
+    void failsClosedOnAnMcpToolResultMismatch() throws Exception {
+        Path root = runnableProject("mcp-result-mismatch");
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+
+        var report = validator(mocks).validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+        assertEquals("200", waitForText(root.resolve("upstream.status")));
+    }
+
+    @Test
+    void failsClosedWhenTheApplicationExitsDuringTheToolCall() throws Exception {
+        Path root = runnableProject("application-exit-during-call");
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+
+        var report = validator(mocks).validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+    }
+
+    @Test
+    void failsClosedWhenTheMcpToolCallTimesOut() throws Exception {
+        Path root = runnableProject("tool-call-timeout");
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+        var client = new McpStreamableHttpClient(Duration.ofMillis(300), 8 * 1024);
+
+        var report = validator(Duration.ofSeconds(3), Duration.ofSeconds(3), client, mocks)
+                .validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+    }
+
+    @Test
+    void reportsAnOtherwiseSuccessfulMockCleanupFailureAtTheToolCallGate() throws Exception {
+        Path root = runnableProject("");
+        TrackingMockFactory mocks = new TrackingMockFactory(true);
+
+        var report = validator(mocks).validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+        assertSummariesExclude(report, "cleanup-secret-like-value", "mcp-validation-secret-1");
+    }
+
+    @Test
+    void preservesThePrimaryUpstreamFailureWhenMockCleanupAlsoFails() throws Exception {
+        Path root = runnableProject("upstream-mismatch");
+        TrackingMockFactory mocks = new TrackingMockFactory(true);
+
+        var report = validator(mocks).validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+        assertSummariesExclude(report, "cleanup-secret-like-value", "mcp-validation-secret-1");
+    }
+
+    @Test
+    void neverIncludesConfiguredArgumentsOrSyntheticSecretsInStageSummaries() throws Exception {
+        Path root = runnableProject("");
+        String configuredValue = "configured-secret-like-value";
+
+        var report = validator().validate(request(root, EXPECTED, expectedToolCall(configuredValue)));
+
+        assertEquals(VALIDATED, report.status(), report.toString());
+        assertSummariesExclude(report, configuredValue, "mcp-validation-secret-1");
+        assertEquals("Representative MCP Tool call matched the mock upstream contract",
+                report.stages().get(4).summary());
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
     }
 
     @Test
@@ -288,6 +724,61 @@ class GradleMcpProjectValidatorTest {
         return new GradleMcpProjectValidator(buildTimeout, startupTimeout, Duration.ofMillis(20), 8 * 1024);
     }
 
+    private GradleMcpProjectValidator validator(GradleMcpProjectValidator.MockUpstreamFactory mockUpstreamFactory) {
+        return validator(Duration.ofSeconds(3), Duration.ofSeconds(3), mockUpstreamFactory);
+    }
+
+    private GradleMcpProjectValidator validator(
+            GradleMcpProjectValidator.MockUpstreamFactory mockUpstreamFactory,
+            GradleMcpProjectValidator.ApplicationCleanupHook applicationCleanupHook) {
+        return validator(
+                mockUpstreamFactory,
+                GradleMcpProjectValidator.ApplicationLaunchHook.NOOP,
+                applicationCleanupHook);
+    }
+
+    private GradleMcpProjectValidator validator(
+            GradleMcpProjectValidator.MockUpstreamFactory mockUpstreamFactory,
+            GradleMcpProjectValidator.ApplicationLaunchHook applicationLaunchHook) {
+        return validator(
+                mockUpstreamFactory,
+                applicationLaunchHook,
+                GradleMcpProjectValidator.ApplicationCleanupHook.NOOP);
+    }
+
+    private GradleMcpProjectValidator validator(
+            GradleMcpProjectValidator.MockUpstreamFactory mockUpstreamFactory,
+            GradleMcpProjectValidator.ApplicationLaunchHook applicationLaunchHook,
+            GradleMcpProjectValidator.ApplicationCleanupHook applicationCleanupHook) {
+        return new GradleMcpProjectValidator(
+                new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
+                Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofMillis(20), 8 * 1024,
+                GradleMcpProjectValidator.WrapperSnapshotHook.NOOP,
+                applicationLaunchHook,
+                mockUpstreamFactory,
+                applicationCleanupHook);
+    }
+
+    private GradleMcpProjectValidator validator(
+            Duration buildTimeout,
+            Duration startupTimeout,
+            GradleMcpProjectValidator.MockUpstreamFactory mockUpstreamFactory) {
+        return validator(buildTimeout, startupTimeout, new McpStreamableHttpClient(), mockUpstreamFactory);
+    }
+
+    private GradleMcpProjectValidator validator(
+            Duration buildTimeout,
+            Duration startupTimeout,
+            McpStreamableHttpClient mcpClient,
+            GradleMcpProjectValidator.MockUpstreamFactory mockUpstreamFactory) {
+        return new GradleMcpProjectValidator(
+                new BoundedProcessRunner(), new LoopbackPortAllocator(), mcpClient,
+                buildTimeout, startupTimeout, Duration.ofMillis(20), 8 * 1024,
+                GradleMcpProjectValidator.WrapperSnapshotHook.NOOP,
+                GradleMcpProjectValidator.ApplicationLaunchHook.NOOP,
+                mockUpstreamFactory);
+    }
+
     private GradleMcpProjectValidator validator(GradleMcpProjectValidator.WrapperSnapshotHook hook) {
         return new GradleMcpProjectValidator(
                 Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofMillis(20), 8 * 1024, hook);
@@ -300,7 +791,64 @@ class GradleMcpProjectValidatorTest {
     }
 
     private ValidationRequest request(Path root, Map<String, ExpectedTool> expected) {
-        return new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, expected);
+        return new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, expected, expectedToolCall());
+    }
+
+    private ValidationRequest request(
+            Path root,
+            Map<String, ExpectedTool> expected,
+            ExpectedToolCall expectedToolCall) {
+        return new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, expected, expectedToolCall);
+    }
+
+    private ExpectedToolCall expectedToolCall() {
+        return expectedToolCall(60);
+    }
+
+    private ExpectedToolCall expectedToolCall(Object nx) {
+        return new ExpectedToolCall(new McpToolDefinition(
+                "getForecast", "kma_weather_get_forecast", "Get the public weather forecast.",
+                List.of(),
+                new HttpExecutionDefinition(
+                        GET,
+                        URI.create("https://api.example.test"),
+                        "/forecast",
+                        List.of(new ParameterBinding("nx", QUERY, "nx"))),
+                List.of(new SecretBinding(
+                        "VALIDATOR_SERVICE_KEY", "service-key", QUERY, "serviceKey", true)),
+                McpToolDefinition.OutputKind.GENERIC_JSON), Map.of("nx", nx));
+    }
+
+    private Path runnableProject(String behavior) throws IOException {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
+        if (!behavior.isEmpty()) {
+            Files.writeString(root.resolve("test-behavior"), behavior);
+        }
+        return root;
+    }
+
+    private void assertCallFailureAndCleanup(
+            io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport report,
+            Path root,
+            TrackingMockFactory mocks) throws Exception {
+        assertEquals(UNVERIFIED, report.status(), report.toString());
+        assertEquals(List.of(SUCCESS, SUCCESS, SUCCESS, SUCCESS, FAILED),
+                report.stages().stream().map(stage -> stage.status()).toList());
+        assertEquals("MCP Tool call validation failed safely", report.stages().get(4).summary());
+        assertTrue(waitUntilDead(readPid(root)));
+        assertTrue(mocks.closed.get());
+        assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    private void assertSummariesExclude(
+            io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport report,
+            String... values) {
+        for (var stage : report.stages()) {
+            for (String value : values) {
+                assertFalse(stage.summary().contains(value), stage.toString());
+            }
+        }
     }
 
     private Path project(String gradlew) throws IOException {
@@ -354,6 +902,91 @@ class GradleMcpProjectValidatorTest {
             return !handle.isAlive();
         } catch (java.util.concurrent.TimeoutException exception) {
             return false;
+        }
+    }
+
+    private boolean waitUntilNoThreadWithPrefix(String prefix) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        while (System.nanoTime() < deadline) {
+            boolean alive = Thread.getAllStackTraces().keySet().stream()
+                    .anyMatch(thread -> thread.isAlive() && thread.getName().startsWith(prefix));
+            if (!alive) {
+                return true;
+            }
+            Thread.sleep(10);
+        }
+        return false;
+    }
+
+    private static final class TrackingMockFactory implements GradleMcpProjectValidator.MockUpstreamFactory {
+        private final boolean failOnClose;
+        private final RuntimeException runtimeFailure;
+        private final Error fatalFailure;
+        private final boolean interruptBeforeFailure;
+        private final Error closeFailure;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        private TrackingMockFactory(boolean failOnClose) {
+            this(failOnClose, null, false);
+        }
+
+        private TrackingMockFactory(boolean failOnClose, Throwable failure, boolean interruptBeforeFailure) {
+            this(failOnClose, failure, interruptBeforeFailure, null);
+        }
+
+        private TrackingMockFactory(
+                boolean failOnClose,
+                Throwable failure,
+                boolean interruptBeforeFailure,
+                Error closeFailure) {
+            this.failOnClose = failOnClose;
+            this.runtimeFailure = failure instanceof RuntimeException exception ? exception : null;
+            this.fatalFailure = failure instanceof Error error ? error : null;
+            this.interruptBeforeFailure = interruptBeforeFailure;
+            this.closeFailure = closeFailure;
+        }
+
+        @Override
+        public GradleMcpProjectValidator.RunningMockUpstream start(UpstreamCallExpectation expectation)
+                throws IOException {
+            MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+            return new GradleMcpProjectValidator.RunningMockUpstream() {
+                @Override
+                public URI baseUri() {
+                    return delegate.baseUri();
+                }
+
+                @Override
+                public Map<String, String> environmentOverrides() {
+                    return delegate.environmentOverrides();
+                }
+
+                @Override
+                public void sealAndAwaitVerified(Duration timeout) {
+                    delegate.sealAndAwaitVerified(timeout);
+                    if (interruptBeforeFailure) {
+                        Thread.currentThread().interrupt();
+                    }
+                    if (fatalFailure != null) {
+                        throw fatalFailure;
+                    }
+                    if (runtimeFailure != null) {
+                        throw runtimeFailure;
+                    }
+                }
+
+                @Override
+                public void close() throws IOException {
+                    delegate.close();
+                    closed.set(true);
+                    if (closeFailure != null) {
+                        throw closeFailure;
+                    }
+                    if (failOnClose) {
+                        throw new IOException("cleanup failed near cleanup-secret-like-value");
+                    }
+                }
+            };
         }
     }
 

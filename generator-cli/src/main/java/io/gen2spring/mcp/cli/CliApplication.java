@@ -342,11 +342,11 @@ public final class CliApplication {
         return switch (exception.code()) {
             case SPEC_FILE_UNSUPPORTED, SPEC_TOO_LARGE, SPEC_PARSE_FAILED, SPEC_REFERENCE_UNRESOLVED,
                     SPEC_VERSION_UNSUPPORTED, OPERATION_ID_DUPLICATED, OPERATION_UNSUPPORTED,
-                    SECRET_EXPOSURE_DETECTED -> 3;
+                    VALIDATION_ARGUMENT_INVALID, SECRET_EXPOSURE_DETECTED -> 3;
             case TARGET_PROFILE_NOT_FOUND, TARGET_COMBINATION_UNSUPPORTED -> 2;
             case SOURCE_GENERATION_FAILED -> 4;
             case COMPILE_TIMEOUT, COMPILE_FAILED, APPLICATION_CONTEXT_FAILED,
-                    MCP_INITIALIZE_FAILED, MCP_TOOLS_LIST_FAILED -> 5;
+                    MCP_INITIALIZE_FAILED, MCP_TOOLS_LIST_FAILED, MCP_TOOL_CALL_FAILED -> 5;
             case ARTIFACT_PACKAGE_FAILED -> 6;
             case INTERNAL_ERROR -> internalExitCode(exception.stage());
         };

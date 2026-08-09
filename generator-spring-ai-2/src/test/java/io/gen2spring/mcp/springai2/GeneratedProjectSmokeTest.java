@@ -127,6 +127,44 @@ class GeneratedProjectSmokeTest {
 
     @Test
     @Timeout(value = 5, unit = MINUTES)
+    void generatedProjectOmitsAbsentNestedRecordPropertiesWithoutChangingArrayBodiesOrResponses() throws Exception {
+        ApiSchema text = new ApiSchema(
+                SchemaType.STRING, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema details = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, Map.of("city", text, "label", text, "unit", text),
+                List.of("city"), null, true, List.of());
+        ApiSchema tags = new ApiSchema(
+                SchemaType.ARRAY, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), text, true, List.of());
+        var detailsTool = new McpToolDefinition(
+                "submitDetails", "kma_weather_submit_details", "Submit weather details.",
+                List.of(new McpInputDefinition("details", "details", "Weather details", true, details)),
+                new HttpExecutionDefinition(
+                        HttpMethod.POST, URI.create("https://api.example.test"), "/details",
+                        List.of(new ParameterBinding("details", ParameterLocation.BODY, "body"))),
+                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+        var tagsTool = new McpToolDefinition(
+                "submitTags", "kma_weather_submit_tags", "Submit weather tags.",
+                List.of(new McpInputDefinition("body", "body", "Weather tags", true, tags)),
+                new HttpExecutionDefinition(
+                        HttpMethod.POST, URI.create("https://api.example.test"), "/tags",
+                        List.of(new ParameterBinding("body", ParameterLocation.BODY, "body"))),
+                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(List.of(detailsTool, tagsTool)))
+                .files();
+        java.util.Map<String, byte[]> filesWithBodyTest = new java.util.LinkedHashMap<>(files);
+        filesWithBodyTest.put(
+                "src/test/java/com/example/weather/application/GeneratedNullBodyPropertyContractTest.java",
+                nullBodyPropertyContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("null-body-property"), filesWithBodyTest);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
     void generatedProjectSerializesPrimitiveJsonBodiesBeforeCallingTheUpstream() throws Exception {
         ApiSchema text = new ApiSchema(
                 SchemaType.STRING, null, false, List.of(), null, null,
@@ -578,6 +616,90 @@ class GeneratedProjectSmokeTest {
 
                         assertEquals("\\\"hello\\\"", body.get());
                         assertEquals("application/json", contentType.get());
+                    }
+
+                    @AfterAll
+                    static void stopProvider() {
+                        if (server != null) {
+                            server.stop(0);
+                        }
+                    }
+                }
+                """;
+    }
+
+    private String nullBodyPropertyContractTest() {
+        return """
+                package com.example.weather.application;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import com.example.weather.generated.model.SubmitDetailsDetails;
+                import com.example.weather.generated.tool.WeatherMcpTools;
+                import com.sun.net.httpserver.HttpServer;
+                import java.net.InetSocketAddress;
+                import java.nio.charset.StandardCharsets;
+                import java.util.List;
+                import java.util.concurrent.atomic.AtomicReference;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.boot.test.context.SpringBootTest;
+                import org.springframework.test.context.DynamicPropertyRegistry;
+                import org.springframework.test.context.DynamicPropertySource;
+
+                @SpringBootTest(properties = {
+                        "provider.response-max-bytes=1024",
+                        "provider.connect-timeout-millis=1000",
+                        "provider.read-timeout-millis=1000",
+                        "provider.total-timeout-millis=1000"
+                })
+                class GeneratedNullBodyPropertyContractTest {
+                    private static HttpServer server;
+                    private static final AtomicReference<String> detailsBody = new AtomicReference<>();
+                    private static final AtomicReference<String> tagsBody = new AtomicReference<>();
+
+                    @Autowired
+                    private WeatherMcpTools tools;
+
+                    @DynamicPropertySource
+                    static void provider(DynamicPropertyRegistry registry) {
+                        try {
+                            server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                            server.createContext("/details", exchange -> respond(exchange, detailsBody));
+                            server.createContext("/tags", exchange -> respond(exchange, tagsBody));
+                            server.start();
+                        } catch (java.io.IOException exception) {
+                            throw new IllegalStateException(exception);
+                        }
+                        registry.add("provider.base-url", () -> "http://127.0.0.1:" + server.getAddress().getPort());
+                    }
+
+                    @Test
+                    void omitsAnAbsentOptionalNestedRecordComponentAndKeepsItsRequiredSibling() {
+                        var response = tools.submitDetails(new SubmitDetailsDetails("Seoul", null, "metric"));
+
+                        assertEquals("{\\\"city\\\":\\\"Seoul\\\",\\\"unit\\\":\\\"metric\\\"}", detailsBody.get());
+                        assertEquals("{\\\"validated\\\":true}", response.toString());
+                    }
+
+                    @Test
+                    void keepsRootArrayBodySerializationAndResponseParsing() {
+                        var response = tools.submitTags(List.of("spring", "ai"));
+
+                        assertEquals("[\\\"spring\\\",\\\"ai\\\"]", tagsBody.get());
+                        assertEquals("{\\\"validated\\\":true}", response.toString());
+                    }
+
+                    private static void respond(
+                            com.sun.net.httpserver.HttpExchange exchange,
+                            AtomicReference<String> body) throws java.io.IOException {
+                        body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                        byte[] response = "{\\\"validated\\\":true}".getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().set("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(200, response.length);
+                        exchange.getResponseBody().write(response);
+                        exchange.close();
                     }
 
                     @AfterAll

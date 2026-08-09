@@ -2,8 +2,8 @@
 
 로컬 OpenAPI 3.0 명세에서 선택한 operation을 Java 21, Spring Boot 4.1.0,
 Spring AI 2.0.0 기반 Streamable HTTP MCP 서버 프로젝트로 생성하는 CLI다.
-P0는 생성된 프로젝트를 실제로 컴파일하고 Spring 애플리케이션을 기동한 뒤
-MCP `initialize`와 `tools/list` 계약을 검증한 경우에만 ZIP을 만든다.
+생성된 프로젝트를 실제로 컴파일하고 Spring 애플리케이션을 기동한 뒤 MCP `initialize`,
+`tools/list`, 대표 `tools/call`과 upstream HTTP binding을 검증한 경우에만 ZIP을 만든다.
 
 ## 요구 환경
 
@@ -89,6 +89,15 @@ provider: kma
 domain: weather
 targetProfileId: spring-ai-2.0-java21-mvc-streamable
 validationLevel: MCP_PROTOCOL
+validation:
+  toolCall:
+    operationId: getForecast
+    arguments:
+      stationId: STN01
+      days: 3
+      location:
+        latitude: 37.5
+        longitude: 127.0
 operations:
   - operationId: getForecast
     enabled: true
@@ -103,13 +112,17 @@ operations:
 스키마는 strict하게 읽는다.
 
 - 최상위 필드는 `project`, `provider`, `domain`, `targetProfileId`, `validationLevel`,
-  `operations`만 허용하며 모두 필요하다.
+  `validation`, `operations`만 허용하며 모두 필요하다.
 - `project`에는 `groupId`, `artifactId`, `packageName`만 허용하며 모두 필요하다.
+- `MCP_PROTOCOL` 검증에는 enabled operation 하나를 가리키는 `validation.toolCall.operationId`와
+  해당 Tool schema를 만족하는 명시적 `arguments`가 필요하다.
 - operation에는 `operationId`, `enabled`가 필요하고 `toolName`, `toolDescription`,
   `parameters`를 선택적으로 지정한다. 최소 하나의 operation이 enabled여야 한다.
 - parameter source는 `USER_INPUT` 또는 `SERVER_SECRET`만 지원한다.
   `SERVER_SECRET`에는 대문자로 시작하는 `environmentVariable`이 필요하고,
-  `USER_INPUT`에는 environment variable을 지정할 수 없다.
+  `USER_INPUT`에는 environment variable을 지정할 수 없다. 생성 runtime과 JVM/Spring bootstrap이
+  소유하는 `PROVIDER_BASE_URL`, `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`,
+  `SPRING_APPLICATION_JSON`은 secret environment variable 이름으로 사용할 수 없다.
 - 알 수 없는 필드, 중복 key, YAML anchor·alias, explicit tag, 잘못된 scalar type을
   거부한다. `enabled`만 boolean이며 나머지 scalar는 string이다. Tool description의
   literal·folded block scalar는 일반 문자열로 허용한다.
@@ -144,6 +157,13 @@ secret 값은 Tool input schema, 생성 source, manifest, validation report, ZIP
 2. `APPLICATION_CONTEXT`: executable JAR를 사용 가능한 loopback port에서 기동
 3. `MCP_INITIALIZE`: `/mcp`에 `initialize`와 initialized notification 전송
 4. `MCP_TOOLS_LIST`: Tool 이름, 설명, input schema를 선택 operation과 정확히 대조
+5. `MCP_TOOL_CALL`: 대표 Tool을 실제 호출하고 loopback mock upstream의 method, path,
+   query, header, JSON body와 응답 계약을 대조
+
+검증 중에는 OpenAPI provider URL에 접속하지 않고 loopback address의 ephemeral port에 기동한
+mock upstream만 호출한다. 생성 애플리케이션은 loopback `PROVIDER_BASE_URL`과 deterministic
+synthetic secret만 포함하는 sanitized environment에서 실행된다. 대표 인자와 synthetic secret은
+검증 프로세스에서만 사용하고 source, manifest, validation report, ZIP, stdout, stderr에 저장하지 않는다.
 
 보고서의 전체 상태는 현재 `VALIDATED` 또는 `UNVERIFIED`다. stage별로 `SUCCESS`,
 `FAILED`, `SKIPPED`, duration, warning/error count, bounded summary를 기록한다. 원본
@@ -180,7 +200,7 @@ source checksum은 manifest, validation report, `process-logs/`를 제외한 sou
 생성기는 기존 output을 삭제하거나 merge하지 않는다. 실패 산출물과 더 이상 필요하지
 않은 임시 디렉터리의 보관·삭제는 사용자가 명시적으로 수행해야 한다.
 
-## P0 지원 범위
+## 현재 지원 범위
 
 - 로컬 `.yaml`, `.yml`, `.json` OpenAPI 3.0.x
 - `GET`, `POST`, `PUT`, `PATCH`, `DELETE` operation 선택
@@ -189,9 +209,10 @@ source checksum은 manifest, validation report, `process-logs/`를 제외한 sou
 - required/optional, min/max, length, pattern의 generated Jakarta Validation
 - API Key query/header를 `SERVER_SECRET` 환경변수로 주입
 - Java record input, Spring MVC Sync, Streamable HTTP, generic JSON output
-- 실제 compile, generated test, ApplicationContext, MCP `initialize`, `tools/list` 검증
+- 실제 compile, generated test, ApplicationContext, MCP `initialize`, `tools/list`, 대표
+  `tools/call`과 loopback mock upstream 검증
 
-## 알려진 제한과 P1 경계
+## 알려진 제한과 후속 P1 경계
 
 - OpenAPI parameter와 JSON body property는 Java-safe MCP key로 변환하고 원본 upstream
   JSON 이름은 binding에 보존한다. 예를 들어 `postal-code`는 MCP의 `postalCode` 입력으로
@@ -205,8 +226,10 @@ source checksum은 manifest, validation report, `process-logs/`를 제외한 sou
   (예: `full-detail`)을 일관되게 사용한다.
 - remote `$ref`, URL import, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator,
   recursive schema는 지원하지 않는다.
-- `tools/call`과 upstream mock 검증, typed output DTO, response envelope 정규화,
-  retry, pagination, metrics, tracing은 P1 이후 범위다.
-- Maven, WebFlux, async, SSE transport, STDIO, Java 17, Spring AI 1.x는 지원하지 않는다.
+- typed output DTO, response envelope 정규화, HTTP 200 업무 오류 mapping, retry, pagination,
+  metrics, tracing은 후속 P1 범위다.
+- Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다. Java 17과 Spring AI 1.x
+  compatibility profile은 후속 P1 범위다.
+- UI operation editor와 Windows validation host 지원은 후속 P1 범위다.
 - P0의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
   OCI sandbox, dependency proxy, CPU/memory limit, network egress 통제는 제공하지 않는다.

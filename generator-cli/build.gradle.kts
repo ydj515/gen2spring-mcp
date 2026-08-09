@@ -43,7 +43,12 @@ testing {
             }
             targets.all {
                 testTask.configure {
+                    dependsOn(tasks.named("installDist"))
                     shouldRunAfter(tasks.test)
+                    systemProperty(
+                        "openapiMcp.executable",
+                        layout.buildDirectory.file("install/openapi-mcp/bin/openapi-mcp").get().asFile.absolutePath,
+                    )
                     systemProperty("java.io.tmpdir", temporaryDir.absolutePath)
                 }
             }

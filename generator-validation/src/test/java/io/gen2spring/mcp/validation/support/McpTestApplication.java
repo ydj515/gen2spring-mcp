@@ -3,11 +3,22 @@ package io.gen2spring.mcp.validation.support;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class McpTestApplication {
+    private static final Pattern QUOTED_NX = Pattern.compile("\\\"nx\\\":\\\"([^\\\"]*)\\\"");
+    private static final Pattern NUMBER_NX = Pattern.compile("\\\"nx\\\":(-?[0-9]+)");
+
     private McpTestApplication() {}
 
     public static void main(String[] args) throws Exception {
@@ -62,10 +73,95 @@ public final class McpTestApplication {
                         + "\"format\":\"int32\",\"description\":\"Grid x coordinate\"}},"
                                 + "\"required\":[\"nx\"]}}]}}\n\n");
                 applyToolsListBehavior(behavior, port);
+            } else if (request.contains("\"method\":\"tools/call\"")) {
+                if (!"application-session".equals(exchange.getRequestHeaders().getFirst("Mcp-Session-Id"))) {
+                    exchange.sendResponseHeaders(400, -1);
+                    return;
+                }
+                handleToolCall(exchange, request, behavior);
             } else {
                 exchange.sendResponseHeaders(400, -1);
             }
         }
+    }
+
+    private static void handleToolCall(HttpExchange exchange, String request, String behavior)
+            throws java.io.IOException {
+        if ("application-exit-during-call".equals(behavior)) {
+            Runtime.getRuntime().halt(17);
+        }
+        if ("tool-call-timeout".equals(behavior)) {
+            try {
+                Thread.sleep(60_000);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+
+        String operationResult = "{\"validated\":true,\"operationId\":\"getForecast\"}";
+        if (!"no-upstream".equals(behavior)) {
+            String path = "upstream-mismatch".equals(behavior) ? "/unexpected" : "/forecast";
+            String query = "nx=" + encode(extractNx(request))
+                    + "&serviceKey=" + encode(requiredEnvironment("VALIDATOR_SERVICE_KEY"));
+            HttpRequest upstreamRequest = HttpRequest.newBuilder(
+                            URI.create(requiredEnvironment("PROVIDER_BASE_URL") + path + "?" + query))
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+            try {
+                HttpResponse<String> upstreamResponse = HttpClient.newHttpClient().send(
+                        upstreamRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                Files.writeString(Path.of("upstream.status"), Integer.toString(upstreamResponse.statusCode()));
+                if (!"upstream-mismatch".equals(behavior)) {
+                    operationResult = upstreamResponse.body();
+                }
+                if ("duplicate-upstream".equals(behavior)) {
+                    HttpResponse<String> duplicateResponse = HttpClient.newHttpClient().send(
+                            upstreamRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                    Files.writeString(
+                            Path.of("duplicate-upstream.status"),
+                            Integer.toString(duplicateResponse.statusCode()));
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException("test upstream call interrupted", exception);
+            }
+        }
+        if ("mcp-result-mismatch".equals(behavior)) {
+            operationResult = "{\"validated\":false,\"operationId\":\"getForecast\"}";
+        }
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        send(exchange, 200, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"isError\":false,"
+                + "\"content\":[{\"type\":\"text\",\"text\":" + jsonString(operationResult) + "}]}}");
+    }
+
+    private static String extractNx(String request) {
+        Matcher quoted = QUOTED_NX.matcher(request);
+        if (quoted.find()) {
+            return quoted.group(1);
+        }
+        Matcher number = NUMBER_NX.matcher(request);
+        if (number.find()) {
+            return number.group(1);
+        }
+        throw new IllegalArgumentException("nx argument is required");
+    }
+
+    private static String requiredEnvironment(String name) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("required test environment is missing");
+        }
+        return value;
+    }
+
+    private static String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private static String jsonString(String value) {
+        return '"' + value.replace("\\", "\\\\").replace("\"", "\\\"") + '"';
     }
 
     private static void applyToolsListBehavior(String behavior, int port) {

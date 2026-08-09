@@ -6,6 +6,15 @@ provider: kma
 domain: weather
 targetProfileId: spring-ai-2.0-java21-mvc-streamable
 validationLevel: MCP_PROTOCOL
+validation:
+  toolCall:
+    operationId: getForecast
+    arguments:
+      stationId: STN01
+      days: 3
+      location:
+        latitude: 37.5
+        longitude: 127.0
 operations:
   - operationId: getForecast
     enabled: true

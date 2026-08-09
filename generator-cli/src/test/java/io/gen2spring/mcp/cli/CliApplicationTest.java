@@ -229,6 +229,7 @@ class CliApplicationTest {
                 Map.entry(GeneratorErrorCode.SPEC_VERSION_UNSUPPORTED, 3),
                 Map.entry(GeneratorErrorCode.OPERATION_ID_DUPLICATED, 3),
                 Map.entry(GeneratorErrorCode.OPERATION_UNSUPPORTED, 3),
+                Map.entry(GeneratorErrorCode.VALIDATION_ARGUMENT_INVALID, 3),
                 Map.entry(GeneratorErrorCode.SECRET_EXPOSURE_DETECTED, 3),
                 Map.entry(GeneratorErrorCode.TARGET_PROFILE_NOT_FOUND, 2),
                 Map.entry(GeneratorErrorCode.TARGET_COMBINATION_UNSUPPORTED, 2),
@@ -238,6 +239,7 @@ class CliApplicationTest {
                 Map.entry(GeneratorErrorCode.APPLICATION_CONTEXT_FAILED, 5),
                 Map.entry(GeneratorErrorCode.MCP_INITIALIZE_FAILED, 5),
                 Map.entry(GeneratorErrorCode.MCP_TOOLS_LIST_FAILED, 5),
+                Map.entry(GeneratorErrorCode.MCP_TOOL_CALL_FAILED, 5),
                 Map.entry(ARTIFACT_PACKAGE_FAILED, 6),
                 Map.entry(GeneratorErrorCode.INTERNAL_ERROR, 4));
         for (var expected : expectedCodes.entrySet()) {

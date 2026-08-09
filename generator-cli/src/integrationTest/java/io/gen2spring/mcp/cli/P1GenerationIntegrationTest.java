@@ -1,8 +1,5 @@
 package io.gen2spring.mcp.cli;
 
-import static io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel.MCP_PROTOCOL;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SUCCESS;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -12,13 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
-import io.gen2spring.mcp.validation.GradleMcpProjectValidator;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -26,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,14 +27,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class P0GenerationIntegrationTest {
+class P1GenerationIntegrationTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String TOOL_NAME = "kma_weather_get_forecast";
     private static final String TOOL_DESCRIPTION = "Get the public weather forecast for a grid location.";
+    private static final String REPRESENTATIVE_STATION_ID = "STN01";
     private static final Set<String> REQUIRED_OUTPUTS = Set.of(
             ".gitignore",
             "Dockerfile",
@@ -70,7 +65,7 @@ class P0GenerationIntegrationTest {
     Path tempDir;
 
     @Test
-    void generatesCompilesStartsListsAndPackagesTheSelectedToolDeterministically() throws Exception {
+    void installedCliGeneratesCallsAndPackagesTheSelectedToolDeterministically() throws Exception {
         Path specification = resource("openapi/weather-api.yaml");
         Path configuration = resource("config/weather-generation.yaml");
 
@@ -83,39 +78,39 @@ class P0GenerationIntegrationTest {
         assertEquals(first.sourceChecksum(), second.sourceChecksum());
         assertEquals(first.manifest(), second.manifest());
         assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
-
-        var exactValidation = new GradleMcpProjectValidator().validate(new ValidationRequest(
-                second.projectRoot(),
-                "weather-mcp-server",
-                MCP_PROTOCOL,
-                Map.of(TOOL_NAME, new ExpectedTool(TOOL_DESCRIPTION, literalExpectedInputSchema()))));
-
-        assertEquals(VALIDATED, exactValidation.status());
-        assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST"),
-                exactValidation.stages().stream().map(stage -> stage.stage()).toList());
-        assertTrue(exactValidation.stages().stream().allMatch(stage -> stage.status() == SUCCESS));
-        assertEquals(List.of(TOOL_NAME), exactValidation.tools().stream().map(tool -> tool.name()).toList());
+        assertSensitiveValuesAbsent(first, REPRESENTATIVE_STATION_ID,
+                "mcp-validation-secret-1", "mcp-validation-secret-2");
+        assertSensitiveValuesAbsent(second, REPRESENTATIVE_STATION_ID,
+                "mcp-validation-secret-1", "mcp-validation-secret-2");
     }
 
-    private GenerationResult generate(Path specification, Path configuration, Path output) throws IOException {
-        var stdoutBytes = new ByteArrayOutputStream();
-        var stderrBytes = new ByteArrayOutputStream();
-        var stdout = new PrintWriter(stdoutBytes, true, UTF_8);
-        var stderr = new PrintWriter(stderrBytes, true, UTF_8);
+    @Test
+    void installedCliRejectsInvalidRepresentativeArgumentWithoutPublishingOrLeakingIt() throws Exception {
+        Path specification = resource("openapi/weather-api.yaml");
+        String configuredValue = "configured-invalid-representative-value";
+        Path configuration = Files.writeString(tempDir.resolve("invalid-weather-generation.yaml"),
+                Files.readString(resource("config/weather-generation.yaml"), UTF_8)
+                        .replace("days: 3", "days: " + configuredValue), UTF_8);
+        Path output = tempDir.resolve("invalid-weather-mcp-server");
 
-        int exitCode = ApplicationFactory.create().run(new String[] {
-                "generate",
-                "--spec", specification.toString(),
-                "--config", configuration.toString(),
-                "--output", output.toString()
-        }, stdout, stderr);
+        InstalledCliResult result = runInstalledCli(specification, configuration, output);
+
+        assertEquals(3, result.exitCode(), result.stderr() + result.stdout());
+        assertFalse(Files.exists(output));
+        assertFalse(Files.exists(output.resolveSibling(output.getFileName() + ".zip")));
+        assertFalse(result.stdout().contains(configuredValue));
+        assertFalse(result.stderr().contains(configuredValue));
+    }
+
+    private GenerationResult generate(Path specification, Path configuration, Path output) throws Exception {
+        InstalledCliResult result = runInstalledCli(specification, configuration, output);
 
         String validationReport = Files.exists(output.resolve("VALIDATION_REPORT.json"))
                 ? Files.readString(output.resolve("VALIDATION_REPORT.json"), UTF_8)
                 : "";
-        assertEquals(0, exitCode, stderrBytes.toString(UTF_8) + stdoutBytes.toString(UTF_8) + validationReport);
-        assertEquals("", stderrBytes.toString(UTF_8));
-        JsonNode response = JSON.readTree(stdoutBytes.toByteArray());
+        assertEquals(0, result.exitCode(), result.stderr() + result.stdout() + validationReport);
+        assertEquals("", result.stderr());
+        JsonNode response = JSON.readTree(result.stdout());
         assertNotNull(response);
         assertEquals("VALIDATED", response.path("status").asText());
         assertEquals(output.toAbsolutePath().normalize().toString(), response.path("project").asText());
@@ -129,7 +124,31 @@ class P0GenerationIntegrationTest {
                 response.path("sourceChecksum").asText(),
                 readJson(output.resolve("GENERATION_MANIFEST.json")),
                 readJson(output.resolve("VALIDATION_REPORT.json")),
-                readArchive(archive));
+                readArchive(archive),
+                result.stdout(),
+                result.stderr());
+    }
+
+    private InstalledCliResult runInstalledCli(Path specification, Path configuration, Path output) throws Exception {
+        Path executable = Path.of(System.getProperty("openapiMcp.executable"));
+        assertTrue(Files.isExecutable(executable));
+        Process process = new ProcessBuilder(
+                executable.toString(),
+                "generate",
+                "--spec", specification.toString(),
+                "--config", configuration.toString(),
+                "--output", output.toString())
+                .start();
+        boolean finished = process.waitFor(Duration.ofMinutes(5).toMillis(), TimeUnit.MILLISECONDS);
+        if (!finished) {
+            process.destroyForcibly();
+            process.waitFor();
+            throw new AssertionError("installed CLI timed out");
+        }
+        return new InstalledCliResult(
+                process.exitValue(),
+                new String(process.getInputStream().readAllBytes(), UTF_8),
+                new String(process.getErrorStream().readAllBytes(), UTF_8));
     }
 
     private void assertReleaseContract(GenerationResult result, Path specification) throws Exception {
@@ -169,11 +188,15 @@ class P0GenerationIntegrationTest {
 
         JsonNode report = result.report();
         assertEquals("VALIDATED", report.path("status").asText());
-        assertEquals(
-                List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST"),
-                report.path("stages").findValuesAsText("stage"));
-        assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"),
+        assertEquals(List.of(
+                "COMPILE",
+                "APPLICATION_CONTEXT",
+                "MCP_INITIALIZE",
+                "MCP_TOOLS_LIST",
+                "MCP_TOOL_CALL"), stageNames(report));
+        assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"),
                 report.path("stages").findValuesAsText("status"));
+        assertEquals("SUCCESS", stage(report, "MCP_TOOL_CALL").path("status").textValue());
         assertEquals(List.of(TOOL_NAME), report.path("tools").findValuesAsText("name"));
         assertEquals(List.of(TOOL_DESCRIPTION), report.path("tools").findValuesAsText("description"));
         assertTrue(report.path("tools").get(0).path("inputSchemaPresent").asBoolean());
@@ -190,6 +213,37 @@ class P0GenerationIntegrationTest {
         });
     }
 
+    private List<String> stageNames(JsonNode report) {
+        return report.path("stages").findValuesAsText("stage");
+    }
+
+    private JsonNode stage(JsonNode report, String stageName) {
+        for (JsonNode stage : report.path("stages")) {
+            if (stageName.equals(stage.path("stage").textValue())) {
+                return stage;
+            }
+        }
+        throw new AssertionError("Missing validation stage: " + stageName);
+    }
+
+    private void assertSensitiveValuesAbsent(GenerationResult result, String... sensitiveValues) throws IOException {
+        for (String sensitiveValue : sensitiveValues) {
+            assertFalse(result.stdout().contains(sensitiveValue), sensitiveValue);
+            assertFalse(result.stderr().contains(sensitiveValue), sensitiveValue);
+            assertFalse(result.manifest().toString().contains(sensitiveValue), sensitiveValue);
+            assertFalse(result.report().toString().contains(sensitiveValue), sensitiveValue);
+            try (var paths = Files.walk(result.projectRoot())) {
+                for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                    assertFalse(new String(Files.readAllBytes(path), UTF_8).contains(sensitiveValue),
+                            result.projectRoot().relativize(path) + ": " + sensitiveValue);
+                }
+            }
+            result.archiveEntries().forEach((path, bytes) ->
+                    assertFalse((path + new String(bytes, UTF_8)).contains(sensitiveValue),
+                            path + ": " + sensitiveValue));
+        }
+    }
+
     private void assertCanonicalArchiveEntriesEqual(
             Map<String, byte[]> first,
             Map<String, byte[]> second) {
@@ -199,62 +253,6 @@ class P0GenerationIntegrationTest {
                 assertArrayEquals(bytes, second.get(path), path);
             }
         });
-    }
-
-    private Map<String, Object> literalExpectedInputSchema() {
-        return Map.of(
-                "type", "object",
-                "properties", Map.of(
-                        "stationId", Map.of(
-                                "type", "string",
-                                "minLength", 2,
-                                "maxLength", 12,
-                                "pattern", "^[A-Z0-9]+$",
-                                "description", "Station identifier."),
-                        "days", Map.of(
-                                "type", "integer",
-                                "format", "int32",
-                                "minimum", 1,
-                                "maximum", 7,
-                                "description", "Number of forecast days."),
-                        "mode", Map.of(
-                                "type", "string",
-                                "enum", List.of("brief", "full-detail"),
-                                "description", "Forecast detail mode."),
-                        "tags", Map.of(
-                                "type", "array",
-                                "items", Map.of("type", "string"),
-                                "description", "Optional forecast tags."),
-                        "clientVersion", Map.of(
-                                "type", "string",
-                                "description", "Calling client version."),
-                        "includeAlerts", Map.of(
-                                "type", "boolean",
-                                "description", "includeAlerts"),
-                        "location", Map.of(
-                                "type", "object",
-                                "properties", Map.of(
-                                        "label", Map.of(
-                                                "type", "string",
-                                                "description", "label"),
-                                        "latitude", Map.of(
-                                                "type", "number",
-                                                "minimum", -90,
-                                                "maximum", 90,
-                                                "description", "latitude"),
-                                        "longitude", Map.of(
-                                                "type", "number",
-                                                "minimum", -180,
-                                                "maximum", 180,
-                                                "description", "longitude")),
-                                "required", List.of("latitude", "longitude"),
-                                "description", "location"),
-                        "note", Map.of(
-                                "type", "string",
-                                "minLength", 1,
-                                "maxLength", 80,
-                                "description", "note")),
-                "required", List.of("days", "location", "stationId"));
     }
 
     private void assertTransientBuildOutputsAbsent(Path root) throws IOException {
@@ -395,5 +393,9 @@ class P0GenerationIntegrationTest {
             String sourceChecksum,
             JsonNode manifest,
             JsonNode report,
-            Map<String, byte[]> archiveEntries) {}
+            Map<String, byte[]> archiveEntries,
+            String stdout,
+            String stderr) {}
+
+    private record InstalledCliResult(int exitCode, String stdout, String stderr) {}
 }

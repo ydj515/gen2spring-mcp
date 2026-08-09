@@ -1,19 +1,24 @@
 package io.gen2spring.mcp.validation;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.validation.support.EnvironmentProbeProcess;
 import io.gen2spring.mcp.validation.support.SleepingProcess;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -83,12 +88,101 @@ class BoundedProcessRunnerTest {
         }
     }
 
+    @Test
+    void applicationEnvironmentContainsOnlyValidatedOverrides() throws Exception {
+        Map<String, String> overrides = Map.of(
+                "PROVIDER_BASE_URL", "http://127.0.0.1:12345",
+                "KMA_SERVICE_KEY", "mcp-validation-secret-1");
+        Path output = tempDir.resolve("application-environment.txt");
+
+        try (var process = runner.start(probeCommand(output,
+                "PROVIDER_BASE_URL", "KMA_SERVICE_KEY", "UNRELATED_PARENT_SECRET", "PATH"),
+                tempDir, 8_192, overrides)) {
+            assertTrue(process.awaitExit(Duration.ofSeconds(3)));
+        }
+
+        assertEquals(overrides, readProbeOutput(output));
+        assertFalse(readProbeOutput(output).containsKey("UNRELATED_PARENT_SECRET"));
+    }
+
+    @Test
+    void applicationEnvironmentRejectsInvalidOverridesWithoutEchoingTheirContents() {
+        String oversizedKey = "A".repeat(129);
+        String oversizedValue = "a".repeat(2_049);
+        Map<String, String> nullValue = new LinkedHashMap<>();
+        nullValue.put("VALID", null);
+
+        Stream.of(
+                        Map.of("lowercase", "value"),
+                        Map.of(oversizedKey, "value"),
+                        Map.of("INVALID\nKEY", "value"))
+                .forEach(overrides -> assertInvalidEnvironment(overrides, "Environment override key is invalid"));
+        Stream.of(
+                        nullValue,
+                        Map.of("VALID", oversizedValue),
+                        Map.of("VALID", "mcp-validation-secret-1\u0000"))
+                .forEach(overrides -> assertInvalidEnvironment(overrides, "Environment override value is invalid"));
+        assertInvalidEnvironment(null, "Environment overrides are required");
+    }
+
+    @Test
+    void applicationEnvironmentCopiesOverridesBeforeTheProcessStarts() throws Exception {
+        Map<String, String> overrides = new LinkedHashMap<>();
+        overrides.put("PROVIDER_BASE_URL", "http://127.0.0.1:12345");
+        Path output = tempDir.resolve("copied-environment.txt");
+
+        try (var process = runner.start(probeCommand(output, "PROVIDER_BASE_URL", "KMA_SERVICE_KEY"),
+                tempDir, 8_192, overrides)) {
+            overrides.clear();
+            overrides.put("KMA_SERVICE_KEY", "caller-mutation");
+            assertTrue(process.awaitExit(Duration.ofSeconds(3)));
+        }
+
+        assertEquals(Map.of("PROVIDER_BASE_URL", "http://127.0.0.1:12345"), readProbeOutput(output));
+    }
+
+    @Test
+    void existingStartOverloadStillInheritsTheParentEnvironment() throws Exception {
+        Path output = tempDir.resolve("inherited-environment.txt");
+
+        try (var process = runner.start(probeCommand(output, "PATH"), tempDir, 8_192)) {
+            assertTrue(process.awaitExit(Duration.ofSeconds(3)));
+        }
+
+        assertEquals(System.getenv("PATH"), readProbeOutput(output).get("PATH"));
+    }
+
     private List<String> javaCommand(String... args) {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         List<String> command = new ArrayList<>(List.of(
                 java.toString(), "-cp", System.getProperty("java.class.path"), SleepingProcess.class.getName()));
         command.addAll(List.of(args));
         return List.copyOf(command);
+    }
+
+    private List<String> probeCommand(Path output, String... names) {
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        List<String> command = new ArrayList<>(List.of(
+                java.toString(), "-cp", System.getProperty("java.class.path"), EnvironmentProbeProcess.class.getName(),
+                output.toString()));
+        command.addAll(List.of(names));
+        return List.copyOf(command);
+    }
+
+    private static Map<String, String> readProbeOutput(Path output) throws IOException {
+        Map<String, String> environment = new LinkedHashMap<>();
+        for (String line : Files.readAllLines(output)) {
+            int delimiter = line.indexOf('=');
+            environment.put(line.substring(0, delimiter), line.substring(delimiter + 1));
+        }
+        return Map.copyOf(environment);
+    }
+
+    private void assertInvalidEnvironment(Map<String, String> overrides, String expectedMessage) {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> runner.start(probeCommand(tempDir.resolve("invalid-environment.txt"), "VALID"),
+                        tempDir, 8_192, overrides));
+        assertEquals(expectedMessage, exception.getMessage());
     }
 
     private long waitForPid(Path pidFile) throws Exception {

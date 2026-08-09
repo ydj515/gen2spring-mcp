@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
@@ -83,6 +85,13 @@ public final class McpStreamableHttpClient {
     }
 
     public Result validate(URI endpoint, Map<String, ExpectedTool> expectedTools) {
+        return validate(endpoint, expectedTools, null);
+    }
+
+    public Result validate(
+            URI endpoint,
+            Map<String, ExpectedTool> expectedTools,
+            ExpectedToolCall expectedCall) {
         LoopbackPortAllocator.requireLoopback(endpoint);
         Map<String, ExpectedTool> expected = validatedExpectedTools(expectedTools);
         long initializeStarted = System.nanoTime();
@@ -100,7 +109,7 @@ public final class McpStreamableHttpClient {
                 sessionId = updatedSession;
             }
         } catch (McpValidationException failure) {
-            throw failure.withDurations(elapsedMillis(initializeStarted), 0);
+            throw failure.withDurations(elapsedMillis(initializeStarted), 0, 0);
         }
         long initializeDuration = elapsedMillis(initializeStarted);
 
@@ -111,12 +120,44 @@ public final class McpStreamableHttpClient {
             JsonNode toolsJson = responseJson(toolsResponse, 2, McpStage.TOOLS_LIST);
             observed = validateTools(requireResult(toolsJson, McpStage.TOOLS_LIST), expected);
         } catch (McpValidationException failure) {
-            throw failure.withDurations(initializeDuration, elapsedMillis(toolsStarted));
+            throw failure.withDurations(initializeDuration, elapsedMillis(toolsStarted), 0);
         }
         long toolsDuration = elapsedMillis(toolsStarted);
         Set<String> names = new LinkedHashSet<>();
         observed.forEach(tool -> names.add(tool.name()));
-        return new Result(Collections.unmodifiableSet(names), List.copyOf(observed), initializeDuration, toolsDuration);
+        if (expectedCall == null) {
+            return new Result(Collections.unmodifiableSet(names), List.copyOf(observed), initializeDuration, toolsDuration, 0);
+        }
+
+        long toolCallStarted = System.nanoTime();
+        try {
+            ObjectNode request = objectMapper.createObjectNode();
+            request.put("jsonrpc", "2.0");
+            request.put("id", 3);
+            request.put("method", "tools/call");
+            ObjectNode params = request.putObject("params");
+            params.put("name", expectedCall.tool().name());
+            params.set("arguments", objectMapper.valueToTree(expectedCall.arguments()));
+            HttpResponse<byte[]> response = send(
+                    endpoint,
+                    objectMapper.writeValueAsString(request),
+                    sessionId,
+                    McpStage.TOOL_CALL);
+            JsonNode responseJson = responseJson(response, 3, McpStage.TOOL_CALL);
+            validateToolCallResult(requireResult(responseJson, McpStage.TOOL_CALL), expectedCall);
+        } catch (JsonProcessingException exception) {
+            throw failure(McpStage.TOOL_CALL, "MCP Tool call request cannot be serialized", exception)
+                    .withDurations(initializeDuration, toolsDuration, elapsedMillis(toolCallStarted));
+        } catch (McpValidationException failure) {
+            throw failure.withDurations(initializeDuration, toolsDuration, elapsedMillis(toolCallStarted));
+        }
+        long toolCallDuration = elapsedMillis(toolCallStarted);
+        return new Result(
+                Collections.unmodifiableSet(names),
+                List.copyOf(observed),
+                initializeDuration,
+                toolsDuration,
+                toolCallDuration);
     }
 
     private HttpResponse<byte[]> send(URI endpoint, String body, String sessionId, McpStage stage) {
@@ -263,6 +304,47 @@ public final class McpStreamableHttpClient {
         return List.copyOf(observed.values());
     }
 
+    private void validateToolCallResult(JsonNode result, ExpectedToolCall expectedCall) {
+        JsonNode isError = result.get("isError");
+        if (isError != null && (!isError.isBoolean() || isError.booleanValue())) {
+            throw failure(McpStage.TOOL_CALL, "MCP Tool result reported an error", null);
+        }
+        JsonNode content = result.get("content");
+        if (content == null || !content.isArray()) {
+            throw failure(McpStage.TOOL_CALL, "MCP Tool result content is missing", null);
+        }
+        List<String> textPayloads = new ArrayList<>();
+        for (JsonNode entry : content) {
+            if (entry.isObject() && "text".equals(entry.path("type").textValue())) {
+                JsonNode text = entry.get("text");
+                if (text == null || !text.isTextual()) {
+                    throw failure(McpStage.TOOL_CALL, "MCP Tool text content is invalid", null);
+                }
+                textPayloads.add(text.textValue());
+            }
+        }
+        if (textPayloads.size() != 1) {
+            throw failure(McpStage.TOOL_CALL, "MCP Tool result must contain exactly one text payload", null);
+        }
+        JsonNode actual;
+        try {
+            actual = objectMapper.reader()
+                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .readTree(textPayloads.getFirst());
+        } catch (JsonProcessingException exception) {
+            throw failure(McpStage.TOOL_CALL, "MCP Tool text content is not valid JSON", exception);
+        }
+        if (actual == null) {
+            throw failure(McpStage.TOOL_CALL, "MCP Tool text content is not valid JSON", null);
+        }
+        JsonNode expected = objectMapper.createObjectNode()
+                .put("validated", true)
+                .put("operationId", expectedCall.tool().operationId());
+        if (!canonicalJson(actual).equals(canonicalJson(expected))) {
+            throw failure(McpStage.TOOL_CALL, "MCP Tool result does not match the mock upstream contract", null);
+        }
+    }
+
     private String sseData(byte[] bytes, McpStage stage) {
         String text = new String(bytes, StandardCharsets.UTF_8).replace("\r\n", "\n");
         List<String> data = new ArrayList<>();
@@ -284,6 +366,25 @@ public final class McpStreamableHttpClient {
     private JsonNode canonicalSchema(JsonNode schema) {
         JsonNode definitions = schema.path("$defs");
         return canonicalSchema(schema, definitions, new java.util.HashSet<>());
+    }
+
+    private JsonNode canonicalJson(JsonNode node) {
+        if (node.isObject()) {
+            ObjectNode canonical = objectMapper.createObjectNode();
+            TreeMap<String, JsonNode> fields = new TreeMap<>();
+            node.properties().forEach(field -> fields.put(field.getKey(), field.getValue()));
+            fields.forEach((name, value) -> canonical.set(name, canonicalJson(value)));
+            return canonical;
+        }
+        if (node.isArray()) {
+            var canonical = objectMapper.createArrayNode();
+            node.forEach(value -> canonical.add(canonicalJson(value)));
+            return canonical;
+        }
+        if (node.isNumber()) {
+            return objectMapper.getNodeFactory().numberNode(node.decimalValue().stripTrailingZeros());
+        }
+        return node.deepCopy();
     }
 
     private JsonNode canonicalSchema(JsonNode node, JsonNode definitions, Set<String> resolving) {
@@ -439,15 +540,16 @@ public final class McpStreamableHttpClient {
         return new McpValidationException(stage, message, cause);
     }
 
-    public enum McpStage { INITIALIZE, TOOLS_LIST }
+    public enum McpStage { INITIALIZE, TOOLS_LIST, TOOL_CALL }
 
     public static final class McpValidationException extends RuntimeException {
         private final McpStage stage;
         private final long initializeDurationMillis;
         private final long toolsListDurationMillis;
+        private final long toolsCallDurationMillis;
 
         private McpValidationException(McpStage stage, String message, Throwable cause) {
-            this(stage, message, cause, 0, 0);
+            this(stage, message, cause, 0, 0, 0);
         }
 
         private McpValidationException(
@@ -455,11 +557,13 @@ public final class McpStreamableHttpClient {
                 String message,
                 Throwable cause,
                 long initializeDurationMillis,
-                long toolsListDurationMillis) {
+                long toolsListDurationMillis,
+                long toolsCallDurationMillis) {
             super(message, cause);
             this.stage = stage;
             this.initializeDurationMillis = Math.max(0, initializeDurationMillis);
             this.toolsListDurationMillis = Math.max(0, toolsListDurationMillis);
+            this.toolsCallDurationMillis = Math.max(0, toolsCallDurationMillis);
         }
 
         public McpStage stage() {
@@ -474,9 +578,16 @@ public final class McpStreamableHttpClient {
             return toolsListDurationMillis;
         }
 
-        private McpValidationException withDurations(long initializeDuration, long toolsListDuration) {
+        public long toolsCallDurationMillis() {
+            return toolsCallDurationMillis;
+        }
+
+        private McpValidationException withDurations(
+                long initializeDuration,
+                long toolsListDuration,
+                long toolsCallDuration) {
             return new McpValidationException(
-                    stage, getMessage(), getCause(), initializeDuration, toolsListDuration);
+                    stage, getMessage(), getCause(), initializeDuration, toolsListDuration, toolsCallDuration);
         }
     }
 
@@ -484,7 +595,8 @@ public final class McpStreamableHttpClient {
             Set<String> toolNames,
             List<ObservedTool> tools,
             long initializeDurationMillis,
-            long toolsListDurationMillis) {
+            long toolsListDurationMillis,
+            long toolsCallDurationMillis) {
         public Result {
             toolNames = Set.copyOf(toolNames);
             tools = List.copyOf(tools);
