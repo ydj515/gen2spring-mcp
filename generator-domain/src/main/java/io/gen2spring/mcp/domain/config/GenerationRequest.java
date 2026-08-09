@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.domain.config;
 
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,7 +36,17 @@ public record GenerationRequest(
             boolean enabled,
             String toolName,
             String toolDescription,
-            Map<String, ParameterOverride> parameters) {}
+            Map<String, ParameterOverride> parameters,
+            ResponseNormalizationPolicy responseNormalization) {
+        public OperationSelection(
+                String operationId,
+                boolean enabled,
+                String toolName,
+                String toolDescription,
+                Map<String, ParameterOverride> parameters) {
+            this(operationId, enabled, toolName, toolDescription, parameters, null);
+        }
+    }
 
     public record ParameterOverride(
             McpToolDefinition.ParameterSource source,
