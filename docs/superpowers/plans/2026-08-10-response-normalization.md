@@ -501,7 +501,7 @@ void emitsTypedNormalizationMetadataAndFocusedRuntimeSources() {
     String metadata = utf8(files.get(
             "src/main/java/com/example/weather/generated/metadata/WeatherOperations.java"));
     assertTrue(metadata.contains("new ResponseNormalizationPolicy("));
-    assertTrue(metadata.contains("TextNode.valueOf(\"00\")"));
+    assertTrue(metadata.contains("StringNode.valueOf(\"00\")"));
     assertTrue(metadata.contains("JsonNodeFactory.instance.numberNode(new BigDecimal(\"1.50\"))"));
     assertTrue(metadata.contains("BooleanNode.TRUE"));
     assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/ResponseNormalizer.java"));
@@ -578,7 +578,7 @@ In `OperationMetadataRenderer`, import the generated policy and Jackson node typ
 ```java
 private void appendSuccessValue(StringBuilder source, Object value) {
     if (value instanceof String text) {
-        source.append("TextNode.valueOf(").append(JavaStringLiteral.quote(text)).append(')');
+        source.append("StringNode.valueOf(").append(JavaStringLiteral.quote(text)).append(')');
     } else if (value instanceof Boolean bool) {
         source.append(bool ? "BooleanNode.TRUE" : "BooleanNode.FALSE");
     } else if (value instanceof Number number) {
@@ -591,7 +591,7 @@ private void appendSuccessValue(StringBuilder source, Object value) {
 }
 ```
 
-Use `JavaStringLiteral.quote` for every pointer. Use `null` for absent pointers/policy, `List.of()` for no success values, and a concrete expression such as `List.of(TextNode.valueOf("00"), BooleanNode.TRUE)` for configured values.
+Use `JavaStringLiteral.quote` for every pointer. Use `null` for absent pointers/policy, `List.of()` for no success values, and a concrete Jackson 3 expression such as `List.of(StringNode.valueOf("00"), BooleanNode.TRUE)` for configured values.
 
 - [ ] **Step 5: Write generated normalizer contract tests before its implementation**
 
@@ -774,7 +774,7 @@ When resolving each secret binding, add the property name, target name, and actu
 })
 void masksSecretValuesAndNames(String message) {
     ProviderError error = normalizer.error(operation(), PROVIDER_BUSINESS, 200,
-            TextNode.valueOf("30"), message,
+            StringNode.valueOf("30"), message,
             List.of("Authorization", "serviceKey", "clientSecret", "cookie"),
             List.of("secret-value"));
 
