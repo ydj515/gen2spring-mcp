@@ -12,7 +12,7 @@
 
 - Keep `spring-ai-2.0-java21-mvc-streamable` pinned to Java 21, Spring Boot 4.1.0, Spring AI 2.0.0, Gradle 9.6.1, MVC, synchronous execution, and Streamable HTTP.
 - Add no new external generator or generated-runtime dependency.
-- Accept only RFC 6901 pointers starting with `/`, at most 256 characters and 32 tokens; reject controls, invalid `~` escapes, leading-zero array indexes, and `-` array lookup tokens.
+- Accept only RFC 6901 pointers starting with `/`, at most 256 characters and 32 tokens; reject controls, invalid `~` escapes, and `-` array lookup tokens. Reject a leading-zero numeric token only when runtime evaluation applies it to an array; the same token remains valid as an object property name.
 - Accept 1 to 16 non-null scalar success values; strings are at most 128 characters and contain no controls; preserve string, number, and boolean types.
 - Keep response bodies bounded to 1 MiB by default and provider messages bounded to 512 Unicode code points.
 - Never expose raw response bodies, request headers, URI queries, environment values, exception messages, stack traces, or secrets in MCP results, validation reports, generated files, or CLI output.
@@ -56,6 +56,16 @@ void defensivelyCopiesTypedSuccessValues() {
 }
 
 @Test
+void canonicalizesSupportedNumericInputsAndRejectsMutableNumbers() {
+    var policy = new ResponseNormalizationPolicy(null, "/code",
+            List.of(7, 0.1d), null, null);
+
+    assertEquals(List.of(BigInteger.valueOf(7), new BigDecimal("0.1")), policy.successValues());
+    assertThrows(IllegalArgumentException.class, () -> new ResponseNormalizationPolicy(
+            null, "/code", List.of(new AtomicInteger(7)), null, null));
+}
+
+@Test
 void compatibilityConstructorsLeaveNormalizationAbsent() {
     var selection = new OperationSelection("getForecast", true, null, null, Map.of());
     var execution = new HttpExecutionDefinition(HttpMethod.GET, URI.create("https://example.test"), "/weather", List.of());
@@ -84,6 +94,9 @@ package io.gen2spring.mcp.domain.response;
 
 import java.util.List;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+
 public record ResponseNormalizationPolicy(
         String dataPointer,
         String successCodePointer,
@@ -91,7 +104,26 @@ public record ResponseNormalizationPolicy(
         String errorMessagePointer,
         String totalCountPointer) {
     public ResponseNormalizationPolicy {
-        successValues = successValues == null ? List.of() : List.copyOf(successValues);
+        successValues = successValues == null ? List.of()
+                : successValues.stream().map(ResponseNormalizationPolicy::immutableScalar).toList();
+    }
+
+    private static Object immutableScalar(Object value) {
+        if (value instanceof String || value instanceof Boolean
+                || value instanceof BigInteger || value instanceof BigDecimal) {
+            return value;
+        }
+        if (value instanceof Byte || value instanceof Short
+                || value instanceof Integer || value instanceof Long) {
+            return BigInteger.valueOf(((Number) value).longValue());
+        }
+        if (value instanceof Float number && Float.isFinite(number)) {
+            return new BigDecimal(Float.toString(number));
+        }
+        if (value instanceof Double number && Double.isFinite(number)) {
+            return BigDecimal.valueOf(number);
+        }
+        throw new IllegalArgumentException("Response normalization success value is invalid");
     }
 }
 ```
@@ -135,7 +167,6 @@ static Stream<ResponseNormalizationPolicy> invalidPolicies() {
     return Stream.of(
             policy("relative", null, List.of(), null, null),
             policy("/bad~2escape", null, List.of(), null, null),
-            policy("/items/01", null, List.of(), null, null),
             policy("/items/-", null, List.of(), null, null),
             policy("/" + "x".repeat(256), null, List.of(), null, null),
             policy("/" + String.join("/", Collections.nCopies(33, "x")), null, List.of(), null, null),
@@ -150,6 +181,13 @@ static Stream<ResponseNormalizationPolicy> invalidPolicies() {
 void acceptsEscapedObjectNamesArrayIndexesAndTypedValues() {
     var policy = policy("/items/0/a~1b", "/meta/code", List.of("00", 0, false),
             "/meta/message", "/meta/total");
+
+    assertSame(policy, new ResponseNormalizationPolicyValidator().requireValid(policy));
+}
+
+@Test
+void acceptsLeadingZeroTokensAsPotentialObjectPropertyNames() {
+    var policy = policy("/items/01", null, List.of(), null, null);
 
     assertSame(policy, new ResponseNormalizationPolicyValidator().requireValid(policy));
 }
@@ -192,7 +230,7 @@ public ResponseNormalizationPolicy requireValid(ResponseNormalizationPolicy poli
 }
 ```
 
-`pointer` must decode `~0` and `~1`, count at most 32 tokens, reject controls, reject `-`, and reject an all-digit token with a leading zero. `rejectScalarAncestorCollisions` must treat success code, error message, and total count pointers as scalar, allow `dataPointer` to be an ancestor container, and reject exact duplicate scalar pointers and scalar ancestors. `validScalar` must accept only `String`, `Number`, and `Boolean`; reject non-finite `Double`/`Float`; enforce the 128-character/control bound for strings. Every failure must use only `new IllegalArgumentException("Response normalization policy is invalid")`.
+`pointer` must decode `~0` and `~1`, count at most 32 tokens, reject controls, and reject `-`. It must not reject numeric-looking object property tokens such as `01`; generated runtime evaluation performs the leading-zero check only when the current node is an array. `rejectScalarAncestorCollisions` must treat success code, error message, and total count pointers as scalar, allow `dataPointer` to be an ancestor container, and reject exact duplicate scalar pointers and scalar ancestors. `validScalar` must accept only the immutable canonical values produced by `ResponseNormalizationPolicy`; enforce the 128-character/control bound for strings. Every failure must use only `new IllegalArgumentException("Response normalization policy is invalid")`.
 
 - [ ] **Step 7: Run all domain tests and verify GREEN**
 
@@ -589,7 +627,7 @@ void failsClosedForBusinessAndProtocolFailures() {
 }
 ```
 
-Add separate test methods for: no-policy raw JSON and empty 2xx body; escaped property `/a~1b`; array index `/items/0`; exact decimal comparison `9E+1` versus `90`; invalid JSON and trailing tokens; missing/non-JSON content type; negative/fractional/out-of-range total count; HTTP 400/408/425/429/500/302; and a body larger than the configured executor limit handled by Task 4.
+Add separate test methods for: no-policy raw JSON and empty 2xx body; escaped property `/a~1b`; object property `/items/01`; array index `/items/0`; leading-zero array lookup `/items/01` rejected when `items` is an array; exact decimal comparison `9E+1` versus `90`; invalid JSON and trailing tokens; missing/non-JSON content type; negative/fractional/out-of-range total count; HTTP 400/408/425/429/500/302; and a body larger than the configured executor limit handled by Task 4.
 
 - [ ] **Step 6: Run the generated normalizer tests to verify RED**
 
