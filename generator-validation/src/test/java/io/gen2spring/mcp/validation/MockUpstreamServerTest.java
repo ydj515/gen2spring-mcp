@@ -220,6 +220,25 @@ class MockUpstreamServerTest {
     }
 
     @Test
+    void rejectsARequestThatArrivesAfterSuccessfulObservationSealing() throws Exception {
+        var server = MockUpstreamServer.start(expectation());
+        try {
+            HttpResponse<String> first = send(server, "POST", query("first", "second"),
+                    "X-Token", "validator", expectedBody());
+            server.sealAndAwaitVerified(WAIT);
+
+            HttpResponse<String> lateDuplicate = send(server, "POST", query("first", "second"),
+                    "X-Token", "validator", expectedBody());
+
+            assertEquals(200, first.statusCode());
+            assertEquals(409, lateDuplicate.statusCode());
+            assertThrows(MockUpstreamServer.VerificationException.class, server::close);
+        } finally {
+            server.close();
+        }
+    }
+
+    @Test
     void observesAConcurrentDuplicateWhileThePrimaryResponseIsStillBeingWritten() throws Exception {
         CountDownLatch primaryWriteStarted = new CountDownLatch(1);
         CountDownLatch releasePrimaryWrite = new CountDownLatch(1);

@@ -630,6 +630,18 @@ class GradleMcpProjectValidatorTest {
     }
 
     @Test
+    void failsClosedWhenADuplicateArrivesAfterTheMcpRoundTripWasSealed() throws Exception {
+        Path root = runnableProject("delayed-duplicate-upstream");
+        TrackingMockFactory mocks = new TrackingMockFactory(false);
+
+        var report = validator(mocks).validate(request(root, EXPECTED));
+
+        assertCallFailureAndCleanup(report, root, mocks);
+        assertEquals("200", waitForText(root.resolve("upstream.status")));
+        assertEquals("409", waitForText(root.resolve("duplicate-upstream.status")));
+    }
+
+    @Test
     void failsClosedOnAnMcpToolResultMismatch() throws Exception {
         Path root = runnableProject("mcp-result-mismatch");
         TrackingMockFactory mocks = new TrackingMockFactory(false);
@@ -836,6 +848,8 @@ class GradleMcpProjectValidatorTest {
         assertEquals(List.of(SUCCESS, SUCCESS, SUCCESS, SUCCESS, FAILED),
                 report.stages().stream().map(stage -> stage.status()).toList());
         assertEquals("MCP Tool call validation failed safely", report.stages().get(4).summary());
+        assertEquals(List.of("kma_weather_get_forecast"),
+                report.tools().stream().map(tool -> tool.name()).toList());
         assertTrue(waitUntilDead(readPid(root)));
         assertTrue(mocks.closed.get());
         assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
@@ -977,8 +991,11 @@ class GradleMcpProjectValidatorTest {
 
                 @Override
                 public void close() throws IOException {
-                    delegate.close();
-                    closed.set(true);
+                    try {
+                        delegate.close();
+                    } finally {
+                        closed.set(true);
+                    }
                     if (closeFailure != null) {
                         throw closeFailure;
                     }

@@ -219,6 +219,8 @@ source checksum은 manifest, validation report, `process-logs/`를 제외한 sou
   노출하지만 provider JSON에는 `postal-code`로 전송한다.
 - min/max, length, pattern, format, enum 제약은 명시적 Tool schema로 생성해
   `tools/list`와 generated Jakarta Validation에 함께 유지한다.
+- 대표 검증 인자의 pattern 평가는 CLI를 비정상적으로 오래 점유하지 않도록 길이·중첩·문자 접근
+  예산을 적용한다. 중첩 quantifier처럼 안전하게 제한할 수 없는 Java regex는 fail-closed로 거부한다.
 - parameter 직렬화는 path/header의 기본 `simple` scalar, query의 기본 `form` scalar와
   `form` + `explode=true`인 scalar-item query array만 지원한다. 비기본 style, object
   parameter, path/header array, nested array/object item은 operation 생성에서 제외한다.

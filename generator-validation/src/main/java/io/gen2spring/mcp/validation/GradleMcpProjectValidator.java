@@ -475,7 +475,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             stages.add(new ValidationStageResult(
                     "MCP_TOOL_CALL", FAILED, failure.toolsCallDurationMillis(), 0, 1, TOOL_CALL_FAILURE));
         }
-        return failedReport(stages, List.of());
+        return failedReport(stages, failure.tools());
     }
 
     private ReadinessResult awaitReadiness(BoundedProcessRunner.RunningProcess application)

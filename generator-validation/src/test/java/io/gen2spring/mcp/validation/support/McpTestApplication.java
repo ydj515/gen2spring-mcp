@@ -100,6 +100,7 @@ public final class McpTestApplication {
         }
 
         String operationResult = "{\"validated\":true,\"operationId\":\"getForecast\"}";
+        HttpRequest delayedDuplicate = null;
         if (!"no-upstream".equals(behavior)) {
             String path = "upstream-mismatch".equals(behavior) ? "/unexpected" : "/forecast";
             String query = "nx=" + encode(extractNx(request))
@@ -122,6 +123,8 @@ public final class McpTestApplication {
                     Files.writeString(
                             Path.of("duplicate-upstream.status"),
                             Integer.toString(duplicateResponse.statusCode()));
+                } else if ("delayed-duplicate-upstream".equals(behavior)) {
+                    delayedDuplicate = upstreamRequest;
                 }
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
@@ -134,6 +137,25 @@ public final class McpTestApplication {
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         send(exchange, 200, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"isError\":false,"
                 + "\"content\":[{\"type\":\"text\",\"text\":" + jsonString(operationResult) + "}]}}");
+        if (delayedDuplicate != null) {
+            scheduleDelayedDuplicate(delayedDuplicate);
+        }
+    }
+
+    private static void scheduleDelayedDuplicate(HttpRequest request) {
+        Thread.ofPlatform().daemon().name("delayed-upstream-duplicate").start(() -> {
+            try {
+                Thread.sleep(15);
+                HttpResponse<String> response = HttpClient.newHttpClient().send(
+                        request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                Files.writeString(
+                        Path.of("duplicate-upstream.status"), Integer.toString(response.statusCode()));
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } catch (java.io.IOException ignored) {
+                // The parent process owns the bounded validation failure and cleanup.
+            }
+        });
     }
 
     private static String extractNx(String request) {

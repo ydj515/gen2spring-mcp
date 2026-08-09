@@ -182,6 +182,32 @@ class ExpectedToolCallFactoryTest {
     }
 
     @Test
+    void rejectsNestedQuantifierPatternsBeforeEvaluatingRepresentativeValues() {
+        GeneratorException exception = assertThrows(GeneratorException.class,
+                () -> factory.create(
+                        List.of(weatherTool("(a+)+$")),
+                        validation("getForecast", arguments("stationId", "aaa"))));
+
+        assertEquals(VALIDATION_ARGUMENT_INVALID, exception.code());
+        assertEquals("TOOL_MODEL_VALIDATE", exception.stage());
+        assertEquals("Validation argument does not match Tool input: stationId", exception.safeMessage());
+    }
+
+    @Test
+    void rejectsPatternEvaluationWhenTheCharacterAccessBudgetIsExhausted() {
+        String expression = "a?".repeat(20) + "a".repeat(20);
+
+        GeneratorException exception = assertThrows(GeneratorException.class,
+                () -> factory.create(
+                        List.of(weatherTool(expression)),
+                        validation("getForecast", arguments("stationId", "a".repeat(20)))));
+
+        assertEquals(VALIDATION_ARGUMENT_INVALID, exception.code());
+        assertEquals("TOOL_MODEL_VALIDATE", exception.stage());
+        assertEquals("Validation argument does not match Tool input: stationId", exception.safeMessage());
+    }
+
+    @Test
     void rejectsAnInvalidArrayItem() {
         assertInvalid("tags", "7", validation("getForecast", arguments("tags", List.of(BigInteger.valueOf(7)))));
     }
@@ -235,7 +261,12 @@ class ExpectedToolCallFactoryTest {
     }
 
     private McpToolDefinition weatherTool() {
-        ApiSchema stationId = schema(STRING, List.of(), null, null, 3, 8, "[A-Z0-9]+", Map.of(), List.of(), null);
+        return weatherTool("[A-Z0-9]+");
+    }
+
+    private McpToolDefinition weatherTool(String stationIdPattern) {
+        ApiSchema stationId = schema(
+                STRING, List.of(), null, null, 3, 8, stationIdPattern, Map.of(), List.of(), null);
         ApiSchema days = schema(INTEGER, List.of(), BigDecimal.ONE, BigDecimal.valueOf(5), null, null,
                 null, Map.of(), List.of(), null);
         ApiSchema mode = schema(STRING, List.of("brief", "detailed"), null, null, null, null,

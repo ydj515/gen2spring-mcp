@@ -11,14 +11,21 @@ import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 public final class ExpectedToolCallFactory {
+    private static final int MAX_VALIDATION_PATTERN_CHARACTERS = 512;
+    private static final int MAX_VALIDATION_PATTERN_GROUP_DEPTH = 32;
+    private static final int MAX_PATTERN_CHARACTER_ACCESSES = 100_000;
+
     public ExpectedToolCall create(List<McpToolDefinition> tools, ValidationConfiguration configuration) {
         ToolCallValidation toolCall = configuration == null ? null : configuration.toolCall();
         if (toolCall == null) {
@@ -103,10 +110,106 @@ public final class ExpectedToolCallFactory {
         if (schema.maxLength() != null && value.length() > schema.maxLength()) {
             throw invalid(inputName);
         }
-        if (schema.pattern() != null && !Pattern.compile(schema.pattern()).matcher(value).matches()) {
+        if (schema.pattern() != null && !matchesPatternSafely(schema.pattern(), value)) {
             throw invalid(inputName);
         }
         return value;
+    }
+
+    private boolean matchesPatternSafely(String expression, String value) {
+        if (!hasSafePatternShape(expression)) {
+            return false;
+        }
+        try {
+            Pattern pattern = Pattern.compile(expression);
+            return pattern.matcher(new BudgetedCharSequence(value, MAX_PATTERN_CHARACTER_ACCESSES)).matches();
+        } catch (PatternSyntaxException | PatternBudgetExceededException | StackOverflowError failure) {
+            return false;
+        }
+    }
+
+    private boolean hasSafePatternShape(String expression) {
+        if (expression.length() > MAX_VALIDATION_PATTERN_CHARACTERS) {
+            return false;
+        }
+        Deque<PatternGroup> groups = new ArrayDeque<>();
+        boolean escaped = false;
+        boolean characterClass = false;
+        boolean quoted = false;
+        boolean lastClosedGroupRisky = false;
+        for (int index = 0; index < expression.length(); index++) {
+            char current = expression.charAt(index);
+            if (quoted) {
+                if (current == '\\' && index + 1 < expression.length() && expression.charAt(index + 1) == 'E') {
+                    quoted = false;
+                    index++;
+                }
+                continue;
+            }
+            if (escaped) {
+                if (current == 'Q') {
+                    quoted = true;
+                }
+                escaped = false;
+                lastClosedGroupRisky = false;
+                continue;
+            }
+            if (current == '\\') {
+                escaped = true;
+                lastClosedGroupRisky = false;
+                continue;
+            }
+            if (characterClass) {
+                if (current == ']') {
+                    characterClass = false;
+                }
+                continue;
+            }
+            if (current == '[') {
+                characterClass = true;
+                lastClosedGroupRisky = false;
+                continue;
+            }
+            if (current == '(') {
+                groups.push(new PatternGroup());
+                if (groups.size() > MAX_VALIDATION_PATTERN_GROUP_DEPTH) {
+                    return false;
+                }
+                lastClosedGroupRisky = false;
+                continue;
+            }
+            if (current == ')') {
+                if (groups.isEmpty()) {
+                    lastClosedGroupRisky = false;
+                    continue;
+                }
+                PatternGroup completed = groups.pop();
+                lastClosedGroupRisky = completed.risky;
+                if (!groups.isEmpty() && completed.risky) {
+                    groups.peek().risky = true;
+                }
+                continue;
+            }
+            boolean groupPrefix = current == '?' && !groups.isEmpty() && groups.peek().empty;
+            boolean quantifier = current == '*' || current == '+' || current == '{' || current == '?' && !groupPrefix;
+            if (quantifier) {
+                if (lastClosedGroupRisky) {
+                    return false;
+                }
+                if (!groups.isEmpty()) {
+                    groups.peek().risky = true;
+                }
+            } else if (current == '|' && !groups.isEmpty()) {
+                groups.peek().risky = true;
+            }
+            if (!groups.isEmpty() && current != ':' && !groupPrefix) {
+                groups.peek().empty = false;
+            }
+            if (!quantifier) {
+                lastClosedGroupRisky = false;
+            }
+        }
+        return true;
     }
 
     private Object normalizeInteger(ApiSchema schema, Object value, String inputName) {
@@ -222,5 +325,76 @@ public final class ExpectedToolCallFactory {
                 VALIDATION_ARGUMENT_INVALID,
                 "TOOL_MODEL_VALIDATE",
                 "Validation argument does not match Tool input: " + safeInputName);
+    }
+
+    private static final class PatternGroup {
+        private boolean empty = true;
+        private boolean risky;
+    }
+
+    private static final class BudgetedCharSequence implements CharSequence {
+        private final String value;
+        private final PatternBudget budget;
+        private final int start;
+        private final int end;
+
+        private BudgetedCharSequence(String value, int maximumAccesses) {
+            this(value, new PatternBudget(maximumAccesses), 0, value.length());
+        }
+
+        private BudgetedCharSequence(String value, PatternBudget budget, int start, int end) {
+            this.value = value;
+            this.budget = budget;
+            this.start = start;
+            this.end = end;
+        }
+
+        @Override
+        public int length() {
+            return end - start;
+        }
+
+        @Override
+        public char charAt(int index) {
+            if (index < 0 || index >= length()) {
+                throw new IndexOutOfBoundsException(index);
+            }
+            budget.consume();
+            return value.charAt(start + index);
+        }
+
+        @Override
+        public CharSequence subSequence(int subsequenceStart, int subsequenceEnd) {
+            if (subsequenceStart < 0 || subsequenceEnd < subsequenceStart || subsequenceEnd > length()) {
+                throw new IndexOutOfBoundsException();
+            }
+            return new BudgetedCharSequence(
+                    value, budget, start + subsequenceStart, start + subsequenceEnd);
+        }
+
+        @Override
+        public String toString() {
+            return value.substring(start, end);
+        }
+    }
+
+    private static final class PatternBudget {
+        private int remaining;
+
+        private PatternBudget(int remaining) {
+            this.remaining = remaining;
+        }
+
+        private void consume() {
+            if (remaining-- <= 0) {
+                throw new PatternBudgetExceededException();
+            }
+        }
+    }
+
+    private static final class PatternBudgetExceededException extends RuntimeException {
+        private PatternBudgetExceededException() {
+            super(null, null, false, false);
+        }
     }
 }

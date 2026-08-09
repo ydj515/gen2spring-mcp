@@ -147,9 +147,11 @@ public final class McpStreamableHttpClient {
             validateToolCallResult(requireResult(responseJson, McpStage.TOOL_CALL), expectedCall);
         } catch (JsonProcessingException exception) {
             throw failure(McpStage.TOOL_CALL, "MCP Tool call request cannot be serialized", exception)
+                    .withObservedTools(observed)
                     .withDurations(initializeDuration, toolsDuration, elapsedMillis(toolCallStarted));
         } catch (McpValidationException failure) {
-            throw failure.withDurations(initializeDuration, toolsDuration, elapsedMillis(toolCallStarted));
+            throw failure.withObservedTools(observed)
+                    .withDurations(initializeDuration, toolsDuration, elapsedMillis(toolCallStarted));
         }
         long toolCallDuration = elapsedMillis(toolCallStarted);
         return new Result(
@@ -547,9 +549,10 @@ public final class McpStreamableHttpClient {
         private final long initializeDurationMillis;
         private final long toolsListDurationMillis;
         private final long toolsCallDurationMillis;
+        private final List<ObservedTool> tools;
 
         private McpValidationException(McpStage stage, String message, Throwable cause) {
-            this(stage, message, cause, 0, 0, 0);
+            this(stage, message, cause, 0, 0, 0, List.of());
         }
 
         private McpValidationException(
@@ -558,12 +561,14 @@ public final class McpStreamableHttpClient {
                 Throwable cause,
                 long initializeDurationMillis,
                 long toolsListDurationMillis,
-                long toolsCallDurationMillis) {
+                long toolsCallDurationMillis,
+                List<ObservedTool> tools) {
             super(message, cause);
             this.stage = stage;
             this.initializeDurationMillis = Math.max(0, initializeDurationMillis);
             this.toolsListDurationMillis = Math.max(0, toolsListDurationMillis);
             this.toolsCallDurationMillis = Math.max(0, toolsCallDurationMillis);
+            this.tools = List.copyOf(tools);
         }
 
         public McpStage stage() {
@@ -582,12 +587,23 @@ public final class McpStreamableHttpClient {
             return toolsCallDurationMillis;
         }
 
+        public List<ObservedTool> tools() {
+            return tools;
+        }
+
+        private McpValidationException withObservedTools(List<ObservedTool> observedTools) {
+            return new McpValidationException(
+                    stage, getMessage(), getCause(), initializeDurationMillis, toolsListDurationMillis,
+                    toolsCallDurationMillis, observedTools);
+        }
+
         private McpValidationException withDurations(
                 long initializeDuration,
                 long toolsListDuration,
                 long toolsCallDuration) {
             return new McpValidationException(
-                    stage, getMessage(), getCause(), initializeDuration, toolsListDuration, toolsCallDuration);
+                    stage, getMessage(), getCause(), initializeDuration, toolsListDuration, toolsCallDuration,
+                    tools);
         }
     }
 

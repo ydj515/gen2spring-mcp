@@ -63,6 +63,7 @@ public final class MockUpstreamServer implements AutoCloseable {
     private boolean primaryRequestVerified;
     private boolean observationSealed;
     private VerificationException observationFailure;
+    private VerificationException lateRequestFailure;
 
     private MockUpstreamServer(
             HttpServer server,
@@ -184,7 +185,15 @@ public final class MockUpstreamServer implements AutoCloseable {
 
     private RequestDisposition beginRequest() {
         synchronized (observationMonitor) {
-            if (observationSealed || closed.get()) {
+            if (observationSealed) {
+                if (!closed.get() && primaryRequestVerified && observationFailure == null
+                        && lateRequestFailure == null) {
+                    lateRequestFailure = new VerificationException(
+                            "Mock upstream observed a request after verification was sealed");
+                }
+                return RequestDisposition.SEALED;
+            }
+            if (closed.get()) {
                 return RequestDisposition.SEALED;
             }
             observedRequests++;
@@ -402,6 +411,13 @@ public final class MockUpstreamServer implements AutoCloseable {
         }
         server.stop(0);
         executor.shutdownNow();
+        VerificationException lateFailure;
+        synchronized (observationMonitor) {
+            lateFailure = lateRequestFailure;
+        }
+        if (lateFailure != null) {
+            throw lateFailure;
+        }
     }
 
     private static long deadline(Duration timeout) {
