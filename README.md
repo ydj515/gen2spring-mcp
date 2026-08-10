@@ -1,7 +1,9 @@
 # OpenAPI MCP Generator
 
-로컬 OpenAPI 3.0 명세에서 선택한 operation을 Java 17 또는 Java 21, Spring Boot 4.1.0,
-Spring AI 2.0.0 기반 Streamable HTTP MCP 서버 프로젝트로 생성하는 Java 21 CLI다.
+로컬 OpenAPI 3.0 명세에서 선택한 operation을 Java 17 또는 Java 21 target의 Spring Boot 3.5.16/
+Spring AI 1.1.8 또는 Spring Boot 4.1.0/Spring AI 2.0.0 기반 Streamable HTTP MCP 서버 프로젝트로
+생성하는 Java 21 CLI다. Spring AI 1.1 generated source는 Jackson 2를 사용하며 Spring AI 2의
+`McpToolParam` annotation을 생성하지 않는다.
 생성된 프로젝트를 실제로 컴파일하고 Spring 애플리케이션을 기동한 뒤 MCP `initialize`,
 `tools/list`, 대표 `tools/call`과 upstream HTTP binding을 검증한 경우에만 ZIP을 만든다.
 
@@ -73,12 +75,15 @@ OPENAPI_MCP=generator-cli/build/install/openapi-mcp/bin/openapi-mcp
 "$OPENAPI_MCP" profiles
 ```
 
-`profiles`는 다음 두 항목을 ID 오름차순으로 항상 같은 JSON에 출력한다. Java version을
-제외하면 두 profile 모두 Spring Boot 4.1.0, Spring AI 2.0.0, Gradle 9.6.1,
-Spring MVC Sync, Streamable HTTP를 사용한다.
+`profiles`는 다음 네 항목을 ID 오름차순으로 항상 같은 JSON에 출력한다. Spring AI 1.1 profile은
+Spring Boot 3.5.16, Spring AI 1.1.8, Gradle 9.6.1, Jackson 2와 explicit Tool schema를 사용한다.
+Spring AI 2.0 profile은 Spring Boot 4.1.0, Spring AI 2.0.0, Gradle 9.6.1을 사용한다. 모든 profile은
+Spring MVC Sync와 Streamable HTTP `/mcp`를 사용한다.
 
 | ID | Java | Container image |
 | --- | --- | --- |
+| `spring-ai-1.1-java17-mvc-streamable` | 17 | `eclipse-temurin:17.0.19_10-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8` |
+| `spring-ai-1.1-java21-mvc-streamable` | 21 | `eclipse-temurin:21.0.11_10-jre-noble@sha256:373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64` |
 | `spring-ai-2.0-java17-mvc-streamable` | 17 | `eclipse-temurin:17.0.19_10-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8` |
 | `spring-ai-2.0-java21-mvc-streamable` | 21 | `eclipse-temurin:21.0.11_10-jre-noble@sha256:373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64` |
 
@@ -290,10 +295,11 @@ synthetic secret만 포함하는 sanitized environment에서 실행된다. 대�
 - output 디렉터리와 같은 이름의 sibling ZIP
 
 source checksum은 manifest, validation report, `process-logs/`를 제외한 source tree를
-경로 순으로 정규화해 계산한다. ZIP entry는 경로 순서, timestamp, 파일 mode를
-결정적으로 기록한다. validation duration은 실행마다 달라질 수 있으므로 ZIP 전체 byte는
-달라질 수 있지만 source checksum과 validation report를 제외한 canonical source entry는
-같아야 한다. validation은 별도 workspace에서 수행하므로 배포 디렉터리와 ZIP에는
+경로 순으로 정규화해 계산한다. ZIP entry의 경로 순서, canonical timestamp, 파일 mode는
+결정적으로 기록한다. 같은 input/profile의 archive entry는 `VALIDATION_REPORT.json`을 제외하고
+byte-exact해야 한다. validation report는 stage의 `durationMillis`와 summary 안의 측정값
+`stdoutBytes`·`stderrBytes`만 정규화한 뒤 정확히 같아야 한다. 따라서 측정값을 보존하는 raw ZIP
+전체 byte가 같다고 주장하지 않는다. validation은 별도 workspace에서 수행하므로 배포 디렉터리와 ZIP에는
 `build/`, `.gradle/`, process log가 포함되지 않는다.
 
 profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10001:10001`로
@@ -330,9 +336,8 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
   (예: `full-detail`)을 일관되게 사용한다.
 - remote `$ref`, URL import, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator,
   recursive schema는 지원하지 않는다.
-- typed output DTO, retry 실행, pagination 실행, metrics, tracing은 후속 P1 범위다.
-- Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다. Spring AI 1.x
-  compatibility profile은 후속 P1 범위다.
-- UI operation editor와 Windows validation host 지원은 후속 P1 범위다.
+- typed output DTO, retry 실행, pagination 실행, metrics와 OpenTelemetry tracing은 후속 P1 범위다.
+- Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다.
+- Generator API와 UI operation editor, Windows validation host 지원은 후속 P1 범위다.
 - P0의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
   OCI sandbox, dependency proxy, CPU/memory limit, network egress 통제는 제공하지 않는다.

@@ -579,7 +579,10 @@ git commit -m "docs: document Spring AI 1 profiles"
 - [ ] The default registry and installed `profiles` command expose exactly four canonical profiles in deterministic order.
 - [ ] Spring AI 1 generated source contains Jackson 2 imports, no `McpToolParam`, and exact explicit Tool schemas.
 - [ ] Both Spring AI 1 targets compile, test, boot, initialize MCP, list exact tools, call one representative Tool, and verify exactly one upstream request on the selected JDK.
-- [ ] Spring AI 2 Java 17/21 behavior remains green and byte-deterministic.
+- [ ] Spring AI 2 Java 17/21 behavior remains green and preserves the P0 canonical archive determinism
+  contract: every entry except `VALIDATION_REPORT.json` is byte-exact; reports are exact after normalizing
+  only stage `durationMillis` and summary `stdoutBytes`/`stderrBytes`; entry order, timestamp, and mode are
+  deterministic without claiming raw full-ZIP byte equality.
 - [ ] Unknown profile, missing emitter, noncanonical renderer profile, absent/wrong JDK, schema/result mismatch, and duplicate upstream request fail closed.
 - [ ] All four profiles render correct manifest, README, Dockerfile, `.dockerignore`, wrapper, and target runtime metadata.
 - [ ] Exact full repository acceptance succeeds with zero failures/errors and no Critical/Important review finding.

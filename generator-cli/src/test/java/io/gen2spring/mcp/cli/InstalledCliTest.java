@@ -78,9 +78,11 @@ class InstalledCliTest {
     }
 
     @Test
-    void rootReadmeDocumentsTheDualProfilePrerequisitesAndRemainingP1Work() throws Exception {
+    void rootReadmeDocumentsTheFourProfilePrerequisitesAndRemainingP1Work() throws Exception {
         String readme = Files.readString(repositoryRoot().resolve("README.md"));
 
+        assertTrue(readme.contains("spring-ai-1.1-java17-mvc-streamable"));
+        assertTrue(readme.contains("spring-ai-1.1-java21-mvc-streamable"));
         assertTrue(readme.contains("spring-ai-2.0-java17-mvc-streamable"));
         assertTrue(readme.contains("spring-ai-2.0-java21-mvc-streamable"));
         assertTrue(readme.contains("GEN2SPRING_JAVA_17_HOME"));
@@ -90,18 +92,26 @@ class InstalledCliTest {
         assertTrue(readme.contains("org.gradle.java.installations.auto-detect=false"));
         assertTrue(readme.contains("org.gradle.java.installations.auto-download=false"));
         assertTrue(readme.contains("org.gradle.java.installations.paths=<verified target home>"));
+        assertTrue(readme.contains("Spring Boot 3.5.16"));
+        assertTrue(readme.contains("Spring AI 1.1.8"));
         assertTrue(readme.contains("Spring Boot 4.1.0"));
         assertTrue(readme.contains("Spring AI 2.0.0"));
         assertTrue(readme.contains("Gradle 9.6.1"));
+        assertTrue(readme.contains("Jackson 2"));
+        assertTrue(readme.contains("`McpToolParam` annotation을 생성하지 않는다"));
+        assertTrue(readme.contains("Streamable HTTP"));
+        assertTrue(readme.contains("`/mcp`"));
         assertTrue(readme.contains(JAVA_17_IMAGE));
         assertTrue(readme.contains(JAVA_21_IMAGE));
         assertTrue(readme.contains("USER 10001:10001"));
         assertTrue(readme.contains(".dockerignore"));
         assertTrue(readme.contains("Java 21 기본 profile"));
-        assertTrue(readme.contains("Spring AI 1.x"));
-        assertTrue(readme.contains("metrics, tracing"));
+        assertTrue(readme.contains("`profiles`"));
+        assertTrue(readme.contains("항상 같은 JSON"));
+        assertFalse(readme.contains("Spring AI 1.x\n  compatibility profile은 후속 P1 범위다"));
+        assertTrue(readme.contains("metrics와 OpenTelemetry tracing"));
         assertTrue(readme.contains("Windows validation host"));
-        assertTrue(readme.contains("UI operation editor"));
+        assertTrue(readme.contains("Generator API와 UI operation editor"));
         assertTrue(readme.contains("후속 P1 범위"));
     }
 

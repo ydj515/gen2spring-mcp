@@ -213,7 +213,11 @@ generated compile/test 뒤 boot JAR는 같은 target home의 `bin/java`로 시�
 ## 8. Determinism과 보안
 
 - canonical registry와 CLI `profiles`는 네 profile을 항상 ID 순서로 출력한다.
-- 같은 input/profile의 files, manifest, checksum, ZIP은 byte-identical이어야 한다.
+- 같은 input/profile의 생성 source files, manifest, checksum과 `VALIDATION_REPORT.json`을 제외한 모든 archive
+  entry는 byte-identical이어야 한다. validation report는 stage `durationMillis` 및 summary의
+  `stdoutBytes`·`stderrBytes` 측정값만 정규화한 뒤 exact equality를 요구한다. ZIP entry 순서,
+  canonical timestamp, mode는 deterministic이지만, 이 측정값을 보존하므로 raw ZIP 전체 byte가
+  byte-identical하다고 주장하지 않는다.
 - Spring AI 1과 2 또는 Java 17과 21 profile checksum은 달라야 한다.
 - renderer는 canonical registry의 exact profile equality를 요구해 image/template/runtime drift와
   Docker instruction injection을 거부한다.
