@@ -162,6 +162,7 @@ class P1GenerationIntegrationTest {
             assertEquals(first.sourceChecksum(), second.sourceChecksum(), profile.id());
             assertEquals(first.manifest(), second.manifest(), profile.id());
             assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
+            assertValidationReportsEqualExceptMeasurements(first.report(), second.report());
             assertSensitiveValuesAbsent(first, REPRESENTATIVE_STATION_ID,
                     "mcp-validation-secret-1", "mcp-validation-secret-2",
                     targetJavaHomes.java17Home().toString(), targetJavaHomes.java21Home().toString());
@@ -668,6 +669,34 @@ class P1GenerationIntegrationTest {
         });
     }
 
+    private void assertValidationReportsEqualExceptMeasurements(JsonNode first, JsonNode second) {
+        assertEquals(
+                validationReportWithoutMeasurements(first),
+                validationReportWithoutMeasurements(second),
+                "validation reports differ outside measured fields");
+    }
+
+    private JsonNode validationReportWithoutMeasurements(JsonNode report) {
+        JsonNode normalized = report.deepCopy();
+        assertTrue(normalized.isObject(), "validation report must be an object");
+        assertTrue(normalized.path("stages").isArray(), "validation report stages must be an array");
+        for (JsonNode stage : normalized.path("stages")) {
+            assertTrue(stage.isObject(), "validation report stage must be an object");
+            JsonNode duration = stage.get("durationMillis");
+            assertTrue(duration != null && duration.isIntegralNumber() && duration.longValue() >= 0,
+                    "validation report durationMillis must be a non-negative integer");
+            JsonNode summary = stage.get("summary");
+            assertTrue(summary != null && summary.isTextual(),
+                    "validation report summary must be a string");
+            ((com.fasterxml.jackson.databind.node.ObjectNode) stage).put("durationMillis", 0);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) stage).put(
+                    "summary",
+                    summary.textValue().replaceAll("\\bstdoutBytes=\\d+\\b", "stdoutBytes=<measured>")
+                            .replaceAll("\\bstderrBytes=\\d+\\b", "stderrBytes=<measured>"));
+        }
+        return normalized;
+    }
+
     private void assertTransientBuildOutputsAbsent(Path root) throws IOException {
         try (var paths = Files.walk(root)) {
             for (Path path : paths.toList()) {
@@ -852,7 +881,7 @@ class P1GenerationIntegrationTest {
                         "stationId":"STN01","days":3,
                         "location":{"latitude":37.5,"longitude":127.0}}}}
                     """, session), 3);
-            assertFalse(callResult.path("isError").asBoolean(false), "MCP Tool call reported an error");
+            assertSuccessfulToolCallResult(callResult);
             JsonNode content = callResult.get("content");
             assertTrue(content != null && content.isArray(), "MCP Tool content is invalid");
             assertEquals(1, content.size(), "MCP Tool must return exactly one content item");
@@ -865,6 +894,13 @@ class P1GenerationIntegrationTest {
             assertTrue(payload.findValue("rawRoot") == null, "raw root sentinel leaked into the Tool result");
             assertTrue(payload.findValue("rawHeader") == null, "raw header sentinel leaked into the Tool result");
             assertTrue(payload.findValue("rawBody") == null, "raw body sentinel leaked into the Tool result");
+        }
+
+        private void assertSuccessfulToolCallResult(JsonNode callResult) {
+            JsonNode isError = callResult.get("isError");
+            assertTrue(isError != null, "MCP Tool result isError is missing");
+            assertTrue(isError.isBoolean(), "MCP Tool result isError must be boolean");
+            assertFalse(isError.booleanValue(), "MCP Tool call reported an error");
         }
 
         private HttpResponse<byte[]> send(String body, String session) throws Exception {
