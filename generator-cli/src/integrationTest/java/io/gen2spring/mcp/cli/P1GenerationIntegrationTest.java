@@ -10,8 +10,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.validation.LoopbackPortAllocator;
+import io.gen2spring.mcp.validation.McpStreamableHttpClient;
+import io.gen2spring.mcp.validation.MockUpstreamServer;
+import io.gen2spring.mcp.validation.UpstreamCallExpectation;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -39,6 +50,8 @@ class P1GenerationIntegrationTest {
     private static final String TOOL_NAME = "kma_weather_get_forecast";
     private static final String TOOL_DESCRIPTION = "Get the public weather forecast for a grid location.";
     private static final String REPRESENTATIVE_STATION_ID = "STN01";
+    private static final String LIVE_QUERY_SECRET = "independent-query-secret";
+    private static final String LIVE_HEADER_SECRET = "independent-header-secret";
     private static final ProfileCase JAVA_17 = new ProfileCase(
             "spring-ai-2.0-java17-mvc-streamable",
             17,
@@ -124,6 +137,9 @@ class P1GenerationIntegrationTest {
         assertNotEquals(
                 firstByProfile.get(JAVA_17.id()).sourceChecksum(),
                 firstByProfile.get(JAVA_21.id()).sourceChecksum());
+        for (ProfileCase profile : PROFILE_CASES) {
+            assertIndependentLiveMcpContract(firstByProfile.get(profile.id()), profile, java17Home);
+        }
     }
 
     @Test
@@ -211,7 +227,7 @@ class P1GenerationIntegrationTest {
         assertTransientBuildOutputsAbsent(result.projectRoot());
 
         Set<String> outputPaths = regularFiles(result.projectRoot());
-        assertTrue(outputPaths.containsAll(REQUIRED_OUTPUTS));
+        assertEquals(REQUIRED_OUTPUTS, outputPaths);
         assertEquals(outputPaths, result.archiveEntries().keySet());
         assertEquals(new ArrayList<>(new TreeSet<>(result.archiveEntries().keySet())),
                 new ArrayList<>(result.archiveEntries().keySet()));
@@ -361,6 +377,227 @@ class P1GenerationIntegrationTest {
                 "-Dorg.gradle.java.installations.paths=",
                 "classes test bootJar",
                 "--no-daemon");
+    }
+
+    private void assertIndependentLiveMcpContract(
+            GenerationResult result,
+            ProfileCase profile,
+            Path java17Home) throws Exception {
+        Path targetJavaHome = profile.javaFeature() == 17
+                ? java17Home
+                : Path.of(System.getProperty("java.home")).toAbsolutePath().normalize();
+        Path targetJava = targetJavaHome.resolve("bin/java");
+        assertTrue(Files.isRegularFile(targetJava), "target Java executable is unavailable");
+        buildBootJar(result.projectRoot(), targetJavaHome);
+
+        Object rawProviderResponse = rawProviderResponse();
+        Object normalizedResult = normalizedResult();
+        UpstreamCallExpectation expectation = new UpstreamCallExpectation(
+                "getForecast",
+                "POST",
+                "/stations/STN01/forecast",
+                Map.of(
+                        "days", List.of("3"),
+                        "serviceKey", List.of(LIVE_QUERY_SECRET)),
+                Map.of("x-weather-key", List.of(LIVE_HEADER_SECRET)),
+                Map.of("location", Map.of(
+                        "latitude", new BigDecimal("37.5"),
+                        "longitude", new BigDecimal("127.0"))),
+                Map.of(
+                        "KMA_SERVICE_KEY", LIVE_QUERY_SECRET,
+                        "WEATHER_HEADER_KEY", LIVE_HEADER_SECRET),
+                200,
+                "application/json",
+                rawProviderResponse);
+        LoopbackPortAllocator ports = new LoopbackPortAllocator();
+        Process application = null;
+        try (MockUpstreamServer mock = MockUpstreamServer.start(expectation);
+                LoopbackPortAllocator.Reservation reservation = ports.reserve()) {
+            int applicationPort = reservation.port();
+            reservation.releaseForLaunch();
+            ProcessBuilder launch = new ProcessBuilder(
+                    targetJava.toString(),
+                    "-jar",
+                    result.projectRoot().resolve("build/libs/weather-mcp-server.jar").toString(),
+                    "--server.address=127.0.0.1",
+                    "--server.port=" + applicationPort);
+            launch.environment().put("PROVIDER_BASE_URL", mock.baseUri().toString());
+            launch.environment().putAll(expectation.environmentOverrides());
+            launch.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            launch.redirectError(ProcessBuilder.Redirect.DISCARD);
+            application = launch.start();
+            awaitApplication(application, applicationPort);
+
+            ExpectedToolCall expectedCall = new ExpectedToolCall(
+                    liveTool(),
+                    liveArguments(),
+                    new ExpectedUpstreamResponse(200, "application/json", rawProviderResponse),
+                    normalizedResult);
+            var validation = new McpStreamableHttpClient().validate(
+                    ports.mcpUri(applicationPort),
+                    Map.of(TOOL_NAME, new ExpectedTool(TOOL_DESCRIPTION, expectedInputSchema())),
+                    expectedCall);
+
+            assertEquals(Set.of(TOOL_NAME), validation.toolNames());
+            assertEquals(List.of(TOOL_DESCRIPTION),
+                    validation.tools().stream().map(tool -> tool.description()).toList());
+            mock.sealAndAwaitVerified(Duration.ofSeconds(10));
+        } finally {
+            stopApplication(application);
+        }
+    }
+
+    private void buildBootJar(Path projectRoot, Path targetJavaHome) throws Exception {
+        Path gradle = projectRoot.resolve("gradlew");
+        assertTrue(Files.isExecutable(gradle), "generated Gradle wrapper is unavailable");
+        Process build = new ProcessBuilder(
+                gradle.toString(),
+                "-Dorg.gradle.java.installations.auto-detect=false",
+                "-Dorg.gradle.java.installations.auto-download=false",
+                "-Dorg.gradle.java.installations.paths=" + targetJavaHome,
+                "bootJar",
+                "--no-daemon",
+                "--non-interactive")
+                .directory(projectRoot.toFile())
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        if (!build.waitFor(Duration.ofMinutes(5).toMillis(), TimeUnit.MILLISECONDS)) {
+            build.descendants().forEach(ProcessHandle::destroyForcibly);
+            build.destroyForcibly();
+            if (!build.waitFor(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("generated project build cleanup failed safely");
+            }
+            throw new AssertionError("generated project build timed out safely");
+        }
+        assertEquals(0, build.exitValue(), "generated project build failed safely");
+        assertTrue(Files.isRegularFile(projectRoot.resolve("build/libs/weather-mcp-server.jar")),
+                "generated boot JAR is unavailable");
+    }
+
+    private void awaitApplication(Process application, int port) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (!application.isAlive()) {
+                throw new AssertionError("generated application exited before readiness");
+            }
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress("127.0.0.1", port), 100);
+                return;
+            } catch (IOException unavailable) {
+                Thread.sleep(100);
+            }
+        }
+        throw new AssertionError("generated application readiness timed out safely");
+    }
+
+    private void stopApplication(Process application) throws InterruptedException {
+        if (application == null) {
+            return;
+        }
+        application.destroy();
+        if (!application.waitFor(10, TimeUnit.SECONDS)) {
+            application.destroyForcibly();
+            if (!application.waitFor(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("generated application cleanup failed safely");
+            }
+        }
+    }
+
+    private Map<String, Object> expectedInputSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("clientVersion", Map.of(
+                "type", "string",
+                "description", "Calling client version."));
+        properties.put("days", Map.of(
+                "type", "integer",
+                "format", "int32",
+                "minimum", BigDecimal.ONE,
+                "maximum", BigDecimal.valueOf(7),
+                "description", "Number of forecast days."));
+        properties.put("includeAlerts", Map.of(
+                "type", "boolean",
+                "description", "includeAlerts"));
+        properties.put("location", Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "label", Map.of("type", "string", "description", "label"),
+                        "latitude", Map.of(
+                                "type", "number",
+                                "minimum", BigDecimal.valueOf(-90),
+                                "maximum", BigDecimal.valueOf(90),
+                                "description", "latitude"),
+                        "longitude", Map.of(
+                                "type", "number",
+                                "minimum", BigDecimal.valueOf(-180),
+                                "maximum", BigDecimal.valueOf(180),
+                                "description", "longitude")),
+                "required", List.of("latitude", "longitude"),
+                "description", "location"));
+        properties.put("mode", Map.of(
+                "type", "string",
+                "enum", List.of("brief", "full-detail"),
+                "description", "Forecast detail mode."));
+        properties.put("note", Map.of(
+                "type", "string",
+                "minLength", 1,
+                "maxLength", 80,
+                "description", "note"));
+        properties.put("stationId", Map.of(
+                "type", "string",
+                "minLength", 2,
+                "maxLength", 12,
+                "pattern", "^[A-Z0-9]+$",
+                "description", "Station identifier."));
+        properties.put("tags", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string"),
+                "description", "Optional forecast tags."));
+        return Map.of(
+                "type", "object",
+                "properties", properties,
+                "required", List.of("days", "location", "stationId"));
+    }
+
+    private McpToolDefinition liveTool() {
+        return new McpToolDefinition(
+                "getForecast",
+                TOOL_NAME,
+                TOOL_DESCRIPTION,
+                List.of(),
+                null,
+                List.of(),
+                McpToolDefinition.OutputKind.GENERIC_JSON);
+    }
+
+    private Map<String, Object> liveArguments() {
+        return Map.of(
+                "stationId", REPRESENTATIVE_STATION_ID,
+                "days", 3,
+                "location", Map.of(
+                        "latitude", new BigDecimal("37.5"),
+                        "longitude", new BigDecimal("127.0")));
+    }
+
+    private Object rawProviderResponse() {
+        return Map.of(
+                "response", Map.of(
+                        "header", Map.of(
+                                "resultCode", "00",
+                                "resultMsg", "NORMAL_SERVICE",
+                                "rawHeader", true),
+                        "body", Map.of(
+                                "items", Map.of("item", List.of(Map.of("forecast", "sunny"))),
+                                "totalCount", 1,
+                                "rawBody", true)),
+                "rawRoot", true);
+    }
+
+    private Object normalizedResult() {
+        return Map.of(
+                "data", List.of(Map.of("forecast", "sunny")),
+                "page", Map.of("totalCount", 1),
+                "provider", Map.of("code", "00", "message", "NORMAL_SERVICE"));
     }
 
     private void assertArtifactValuesAbsent(GenerationResult result, String... sensitiveValues) throws IOException {
