@@ -11,6 +11,7 @@ import io.gen2spring.mcp.core.ValidationReportWriter;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.policy.ToolModelFactory;
+import io.gen2spring.mcp.springai1.SpringAi1ProjectGenerator;
 import io.gen2spring.mcp.springai2.SpringAi2ProjectGenerator;
 import io.gen2spring.mcp.validation.GradleMcpProjectValidator;
 import java.util.Map;
@@ -23,6 +24,7 @@ public final class ApplicationFactory {
         ObjectMapper json = new ObjectMapper();
         var analyzer = new SwaggerOpenApiAnalyzer();
         var projectGenerators = ProjectGeneratorRegistry.of(Map.of(
+                "generator-spring-ai-1", new SpringAi1ProjectGenerator(),
                 "generator-spring-ai-2", new SpringAi2ProjectGenerator()));
         var pipeline = new GenerationPipeline(
                 analyzer,

@@ -413,7 +413,7 @@ class GenerationPipelineTest {
     }
 
     @Test
-    void rejectsAMissingEmitterBeforeSpecificationAnalysis() {
+    void rejectsAnOmittedSpringAi1EmitterBeforeSpecificationAnalysisOrSourceWrites() {
         AtomicBoolean analyzed = new AtomicBoolean();
         SpecificationAnalyzer trackingAnalyzer = (path, maxBytes) -> {
             analyzed.set(true);
@@ -422,12 +422,14 @@ class GenerationPipelineTest {
         GenerationPipeline pipeline = pipelineWithRegistries(
                 trackingAnalyzer,
                 CompatibilityProfileRegistry.defaults(),
-                ProjectGeneratorRegistry.of(Map.of()),
+                ProjectGeneratorRegistry.of(Map.of("generator-spring-ai-2", minimalGenerator())),
                 request -> validatedReport());
 
         GeneratorException failure = assertThrows(GeneratorException.class,
                 () -> pipeline.generate(
-                        specification, weatherGenerationRequest(), safeTempDir.resolve("missing-emitter")));
+                        specification,
+                        requestWithProfile("spring-ai-1.1-java17-mvc-streamable"),
+                        safeTempDir.resolve("missing-emitter")));
 
         assertEquals(TARGET_COMBINATION_UNSUPPORTED, failure.code());
         assertEquals("TARGET_VALIDATE", failure.stage());
@@ -437,9 +439,9 @@ class GenerationPipelineTest {
     }
 
     @Test
-    void passesTheCanonicalRegistryProfileToGenerationAndValidation() {
+    void passesTheCanonicalSpringAi1Java17ProfileToGenerationAndValidation() {
         CompatibilityProfileRegistry profiles = CompatibilityProfileRegistry.defaults();
-        CompatibilityProfile java17 = profiles.find("spring-ai-2.0-java17-mvc-streamable").orElseThrow();
+        CompatibilityProfile java17 = profiles.find("spring-ai-1.1-java17-mvc-streamable").orElseThrow();
         AtomicReference<CompatibilityProfile> generatedProfile = new AtomicReference<>();
         AtomicReference<ValidationRequest> validationRequest = new AtomicReference<>();
         ProjectGenerator generator = context -> {
@@ -453,7 +455,7 @@ class GenerationPipelineTest {
         GenerationPipeline pipeline = pipelineWithRegistries(
                 new SwaggerOpenApiAnalyzer(),
                 profiles,
-                ProjectGeneratorRegistry.of(Map.of("generator-spring-ai-2", generator)),
+                ProjectGeneratorRegistry.of(Map.of("generator-spring-ai-1", generator)),
                 validator);
 
         pipeline.generate(

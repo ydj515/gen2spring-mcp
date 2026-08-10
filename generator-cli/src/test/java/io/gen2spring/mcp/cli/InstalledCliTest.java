@@ -205,6 +205,28 @@ class InstalledCliTest {
         assertEquals(0, generatedTests.exitCode(), generatedTests.stderr() + generatedTests.stdout());
     }
 
+    @Test
+    void installedGenerateUsesTheSpringAi1Emitter() throws Exception {
+        Path executable = Path.of(System.getProperty("openapiMcp.executable"));
+        Path safeTemp = tempDir.toRealPath();
+        Path specification = Files.writeString(safeTemp.resolve("spring-ai-1-weather.yaml"), rawWeatherSpecification());
+        Path configuration = copyResource(
+                "/config/weather-generation-spring-ai1-java21.yaml",
+                safeTemp.resolve("spring-ai-1-generation.yaml"));
+        Path output = safeTemp.resolve("spring-ai-1-weather-mcp-server");
+
+        Result generation = run(executable, "generate", "--spec", specification.toString(),
+                "--config", configuration.toString(), "--output", output.toString());
+
+        assertEquals(0, generation.exitCode(), generation.stderr() + generation.stdout());
+        assertEquals("", generation.stderr());
+        assertTrue(Files.readString(output.resolve("build.gradle.kts"))
+                .contains("spring-ai-starter-mcp-server-webmvc"));
+        assertEquals("spring-ai-1.1-java21-mvc-streamable",
+                JSON.readTree(Files.readString(output.resolve("GENERATION_MANIFEST.json")))
+                        .path("targetProfileId").asText());
+    }
+
     private Result run(Path executable, String... arguments) throws Exception {
         List<String> command = new java.util.ArrayList<>();
         command.add(executable.toString());

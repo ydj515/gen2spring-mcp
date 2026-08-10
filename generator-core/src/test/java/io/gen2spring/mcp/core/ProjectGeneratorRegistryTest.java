@@ -16,13 +16,18 @@ import org.junit.jupiter.api.Test;
 class ProjectGeneratorRegistryTest {
 
     @Test
-    void resolvesBothDefaultProfilesToTheRegisteredSpringAi2Generator() {
-        ProjectGenerator generator = context -> new GeneratedProjectFiles(Map.of());
-        ProjectGeneratorRegistry registry = ProjectGeneratorRegistry.of(
-                Map.of("generator-spring-ai-2", generator));
+    void resolvesEachProfileFamilyToItsRegisteredGeneratorModule() {
+        ProjectGenerator springAi1Generator = context -> new GeneratedProjectFiles(Map.of());
+        ProjectGenerator springAi2Generator = context -> new GeneratedProjectFiles(Map.of());
+        ProjectGeneratorRegistry registry = ProjectGeneratorRegistry.of(Map.of(
+                "generator-spring-ai-1", springAi1Generator,
+                "generator-spring-ai-2", springAi2Generator));
 
         for (CompatibilityProfile profile : CompatibilityProfileRegistry.defaults().profiles()) {
-            assertSame(generator, registry.require(profile));
+            ProjectGenerator expected = profile.generatorModule().equals("generator-spring-ai-1")
+                    ? springAi1Generator
+                    : springAi2Generator;
+            assertSame(expected, registry.require(profile));
         }
     }
 
