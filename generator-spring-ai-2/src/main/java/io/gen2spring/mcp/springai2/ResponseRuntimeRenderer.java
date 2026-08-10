@@ -137,6 +137,7 @@ final class ResponseRuntimeRenderer {
 
                     private final JsonMapper jsonMapper = JsonMapper.builder()
                             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
                             .build();
                     private final SecureRandom secureRandom = new SecureRandom();
 

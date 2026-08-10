@@ -450,6 +450,32 @@ class GeneratedProjectSmokeTest {
                     }
 
                     @Test
+                    void preservesHighPrecisionBeforeComparingDecimalSuccessCodes() {
+                        ResponseNormalizationPolicy exact = policy(
+                                null,
+                                "/code",
+                                List.of(JsonNodeFactory.instance.numberNode(
+                                        new BigDecimal("1.0000000000000000001"))),
+                                null,
+                                null);
+                        ResponseNormalizationPolicy rounded = policy(
+                                null,
+                                "/code",
+                                List.of(JsonNodeFactory.instance.numberNode(new BigDecimal("1.0"))),
+                                null,
+                                null);
+
+                        assertInstanceOf(NormalizedSuccess.class,
+                                normalizer.normalize(operation("exactDecimal", exact), 200,
+                                        MediaType.APPLICATION_JSON,
+                                        json("{'code':1.0000000000000000001}"), List.of(), List.of()));
+                        assertCategory("PROVIDER_BUSINESS",
+                                normalizer.normalize(operation("roundedDecimal", rounded), 200,
+                                        MediaType.APPLICATION_JSON,
+                                        json("{'code':1.0000000000000000001}"), List.of(), List.of()));
+                    }
+
+                    @Test
                     void rejectsInvalidJsonTrailingTokensAndUnsupportedMediaTypes() {
                         for (byte[] invalid : List.of(json("{"), json("{} {}"))) {
                             assertCategory("UPSTREAM_PROTOCOL",
