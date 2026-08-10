@@ -25,11 +25,14 @@ mise exec -- java -version
 mise exec -- ./gradlew test --no-daemon --non-interactive
 ```
 
-생성 프로젝트 검증은 선택한 JDK 하나만 사용하도록 다음 Gradle toolchain 옵션을 적용한다.
+Gradle Wrapper JVM은 host의 Java 21로 시작될 수 있다. 다음 속성은 wrapper JVM 자체를
+target JDK로 바꾸지 않고, generated compile/test toolchain 탐색만 verified target JDK로 제한한다.
+ApplicationContext와 MCP 단계의 boot JAR는 verified target home의 `bin/java`로 실행한다.
 
 ```text
 -Dorg.gradle.java.installations.auto-detect=false
 -Dorg.gradle.java.installations.auto-download=false
+-Dorg.gradle.java.installations.paths=<verified target home>
 ```
 
 선택한 target JDK가 설치되지 않았거나 profile의 Java version과 다르면 검증은 안전한 고정

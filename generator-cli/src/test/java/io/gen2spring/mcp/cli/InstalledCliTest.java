@@ -76,8 +76,12 @@ class InstalledCliTest {
         assertTrue(readme.contains("spring-ai-2.0-java17-mvc-streamable"));
         assertTrue(readme.contains("spring-ai-2.0-java21-mvc-streamable"));
         assertTrue(readme.contains("GEN2SPRING_JAVA_17_HOME"));
+        assertFalse(readme.contains("생성 프로젝트 검증은 선택한 JDK 하나만 사용"));
+        assertTrue(readme.contains("Gradle Wrapper JVM은 host의 Java 21로 시작될 수 있다"));
+        assertTrue(readme.contains("generated compile/test toolchain 탐색만 verified target JDK로 제한"));
         assertTrue(readme.contains("org.gradle.java.installations.auto-detect=false"));
         assertTrue(readme.contains("org.gradle.java.installations.auto-download=false"));
+        assertTrue(readme.contains("org.gradle.java.installations.paths=<verified target home>"));
         assertTrue(readme.contains("Spring Boot 4.1.0"));
         assertTrue(readme.contains("Spring AI 2.0.0"));
         assertTrue(readme.contains("Gradle 9.6.1"));
