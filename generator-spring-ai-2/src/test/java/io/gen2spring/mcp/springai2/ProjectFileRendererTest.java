@@ -188,31 +188,45 @@ class ProjectFileRendererTest {
     }
 
     @Test
-    void rendersTheCompleteGeneratedProjectUsageContract() {
-        String readme = renderer.readme(contextWithSecret("service-key"));
+    void rendersTheCompleteGeneratedProjectUsageContractForBothProfiles() {
+        for (int javaVersion : List.of(17, 21)) {
+            CompatibilityProfile profile = profile(javaVersion);
+            var files = new SpringAi2ProjectGenerator()
+                    .generate(contextWithSecrets(profile, List.of(tool("service-key", "KMA_SERVICE_KEY"))))
+                    .files();
+            String readme = new String(files.get("README.md"), UTF_8);
 
-        assertTrue(readme.contains("Java 21"));
-        assertTrue(readme.contains("./gradlew bootRun"));
-        assertTrue(readme.contains("KMA_SERVICE_KEY"));
-        assertTrue(readme.contains("http://localhost:8080/mcp"));
-        assertTrue(readme.contains("mcpServers"));
-        assertTrue(readme.contains("weather_get_forecast"));
-        assertTrue(readme.contains("./gradlew test"));
-        assertTrue(readme.contains("docker build"));
-        assertTrue(readme.contains("spring-ai-2.0-java21-mvc-streamable"));
-        assertTrue(readme.contains("Spring Boot 4.1.0"));
-        assertTrue(readme.contains("Spring AI 2.0.0"));
-        assertTrue(readme.contains("## Response handling"));
-        assertTrue(readme.contains(
-                "Operations without response normalization return the provider's successful JSON body unchanged."));
-        assertTrue(readme.contains(
-                "Configured operations return `data`, optional `page.totalCount`, and optional `provider` metadata."));
-        assertTrue(readme.contains("Expected provider, HTTP, timeout, availability, protocol, and local-capacity "
-                + "failures return one MCP Tool error JSON payload with a local trace ID."));
-        assertTrue(readme.contains(
-                "Provider responses remain bounded to 1 MiB. Retry and pagination are not executed automatically."));
-        assertFalse(readme.contains("Known P0 limits"));
-        assertTrue(readme.contains("-e PROVIDER_BASE_URL=https://api.example.test -e KMA_SERVICE_KEY"));
+            assertTrue(readme.contains("Requirements: Java " + javaVersion + "."), profile.id());
+            assertTrue(readme.contains("./gradlew bootRun"), profile.id());
+            assertTrue(readme.contains("KMA_SERVICE_KEY"), profile.id());
+            assertTrue(readme.contains("http://localhost:8080/mcp"), profile.id());
+            assertTrue(readme.contains("mcpServers"), profile.id());
+            assertTrue(readme.contains("weather_get_forecast"), profile.id());
+            assertTrue(readme.contains("./gradlew test"), profile.id());
+            assertTrue(readme.contains("docker build"), profile.id());
+            assertTrue(readme.contains("- Compatibility profile: `" + profile.id() + "`"), profile.id());
+            assertTrue(readme.contains("- Template: `spring-ai-2-v2`"), profile.id());
+            assertTrue(readme.contains("- Runtime version: `0.2.0`"), profile.id());
+            assertTrue(readme.contains("- Gradle 9.6.1"), profile.id());
+            assertTrue(readme.contains("- Container image: `" + profile.containerImage() + "`"), profile.id());
+            assertTrue(readme.contains("- Spring Boot 4.1.0"), profile.id());
+            assertTrue(readme.contains("- Spring AI 2.0.0"), profile.id());
+            assertTrue(readme.contains("## Response handling"), profile.id());
+            assertTrue(readme.contains(
+                    "Operations without response normalization return the provider's successful JSON body unchanged."));
+            assertTrue(readme.contains(
+                    "Configured operations return `data`, optional `page.totalCount`, and optional `provider` metadata."));
+            assertTrue(readme.contains("Expected provider, HTTP, timeout, availability, protocol, and local-capacity "
+                    + "failures return one MCP Tool error JSON payload with a local trace ID."));
+            assertTrue(readme.contains(
+                    "Provider responses remain bounded to 1 MiB. Retry and pagination are not executed automatically."));
+            assertFalse(readme.contains("Known P0 limits"), profile.id());
+            assertFalse(readme.contains("Spring AI 1.x"), profile.id());
+            assertFalse(readme.contains("OpenTelemetry"), profile.id());
+            assertTrue(readme.contains("-e PROVIDER_BASE_URL=https://api.example.test -e KMA_SERVICE_KEY"));
+            assertTrue(new String(files.get("Dockerfile"), UTF_8).contains("USER 10001:10001"), profile.id());
+            assertTrue(files.containsKey(".dockerignore"), profile.id());
+        }
     }
 
     @Test

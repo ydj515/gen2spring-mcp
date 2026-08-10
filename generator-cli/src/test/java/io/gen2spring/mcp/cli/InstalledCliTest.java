@@ -15,6 +15,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class InstalledCliTest {
+    private static final String JAVA_17_IMAGE = "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
+            + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8";
+    private static final String JAVA_21_IMAGE = "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
+            + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64";
+
     @TempDir
     Path tempDir;
 
@@ -26,16 +31,18 @@ class InstalledCliTest {
         assertTrue(Files.isExecutable(executable));
 
         Result profiles = run(executable, "profiles");
+        Result repeatedProfiles = run(executable, "profiles");
         assertEquals(0, profiles.exitCode(), profiles.stderr());
+        assertEquals(0, repeatedProfiles.exitCode(), repeatedProfiles.stderr());
         assertEquals("", profiles.stderr());
+        assertEquals(profiles.stdout(), repeatedProfiles.stdout());
+        assertEquals("", repeatedProfiles.stderr());
         var installedProfiles = JSON.readTree(profiles.stdout()).path("profiles");
         assertEquals(2, installedProfiles.size());
-        assertEquals("spring-ai-2.0-java17-mvc-streamable", installedProfiles.get(0).path("id").asText());
-        assertEquals("9.6.1", installedProfiles.get(0).path("gradleVersion").asText());
-        assertTrue(installedProfiles.get(0).path("containerImage").asText().contains("@sha256:"));
-        assertEquals("spring-ai-2.0-java21-mvc-streamable", installedProfiles.get(1).path("id").asText());
-        assertEquals("9.6.1", installedProfiles.get(1).path("gradleVersion").asText());
-        assertTrue(installedProfiles.get(1).path("containerImage").asText().contains("@sha256:"));
+        assertInstalledProfile(installedProfiles.get(0),
+                "spring-ai-2.0-java17-mvc-streamable", 17, JAVA_17_IMAGE);
+        assertInstalledProfile(installedProfiles.get(1),
+                "spring-ai-2.0-java21-mvc-streamable", 21, JAVA_21_IMAGE);
 
         Path safeTemp = tempDir.toRealPath();
         Path specification = Files.writeString(safeTemp.resolve("weather.yaml"), """
@@ -60,6 +67,30 @@ class InstalledCliTest {
         assertEquals(output.toString(), JSON.readTree(inspect.stdout()).path("analysis").asText());
         assertTrue(Files.isRegularFile(output));
         assertFalse(Files.readString(output).isBlank());
+    }
+
+    @Test
+    void rootReadmeDocumentsTheDualProfilePrerequisitesAndRemainingP1Work() throws Exception {
+        String readme = Files.readString(repositoryRoot().resolve("README.md"));
+
+        assertTrue(readme.contains("spring-ai-2.0-java17-mvc-streamable"));
+        assertTrue(readme.contains("spring-ai-2.0-java21-mvc-streamable"));
+        assertTrue(readme.contains("GEN2SPRING_JAVA_17_HOME"));
+        assertTrue(readme.contains("org.gradle.java.installations.auto-detect=false"));
+        assertTrue(readme.contains("org.gradle.java.installations.auto-download=false"));
+        assertTrue(readme.contains("Spring Boot 4.1.0"));
+        assertTrue(readme.contains("Spring AI 2.0.0"));
+        assertTrue(readme.contains("Gradle 9.6.1"));
+        assertTrue(readme.contains(JAVA_17_IMAGE));
+        assertTrue(readme.contains(JAVA_21_IMAGE));
+        assertTrue(readme.contains("USER 10001:10001"));
+        assertTrue(readme.contains(".dockerignore"));
+        assertTrue(readme.contains("Java 21 기본 profile"));
+        assertTrue(readme.contains("Spring AI 1.x"));
+        assertTrue(readme.contains("metrics, tracing"));
+        assertTrue(readme.contains("Windows validation host"));
+        assertTrue(readme.contains("UI operation editor"));
+        assertTrue(readme.contains("후속 P1 범위"));
     }
 
     @Test
@@ -210,6 +241,37 @@ class InstalledCliTest {
             }
             return Files.write(target, input.readAllBytes());
         }
+    }
+
+    private void assertInstalledProfile(
+            com.fasterxml.jackson.databind.JsonNode profile,
+            String id,
+            int javaVersion,
+            String containerImage) {
+        assertEquals(id, profile.path("id").asText());
+        assertEquals("generator-spring-ai-2", profile.path("generatorModule").asText());
+        assertEquals("spring-ai-2-v2", profile.path("templateVersion").asText());
+        assertEquals("0.2.0", profile.path("runtimeVersion").asText());
+        assertEquals("9.6.1", profile.path("gradleVersion").asText());
+        assertEquals(containerImage, profile.path("containerImage").asText());
+        assertEquals(javaVersion, profile.path("target").path("javaVersion").asInt());
+        assertEquals("4.1.0", profile.path("target").path("springBootVersion").asText());
+        assertEquals("2.0.0", profile.path("target").path("springAiVersion").asText());
+        assertEquals("GRADLE_KOTLIN", profile.path("target").path("buildTool").asText());
+        assertEquals("MVC", profile.path("target").path("webStack").asText());
+        assertEquals("SYNC", profile.path("target").path("programmingModel").asText());
+        assertEquals("STREAMABLE_HTTP", profile.path("target").path("transport").asText());
+    }
+
+    private Path repositoryRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle.kts"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("Unable to locate the repository root");
+        }
+        return current;
     }
 
     private String rawWeatherSpecification() {

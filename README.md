@@ -1,13 +1,17 @@
 # OpenAPI MCP Generator
 
-로컬 OpenAPI 3.0 명세에서 선택한 operation을 Java 21, Spring Boot 4.1.0,
-Spring AI 2.0.0 기반 Streamable HTTP MCP 서버 프로젝트로 생성하는 CLI다.
+로컬 OpenAPI 3.0 명세에서 선택한 operation을 Java 17 또는 Java 21, Spring Boot 4.1.0,
+Spring AI 2.0.0 기반 Streamable HTTP MCP 서버 프로젝트로 생성하는 Java 21 CLI다.
 생성된 프로젝트를 실제로 컴파일하고 Spring 애플리케이션을 기동한 뒤 MCP `initialize`,
 `tools/list`, 대표 `tools/call`과 upstream HTTP binding을 검증한 경우에만 ZIP을 만든다.
 
 ## 요구 환경
 
-- Java 21. 이 저장소의 `mise.toml`은 Java 21.0.2를 고정한다.
+- 생성기 실행용 Java 21. 이 저장소의 `mise.toml`은 Java 21.0.2를 고정하며 생성기와
+  generator module test JVM은 Java 21을 사용한다.
+- Java 17 profile을 검증하려면 Java 17 JDK를 별도로 설치하고 절대 경로를
+  `GEN2SPRING_JAVA_17_HOME`에 지정해야 한다. Java 21 기본 profile은 현재
+  `java.home`이 Java 21이면 이를 사용하며, 필요하면 `GEN2SPRING_JAVA_21_HOME`으로 명시한다.
 - Gradle Wrapper 9.6.1. 시스템 Gradle 설치는 필요하지 않다.
 - 물리 경로와 안정적인 filesystem `fileKey`, hard link를 지원하는 로컬 파일시스템
 - POSIX 환경에서는 생성된 `gradlew`에 owner execute 권한을 기록하고 검증할 수 있어야 한다.
@@ -15,9 +19,22 @@ Spring AI 2.0.0 기반 Streamable HTTP MCP 서버 프로젝트로 생성하는 C
 
 ```bash
 mise install
+mise install java@17
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
 mise exec -- java -version
 mise exec -- ./gradlew test --no-daemon --non-interactive
 ```
+
+생성 프로젝트 검증은 선택한 JDK 하나만 사용하도록 다음 Gradle toolchain 옵션을 적용한다.
+
+```text
+-Dorg.gradle.java.installations.auto-detect=false
+-Dorg.gradle.java.installations.auto-download=false
+```
+
+선택한 target JDK가 설치되지 않았거나 profile의 Java version과 다르면 검증은 안전한 고정
+오류로 `UNVERIFIED` 처리하며 ZIP을 만들지 않는다. 오류와 검증 보고서에는 JDK 절대 경로,
+probe 출력, 실행 command를 기록하지 않는다.
 
 `/var`처럼 symbolic link를 거치는 경로나 stable file identity를 제공하지 않는 가상·공유
 파일시스템은 안전 경계에서 거부될 수 있다. macOS 임시 경로는 `/private/tmp`처럼 물리
@@ -28,7 +45,8 @@ mise exec -- ./gradlew test --no-daemon --non-interactive
 전체 단위·통합 검증과 CLI distribution 설치는 다음 명령으로 실행한다.
 
 ```bash
-mise exec -- ./gradlew clean test integrationTest :generator-cli:installDist \
+GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
+  mise exec -- ./gradlew clean test integrationTest :generator-cli:installDist \
   --no-daemon --non-interactive
 ```
 
@@ -52,8 +70,17 @@ OPENAPI_MCP=generator-cli/build/install/openapi-mcp/bin/openapi-mcp
 "$OPENAPI_MCP" profiles
 ```
 
-P0는 `spring-ai-2.0-java21-mvc-streamable` 하나만 제공한다. 대상 버전은 Java 21,
-Spring Boot 4.1.0, Spring AI 2.0.0, Gradle 9.6.1로 고정된다.
+`profiles`는 다음 두 항목을 ID 오름차순으로 항상 같은 JSON에 출력한다. Java version을
+제외하면 두 profile 모두 Spring Boot 4.1.0, Spring AI 2.0.0, Gradle 9.6.1,
+Spring MVC Sync, Streamable HTTP를 사용한다.
+
+| ID | Java | Container image |
+| --- | --- | --- |
+| `spring-ai-2.0-java17-mvc-streamable` | 17 | `eclipse-temurin:17.0.19_10-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8` |
+| `spring-ai-2.0-java21-mvc-streamable` | 21 | `eclipse-temurin:21.0.11_10-jre-noble@sha256:373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64` |
+
+Java 21 기본 profile은 `spring-ai-2.0-java21-mvc-streamable`이다. 기존 설정은 이 ID를
+계속 사용하며, Java 17 target은 `targetProfileId`만 Java 17 ID로 변경한다.
 
 ### OpenAPI 분석
 
@@ -222,8 +249,8 @@ typed output DTO를 생성하지 않으며, OpenTelemetry active span의 trace I
 `validationLevel`은 P0에서 `MCP_PROTOCOL`만 허용한다. 생성 과정은 다음 실제 검증을
 순서대로 수행한다.
 
-1. `COMPILE`: 생성 Gradle Wrapper로 `classes test bootJar` 실행
-2. `APPLICATION_CONTEXT`: executable JAR를 사용 가능한 loopback port에서 기동
+1. `COMPILE`: 선택한 target JDK와 생성 Gradle Wrapper로 `classes test bootJar` 실행
+2. `APPLICATION_CONTEXT`: 같은 target JDK로 executable JAR를 사용 가능한 loopback port에서 기동
 3. `MCP_INITIALIZE`: `/mcp`에 `initialize`와 initialized notification 전송
 4. `MCP_TOOLS_LIST`: Tool 이름, 설명, input schema를 선택 operation과 정확히 대조
 5. `MCP_TOOL_CALL`: 대표 Tool을 실제 호출하고 loopback mock upstream의 method, path,
@@ -251,8 +278,8 @@ synthetic secret만 포함하는 sanitized environment에서 실행된다. 대�
 
 성공한 output 디렉터리에는 다음 파일이 포함된다.
 
-- Gradle Kotlin DSL, Gradle Wrapper 9.6.1, Java 21 source와 generated test
-- `src/main/resources/application.yml`, generated project `README.md`, `Dockerfile`, `.gitignore`
+- Gradle Kotlin DSL, Gradle Wrapper 9.6.1, 선택한 Java 17 또는 Java 21 source와 generated test
+- `src/main/resources/application.yml`, generated project `README.md`, `Dockerfile`, `.dockerignore`, `.gitignore`
 - 원본 명세 byte를 보존한 `openapi/source.<extension>`
 - `GENERATION_MANIFEST.json`: generator/template/runtime 및 target 버전, 원본·source
   checksum, operation-to-Tool mapping
@@ -266,6 +293,9 @@ source checksum은 manifest, validation report, `process-logs/`를 제외한 sou
 같아야 한다. validation은 별도 workspace에서 수행하므로 배포 디렉터리와 ZIP에는
 `build/`, `.gradle/`, process log가 포함되지 않는다.
 
+profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10001:10001`로
+애플리케이션을 실행한다. `.dockerignore`는 Dockerfile과 빌드된 실행 JAR만 context에 포함한다.
+
 생성기는 기존 output을 삭제하거나 merge하지 않는다. 실패 산출물과 더 이상 필요하지
 않은 임시 디렉터리의 보관·삭제는 사용자가 명시적으로 수행해야 한다.
 
@@ -277,7 +307,7 @@ source checksum은 manifest, validation report, `process-logs/`를 제외한 sou
 - primitive, enum, array, object, non-recursive local `$ref`
 - required/optional, min/max, length, pattern의 generated Jakarta Validation
 - API Key query/header를 `SERVER_SECRET` 환경변수로 주입
-- Java record input, Spring MVC Sync, Streamable HTTP, generic JSON output
+- Java 17·21 record input, Spring MVC Sync, Streamable HTTP, generic JSON output
 - 실제 compile, generated test, ApplicationContext, MCP `initialize`, `tools/list`, 대표
   `tools/call`과 loopback mock upstream 검증
 
@@ -298,7 +328,7 @@ source checksum은 manifest, validation report, `process-logs/`를 제외한 sou
 - remote `$ref`, URL import, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator,
   recursive schema는 지원하지 않는다.
 - typed output DTO, retry 실행, pagination 실행, metrics, tracing은 후속 P1 범위다.
-- Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다. Java 17과 Spring AI 1.x
+- Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다. Spring AI 1.x
   compatibility profile은 후속 P1 범위다.
 - UI operation editor와 Windows validation host 지원은 후속 P1 범위다.
 - P0의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
