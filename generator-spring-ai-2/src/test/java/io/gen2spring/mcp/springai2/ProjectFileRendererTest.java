@@ -151,6 +151,26 @@ class ProjectFileRendererTest {
     }
 
     @Test
+    void rendersBackticksInResponsePolicyValuesWithCommonMarkSafeCodeSpans() {
+        var hostile = normalized(tool("getBackticks", "backticks", "backtick-key", "BACKTICK_KEY"),
+                new ResponseNormalizationPolicy(
+                        "/path/one`two``",
+                        "/header/`code",
+                        List.of("one`tick", "two``ticks"),
+                        "/header/message`",
+                        "/count``"));
+
+        String readme = renderer.readme(contextWithSecrets(List.of(hostile)));
+
+        assertTrue(readme.contains("`dataPath`: ``` /path/one`two`` ```"));
+        assertTrue(readme.contains("`successCodePath`: ``/header/`code``"));
+        assertTrue(readme.contains("`successValues`: ```[\"one`tick\",\"two``ticks\"]```"));
+        assertTrue(readme.contains("`errorMessagePath`: `` /header/message` ``"));
+        assertTrue(readme.contains("`totalCountPath`: ``` /count`` ```"));
+        assertFalse(readme.contains("\\`"));
+    }
+
+    @Test
     void rendersRequiredDockerSecretsDeterministicallyAndEscapesToolDescriptionsAsPlainMarkdown() {
         var first = tool("getZulu", "zulu", "zulu-key", "ZULU_KEY");
         var second = tool("getAlpha", "alpha", "alpha-key", "ALPHA_KEY");

@@ -277,20 +277,59 @@ class InstalledCliTest {
                 package com.example.weather.runtime;
 
                 import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
                 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
                 import static org.junit.jupiter.api.Assertions.assertTrue;
 
                 import java.nio.charset.StandardCharsets;
+                import java.util.ArrayList;
                 import java.util.List;
                 import org.junit.jupiter.api.Test;
                 import org.springframework.http.MediaType;
+                import tools.jackson.databind.JsonNode;
                 import tools.jackson.databind.json.JsonMapper;
+                import tools.jackson.databind.node.StringNode;
 
                 class RawResponseCompatibilityTest {
                     private final JsonMapper mapper = JsonMapper.builder().build();
                     private final ResponseNormalizer normalizer = new ResponseNormalizer();
                     private final OperationDefinition operation = new OperationDefinition(
                             "getForecast", "GET", "/forecast", List.of(), List.of(), false, false, null);
+                    private final OperationDefinition normalizedOperation = new OperationDefinition(
+                            "getForecast", "GET", "/forecast", List.of(), List.of(), false, false,
+                            new ResponseNormalizationPolicy(
+                                    "/response/body/items/item",
+                                    "/response/header/resultCode",
+                                    List.of(StringNode.valueOf("00")),
+                                    "/response/header/resultMsg",
+                                    "/response/body/totalCount"));
+
+                    @Test
+                    void independentlyNormalizesTheFixedProviderEnvelope() throws Exception {
+                        byte[] upstream = ("{\\\"response\\\":{"
+                                + "\\\"header\\\":{\\\"resultCode\\\":\\\"00\\\","
+                                + "\\\"resultMsg\\\":\\\"NORMAL_SERVICE\\\",\\\"rawHeader\\\":true},"
+                                + "\\\"body\\\":{\\\"items\\\":{\\\"item\\\":[{\\\"forecast\\\":\\\"sunny\\\"}]},"
+                                + "\\\"totalCount\\\":1,\\\"rawBody\\\":true}},\\\"rawRoot\\\":true}")
+                                .getBytes(StandardCharsets.UTF_8);
+                        JsonNode expected = mapper.readTree(
+                                "{\\\"data\\\":[{\\\"forecast\\\":\\\"sunny\\\"}],"
+                                        + "\\\"page\\\":{\\\"totalCount\\\":1},"
+                                        + "\\\"provider\\\":{\\\"code\\\":\\\"00\\\","
+                                        + "\\\"message\\\":\\\"NORMAL_SERVICE\\\"}}");
+
+                        NormalizedSuccess result = assertInstanceOf(NormalizedSuccess.class,
+                                normalizer.normalize(normalizedOperation, 200, MediaType.APPLICATION_JSON,
+                                        upstream, List.of(), List.of()));
+
+                        assertEquals(expected, result.payload());
+                        assertEquals(List.of("data", "page", "provider"), fieldNames(result.payload()));
+                        assertEquals(List.of("code", "message"), fieldNames(result.payload().path("provider")));
+                        assertFalse(result.payload().has("response"));
+                        assertFalse(result.payload().has("rawRoot"));
+                        assertTrue(result.payload().findValues("rawHeader").isEmpty());
+                        assertTrue(result.payload().findValues("rawBody").isEmpty());
+                    }
 
                     @Test
                     void returnsTheRawProviderJsonBodyWithoutNormalization() throws Exception {
@@ -310,6 +349,10 @@ class InstalledCliTest {
                                 normalizer.normalize(operation, 204, null, new byte[0], List.of(), List.of()));
 
                         assertTrue(result.payload().isNull());
+                    }
+
+                    private List<String> fieldNames(JsonNode value) {
+                        return new ArrayList<>(value.propertyNames());
                     }
                 }
                 """;

@@ -346,16 +346,16 @@ public final class ProjectFileRenderer {
 
     private String renderedResponsePolicy(McpToolDefinition tool) {
         ResponseNormalizationPolicy policy = tool.execution().responseNormalization();
-        StringBuilder rendered = new StringBuilder("- `")
-                .append(markdownText(tool.operationId()))
-                .append("`\n");
+        StringBuilder rendered = new StringBuilder("- ")
+                .append(markdownCodeSpan(tool.operationId()))
+                .append("\n");
         appendPolicyPointer(rendered, "dataPath", policy.dataPointer());
         appendPolicyPointer(rendered, "successCodePath", policy.successCodePointer());
         if (!policy.successValues().isEmpty()) {
             try {
-                rendered.append("  - `successValues`: `")
-                        .append(JSON.writeValueAsString(policy.successValues()))
-                        .append("`\n");
+                rendered.append("  - `successValues`: ")
+                        .append(markdownCodeSpan(JSON.writeValueAsString(policy.successValues())))
+                        .append("\n");
             } catch (JsonProcessingException exception) {
                 throw GeneratorException.system(SOURCE_GENERATION_FAILED, "spring-ai-2-render",
                         "Failed to render response normalization metadata", exception);
@@ -368,9 +368,27 @@ public final class ProjectFileRenderer {
 
     private void appendPolicyPointer(StringBuilder rendered, String name, String value) {
         if (value != null) {
-            rendered.append("  - `").append(name).append("`: `")
-                    .append(markdownText(value)).append("`\n");
+            rendered.append("  - `").append(name).append("`: ")
+                    .append(markdownCodeSpan(value)).append("\n");
         }
+    }
+
+    private String markdownCodeSpan(String value) {
+        int longestRun = 0;
+        int currentRun = 0;
+        for (int index = 0; index < value.length(); index++) {
+            if (value.charAt(index) == '`') {
+                currentRun++;
+                longestRun = Math.max(longestRun, currentRun);
+            } else {
+                currentRun = 0;
+            }
+        }
+        String delimiter = "`".repeat(longestRun + 1);
+        boolean needsPadding = value.startsWith("`") || value.endsWith("`")
+                || value.startsWith(" ") || value.endsWith(" ");
+        String content = needsPadding ? " " + value + " " : value;
+        return delimiter + content + delimiter;
     }
 
     private String markdownText(String value) {
