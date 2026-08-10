@@ -103,6 +103,12 @@ operations:
     enabled: true
     toolName: kma_weather_get_forecast
     toolDescription: Get the public weather forecast for a grid location.
+    responseNormalization:
+      dataPath: /response/body/items/item
+      successCodePath: /response/header/resultCode
+      successValues: ["00"]
+      errorMessagePath: /response/header/resultMsg
+      totalCountPath: /response/body/totalCount
     parameters:
       serviceKey:
         source: SERVER_SECRET
@@ -117,7 +123,12 @@ operations:
 - `MCP_PROTOCOL` 검증에는 enabled operation 하나를 가리키는 `validation.toolCall.operationId`와
   해당 Tool schema를 만족하는 명시적 `arguments`가 필요하다.
 - operation에는 `operationId`, `enabled`가 필요하고 `toolName`, `toolDescription`,
-  `parameters`를 선택적으로 지정한다. 최소 하나의 operation이 enabled여야 한다.
+  `responseNormalization`, `parameters`를 선택적으로 지정한다. 최소 하나의 operation이
+  enabled여야 한다.
+- `responseNormalization`에는 `dataPath`, `successCodePath`, `successValues`,
+  `errorMessagePath`, `totalCountPath`만 허용한다. pointer는 `/`로 시작하는 RFC 6901
+  JSON Pointer이며 최대 256자·32 token이다. `successCodePath`와 1~16개의 typed scalar
+  `successValues`는 함께 지정해야 한다.
 - parameter source는 `USER_INPUT` 또는 `SERVER_SECRET`만 지원한다.
   `SERVER_SECRET`에는 대문자로 시작하는 `environmentVariable`이 필요하고,
   `USER_INPUT`에는 environment variable을 지정할 수 없다. 생성 runtime과 JVM/Spring bootstrap이
@@ -125,7 +136,8 @@ operations:
   `SPRING_APPLICATION_JSON`은 secret environment variable 이름으로 사용할 수 없다.
 - 알 수 없는 필드, 중복 key, YAML anchor·alias, explicit tag, 잘못된 scalar type을
   거부한다. `enabled`만 boolean이며 나머지 scalar는 string이다. Tool description의
-  literal·folded block scalar는 일반 문자열로 허용한다.
+  literal·folded block scalar는 일반 문자열로 허용한다. 단, `successValues`의 원소는
+  JSON string, number, boolean typed scalar를 허용한다.
 - `toolName`은 최대 64자의 lower snake case다. package와 최상위 Tool input 이름은
   안전한 Java identifier로 생성 가능해야 한다.
 
@@ -147,6 +159,63 @@ secret 값은 Tool input schema, 생성 source, manifest, validation report, ZIP
 동시에 최대 16개 요청을 실행하고 64개를 대기시키며, 한도를 넘으면 안전한 포화 오류로
 실패한다. 응답 본문은 최대 1 MiB까지만 읽는다. 이 값은 생성된 `application.yml`의
 `provider` 설정에서 조정할 수 있으며 timeout은 1~300,000ms 범위의 양수여야 한다.
+
+## 응답 정규화와 오류 계약
+
+`responseNormalization`이 없는 operation의 성공 응답은 provider JSON을 그대로 반환하며,
+빈 2xx body는 JSON `null`로 반환한다. 설정된 operation은 원본 provider envelope의 나머지
+필드를 제외하고 다음 field 순서의 고정 success envelope를 반환한다.
+
+```json
+{
+  "data": [],
+  "page": {
+    "totalCount": 0
+  },
+  "provider": {
+    "code": "00",
+    "message": "NORMAL_SERVICE"
+  }
+}
+```
+
+`data`는 항상 존재한다. `page`는 `totalCountPath`가 있을 때만, `provider.code`와
+`provider.message`는 대응 pointer가 있을 때만 존재한다. success code는 string, number,
+boolean 원본 타입을 유지한다.
+
+예상된 provider 업무 오류, HTTP·timeout·availability·protocol 오류, local capacity 오류는
+JSON-RPC transport 오류가 아니라 `isError=true`인 MCP Tool 결과 하나로 반환한다.
+
+```json
+{
+  "error": {
+    "category": "PROVIDER_BUSINESS",
+    "providerCode": "30",
+    "providerMessage": "INVALID_REQUEST",
+    "retryable": false,
+    "httpStatus": 200,
+    "operationId": "getForecast",
+    "traceId": "4f7f2a510d6e47b3a0df47f1e4f036af"
+  }
+}
+```
+
+알 수 없는 `providerCode`, `providerMessage`, `httpStatus`는 JSON `null`이다. `traceId`는
+16-byte local random value의 32자리 lowercase hex이며, observability 슬라이스 전까지
+OpenTelemetry trace ID를 재사용하지 않는다.
+
+| category | retryable |
+| --- | --- |
+| `PROVIDER_BUSINESS` | `false` |
+| `UPSTREAM_CLIENT` | HTTP 408, 425, 429만 `true` |
+| `UPSTREAM_SERVER` | `true` |
+| `UPSTREAM_TIMEOUT` | `true` |
+| `UPSTREAM_UNAVAILABLE` | `true` |
+| `UPSTREAM_PROTOCOL` | `false` |
+| `LOCAL_RESOURCE` | `false` |
+
+응답 처리는 JSON body만 지원한다. 이 슬라이스는 retry와 pagination을 자동 실행하지 않고,
+typed output DTO를 생성하지 않으며, OpenTelemetry active span의 trace ID를 재사용하지 않는다.
 
 ## 검증과 종료 코드
 
@@ -228,8 +297,7 @@ source checksum은 manifest, validation report, `process-logs/`를 제외한 sou
   (예: `full-detail`)을 일관되게 사용한다.
 - remote `$ref`, URL import, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator,
   recursive schema는 지원하지 않는다.
-- typed output DTO, response envelope 정규화, HTTP 200 업무 오류 mapping, retry, pagination,
-  metrics, tracing은 후속 P1 범위다.
+- typed output DTO, retry 실행, pagination 실행, metrics, tracing은 후속 P1 범위다.
 - Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다. Java 17과 Spring AI 1.x
   compatibility profile은 후속 P1 범위다.
 - UI operation editor와 Windows validation host 지원은 후속 P1 범위다.

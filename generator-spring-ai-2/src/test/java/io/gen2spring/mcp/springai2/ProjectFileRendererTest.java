@@ -11,12 +11,14 @@ import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -115,9 +117,37 @@ class ProjectFileRendererTest {
         assertTrue(readme.contains("spring-ai-2.0-java21-mvc-streamable"));
         assertTrue(readme.contains("Spring Boot 4.1.0"));
         assertTrue(readme.contains("Spring AI 2.0.0"));
-        assertTrue(readme.contains("Known P0 limits"));
-        assertTrue(readme.contains("successful response bodies when present"));
+        assertTrue(readme.contains("## Response handling"));
+        assertTrue(readme.contains(
+                "Operations without response normalization return the provider's successful JSON body unchanged."));
+        assertTrue(readme.contains(
+                "Configured operations return `data`, optional `page.totalCount`, and optional `provider` metadata."));
+        assertTrue(readme.contains("Expected provider, HTTP, timeout, availability, protocol, and local-capacity "
+                + "failures return one MCP Tool error JSON payload with a local trace ID."));
+        assertTrue(readme.contains(
+                "Provider responses remain bounded to 1 MiB. Retry and pagination are not executed automatically."));
+        assertFalse(readme.contains("Known P0 limits"));
         assertTrue(readme.contains("-e PROVIDER_BASE_URL=https://api.example.test -e KMA_SERVICE_KEY"));
+    }
+
+    @Test
+    void rendersConfiguredResponsePoliciesInDeterministicOperationOrder() {
+        var zulu = normalized(tool("getZulu", "zulu", "zulu-key", "ZULU_KEY"),
+                new ResponseNormalizationPolicy("/zulu/data", "/zulu/code", List.of("OK"),
+                        "/zulu/message", "/zulu/count"));
+        var alpha = normalized(tool("getAlpha", "alpha", "alpha-key", "ALPHA_KEY"),
+                new ResponseNormalizationPolicy("/response/body/items/item", "/response/header/resultCode",
+                        List.of("00", new BigDecimal("1.50"), true), "/response/header/resultMsg",
+                        "/response/body/totalCount"));
+
+        String readme = renderer.readme(contextWithSecrets(List.of(zulu, alpha)));
+
+        assertTrue(readme.indexOf("`getAlpha`") < readme.indexOf("`getZulu`"));
+        assertTrue(readme.contains("`dataPath`: `/response/body/items/item`"));
+        assertTrue(readme.contains("`successCodePath`: `/response/header/resultCode`"));
+        assertTrue(readme.contains("`successValues`: `[\"00\",1.50,true]`"));
+        assertTrue(readme.contains("`errorMessagePath`: `/response/header/resultMsg`"));
+        assertTrue(readme.contains("`totalCountPath`: `/response/body/totalCount`"));
     }
 
     @Test
@@ -202,6 +232,18 @@ class ProjectFileRendererTest {
                         HttpMethod.GET, URI.create("https://api.example.test"), "/forecast", List.of()),
                 List.of(new SecretBinding(environmentVariable, propertyName, ParameterLocation.QUERY, "serviceKey", true)),
                 McpToolDefinition.OutputKind.GENERIC_JSON);
+    }
+
+    private McpToolDefinition normalized(
+            McpToolDefinition tool,
+            ResponseNormalizationPolicy normalization) {
+        HttpExecutionDefinition execution = tool.execution();
+        return new McpToolDefinition(
+                tool.operationId(), tool.name(), tool.description(), tool.inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
+                        execution.objectRequestBody(), execution.requestBodyRequired(), normalization),
+                tool.secretBindings(), tool.outputKind());
     }
 
     private void assertFilesEqual(java.util.Map<String, byte[]> first, java.util.Map<String, byte[]> second) {

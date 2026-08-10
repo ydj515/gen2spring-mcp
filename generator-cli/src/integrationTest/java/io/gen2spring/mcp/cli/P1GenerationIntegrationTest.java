@@ -56,8 +56,20 @@ class P1GenerationIntegrationTest {
             "src/main/java/com/example/weather/generated/model/GetForecastInput.java",
             "src/main/java/com/example/weather/generated/model/GetForecastLocation.java",
             "src/main/java/com/example/weather/generated/model/GetForecastModeValue.java",
+            "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java",
             "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java",
+            "src/main/java/com/example/weather/runtime/NormalizedSuccess.java",
             "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java",
+            "src/main/java/com/example/weather/runtime/OperationDefinition.java",
+            "src/main/java/com/example/weather/runtime/OperationOutcome.java",
+            "src/main/java/com/example/weather/runtime/ParameterBinding.java",
+            "src/main/java/com/example/weather/runtime/ParameterLocation.java",
+            "src/main/java/com/example/weather/runtime/ProviderError.java",
+            "src/main/java/com/example/weather/runtime/ProviderErrorCategory.java",
+            "src/main/java/com/example/weather/runtime/ProviderErrorException.java",
+            "src/main/java/com/example/weather/runtime/ResponseNormalizationPolicy.java",
+            "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
+            "src/main/java/com/example/weather/runtime/SecretBinding.java",
             "src/main/resources/application.yml",
             "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java");
 
@@ -185,6 +197,14 @@ class P1GenerationIntegrationTest {
         assertEquals(independentSourceChecksum(result.projectRoot()), result.sourceChecksum());
         assertEquals(List.of("getForecast"), manifest.path("operationMappings").findValuesAsText("operationId"));
         assertEquals(List.of(TOOL_NAME), manifest.path("operationMappings").findValuesAsText("toolName"));
+        JsonNode normalization = manifest.path("operationMappings").get(0).path("responseNormalization");
+        assertEquals(List.of("dataPath", "successCodePath", "successValues", "errorMessagePath", "totalCountPath"),
+                iterable(normalization.fieldNames()));
+        assertEquals("/response/body/items/item", normalization.path("dataPath").textValue());
+        assertEquals("/response/header/resultCode", normalization.path("successCodePath").textValue());
+        assertEquals(List.of("00"), JSON.convertValue(normalization.path("successValues"), List.class));
+        assertEquals("/response/header/resultMsg", normalization.path("errorMessagePath").textValue());
+        assertEquals("/response/body/totalCount", normalization.path("totalCountPath").textValue());
 
         JsonNode report = result.report();
         assertEquals("VALIDATED", report.path("status").asText());
@@ -201,6 +221,13 @@ class P1GenerationIntegrationTest {
         assertEquals(List.of(TOOL_DESCRIPTION), report.path("tools").findValuesAsText("description"));
         assertTrue(report.path("tools").get(0).path("inputSchemaPresent").asBoolean());
 
+        String generatedReadme = Files.readString(result.projectRoot().resolve("README.md"), UTF_8);
+        assertTrue(generatedReadme.contains("## Response handling"));
+        assertTrue(generatedReadme.contains("`getForecast`"));
+        assertTrue(generatedReadme.contains("`successValues`: `[\"00\"]`"));
+        assertFalse(generatedReadme.contains("Known P0 limits"));
+        assertFalse(generatedReadme.contains("\"response\": {"));
+
         String applicationYaml = Files.readString(
                 result.projectRoot().resolve("src/main/resources/application.yml"), UTF_8);
         assertTrue(applicationYaml.contains("${KMA_SERVICE_KEY:}"));
@@ -215,6 +242,12 @@ class P1GenerationIntegrationTest {
 
     private List<String> stageNames(JsonNode report) {
         return report.path("stages").findValuesAsText("stage");
+    }
+
+    private List<String> iterable(java.util.Iterator<String> values) {
+        List<String> result = new ArrayList<>();
+        values.forEachRemaining(result::add);
+        return result;
     }
 
     private JsonNode stage(JsonNode report, String stageName) {

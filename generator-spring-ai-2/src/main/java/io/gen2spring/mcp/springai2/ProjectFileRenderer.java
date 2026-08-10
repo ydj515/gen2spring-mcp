@@ -3,6 +3,7 @@ package io.gen2spring.mcp.springai2;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
@@ -11,6 +12,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
 import java.io.IOException;
@@ -31,6 +33,7 @@ public final class ProjectFileRenderer {
             .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
             .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES)
             .build();
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final CompatibilityProfile profile;
 
@@ -158,6 +161,7 @@ public final class ProjectFileRenderer {
                         + environmentVariables.stream().map(value -> "- `" + value + "`").reduce("", (left, right) -> left + right + "\n");
         String tools = renderedTools(context.tools());
         String dockerEnvironment = dockerEnvironment(context.tools());
+        String responseHandling = renderedResponseHandling(context.tools());
         var target = profile.target();
         return """
                 # %s
@@ -224,16 +228,12 @@ public final class ProjectFileRenderer {
                 - Spring Boot %s
                 - Spring AI %s
 
-                ## Known P0 limits
-
-                - Supports the generated P0 Spring MVC Streamable HTTP server only.
-                - Requires JSON request and successful response bodies when present; empty successful responses are supported.
-                - Does not generate OAuth flows, streaming provider responses, or non-JSON provider payload mappings.
+                %s
                 """.formatted(
                 coordinates.artifactId(), target.javaVersion(), secrets, coordinates.artifactId(), tools,
                 coordinates.artifactId(), dockerEnvironment, coordinates.artifactId(), profile.id(), profile.templateVersion(),
                 profile.generatorModule(), profile.runtimeVersion(), target.javaVersion(), target.springBootVersion(),
-                target.springAiVersion());
+                target.springAiVersion(), responseHandling);
     }
 
     public String gitignore() {
@@ -318,6 +318,59 @@ public final class ProjectFileRenderer {
                 .map(tool -> "- `" + tool.name() + "`: " + markdownText(tool.description()))
                 .reduce("", (left, right) -> left + right + "\n")
                 .stripTrailing();
+    }
+
+    private String renderedResponseHandling(List<McpToolDefinition> tools) {
+        String contract = """
+                ## Response handling
+
+                - Operations without response normalization return the provider's successful JSON body unchanged.
+                - Configured operations return `data`, optional `page.totalCount`, and optional `provider` metadata.
+                - Expected provider, HTTP, timeout, availability, protocol, and local-capacity failures return one MCP Tool error JSON payload with a local trace ID.
+                - Provider responses remain bounded to 1 MiB. Retry and pagination are not executed automatically.
+                """.stripTrailing();
+        if (tools == null) {
+            return contract;
+        }
+        String policies = tools.stream()
+                .filter(java.util.Objects::nonNull)
+                .filter(tool -> tool.execution() != null && tool.execution().responseNormalization() != null)
+                .sorted(Comparator.comparing(McpToolDefinition::operationId))
+                .map(this::renderedResponsePolicy)
+                .reduce("", (left, right) -> left.isEmpty() ? right : left + "\n" + right);
+        if (policies.isEmpty()) {
+            return contract;
+        }
+        return contract + "\n\n### Configured response normalization\n\n" + policies;
+    }
+
+    private String renderedResponsePolicy(McpToolDefinition tool) {
+        ResponseNormalizationPolicy policy = tool.execution().responseNormalization();
+        StringBuilder rendered = new StringBuilder("- `")
+                .append(markdownText(tool.operationId()))
+                .append("`\n");
+        appendPolicyPointer(rendered, "dataPath", policy.dataPointer());
+        appendPolicyPointer(rendered, "successCodePath", policy.successCodePointer());
+        if (!policy.successValues().isEmpty()) {
+            try {
+                rendered.append("  - `successValues`: `")
+                        .append(JSON.writeValueAsString(policy.successValues()))
+                        .append("`\n");
+            } catch (JsonProcessingException exception) {
+                throw GeneratorException.system(SOURCE_GENERATION_FAILED, "spring-ai-2-render",
+                        "Failed to render response normalization metadata", exception);
+            }
+        }
+        appendPolicyPointer(rendered, "errorMessagePath", policy.errorMessagePointer());
+        appendPolicyPointer(rendered, "totalCountPath", policy.totalCountPointer());
+        return rendered.toString().stripTrailing();
+    }
+
+    private void appendPolicyPointer(StringBuilder rendered, String name, String value) {
+        if (value != null) {
+            rendered.append("  - `").append(name).append("`: `")
+                    .append(markdownText(value)).append("`\n");
+        }
     }
 
     private String markdownText(String value) {
