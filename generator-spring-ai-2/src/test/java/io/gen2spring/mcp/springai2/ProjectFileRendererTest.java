@@ -182,6 +182,8 @@ class ProjectFileRendererTest {
         assertTrue(files.containsKey(".gitignore"));
         assertTrue(new String(files.get("gradle/wrapper/gradle-wrapper.properties"), UTF_8)
                 .contains("distributionUrl=https\\://services.gradle.org/distributions/gradle-9.6.1-bin.zip"));
+        assertTrue(new String(files.get("gradle/wrapper/gradle-wrapper.properties"), UTF_8)
+                .contains("distributionSha256Sum=9c0f7faeeb306cb14e4279a3e084ca6b596894089a0638e68a07c945a32c9e14"));
         assertTrue(files.get("gradle/wrapper/gradle-wrapper.jar").length > 40_000);
         assertTrue(new String(files.get("README.md"), UTF_8).contains("KMA_SERVICE_KEY"));
         assertTrue(new String(files.get("Dockerfile"), UTF_8).contains("weather-mcp-server.jar"));
