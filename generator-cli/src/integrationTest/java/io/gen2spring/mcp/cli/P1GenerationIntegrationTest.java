@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -51,24 +50,57 @@ import org.junit.jupiter.api.io.TempDir;
 class P1GenerationIntegrationTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String JAVA_17_HOME = "GEN2SPRING_JAVA_17_HOME";
+    private static final String JAVA_21_HOME = "GEN2SPRING_JAVA_21_HOME";
     private static final String TOOL_NAME = "kma_weather_get_forecast";
     private static final String TOOL_DESCRIPTION = "Get the public weather forecast for a grid location.";
     private static final String REPRESENTATIVE_STATION_ID = "STN01";
     private static final String LIVE_QUERY_SECRET = "independent-query-secret";
     private static final String LIVE_HEADER_SECRET = "independent-header-secret";
-    private static final ProfileCase JAVA_17 = new ProfileCase(
-            "spring-ai-2.0-java17-mvc-streamable",
+    private static final String JAVA_17_IMAGE = "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
+            + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8";
+    private static final String JAVA_21_IMAGE = "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
+            + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64";
+    private static final ProfileCase SPRING_AI_1_JAVA_17 = new ProfileCase(
+            "spring-ai-1.1-java17-mvc-streamable",
+            "generator-spring-ai-1",
+            "spring-ai-1-v1",
+            "3.5.16",
+            "1.1.8",
             17,
-            "config/weather-generation-java17.yaml",
-            "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
-                    + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
-    private static final ProfileCase JAVA_21 = new ProfileCase(
-            "spring-ai-2.0-java21-mvc-streamable",
+            JAVA_17_IMAGE,
+            "config/weather-generation-spring-ai1-java17.yaml");
+    private static final ProfileCase SPRING_AI_1_JAVA_21 = new ProfileCase(
+            "spring-ai-1.1-java21-mvc-streamable",
+            "generator-spring-ai-1",
+            "spring-ai-1-v1",
+            "3.5.16",
+            "1.1.8",
             21,
-            "config/weather-generation.yaml",
-            "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
-                    + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
-    private static final List<ProfileCase> PROFILE_CASES = List.of(JAVA_17, JAVA_21);
+            JAVA_21_IMAGE,
+            "config/weather-generation-spring-ai1-java21.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_17 = new ProfileCase(
+            "spring-ai-2.0-java17-mvc-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v2",
+            "4.1.0",
+            "2.0.0",
+            17,
+            JAVA_17_IMAGE,
+            "config/weather-generation-java17.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_21 = new ProfileCase(
+            "spring-ai-2.0-java21-mvc-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v2",
+            "4.1.0",
+            "2.0.0",
+            21,
+            JAVA_21_IMAGE,
+            "config/weather-generation.yaml");
+    private static final List<ProfileCase> PROFILE_CASES = List.of(
+            SPRING_AI_1_JAVA_17,
+            SPRING_AI_1_JAVA_21,
+            SPRING_AI_2_JAVA_17,
+            SPRING_AI_2_JAVA_21);
     private static final Set<String> REQUIRED_OUTPUTS = Set.of(
             ".dockerignore",
             ".gitignore",
@@ -113,13 +145,14 @@ class P1GenerationIntegrationTest {
     @Test
     void installedCliValidatesTheJavaProfileMatrixDeterministically() throws Exception {
         Path specification = resource("openapi/weather-api.yaml");
-        Path java17Home = requiredJava17Home();
+        TargetJavaHomes targetJavaHomes = targetJavaHomes();
+        assertInstalledProfileMatrix();
         assertFixturesDifferOnlyByProfile();
         Map<String, GenerationResult> firstByProfile = new LinkedHashMap<>();
 
         for (ProfileCase profile : PROFILE_CASES) {
             Path configuration = resource(profile.configurationResource());
-            String outputName = "weather-mcp-server-java" + profile.javaFeature();
+            String outputName = "weather-mcp-server-" + profile.id();
             GenerationResult first = generate(specification, configuration, tempDir.resolve(outputName));
             assertReleaseContract(first, specification, profile);
 
@@ -130,19 +163,22 @@ class P1GenerationIntegrationTest {
             assertEquals(first.manifest(), second.manifest(), profile.id());
             assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
             assertSensitiveValuesAbsent(first, REPRESENTATIVE_STATION_ID,
-                    "mcp-validation-secret-1", "mcp-validation-secret-2", java17Home.toString());
+                    "mcp-validation-secret-1", "mcp-validation-secret-2",
+                    targetJavaHomes.java17Home().toString(), targetJavaHomes.java21Home().toString());
             assertSensitiveValuesAbsent(second, REPRESENTATIVE_STATION_ID,
-                    "mcp-validation-secret-1", "mcp-validation-secret-2", java17Home.toString());
+                    "mcp-validation-secret-1", "mcp-validation-secret-2",
+                    targetJavaHomes.java17Home().toString(), targetJavaHomes.java21Home().toString());
             assertOperationalDetailsAbsent(first);
             assertOperationalDetailsAbsent(second);
             firstByProfile.put(profile.id(), first);
         }
 
-        assertNotEquals(
-                firstByProfile.get(JAVA_17.id()).sourceChecksum(),
-                firstByProfile.get(JAVA_21.id()).sourceChecksum());
+        assertEquals(4L, firstByProfile.values().stream()
+                .map(GenerationResult::sourceChecksum)
+                .distinct()
+                .count());
         for (ProfileCase profile : PROFILE_CASES) {
-            assertIndependentLiveMcpContract(firstByProfile.get(profile.id()), profile, java17Home);
+            assertIndependentLiveMcpContract(firstByProfile.get(profile.id()), profile, targetJavaHomes);
         }
     }
 
@@ -192,24 +228,62 @@ class P1GenerationIntegrationTest {
     }
 
     private InstalledCliResult runInstalledCli(Path specification, Path configuration, Path output) throws Exception {
-        Path executable = Path.of(System.getProperty("openapiMcp.executable"));
-        assertTrue(Files.isExecutable(executable));
-        ProcessBuilder processBuilder = new ProcessBuilder(
-                executable.toString(),
+        return runInstalledCliCommand(
                 "generate",
                 "--spec", specification.toString(),
                 "--config", configuration.toString(),
                 "--output", output.toString());
-        String java17Home = System.getenv(JAVA_17_HOME);
-        if (java17Home != null && !java17Home.isBlank()) {
-            processBuilder.environment().put(JAVA_17_HOME, java17Home);
-        }
+    }
+
+    private InstalledCliResult runInstalledCliCommand(String... arguments) throws Exception {
+        Path executable = Path.of(System.getProperty("openapiMcp.executable"));
+        assertTrue(Files.isExecutable(executable));
+        List<String> command = new ArrayList<>();
+        command.add(executable.toString());
+        command.addAll(List.of(arguments));
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        forwardExplicitJavaHome(processBuilder, JAVA_17_HOME);
+        forwardExplicitJavaHome(processBuilder, JAVA_21_HOME);
         try (ObservedProcess process = ObservedProcess.start(processBuilder)) {
             int exitCode = process.await(Duration.ofMinutes(5), "installed CLI timed out safely");
             return new InstalledCliResult(
                     exitCode,
                     new String(process.stdout().readAllBytes(), UTF_8),
                     new String(process.stderr().readAllBytes(), UTF_8));
+        }
+    }
+
+    private void forwardExplicitJavaHome(ProcessBuilder processBuilder, String variable) {
+        String configured = System.getenv(variable);
+        if (configured != null && !configured.isBlank()) {
+            processBuilder.environment().put(variable, configured);
+        }
+    }
+
+    private void assertInstalledProfileMatrix() throws Exception {
+        InstalledCliResult result = runInstalledCliCommand("profiles");
+
+        assertEquals(0, result.exitCode(), result.stderr());
+        assertEquals("", result.stderr());
+        JsonNode installedProfiles = JSON.readTree(result.stdout()).path("profiles");
+        assertEquals(PROFILE_CASES.size(), installedProfiles.size());
+        for (int index = 0; index < PROFILE_CASES.size(); index++) {
+            ProfileCase expected = PROFILE_CASES.get(index);
+            JsonNode actual = installedProfiles.get(index);
+            assertEquals(expected.id(), actual.path("id").asText());
+            assertEquals(expected.generatorModule(), actual.path("generatorModule").asText());
+            assertEquals(expected.templateVersion(), actual.path("templateVersion").asText());
+            assertEquals("0.2.0", actual.path("runtimeVersion").asText());
+            assertEquals("9.6.1", actual.path("gradleVersion").asText());
+            assertEquals(expected.containerImage(), actual.path("containerImage").asText());
+            assertEquals(expected.javaFeature(), actual.path("target").path("javaVersion").asInt());
+            assertEquals(expected.springBootVersion(),
+                    actual.path("target").path("springBootVersion").asText());
+            assertEquals(expected.springAiVersion(), actual.path("target").path("springAiVersion").asText());
+            assertEquals("GRADLE_KOTLIN", actual.path("target").path("buildTool").asText());
+            assertEquals("MVC", actual.path("target").path("webStack").asText());
+            assertEquals("SYNC", actual.path("target").path("programmingModel").asText());
+            assertEquals("STREAMABLE_HTTP", actual.path("target").path("transport").asText());
         }
     }
 
@@ -237,11 +311,11 @@ class P1GenerationIntegrationTest {
 
         JsonNode manifest = result.manifest();
         assertEquals("0.1.0", manifest.path("generatorVersion").asText());
-        assertEquals("spring-ai-2-v2", manifest.path("templateVersion").asText());
+        assertEquals(profile.templateVersion(), manifest.path("templateVersion").asText());
         assertEquals("0.2.0", manifest.path("runtimeVersion").asText());
         assertEquals(profile.id(), manifest.path("targetProfileId").asText());
-        assertEquals("4.1.0", manifest.path("springBootVersion").asText());
-        assertEquals("2.0.0", manifest.path("springAiVersion").asText());
+        assertEquals(profile.springBootVersion(), manifest.path("springBootVersion").asText());
+        assertEquals(profile.springAiVersion(), manifest.path("springAiVersion").asText());
         assertEquals(profile.javaFeature(), manifest.path("javaVersion").asInt());
         assertEquals("9.6.1", manifest.path("gradleVersion").asText());
         assertEquals(profile.containerImage(), manifest.path("containerImage").asText());
@@ -283,7 +357,8 @@ class P1GenerationIntegrationTest {
         String generatedReadme = Files.readString(result.projectRoot().resolve("README.md"), UTF_8);
         assertTrue(generatedReadme.contains("Requirements: Java " + profile.javaFeature() + "."));
         assertTrue(generatedReadme.contains("- Compatibility profile: `" + profile.id() + "`"));
-        assertTrue(generatedReadme.contains("- Template: `spring-ai-2-v2`"));
+        assertTrue(generatedReadme.contains("- Template: `" + profile.templateVersion() + "`"));
+        assertTrue(generatedReadme.contains("- Generator module: `" + profile.generatorModule() + "`"));
         assertTrue(generatedReadme.contains("- Runtime version: `0.2.0`"));
         assertTrue(generatedReadme.contains("- Gradle 9.6.1"));
         assertTrue(generatedReadme.contains("- Container image: `" + profile.containerImage() + "`"));
@@ -382,10 +457,10 @@ class P1GenerationIntegrationTest {
     private void assertIndependentLiveMcpContract(
             GenerationResult result,
             ProfileCase profile,
-            Path java17Home) throws Exception {
+            TargetJavaHomes targetJavaHomes) throws Exception {
         Path targetJavaHome = profile.javaFeature() == 17
-                ? java17Home
-                : Path.of(System.getProperty("java.home")).toAbsolutePath().normalize();
+                ? targetJavaHomes.java17Home()
+                : targetJavaHomes.java21Home();
         Path targetJava = targetJavaHome.resolve("bin/java");
         assertTrue(Files.isRegularFile(targetJava), "target Java executable is unavailable");
         buildBootJar(result.projectRoot(), targetJavaHome);
@@ -547,9 +622,15 @@ class P1GenerationIntegrationTest {
     }
 
     private void assertFixturesDifferOnlyByProfile() throws Exception {
-        String java21 = Files.readString(resource(JAVA_21.configurationResource()), UTF_8);
-        String java17 = Files.readString(resource(JAVA_17.configurationResource()), UTF_8);
-        assertEquals(java21.replace(JAVA_21.id(), JAVA_17.id()), java17);
+        assertFixtureDiffersOnlyByProfile(SPRING_AI_1_JAVA_17, SPRING_AI_2_JAVA_17);
+        assertFixtureDiffersOnlyByProfile(SPRING_AI_1_JAVA_21, SPRING_AI_2_JAVA_21);
+        assertFixtureDiffersOnlyByProfile(SPRING_AI_2_JAVA_17, SPRING_AI_2_JAVA_21);
+    }
+
+    private void assertFixtureDiffersOnlyByProfile(ProfileCase actual, ProfileCase reference) throws Exception {
+        String actualFixture = Files.readString(resource(actual.configurationResource()), UTF_8);
+        String referenceFixture = Files.readString(resource(reference.configurationResource()), UTF_8);
+        assertEquals(referenceFixture.replace(reference.id(), actual.id()), actualFixture);
     }
 
     private Path requiredJava17Home() {
@@ -559,6 +640,21 @@ class P1GenerationIntegrationTest {
         Path home = Path.of(configured).toAbsolutePath().normalize();
         assertTrue(Files.isRegularFile(home.resolve("bin/java")), JAVA_17_HOME);
         return home;
+    }
+
+    private TargetJavaHomes targetJavaHomes() {
+        Path java17Home = requiredJava17Home();
+        String configuredJava21Home = System.getenv(JAVA_21_HOME);
+        Path java21Home;
+        if (configuredJava21Home == null || configuredJava21Home.isBlank()) {
+            assertEquals(21, Runtime.version().feature(),
+                    JAVA_21_HOME + " is required when the integration-test JVM is not Java 21");
+            java21Home = Path.of(System.getProperty("java.home")).toAbsolutePath().normalize();
+        } else {
+            java21Home = Path.of(configuredJava21Home).toAbsolutePath().normalize();
+        }
+        assertTrue(Files.isRegularFile(java21Home.resolve("bin/java")), JAVA_21_HOME);
+        return new TargetJavaHomes(java17Home, java21Home);
     }
 
     private void assertCanonicalArchiveEntriesEqual(
@@ -1111,7 +1207,13 @@ class P1GenerationIntegrationTest {
 
     private record ProfileCase(
             String id,
+            String generatorModule,
+            String templateVersion,
+            String springBootVersion,
+            String springAiVersion,
             int javaFeature,
-            String configurationResource,
-            String containerImage) {}
+            String containerImage,
+            String configurationResource) {}
+
+    private record TargetJavaHomes(Path java17Home, Path java21Home) {}
 }
