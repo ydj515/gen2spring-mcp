@@ -102,10 +102,47 @@ class JavaSourceRendererTest {
                 ".serializationInclusion(JsonInclude.Include.NON_NULL)"));
         assertFalse(runtime.contains("changeDefaultPropertyInclusion"));
 
+        assertTelemetryExecutionContract(files, runtime);
+
         String contextTest = utf8(files.get(
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java"));
         assertTrue(contextTest.contains("webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT"));
         assertTrue(contextTest.contains("void contextLoads()"));
+        assertTrue(contextTest.contains(
+                "new OperationDefinition(\n                        \"getForecast\", \"GET\", \"/slow\""),
+                contextTest);
+    }
+
+    private void assertTelemetryExecutionContract(Map<String, byte[]> files, String runtime) {
+        String callbacks = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+        assertTrue(callbacks.contains("RuntimeTelemetry runtimeTelemetry"));
+        assertTrue(callbacks.contains("runtimeTelemetry.startToolCall(tool.name(), operationId)"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.Outcome.SUCCESS"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.ErrorCategory.ARGUMENT_CONVERSION"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.ErrorCategory.RESULT_CONVERSION"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.ErrorCategory.TOOL_EXECUTION"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.ErrorCategory.UNEXPECTED_RUNTIME"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.Outcome.FATAL"));
+
+        assertTrue(runtime.contains("ContextExecutorService.wrap(rawRequestExecutor)"));
+        assertTrue(runtime.contains("builder.requestFactory(requestFactory)"));
+        assertTrue(runtime.contains(".observationRegistry(ObservationRegistry.NOOP)"));
+        assertTrue(runtime.contains("runtimeTelemetry.registerExecutor(rawRequestExecutor)"));
+        assertTrue(runtime.contains("runtimeTelemetry.startProviderCall(operation.operationId(), operation.method())"));
+        assertTrue(runtime.contains("new ProviderAttempt("));
+        assertTrue(runtime.contains("completeProviderCall(providerCall"));
+        assertTrue(runtime.contains("removePropagationHeaders(headers)"));
+        assertTrue(runtime.contains("runtimeTelemetry.currentTraceparent()"));
+        assertTrue(runtime.contains("headers.set(\"traceparent\", traceparent)"));
+        assertTrue(runtime.contains("headers.forEach((name, ignored) ->"));
+        assertTrue(runtime.contains("namesToRemove.forEach(headers::remove)"));
+
+        String response = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/ResponseNormalizer.java"));
+        assertTrue(response.contains("RuntimeTelemetry runtimeTelemetry"));
+        assertTrue(response.contains("runtimeTelemetry.currentTraceIdOrFallback()"));
+        assertTrue(response.contains("new ProviderError(envelope, category, status)"));
     }
 
     @Test
@@ -317,7 +354,8 @@ class JavaSourceRendererTest {
 
         assertTrue(callbacks.contains("import com.fasterxml.jackson.databind.ObjectMapper;"), callbacks);
         assertTrue(callbacks.contains("ObjectMapper objectMapper)"), callbacks);
-        assertTrue(callbacks.contains(".build(), objectMapper)"), callbacks);
+        assertTrue(callbacks.contains(
+                ".build(), objectMapper, runtimeTelemetry, \"getForecast\")"), callbacks);
         assertTrue(callbacks.contains("objectMapper.writeValueAsString(request.arguments())"), callbacks);
         assertFalse(callbacks.contains("import com.fasterxml.jackson.databind.json.JsonMapper;"), callbacks);
         assertFalse(callbacks.contains("JsonMapper jsonMapper"), callbacks);

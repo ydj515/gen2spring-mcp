@@ -4,7 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 final class RuntimeSourceRenderer {
-    Map<String, String> render(String packageName, String packagePath, String domainClass) {
+    Map<String, String> render(
+            String packageName, String packagePath, String domainClass, String contextOperationId) {
         Map<String, String> sources = new LinkedHashMap<>();
         String runtimePath = "src/main/java/" + packagePath + "/runtime/";
         sources.put(runtimePath + "ParameterLocation.java", parameterLocation(packageName));
@@ -15,7 +16,7 @@ final class RuntimeSourceRenderer {
         sources.put("src/main/java/" + packagePath + "/application/" + domainClass + "McpApplication.java",
                 application(packageName, domainClass));
         sources.put("src/test/java/" + packagePath + "/application/" + domainClass + "McpApplicationTest.java",
-                contextTest(packageName, domainClass));
+                contextTest(packageName, domainClass, contextOperationId));
         return sources;
     }
 
@@ -143,7 +144,9 @@ final class RuntimeSourceRenderer {
                 import java.util.ArrayList;
                 import java.util.LinkedHashMap;
                 import java.util.List;
+                import java.util.Locale;
                 import java.util.Map;
+                import java.util.Set;
                 import java.util.concurrent.ArrayBlockingQueue;
                 import java.util.concurrent.ExecutionException;
                 import java.util.concurrent.ExecutorService;
@@ -152,7 +155,12 @@ final class RuntimeSourceRenderer {
                 import java.util.concurrent.TimeUnit;
                 import java.util.concurrent.TimeoutException;
                 import java.util.concurrent.ThreadPoolExecutor;
+                import io.micrometer.context.ContextExecutorService;
+                import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+                import io.micrometer.observation.ObservationRegistry;
+                import io.micrometer.tracing.Tracer;
                 import jakarta.annotation.PreDestroy;
+                import org.springframework.beans.factory.annotation.Autowired;
                 import org.springframework.core.env.Environment;
                 import org.springframework.http.HttpHeaders;
                 import org.springframework.http.HttpMethod;
@@ -173,17 +181,29 @@ final class RuntimeSourceRenderer {
                     private final Environment environment;
                     private final JsonMapper jsonMapper;
                     private final ResponseNormalizer responseNormalizer;
+                    private final RuntimeTelemetry runtimeTelemetry;
                     private final URI baseUrl;
                     private final int responseMaxBytes;
                     private final long totalTimeoutMillis;
+                    private final ThreadPoolExecutor rawRequestExecutor;
                     private final ExecutorService requestExecutor;
 
                     public OpenApiOperationExecutor(RestClient.Builder builder, Environment environment) {
+                        this(builder, environment, new RuntimeTelemetry(
+                                ObservationRegistry.NOOP, new SimpleMeterRegistry(), Tracer.NOOP));
+                    }
+
+                    @Autowired
+                    public OpenApiOperationExecutor(
+                            RestClient.Builder builder,
+                            Environment environment,
+                            RuntimeTelemetry runtimeTelemetry) {
                         this.environment = environment;
+                        this.runtimeTelemetry = java.util.Objects.requireNonNull(runtimeTelemetry);
                         this.jsonMapper = JsonMapper.builder()
                                 .serializationInclusion(JsonInclude.Include.NON_NULL)
                                 .build();
-                        this.responseNormalizer = new ResponseNormalizer();
+                        this.responseNormalizer = new ResponseNormalizer(runtimeTelemetry);
                         this.baseUrl = requireHttpUri(environment.getRequiredProperty("provider.base-url"));
                         this.responseMaxBytes = requireResponseLimit(
                                 environment.getRequiredProperty("provider.response-max-bytes", Integer.class));
@@ -201,8 +221,10 @@ final class RuntimeSourceRenderer {
                                 .connectTimeout(Duration.ofMillis(connectTimeoutMillis))
                                 .build());
                         requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMillis));
-                        this.restClient = builder.requestFactory(requestFactory).build();
-                        this.requestExecutor = new ThreadPoolExecutor(
+                        this.restClient = builder.requestFactory(requestFactory)
+                                .observationRegistry(ObservationRegistry.NOOP)
+                                .build();
+                        this.rawRequestExecutor = new ThreadPoolExecutor(
                                 maxConcurrentRequests,
                                 maxConcurrentRequests,
                                 0L,
@@ -214,6 +236,8 @@ final class RuntimeSourceRenderer {
                             return thread;
                                 },
                                 new ThreadPoolExecutor.AbortPolicy());
+                        runtimeTelemetry.registerExecutor(rawRequestExecutor);
+                        this.requestExecutor = ContextExecutorService.wrap(rawRequestExecutor);
                     }
 
                     public JsonNode execute(OperationDefinition operation, Map<String, Object> arguments) {
@@ -246,12 +270,34 @@ final class RuntimeSourceRenderer {
                             Map<String, Object> arguments,
                             List<String> secretNames,
                             List<String> secretValues) {
-                        Future<OperationOutcome> request = requestExecutor.submit(
-                                () -> executeSafely(operation, arguments, secretNames, secretValues));
+                        RuntimeTelemetry.Call providerCall = runtimeTelemetry.startProviderCall(operation.operationId(), operation.method());
+                        Future<ProviderAttempt> request;
+                        try (var ignored = providerCall.openScope()) {
+                            try {
+                                request = requestExecutor.submit(
+                                        () -> executeSafely(operation, arguments, secretNames, secretValues));
+                            } catch (RejectedExecutionException failure) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                        RuntimeTelemetry.ErrorCategory.LOCAL_RESOURCE,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                return providerError(
+                                        operation,
+                                        ProviderErrorCategory.LOCAL_RESOURCE,
+                                        null,
+                                        secretNames,
+                                        secretValues);
+                            }
+                        }
                         try {
-                            return request.get(totalTimeoutMillis, TimeUnit.MILLISECONDS);
+                            return completeProviderCall(providerCall,
+                                    request.get(totalTimeoutMillis, TimeUnit.MILLISECONDS));
                         } catch (TimeoutException failure) {
                             request.cancel(true);
+                            providerCall.complete(
+                                    RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                    RuntimeTelemetry.ErrorCategory.UPSTREAM_TIMEOUT,
+                                    RuntimeTelemetry.HttpStatusClass.NONE);
                             return providerError(
                                     operation,
                                     ProviderErrorCategory.UPSTREAM_TIMEOUT,
@@ -261,6 +307,10 @@ final class RuntimeSourceRenderer {
                         } catch (InterruptedException failure) {
                             request.cancel(true);
                             Thread.currentThread().interrupt();
+                            providerCall.complete(
+                                    RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                    RuntimeTelemetry.ErrorCategory.LOCAL_RESOURCE,
+                                    RuntimeTelemetry.HttpStatusClass.NONE);
                             return providerError(
                                     operation,
                                     ProviderErrorCategory.LOCAL_RESOURCE,
@@ -268,11 +318,30 @@ final class RuntimeSourceRenderer {
                                     secretNames,
                                     secretValues);
                         } catch (ExecutionException failure) {
-                            return mapFailure(operation, failure.getCause(), secretNames, secretValues);
+                            try {
+                                OperationOutcome outcome = mapFailure(
+                                        operation, failure.getCause(), secretNames, secretValues);
+                                Integer status = outcome instanceof ProviderError providerError
+                                        ? providerError.httpStatus() : null;
+                                return completeProviderCall(
+                                        providerCall, new ProviderAttempt(outcome, status, null));
+                            } catch (Error fatal) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.FATAL,
+                                        RuntimeTelemetry.ErrorCategory.FATAL,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                throw fatal;
+                            } catch (RuntimeException runtimeFailure) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.INTERNAL_ERROR,
+                                        RuntimeTelemetry.ErrorCategory.UNEXPECTED_RUNTIME,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                throw runtimeFailure;
+                            }
                         }
                     }
 
-                    private OperationOutcome executeSafely(
+                    private ProviderAttempt executeSafely(
                             OperationDefinition operation,
                             Map<String, Object> arguments,
                             List<String> secretNames,
@@ -306,6 +375,12 @@ final class RuntimeSourceRenderer {
                                     binding.targetName(), value, requestBody, operation.objectRequestBody());
                         }
 
+                        removePropagationHeaders(headers);
+                        String traceparent = runtimeTelemetry.currentTraceparent();
+                        if (traceparent != null) {
+                            headers.set("traceparent", traceparent);
+                        }
+
                         URI uri = uriBuilder.encode().buildAndExpand(pathVariables).toUri();
                         RestClient.RequestBodySpec request = restClient
                                 .method(HttpMethod.valueOf(operation.method()))
@@ -331,20 +406,76 @@ final class RuntimeSourceRenderer {
                                     readBounded(upstreamResponse.getBody(), status));
                         });
                         if (response == null) {
-                            return providerError(
+                            return new ProviderAttempt(providerError(
                                     operation,
                                     ProviderErrorCategory.UPSTREAM_PROTOCOL,
                                     null,
                                     secretNames,
-                                    secretValues);
+                                    secretValues), null, null);
                         }
-                        return responseNormalizer.normalize(
-                                operation,
+                        return new ProviderAttempt(
+                                responseNormalizer.normalize(
+                                        operation,
+                                        response.status(),
+                                        parseContentType(response.contentType()),
+                                        response.body(),
+                                        secretNames,
+                                        secretValues),
                                 response.status(),
-                                parseContentType(response.contentType()),
-                                response.body(),
-                                secretNames,
-                                secretValues);
+                                response.body().length);
+                    }
+
+                    private OperationOutcome completeProviderCall(
+                            RuntimeTelemetry.Call providerCall,
+                            ProviderAttempt attempt) {
+                        RuntimeTelemetry.HttpStatusClass statusClass = statusClass(attempt.httpStatus());
+                        if (attempt.httpStatus() != null) {
+                            providerCall.responseStatus(attempt.httpStatus());
+                        }
+                        if (attempt.responseBytes() != null) {
+                            runtimeTelemetry.recordResponseBytes(statusClass, attempt.responseBytes());
+                        }
+                        if (attempt.outcome() instanceof NormalizedSuccess) {
+                            providerCall.complete(
+                                    RuntimeTelemetry.Outcome.SUCCESS,
+                                    RuntimeTelemetry.ErrorCategory.NONE,
+                                    statusClass);
+                        } else {
+                            ProviderError providerError = (ProviderError) attempt.outcome();
+                            providerCall.complete(
+                                    RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                    RuntimeTelemetry.ErrorCategory.valueOf(providerError.category().name()),
+                                    statusClass);
+                        }
+                        return attempt.outcome();
+                    }
+
+                    private RuntimeTelemetry.HttpStatusClass statusClass(Integer status) {
+                        if (status == null) {
+                            return RuntimeTelemetry.HttpStatusClass.NONE;
+                        }
+                        if (status >= 200 && status < 300) {
+                            return RuntimeTelemetry.HttpStatusClass.SUCCESS;
+                        }
+                        if (status >= 400 && status < 500) {
+                            return RuntimeTelemetry.HttpStatusClass.CLIENT_ERROR;
+                        }
+                        if (status >= 500 && status < 600) {
+                            return RuntimeTelemetry.HttpStatusClass.SERVER_ERROR;
+                        }
+                        return RuntimeTelemetry.HttpStatusClass.OTHER;
+                    }
+
+                    private void removePropagationHeaders(HttpHeaders headers) {
+                        List<String> namesToRemove = new ArrayList<>();
+                        headers.forEach((name, ignored) -> {
+                            String normalized = name.toLowerCase(Locale.ROOT);
+                            if (Set.of("traceparent", "tracestate", "baggage", "b3").contains(normalized)
+                                    || normalized.startsWith("x-b3-")) {
+                                namesToRemove.add(name);
+                            }
+                        });
+                        namesToRemove.forEach(headers::remove);
                     }
 
                     private MediaType parseContentType(String contentType) {
@@ -590,6 +721,11 @@ final class RuntimeSourceRenderer {
 
                     private record RawResponse(int status, String contentType, byte[] body) {}
 
+                    private record ProviderAttempt(
+                            OperationOutcome outcome,
+                            Integer httpStatus,
+                            Integer responseBytes) {}
+
                     private static final class ResponseTooLargeException extends RuntimeException {
                         private final int status;
 
@@ -626,7 +762,7 @@ final class RuntimeSourceRenderer {
                 """.formatted(packageName, packageName, domainClass, domainClass);
     }
 
-    private String contextTest(String packageName, String domainClass) {
+    private String contextTest(String packageName, String domainClass, String operationId) {
         return """
                 package %s.application;
 
@@ -689,7 +825,8 @@ final class RuntimeSourceRenderer {
                     @Test
                     void slowUpstreamBodyTimesOutAndCancelsTheRequest() {
                         var exception = assertThrows(ProviderErrorException.class, () -> executor.execute(
-                                new OperationDefinition("GET", "/slow", List.of(), List.of()), Map.of()));
+                                new OperationDefinition(
+                                        %s, "GET", "/slow", List.of(), List.of(), false, false, null), Map.of()));
 
                         assertEquals("UPSTREAM_TIMEOUT",
                                 exception.error().payload().at("/error/category").textValue());
@@ -702,6 +839,8 @@ final class RuntimeSourceRenderer {
                         }
                     }
                 }
-                """.formatted(packageName, packageName, packageName, packageName, domainClass);
+                """.formatted(
+                        packageName, packageName, packageName, packageName, domainClass,
+                        JavaStringLiteral.quote(operationId));
     }
 }

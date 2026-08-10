@@ -83,9 +83,17 @@ final class ResponseRuntimeRenderer {
                 import java.util.Objects;
                 import com.fasterxml.jackson.databind.JsonNode;
 
-                public record ProviderError(JsonNode payload) implements OperationOutcome {
+                public record ProviderError(
+                        JsonNode payload,
+                        ProviderErrorCategory category,
+                        Integer httpStatus) implements OperationOutcome {
+                    public ProviderError(JsonNode payload) {
+                        this(payload, ProviderErrorCategory.UPSTREAM_PROTOCOL, null);
+                    }
+
                     public ProviderError {
                         Objects.requireNonNull(payload, "payload");
+                        Objects.requireNonNull(category, "category");
                     }
                 }
                 """.formatted(packageName);
@@ -147,6 +155,15 @@ final class ResponseRuntimeRenderer {
                             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
                             .build();
                     private final SecureRandom secureRandom = new SecureRandom();
+                    private final RuntimeTelemetry runtimeTelemetry;
+
+                    public ResponseNormalizer() {
+                        this.runtimeTelemetry = null;
+                    }
+
+                    public ResponseNormalizer(RuntimeTelemetry runtimeTelemetry) {
+                        this.runtimeTelemetry = Objects.requireNonNull(runtimeTelemetry, "runtimeTelemetry");
+                    }
 
                     public OperationOutcome normalize(
                             OperationDefinition operation,
@@ -246,10 +263,11 @@ final class ResponseRuntimeRenderer {
                             details.put("httpStatus", status);
                         }
                         details.put("operationId", operation.operationId());
-                        details.put("traceId", traceId());
+                        details.put("traceId", runtimeTelemetry == null
+                                ? traceId() : runtimeTelemetry.currentTraceIdOrFallback());
                         ObjectNode envelope = JsonNodeFactory.instance.objectNode();
                         envelope.set("error", details);
-                        return new ProviderError(envelope);
+                        return new ProviderError(envelope, category, status);
                     }
 
                     private ProviderError statusError(

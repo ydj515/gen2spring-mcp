@@ -70,7 +70,8 @@ public final class JavaSourceRenderer {
                 toolCallbackConfigurationRenderer.render(packageName, domainClass, tools, toolSchemas(tools)));
         put(sources, "src/main/java/" + packagePath + "/generated/metadata/" + domainClass + "Operations.java",
                 metadataRenderer.render(packageName, domainClass, tools));
-        putAll(sources, runtimeRenderer.render(packageName, packagePath, domainClass));
+        putAll(sources, runtimeRenderer.render(
+                packageName, packagePath, domainClass, tools.getFirst().operationId()));
         putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
         put(sources, "src/main/java/" + packagePath + "/runtime/RuntimeTelemetry.java",
                 runtimeTelemetryRenderer.render(packageName, tools));

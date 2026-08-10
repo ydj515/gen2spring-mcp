@@ -165,6 +165,9 @@ class GeneratedProjectSmokeTest {
         filesWithExecutorTest.put(
                 "src/test/java/com/example/weather/runtime/GeneratedExecutorFailureContractTest.java",
                 executorFailureContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        filesWithExecutorTest.put(
+                "src/test/java/com/example/weather/runtime/GeneratedTelemetryExecutionContractTest.java",
+                telemetryExecutionContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertProjectBuilds(tempDir.resolve("executor-failures"), filesWithExecutorTest);
     }
@@ -472,6 +475,106 @@ class GeneratedProjectSmokeTest {
         Path javaHome = Path.of(configured).toAbsolutePath().normalize();
         assertTrue(Files.isRegularFile(javaHome.resolve("bin/java")), environmentVariable);
         return javaHome;
+    }
+
+    private String telemetryExecutionContractTest() {
+        return """
+                package com.example.weather.runtime;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
+                import static org.junit.jupiter.api.Assertions.assertNotNull;
+                import static org.junit.jupiter.api.Assertions.assertNull;
+                import static org.junit.jupiter.api.Assertions.assertTrue;
+
+                import io.micrometer.core.instrument.DistributionSummary;
+                import io.micrometer.core.instrument.Gauge;
+                import io.micrometer.core.instrument.Timer;
+                import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler;
+                import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+                import io.micrometer.observation.ObservationRegistry;
+                import io.micrometer.tracing.Tracer;
+                import java.util.concurrent.ArrayBlockingQueue;
+                import java.util.concurrent.ThreadPoolExecutor;
+                import java.util.concurrent.TimeUnit;
+                import org.junit.jupiter.api.Test;
+
+                class GeneratedTelemetryExecutionContractTest {
+                    private static final String PROFILE =
+                            "spring-ai-2.0-java21-mvc-streamable";
+
+                    @Test
+                    void recordsCanonicalMetersAndStopsEachCallOnlyOnce() {
+                        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+                        ObservationRegistry observations = ObservationRegistry.create();
+                        observations.observationConfig()
+                                .observationHandler(new DefaultMeterObservationHandler(meters));
+                        RuntimeTelemetry telemetry = new RuntimeTelemetry(observations, meters, Tracer.NOOP);
+                        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                                1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
+                        try {
+                            telemetry.registerExecutor(executor);
+                            telemetry.registerExecutor(executor);
+                            RuntimeTelemetry.Call tool = telemetry.startToolCall(
+                                    "kma_weather_get_forecast", "getForecast");
+                            assertTrue(tool.complete(
+                                    RuntimeTelemetry.Outcome.SUCCESS,
+                                    RuntimeTelemetry.ErrorCategory.NONE,
+                                    RuntimeTelemetry.HttpStatusClass.NONE));
+                            assertFalse(tool.complete(
+                                    RuntimeTelemetry.Outcome.SUCCESS,
+                                    RuntimeTelemetry.ErrorCategory.NONE,
+                                    RuntimeTelemetry.HttpStatusClass.NONE));
+
+                            RuntimeTelemetry.Call provider = telemetry.startProviderCall("getForecast", "GET");
+                            provider.responseStatus(200);
+                            telemetry.recordResponseBytes(RuntimeTelemetry.HttpStatusClass.SUCCESS, 17);
+                            assertTrue(provider.complete(
+                                    RuntimeTelemetry.Outcome.SUCCESS,
+                                    RuntimeTelemetry.ErrorCategory.NONE,
+                                    RuntimeTelemetry.HttpStatusClass.SUCCESS));
+                            assertFalse(provider.complete(
+                                    RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                    RuntimeTelemetry.ErrorCategory.UPSTREAM_TIMEOUT,
+                                    RuntimeTelemetry.HttpStatusClass.NONE));
+
+                            Timer toolTimer = meters.find("gen2spring.runtime.mcp.tool.call")
+                                    .tags("target.profile", PROFILE,
+                                            "outcome", "success", "error.category", "none")
+                                    .timer();
+                            Timer providerTimer = meters.find("gen2spring.runtime.provider.request")
+                                    .tags("target.profile", PROFILE, "outcome", "success",
+                                            "error.category", "none", "http.status.class", "2xx")
+                                    .timer();
+                            DistributionSummary bytes = meters.find(
+                                            "gen2spring.runtime.provider.response.bytes")
+                                    .tags("target.profile", PROFILE, "http.status.class", "2xx")
+                                    .summary();
+                            Gauge active = meters.find("gen2spring.runtime.provider.executor.active")
+                                    .tag("target.profile", PROFILE).gauge();
+                            Gauge queued = meters.find("gen2spring.runtime.provider.executor.queued")
+                                    .tag("target.profile", PROFILE).gauge();
+
+                            assertNotNull(toolTimer);
+                            assertNotNull(providerTimer);
+                            assertNotNull(bytes);
+                            assertNotNull(active);
+                            assertNotNull(queued);
+                            assertEquals(1L, toolTimer.count());
+                            assertEquals(1L, providerTimer.count());
+                            assertEquals(1L, bytes.count());
+                            assertEquals(17.0, bytes.totalAmount());
+                            assertEquals(0.0, active.value());
+                            assertEquals(0.0, queued.value());
+                            assertNull(telemetry.currentTraceparent());
+                            assertTrue(telemetry.currentTraceIdOrFallback().matches("[0-9a-f]{32}"));
+                        } finally {
+                            executor.shutdownNow();
+                            meters.close();
+                        }
+                    }
+                }
+                """;
     }
 
     private String responseNormalizerContractTest() {
@@ -1035,6 +1138,7 @@ class GeneratedProjectSmokeTest {
 
                 import static org.junit.jupiter.api.Assertions.assertEquals;
                 import static org.junit.jupiter.api.Assertions.assertFalse;
+                import static org.junit.jupiter.api.Assertions.assertNotNull;
                 import static org.junit.jupiter.api.Assertions.assertNull;
                 import static org.junit.jupiter.api.Assertions.assertSame;
                 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -1068,7 +1172,7 @@ class GeneratedProjectSmokeTest {
                 import tools.jackson.databind.node.StringNode;
 
                 class GeneratedExecutorFailureContractTest {
-                    private static final String OPERATION_ID = "executorFailureOperation";
+                    private static final String OPERATION_ID = "getForecast";
                     private static final String PRIVATE_BODY_MARKER = "private-body-marker";
                     private static final String HEADER_MARKER = "header-secret-marker";
                     private static final String QUERY_MARKER = "query-secret-marker";
@@ -1076,6 +1180,8 @@ class GeneratedProjectSmokeTest {
                     private static final CountDownLatch BLOCKED_REQUEST = new CountDownLatch(1);
                     private static final CountDownLatch RELEASE_BLOCKED = new CountDownLatch(1);
                     private static final CountDownLatch INTERRUPT_REQUEST = new CountDownLatch(1);
+                    private static final AtomicReference<Map<String, List<String>>> PROPAGATION_HEADERS =
+                            new AtomicReference<>();
 
                     private static HttpServer server;
                     private static ExecutorService serverExecutor;
@@ -1115,6 +1221,14 @@ class GeneratedProjectSmokeTest {
                         server.createContext("/malformed-type-200", exchange -> malformedType(
                                 exchange, 200, "{'code':'00','message':'ok','data':{}}"));
                         server.createContext("/empty", GeneratedExecutorFailureContractTest::noContent);
+                        server.createContext("/propagation-defense", exchange -> {
+                            Map<String, List<String>> captured = new java.util.TreeMap<>(
+                                    String.CASE_INSENSITIVE_ORDER);
+                            exchange.getRequestHeaders().forEach(
+                                    (name, values) -> captured.put(name, List.copyOf(values)));
+                            PROPAGATION_HEADERS.set(Map.copyOf(captured));
+                            json(exchange, 200, "{'accepted':true}");
+                        });
                         server.createContext("/read-timeout", exchange -> {
                             sleep(Duration.ofMillis(500));
                             json(exchange, 200, "{'code':'00','message':'ok','data':{}}");
@@ -1246,6 +1360,48 @@ class GeneratedProjectSmokeTest {
                         assertFalse(caller.isAlive());
                         assertTrue(interruptPreserved.get());
                         assertError(interruption.get(), "LOCAL_RESOURCE", false, null);
+                    }
+
+                    @Test
+                    void removesUserControlledPropagationHeadersAfterAllBindings() {
+                        OpenApiOperationExecutor executor = executor(baseUrl, 512, 1000, 1000, 1, 1);
+                        OperationDefinition operation = new OperationDefinition(
+                                OPERATION_ID,
+                                "GET",
+                                "/propagation-defense",
+                                List.of(
+                                        new ParameterBinding("trace", ParameterLocation.HEADER, "TraceParent"),
+                                        new ParameterBinding("state", ParameterLocation.HEADER, "tracestate"),
+                                        new ParameterBinding("baggage", ParameterLocation.HEADER, "Baggage"),
+                                        new ParameterBinding("b3", ParameterLocation.HEADER, "b3"),
+                                        new ParameterBinding("xB3", ParameterLocation.HEADER, "X-B3-TraceId")),
+                                List.of(new SecretBinding(
+                                        "provider.secrets.authorization",
+                                        ParameterLocation.HEADER,
+                                        "X-B3-SpanId",
+                                        true)),
+                                false,
+                                false,
+                                null);
+                        try {
+                            assertTrue(executor.execute(operation, Map.of(
+                                    "trace", "00-11111111111111111111111111111111-2222222222222222-01",
+                                    "state", "private-state",
+                                    "baggage", "private-baggage",
+                                    "b3", "private-b3",
+                                    "xB3", "private-x-b3")).get("accepted").booleanValue());
+                        } finally {
+                            executor.shutdown();
+                        }
+
+                        Map<String, List<String>> captured = PROPAGATION_HEADERS.get();
+                        assertNotNull(captured);
+                        for (String forbidden : List.of(
+                                "traceparent", "tracestate", "baggage", "b3",
+                                "x-b3-traceid", "x-b3-spanid")) {
+                            assertFalse(captured.keySet().stream().anyMatch(forbidden::equalsIgnoreCase),
+                                    captured.toString());
+                        }
                     }
 
                     @Test
