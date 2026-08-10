@@ -100,13 +100,13 @@ public final class CompatibilityProfileRegistry {
                 + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64";
 
         private static final CompatibilityProfileRegistry INSTANCE = CompatibilityProfileRegistry.of(List.of(
-                profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v1",
+                profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v2",
                         17, JAVA_17_IMAGE),
-                profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v1",
+                profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v2",
                         21, JAVA_21_IMAGE),
-                profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v2",
+                profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v3",
                         17, JAVA_17_IMAGE),
-                profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v2",
+                profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v3",
                         21, JAVA_21_IMAGE)));
 
         private static CompatibilityProfile profile(
@@ -129,7 +129,7 @@ public final class CompatibilityProfileRegistry {
                             "STREAMABLE_HTTP"),
                     generatorModule,
                     templateVersion,
-                    "0.2.0",
+                    "0.3.0",
                     "9.6.1",
                     containerImage);
         }

@@ -41,16 +41,16 @@ class InstalledCliTest {
         assertEquals(4, installedProfiles.size());
         assertInstalledProfile(installedProfiles.get(0),
                 "spring-ai-1.1-java17-mvc-streamable", 17, "3.5.16", "1.1.8",
-                "generator-spring-ai-1", "spring-ai-1-v1", JAVA_17_IMAGE);
+                "generator-spring-ai-1", "spring-ai-1-v2", JAVA_17_IMAGE);
         assertInstalledProfile(installedProfiles.get(1),
                 "spring-ai-1.1-java21-mvc-streamable", 21, "3.5.16", "1.1.8",
-                "generator-spring-ai-1", "spring-ai-1-v1", JAVA_21_IMAGE);
+                "generator-spring-ai-1", "spring-ai-1-v2", JAVA_21_IMAGE);
         assertInstalledProfile(installedProfiles.get(2),
                 "spring-ai-2.0-java17-mvc-streamable", 17, "4.1.0", "2.0.0",
-                "generator-spring-ai-2", "spring-ai-2-v2", JAVA_17_IMAGE);
+                "generator-spring-ai-2", "spring-ai-2-v3", JAVA_17_IMAGE);
         assertInstalledProfile(installedProfiles.get(3),
                 "spring-ai-2.0-java21-mvc-streamable", 21, "4.1.0", "2.0.0",
-                "generator-spring-ai-2", "spring-ai-2-v2", JAVA_21_IMAGE);
+                "generator-spring-ai-2", "spring-ai-2-v3", JAVA_21_IMAGE);
 
         Path safeTemp = tempDir.toRealPath();
         Path specification = Files.writeString(safeTemp.resolve("weather.yaml"), """
@@ -299,7 +299,7 @@ class InstalledCliTest {
         assertEquals(id, profile.path("id").asText());
         assertEquals(generatorModule, profile.path("generatorModule").asText());
         assertEquals(templateVersion, profile.path("templateVersion").asText());
-        assertEquals("0.2.0", profile.path("runtimeVersion").asText());
+        assertEquals("0.3.0", profile.path("runtimeVersion").asText());
         assertEquals("9.6.1", profile.path("gradleVersion").asText());
         assertEquals(containerImage, profile.path("containerImage").asText());
         assertEquals(javaVersion, profile.path("target").path("javaVersion").asInt());

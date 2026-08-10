@@ -13,6 +13,7 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiParameter;
+import io.gen2spring.mcp.domain.observability.RuntimeObservabilityContract;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
@@ -34,6 +35,8 @@ import java.util.Map;
 import java.util.Set;
 
 public final class ToolModelFactory {
+    private static final String RESTRICTED_HEADER_MESSAGE =
+            "Operation uses a runtime-owned or restricted HTTP header";
     private static final Set<String> RUNTIME_OWNED_OR_RESTRICTED_HEADERS = Set.of(
             "accept", "content-type", "connection", "content-length", "expect", "host", "upgrade");
     private final ToolNamingPolicy namingPolicy;
@@ -371,9 +374,9 @@ public final class ToolModelFactory {
     private void rejectRuntimeOwnedOrRestrictedHeader(OpenApiDocument.ParameterLocation location, String name) {
         if (location == OpenApiDocument.ParameterLocation.HEADER
                 && name != null
-                && RUNTIME_OWNED_OR_RESTRICTED_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
-            throw GeneratorException.user(OPERATION_UNSUPPORTED, "tool-policy",
-                    "Operation uses a runtime-owned or restricted HTTP header: " + name);
+                && (RUNTIME_OWNED_OR_RESTRICTED_HEADERS.contains(name.toLowerCase(Locale.ROOT))
+                        || RuntimeObservabilityContract.isReservedPropagationHeader(name))) {
+            throw GeneratorException.user(OPERATION_UNSUPPORTED, "tool-policy", RESTRICTED_HEADER_MESSAGE);
         }
     }
 

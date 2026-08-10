@@ -31,16 +31,16 @@ class CompatibilityProfileRegistryTest {
 
         assertProfile(registry.profiles().get(0),
                 "spring-ai-1.1-java17-mvc-streamable", 17, "3.5.16", "1.1.8",
-                "generator-spring-ai-1", "spring-ai-1-v1", JAVA_17_IMAGE);
+                "generator-spring-ai-1", "spring-ai-1-v2", JAVA_17_IMAGE);
         assertProfile(registry.profiles().get(1),
                 "spring-ai-1.1-java21-mvc-streamable", 21, "3.5.16", "1.1.8",
-                "generator-spring-ai-1", "spring-ai-1-v1", JAVA_21_IMAGE);
+                "generator-spring-ai-1", "spring-ai-1-v2", JAVA_21_IMAGE);
         assertProfile(registry.profiles().get(2),
                 "spring-ai-2.0-java17-mvc-streamable", 17, "4.1.0", "2.0.0",
-                "generator-spring-ai-2", "spring-ai-2-v2", JAVA_17_IMAGE);
+                "generator-spring-ai-2", "spring-ai-2-v3", JAVA_17_IMAGE);
         assertProfile(registry.profiles().get(3),
                 "spring-ai-2.0-java21-mvc-streamable", 21, "4.1.0", "2.0.0",
-                "generator-spring-ai-2", "spring-ai-2-v2", JAVA_21_IMAGE);
+                "generator-spring-ai-2", "spring-ai-2-v3", JAVA_21_IMAGE);
     }
 
     @Test
@@ -172,7 +172,7 @@ class CompatibilityProfileRegistryTest {
                 "GRADLE_KOTLIN", "MVC", "SYNC", "STREAMABLE_HTTP"), profile.target());
         assertEquals(generatorModule, profile.generatorModule());
         assertEquals(templateVersion, profile.templateVersion());
-        assertEquals("0.2.0", profile.runtimeVersion());
+        assertEquals("0.3.0", profile.runtimeVersion());
         assertEquals("9.6.1", profile.gradleVersion());
         assertEquals(containerImage, profile.containerImage());
     }

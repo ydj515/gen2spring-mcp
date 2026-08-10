@@ -152,8 +152,8 @@ class GenerationPipelineTest {
         assertTrue(Files.isRegularFile(outcome.archive()));
         JsonNode manifest = objectMapper.readTree(outcome.projectRoot().resolve("GENERATION_MANIFEST.json").toFile());
         assertEquals("0.1.0", manifest.path("generatorVersion").asText());
-        assertEquals("spring-ai-2-v2", manifest.path("templateVersion").asText());
-        assertEquals("0.2.0", manifest.path("runtimeVersion").asText());
+        assertEquals("spring-ai-2-v3", manifest.path("templateVersion").asText());
+        assertEquals("0.3.0", manifest.path("runtimeVersion").asText());
         assertEquals("spring-ai-2.0-java21-mvc-streamable", manifest.path("targetProfileId").asText());
         assertEquals("4.1.0", manifest.path("springBootVersion").asText());
         assertEquals("2.0.0", manifest.path("springAiVersion").asText());

@@ -54,25 +54,25 @@ class CliApplicationTest {
         assertProfile(
                 profiles.get(0),
                 "spring-ai-1.1-java17-mvc-streamable",
-                17, "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v1",
+                17, "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v2",
                 "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
                         + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
         assertProfile(
                 profiles.get(1),
                 "spring-ai-1.1-java21-mvc-streamable",
-                21, "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v1",
+                21, "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v2",
                 "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
                         + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
         assertProfile(
                 profiles.get(2),
                 "spring-ai-2.0-java17-mvc-streamable",
-                17, "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v2",
+                17, "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v3",
                 "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
                         + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
         assertProfile(
                 profiles.get(3),
                 "spring-ai-2.0-java21-mvc-streamable",
-                21, "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v2",
+                21, "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v3",
                 "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
                         + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
         assertTrue(result.stdout().endsWith("\n"));
@@ -412,7 +412,7 @@ class CliApplicationTest {
         assertEquals(id, profile.path("id").asText());
         assertEquals(generatorModule, profile.path("generatorModule").asText());
         assertEquals(templateVersion, profile.path("templateVersion").asText());
-        assertEquals("0.2.0", profile.path("runtimeVersion").asText());
+        assertEquals("0.3.0", profile.path("runtimeVersion").asText());
         assertEquals("9.6.1", profile.path("gradleVersion").asText());
         assertEquals(containerImage, profile.path("containerImage").asText());
         JsonNode target = profile.path("target");
