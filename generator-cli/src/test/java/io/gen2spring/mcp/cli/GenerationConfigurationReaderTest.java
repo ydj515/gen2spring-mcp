@@ -25,7 +25,8 @@ class GenerationConfigurationReaderTest {
     @TempDir
     Path tempDir;
 
-    private final GenerationConfigurationReader reader = new GenerationConfigurationReader();
+    private final GenerationConfigurationReader reader =
+            new GenerationConfigurationReader(CompatibilityProfileRegistry.defaults());
 
     @Test
     void readsAndValidatesTheStrictConfiguration() throws Exception {

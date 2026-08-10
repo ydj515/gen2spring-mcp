@@ -68,15 +68,32 @@ class CliApplicationTest {
     }
 
     @Test
-    void compatibilityProfileConstructorExposesOnlyItsAdaptedProfile() throws Exception {
+    void compatibilityProfileConstructorRejectsConfigurationsOutsideItsAdaptedProfile() throws Exception {
+        Path safeTemp = tempDir.toRealPath();
+        Path specification = Files.writeString(safeTemp.resolve("legacy-weather.yaml"), simpleSpecification());
+        Path configuration = writeConfiguration(
+                "legacy-java17.yaml", "/config/weather-generation-java17.yaml");
+        Path output = safeTemp.resolve("legacy-java17-output");
+        boolean[] executorCalled = {false};
         var application = new CliApplication(
-                new CommandLine(), new GenerationConfigurationReader(), unusedAnalyzer(), unusedGenerator(),
+                new CommandLine(), new GenerationConfigurationReader(), unusedAnalyzer(), (spec, request, target) -> {
+                    executorCalled[0] = true;
+                    return new GenerationOutcome(target.toAbsolutePath().normalize(), null, UNVERIFIED, "checksum");
+                },
                 CompatibilityProfile.p0(), JSON);
 
         JsonNode profiles = JSON.readTree(run(application, "profiles").stdout()).path("profiles");
+        var generation = run(application, "generate", "--spec", specification.toString(),
+                "--config", configuration.toString(), "--output", output.toString());
 
         assertEquals(1, profiles.size());
         assertEquals("spring-ai-2.0-java21-mvc-streamable", profiles.get(0).path("id").asText());
+        assertEquals(2, generation.exitCode());
+        assertEquals("", generation.stdout());
+        assertTrue(generation.stderr().contains("Target profile is unavailable"));
+        assertFalse(generation.stderr().contains("spring-ai-2.0-java17-mvc-streamable"));
+        assertFalse(executorCalled[0]);
+        assertFalse(Files.exists(output));
     }
 
     @Test
@@ -419,7 +436,11 @@ class CliApplicationTest {
     }
 
     private Path writeConfiguration(String name) throws Exception {
-        try (var input = getClass().getResourceAsStream("/config/weather-generation.yaml")) {
+        return writeConfiguration(name, "/config/weather-generation.yaml");
+    }
+
+    private Path writeConfiguration(String name, String resource) throws Exception {
+        try (var input = getClass().getResourceAsStream(resource)) {
             if (input == null) {
                 throw new IllegalStateException("missing configuration fixture");
             }
