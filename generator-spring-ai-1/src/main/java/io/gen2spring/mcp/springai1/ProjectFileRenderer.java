@@ -119,6 +119,8 @@ public final class ProjectFileRenderer {
         server.put("streamable-http", Map.of("mcp-endpoint", "/mcp"));
         spring.put("ai", Map.of("mcp", Map.of("server", server)));
         root.put("spring", spring);
+        root.put("logging", Map.of(
+                "level", Map.of("org.springframework.ai.tool.method.MethodToolCallback", "ERROR")));
 
         Map<String, Object> provider = new LinkedHashMap<>();
         provider.put("base-url", "${PROVIDER_BASE_URL:https://api.example.test}");

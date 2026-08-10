@@ -58,6 +58,8 @@ class ProjectFileRendererTest {
         assertTrue(yaml.contains("max-concurrent-requests: 16"));
         assertTrue(yaml.contains("max-queued-requests: 64"));
         assertTrue(yaml.contains("service-key: \"${KMA_SERVICE_KEY:}\""));
+        assertTrue(yaml.contains("logging:\n  level:\n"
+                + "    org.springframework.ai.tool.method.MethodToolCallback: ERROR"));
         assertTrue(readme.contains("`dataPath`: `/response/body/items/item`"));
         assertTrue(readme.contains("`successCodePath`: `/response/header/resultCode`"));
         assertTrue(readme.contains("`successValues`: `[\"00\",1.50,true]`"));

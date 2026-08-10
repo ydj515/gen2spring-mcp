@@ -97,6 +97,9 @@ class JavaSourceRendererTest {
         assertTrue(runtime.contains("com.fasterxml.jackson.databind.JsonNode"));
         assertTrue(runtime.contains("com.fasterxml.jackson.databind.json.JsonMapper"));
         assertTrue(runtime.contains("com.fasterxml.jackson.core.JsonProcessingException"));
+        assertTrue(runtime.contains(
+                ".serializationInclusion(JsonInclude.Include.NON_NULL)"));
+        assertFalse(runtime.contains("changeDefaultPropertyInclusion"));
 
         String contextTest = utf8(files.get(
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java"));

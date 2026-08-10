@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.springai2;
+package io.gen2spring.mcp.springai1;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -45,8 +45,8 @@ class GeneratedSecretSafetyTest {
     private List<CompatibilityProfile> profiles() {
         var profiles = io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry.defaults();
         return List.of(
-                profiles.find("spring-ai-2.0-java17-mvc-streamable").orElseThrow(),
-                profiles.find("spring-ai-2.0-java21-mvc-streamable").orElseThrow());
+                profiles.find("spring-ai-1.1-java17-mvc-streamable").orElseThrow(),
+                profiles.find("spring-ai-1.1-java21-mvc-streamable").orElseThrow());
     }
 
     private String utf8(byte[] value) {

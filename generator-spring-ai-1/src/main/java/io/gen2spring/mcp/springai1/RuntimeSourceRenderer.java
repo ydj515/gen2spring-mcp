@@ -181,8 +181,7 @@ final class RuntimeSourceRenderer {
                     public OpenApiOperationExecutor(RestClient.Builder builder, Environment environment) {
                         this.environment = environment;
                         this.jsonMapper = JsonMapper.builder()
-                                .changeDefaultPropertyInclusion(inclusion ->
-                                        inclusion.withValueInclusion(JsonInclude.Include.NON_NULL))
+                                .serializationInclusion(JsonInclude.Include.NON_NULL)
                                 .build();
                         this.responseNormalizer = new ResponseNormalizer();
                         this.baseUrl = requireHttpUri(environment.getRequiredProperty("provider.base-url"));
