@@ -110,11 +110,11 @@ class ProjectFileRendererTest {
         CompatibilityProfile supported = profile(17);
         List<CompatibilityProfile> noncanonical = List.of(
                 new CompatibilityProfile(
-                        supported.id(), supported.target(), supported.generatorModule(), "spring-ai-2-v3",
+                        supported.id(), supported.target(), supported.generatorModule(), "spring-ai-2-v2",
                         supported.runtimeVersion(), supported.gradleVersion(), supported.containerImage()),
                 new CompatibilityProfile(
                         supported.id(), supported.target(), supported.generatorModule(), supported.templateVersion(),
-                        "0.3.0", supported.gradleVersion(), supported.containerImage()));
+                        "0.2.0", supported.gradleVersion(), supported.containerImage()));
 
         noncanonical.forEach(this::assertGenerationRejectedAsNoncanonical);
     }
@@ -207,8 +207,8 @@ class ProjectFileRendererTest {
             assertTrue(readme.contains("./gradlew test"), profile.id());
             assertTrue(readme.contains("docker build"), profile.id());
             assertTrue(readme.contains("- Compatibility profile: `" + profile.id() + "`"), profile.id());
-            assertTrue(readme.contains("- Template: `spring-ai-2-v2`"), profile.id());
-            assertTrue(readme.contains("- Runtime version: `0.2.0`"), profile.id());
+            assertTrue(readme.contains("- Template: `spring-ai-2-v3`"), profile.id());
+            assertTrue(readme.contains("- Runtime version: `0.3.0`"), profile.id());
             assertTrue(readme.contains("- Gradle 9.6.1"), profile.id());
             assertTrue(readme.contains("- Container image: `" + profile.containerImage() + "`"), profile.id());
             assertTrue(readme.contains("- Spring Boot 4.1.0"), profile.id());
@@ -355,8 +355,8 @@ class ProjectFileRendererTest {
         assertTrue(build.contains("spring-ai-bom:2.0.0"), profile.id());
         assertTrue(build.contains("JavaLanguageVersion.of(" + javaVersion + ")"), profile.id());
         assertTrue(readme.contains("- Compatibility profile: `" + profile.id() + "`"), profile.id());
-        assertTrue(readme.contains("- Template: `spring-ai-2-v2`"), profile.id());
-        assertTrue(readme.contains("- Runtime version: `0.2.0`"), profile.id());
+        assertTrue(readme.contains("- Template: `spring-ai-2-v3`"), profile.id());
+        assertTrue(readme.contains("- Runtime version: `0.3.0`"), profile.id());
         assertTrue(readme.contains("- Gradle 9.6.1"), profile.id());
         assertTrue(readme.contains("- Container image: `" + containerImage + "`"), profile.id());
         assertTrue(new String(files.get("gradle/wrapper/gradle-wrapper.properties"), UTF_8)

@@ -89,10 +89,10 @@ class ProjectFileRendererTest {
                 profileFrom("spring-ai-2.0-java17-mvc-streamable"),
                 copy(canonical, canonical.id(), target, canonical.generatorModule(), canonical.templateVersion(),
                         canonical.runtimeVersion(), canonical.gradleVersion(), JAVA_17_IMAGE + "\nRUN injected"),
-                copy(canonical, canonical.id(), target, canonical.generatorModule(), "spring-ai-1-v2",
+                copy(canonical, canonical.id(), target, canonical.generatorModule(), "spring-ai-1-v1",
                         canonical.runtimeVersion(), canonical.gradleVersion(), canonical.containerImage()),
                 copy(canonical, canonical.id(), target, canonical.generatorModule(), canonical.templateVersion(),
-                        "0.3.0", canonical.gradleVersion(), canonical.containerImage()),
+                        "0.2.0", canonical.gradleVersion(), canonical.containerImage()),
                 copy(canonical, canonical.id(), new CompatibilityProfile.TargetPlatform(
                                 17, "3.5.15", "1.1.8", "GRADLE_KOTLIN", "MVC", "SYNC", "STREAMABLE_HTTP"),
                         canonical.generatorModule(), canonical.templateVersion(), canonical.runtimeVersion(),
@@ -146,9 +146,9 @@ class ProjectFileRendererTest {
         assertTrue(yaml.contains("annotation-scanner:\n          enabled: false"), profile.id());
         assertTrue(yaml.contains("mcp-endpoint: /mcp"), profile.id());
         assertTrue(readme.contains("- Compatibility profile: `" + profile.id() + "`"), profile.id());
-        assertTrue(readme.contains("- Template: `spring-ai-1-v1`"), profile.id());
+        assertTrue(readme.contains("- Template: `spring-ai-1-v2`"), profile.id());
         assertTrue(readme.contains("- Generator module: `generator-spring-ai-1`"), profile.id());
-        assertTrue(readme.contains("- Runtime version: `0.2.0`"), profile.id());
+        assertTrue(readme.contains("- Runtime version: `0.3.0`"), profile.id());
         assertTrue(readme.contains("- Gradle 9.6.1"), profile.id());
         assertTrue(readme.contains("- Container image: `" + image + "`"), profile.id());
         assertTrue(readme.contains("Requirements: Java " + javaVersion), profile.id());
