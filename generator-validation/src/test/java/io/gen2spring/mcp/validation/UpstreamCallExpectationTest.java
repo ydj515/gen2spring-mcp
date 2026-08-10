@@ -7,8 +7,11 @@ import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.PATH;
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.QUERY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
@@ -16,12 +19,16 @@ import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
 import java.net.URI;
+import java.util.AbstractMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class UpstreamCallExpectationTest {
+    private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+
     @Test
     void derivesTheExactWeatherWireContractFromSourceArgumentsAndWireTargets() {
         var call = call(
@@ -233,6 +240,90 @@ class UpstreamCallExpectationTest {
     }
 
     @Test
+    void preservesEmptyAndBlankResponseKeysAcrossExpectationDerivation() {
+        ExpectedToolCall legacy = call(
+                GET, "/items", List.of(), false, false, List.of(), Map.of());
+        Map<String, Object> responseBody = new LinkedHashMap<>();
+        responseBody.put("", true);
+        responseBody.put("items", Map.of("", Map.of(" ", true)));
+        ExpectedToolCall configured = new ExpectedToolCall(
+                legacy.tool(),
+                legacy.arguments(),
+                new ExpectedUpstreamResponse(200, "application/json", responseBody),
+                Map.of(" ", Map.of("", true)));
+
+        UpstreamCallExpectation expectation = UpstreamCallExpectation.from(configured);
+
+        assertEquals(
+                Map.of("", true, "items", Map.of("", Map.of(" ", true))),
+                expectation.responseBody());
+        assertThrows(UnsupportedOperationException.class,
+                () -> ((Map<String, Object>) expectation.responseBody()).put("extra", true));
+        var unsafeKeyFailure = assertThrows(
+                IllegalArgumentException.class,
+                () -> expectationWithResponse(Map.of("unsafe\nkey", true)));
+        assertEquals("Expected Tool call response fixture is invalid", unsafeKeyFailure.getMessage());
+    }
+
+    @Test
+    void enforcesTheSerializedUtf8ResponseLimitDuringExpectationConstruction() throws Exception {
+        String escapedAndNonAsciiPrefix = "\"\n가";
+        int serializedPrefixBytes = 2 + 2 + 2 + 3;
+        String justUnder = escapedAndNonAsciiPrefix
+                + "x".repeat(MAX_RESPONSE_BYTES - serializedPrefixBytes - 1);
+        String exact = escapedAndNonAsciiPrefix
+                + "x".repeat(MAX_RESPONSE_BYTES - serializedPrefixBytes);
+        String over = escapedAndNonAsciiPrefix
+                + "x".repeat(MAX_RESPONSE_BYTES - serializedPrefixBytes + 1);
+        ObjectMapper mapper = new ObjectMapper();
+
+        assertEquals(MAX_RESPONSE_BYTES - 1, mapper.writeValueAsBytes(justUnder).length);
+        assertEquals(MAX_RESPONSE_BYTES, mapper.writeValueAsBytes(exact).length);
+        assertEquals(MAX_RESPONSE_BYTES + 1, mapper.writeValueAsBytes(over).length);
+        assertDoesNotThrow(() -> expectationWithResponse(justUnder));
+        assertDoesNotThrow(() -> expectationWithResponse(exact));
+        var directFailure = assertThrows(
+                IllegalArgumentException.class,
+                () -> expectationWithResponse(over));
+        assertEquals("Expected Tool call response fixture exceeded the size limit", directFailure.getMessage());
+        assertFalse(directFailure.getMessage().contains("가"));
+
+        Map<String, List<String>> queryThatMustNotBeCopied = new AbstractMap<>() {
+            @Override
+            public Set<Entry<String, List<String>>> entrySet() {
+                throw new AssertionError("request fields must not be copied after an oversized response");
+            }
+        };
+        var earlyFailure = assertThrows(
+                IllegalArgumentException.class,
+                () -> new UpstreamCallExpectation(
+                        "getForecast",
+                        "GET",
+                        "/items",
+                        queryThatMustNotBeCopied,
+                        Map.of(),
+                        null,
+                        Map.of(),
+                        200,
+                        "application/json",
+                        over));
+        assertEquals("Expected Tool call response fixture exceeded the size limit", earlyFailure.getMessage());
+
+        ExpectedToolCall legacy = call(
+                GET, "/items", List.of(), false, false, List.of(), Map.of());
+        ExpectedToolCall configured = new ExpectedToolCall(
+                legacy.tool(),
+                legacy.arguments(),
+                new ExpectedUpstreamResponse(200, "application/json", over),
+                Map.of("data", true));
+        var factoryFailure = assertThrows(
+                IllegalArgumentException.class,
+                () -> UpstreamCallExpectation.from(configured));
+        assertEquals("Expected Tool call response fixture exceeded the size limit", factoryFailure.getMessage());
+        assertFalse(factoryFailure.getMessage().contains("가"));
+    }
+
+    @Test
     void rejectsInvalidResponseStatusAndContentTypeWithoutEchoingValues() {
         for (ExpectedUpstreamResponse response : List.of(
                 new ExpectedUpstreamResponse(99, "application/json", Map.of()),
@@ -251,8 +342,22 @@ class UpstreamCallExpectationTest {
                     () -> UpstreamCallExpectation.from(configured));
 
             assertEquals("Expected Tool call response fixture is invalid", failure.getMessage());
-            org.junit.jupiter.api.Assertions.assertFalse(failure.getMessage().contains("private"));
+            assertFalse(failure.getMessage().contains("private"));
         }
+    }
+
+    private UpstreamCallExpectation expectationWithResponse(Object responseBody) {
+        return new UpstreamCallExpectation(
+                "getForecast",
+                "GET",
+                "/items",
+                Map.of(),
+                Map.of(),
+                null,
+                Map.of(),
+                200,
+                "application/json",
+                responseBody);
     }
 
     private ExpectedToolCall call(

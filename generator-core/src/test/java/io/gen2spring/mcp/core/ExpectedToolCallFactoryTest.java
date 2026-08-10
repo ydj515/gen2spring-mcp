@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
 import io.gen2spring.mcp.domain.error.GeneratorException;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
@@ -167,6 +168,36 @@ class ExpectedToolCallFactoryTest {
                         200, "application/json", java.util.Collections.singletonMap("value", null)).body());
         assertThrows(IllegalArgumentException.class,
                 () -> new ExpectedUpstreamResponse(200, "application/json", new AtomicInteger(1)));
+    }
+
+    @Test
+    void permitsBlankResponseKeysButKeepsArgumentsAndSchemasStrict() {
+        Map<String, Object> responseBody = new LinkedHashMap<>();
+        responseBody.put("", Map.of(" ", true));
+        Map<String, Object> expectedResult = new LinkedHashMap<>();
+        expectedResult.put(" ", Map.of("", true));
+
+        ExpectedToolCall expected = new ExpectedToolCall(
+                weatherTool(),
+                validArguments(),
+                new ExpectedUpstreamResponse(200, "application/json", responseBody),
+                expectedResult);
+
+        assertEquals(Map.of("", Map.of(" ", true)), expected.upstreamResponse().body());
+        assertEquals(Map.of(" ", Map.of("", true)), expected.expectedResult());
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedToolCall(weatherTool(), Map.of("", true)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedTool("description", Map.of(" ", true)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedUpstreamResponse(
+                        200, "application/json", Map.of("unsafe\nkey", true)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedToolCall(
+                        weatherTool(),
+                        validArguments(),
+                        new ExpectedUpstreamResponse(200, "application/json", Map.of()),
+                        Map.of("unsafe\u0000key", true)));
     }
 
     @Test

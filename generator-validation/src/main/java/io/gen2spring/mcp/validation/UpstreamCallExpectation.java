@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.validation;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
@@ -33,9 +35,15 @@ public record UpstreamCallExpectation(
         Object responseBody) {
     private static final Pattern PATH_VARIABLE = Pattern.compile("\\{([^{}]+)}");
     private static final String SECRET_PREFIX = "mcp-validation-secret-";
+    private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+    private static final ObjectMapper RESPONSE_MAPPER = new ObjectMapper();
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 
     public UpstreamCallExpectation {
+        if (responseStatus < 100 || responseStatus > 599 || !validContentType(responseContentType)) {
+            throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
+        }
+        requireBoundedResponse(responseBody);
         operationId = requireNonBlank(operationId, "Upstream expectation operation ID is missing");
         method = requireNonBlank(method, "Upstream expectation HTTP method is missing");
         rawPath = requireNonBlank(rawPath, "Upstream expectation path is missing");
@@ -43,9 +51,6 @@ public record UpstreamCallExpectation(
         headers = immutableStringLists(headers);
         body = immutableJson(body);
         environmentOverrides = immutableStrings(environmentOverrides);
-        if (responseStatus < 100 || responseStatus > 599 || !validContentType(responseContentType)) {
-            throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
-        }
         responseBody = immutableResponseJson(responseBody);
     }
 
@@ -355,7 +360,8 @@ public record UpstreamCallExpectation(
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
             map.forEach((key, item) -> {
-                if (!(key instanceof String name) || name.isBlank()) {
+                if (!(key instanceof String name)
+                        || name.chars().anyMatch(Character::isISOControl)) {
                     throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
                 }
                 copy.put(name, immutableResponseJson(item));
@@ -368,6 +374,18 @@ public record UpstreamCallExpectation(
             return Collections.unmodifiableList(copy);
         }
         throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
+    }
+
+    private static void requireBoundedResponse(Object value) {
+        byte[] serialized;
+        try {
+            serialized = RESPONSE_MAPPER.writeValueAsBytes(value);
+        } catch (JsonProcessingException | IllegalArgumentException failure) {
+            throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
+        }
+        if (serialized.length > MAX_RESPONSE_BYTES) {
+            throw new IllegalArgumentException("Expected Tool call response fixture exceeded the size limit");
+        }
     }
 
     private static boolean validContentType(String value) {

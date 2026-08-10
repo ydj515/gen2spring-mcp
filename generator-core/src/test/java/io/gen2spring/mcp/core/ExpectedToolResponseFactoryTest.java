@@ -86,6 +86,26 @@ class ExpectedToolResponseFactoryTest {
     }
 
     @Test
+    void preservesEmptyAndBlankRfc6901ObjectTokens() {
+        ExpectedToolResponse rootEmpty = factory.create(tool(policy(
+                "/", null, List.of(), null, null)));
+        ExpectedToolResponse nestedEmpty = factory.create(tool(policy(
+                "/items/", null, List.of(), null, null)));
+        ExpectedToolResponse nestedBlank = factory.create(tool(policy(
+                "/items/ ", null, List.of(), null, null)));
+        Map<String, Object> marker = Map.of("validated", true, "operationId", "getForecast");
+
+        assertEquals(marker, ((Map<?, ?>) rootEmpty.upstreamResponse().body()).get(""));
+        assertEquals(Map.of("data", marker), rootEmpty.expectedResult());
+        assertEquals(marker, ((Map<?, ?>) ((Map<?, ?>)
+                nestedEmpty.upstreamResponse().body()).get("items")).get(""));
+        assertEquals(Map.of("data", marker), nestedEmpty.expectedResult());
+        assertEquals(marker, ((Map<?, ?>) ((Map<?, ?>)
+                nestedBlank.upstreamResponse().body()).get("items")).get(" "));
+        assertEquals(Map.of("data", marker), nestedBlank.expectedResult());
+    }
+
+    @Test
     void letsConfiguredMetadataReplaceAnArtificialMarkerProperty() {
         ExpectedToolResponse result = factory.create(tool(policy(
                 "/payload", "/payload/validated", List.of("00"), null, null)));

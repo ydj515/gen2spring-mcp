@@ -61,16 +61,14 @@ class MockUpstreamServerTest {
     }
 
     @Test
-    void rejectsConfiguredResponsesLargerThanOneMebibyteWithoutLeakingTheBody() {
-        UpstreamCallExpectation expectation = expectation(
-                200,
-                "application/json",
-                Map.of("private", SENSITIVE_OBSERVED_VALUE + "x".repeat(1024 * 1024)));
-
+    void rejectsConfiguredResponsesLargerThanOneMebibyteBeforeServerStartWithoutLeakingTheBody() {
         var failure = assertThrows(IllegalArgumentException.class,
-                () -> MockUpstreamServer.start(expectation));
+                () -> expectation(
+                        200,
+                        "application/json",
+                        Map.of("private", SENSITIVE_OBSERVED_VALUE + "x".repeat(1024 * 1024))));
 
-        assertEquals("Mock upstream response fixture exceeded the size limit", failure.getMessage());
+        assertEquals("Expected Tool call response fixture exceeded the size limit", failure.getMessage());
         assertFalse(failure.getMessage().contains(SENSITIVE_OBSERVED_VALUE));
     }
 

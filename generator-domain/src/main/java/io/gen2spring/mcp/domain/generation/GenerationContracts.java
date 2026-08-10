@@ -49,13 +49,13 @@ public final class GenerationContracts {
             if (description == null || inputSchema == null) {
                 throw new IllegalArgumentException("Expected Tool metadata is incomplete");
             }
-            inputSchema = immutableMap(inputSchema, false);
+            inputSchema = immutableMap(inputSchema, false, false);
         }
     }
 
     public record ExpectedUpstreamResponse(int status, String contentType, Object body) {
         public ExpectedUpstreamResponse {
-            body = immutableJsonValue(body, true);
+            body = immutableJsonValue(body, true, true);
         }
     }
 
@@ -68,8 +68,8 @@ public final class GenerationContracts {
             if (tool == null || arguments == null || upstreamResponse == null) {
                 throw new IllegalArgumentException("Expected Tool call is incomplete");
             }
-            arguments = immutableMap(arguments, false);
-            expectedResult = immutableJsonValue(expectedResult, true);
+            arguments = immutableMap(arguments, false, false);
+            expectedResult = immutableJsonValue(expectedResult, true, true);
         }
 
         public ExpectedToolCall(McpToolDefinition tool, Map<String, Object> arguments) {
@@ -114,18 +114,32 @@ public final class GenerationContracts {
         return Collections.unmodifiableMap(result);
     }
 
-    private static Map<String, Object> immutableMap(Map<?, ?> source, boolean allowNull) {
+    private static Map<String, Object> immutableMap(
+            Map<?, ?> source,
+            boolean allowNull,
+            boolean allowBlankKeys) {
         Map<String, Object> copy = new LinkedHashMap<>();
         source.forEach((key, value) -> {
-            if (!(key instanceof String name) || name.isBlank()) {
-                throw new IllegalArgumentException("Schema object keys must be non-blank strings");
+            if (!(key instanceof String name) || invalidObjectKey(name, allowBlankKeys)) {
+                throw new IllegalArgumentException(allowBlankKeys
+                        ? "Response object keys must be safe JSON strings"
+                        : "Schema object keys must be non-blank strings");
             }
-            copy.put(name, immutableJsonValue(value, allowNull));
+            copy.put(name, immutableJsonValue(value, allowNull, allowBlankKeys));
         });
         return Collections.unmodifiableMap(copy);
     }
 
-    private static Object immutableJsonValue(Object value, boolean allowNull) {
+    private static boolean invalidObjectKey(String name, boolean allowBlankKeys) {
+        return allowBlankKeys
+                ? name.chars().anyMatch(Character::isISOControl)
+                : name.isBlank();
+    }
+
+    private static Object immutableJsonValue(
+            Object value,
+            boolean allowNull,
+            boolean allowBlankKeys) {
         if (value == null) {
             if (allowNull) {
                 return null;
@@ -133,11 +147,11 @@ public final class GenerationContracts {
             throw new IllegalArgumentException("Schema values must use JSON-compatible immutable types");
         }
         if (value instanceof Map<?, ?> map) {
-            return immutableMap(map, allowNull);
+            return immutableMap(map, allowNull, allowBlankKeys);
         }
         if (value instanceof List<?> list) {
             List<Object> copy = new ArrayList<>(list.size());
-            list.forEach(item -> copy.add(immutableJsonValue(item, allowNull)));
+            list.forEach(item -> copy.add(immutableJsonValue(item, allowNull, allowBlankKeys)));
             return Collections.unmodifiableList(copy);
         }
         if (value instanceof String || value instanceof Boolean
