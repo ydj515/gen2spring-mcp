@@ -840,6 +840,8 @@ class GeneratedRuntimeRegressionTest {
                                 "weather_internal_failure", "{}"));
                         assertTrue(internalFailure.has("error"), internalFailure.toString());
                         assertFalse(internalFailure.has("result"), internalFailure.toString());
+                        assertEquals(-32603, internalFailure.at("/error/code").intValue(),
+                                internalFailure.toString());
                         assertEquals("Generated Tool execution failed",
                                 internalFailure.at("/error/message").textValue());
                         assertNoPrivateFailureDetail(internalFailure.toString());
