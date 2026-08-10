@@ -234,6 +234,23 @@ class JavaSourceRendererTest {
     }
 
     @Test
+    void rendersSafeDiagnosticsForUnexpectedFailuresAndRethrowsFatalErrors() {
+        String callbacks = utf8(renderer.render(contextWithWeatherTool()).get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+
+        assertTrue(callbacks.contains("LoggerFactory.getLogger(WeatherMcpToolCallbacks.class)"));
+        assertTrue(callbacks.contains(
+                "generated_tool_adapter_failure tool={} exception={} cause={}"));
+        assertTrue(callbacks.contains("failure.getClass().getName()"));
+        assertTrue(callbacks.contains("cause.getClass().getName()"));
+        assertTrue(callbacks.contains("failure.getCause() instanceof Error fatal"));
+        assertTrue(callbacks.contains("throw fatal;"));
+        assertFalse(callbacks.contains("logger.error(\"generated_tool_adapter_failure\", failure)"));
+        assertFalse(callbacks.contains("failure.getMessage()"));
+        assertFalse(callbacks.contains("failure.toString()"));
+    }
+
+    @Test
     void importsCollectionAndDecimalTypesUsedByGeneratedInputs() {
         ApiSchema number = schema(SchemaType.NUMBER, null, null, null, null, null, null, List.of());
         ApiSchema strings = new ApiSchema(

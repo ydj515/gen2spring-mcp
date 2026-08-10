@@ -26,6 +26,8 @@ final class ToolCallbackConfigurationRenderer {
                 "org.springframework.ai.tool.method.MethodToolCallback",
                 "org.springframework.context.annotation.Bean",
                 "org.springframework.context.annotation.Configuration",
+                "org.slf4j.Logger",
+                "org.slf4j.LoggerFactory",
                 "tools.jackson.core.JacksonException",
                 "tools.jackson.databind.json.JsonMapper"));
         for (McpToolDefinition tool : tools) {
@@ -49,6 +51,8 @@ final class ToolCallbackConfigurationRenderer {
         StringBuilder source = new StringBuilder("package ").append(packageName).append(".generated.tool;\n\n");
         imports.forEach(value -> source.append("import ").append(value).append(";\n"));
         source.append("\n@Configuration\npublic class ").append(domainClass).append("McpToolCallbacks {\n")
+                .append("    private static final Logger logger = LoggerFactory.getLogger(")
+                .append(domainClass).append("McpToolCallbacks.class);\n\n")
                 .append("    private final ").append(domainClass).append("McpTools tools;\n\n")
                 .append("    public ").append(domainClass).append("McpToolCallbacks(")
                 .append(domainClass).append("McpTools tools) {\n")
@@ -108,18 +112,33 @@ final class ToolCallbackConfigurationRenderer {
                 .append("                                        .isError(true)\n")
                 .append("                                        .build();\n")
                 .append("                            } catch (JacksonException serializationFailure) {\n")
+                .append("                                logSafeFailure(tool.name(), serializationFailure);\n")
                 .append("                                throw new IllegalStateException(\n")
                 .append("                                        \"Generated Tool result conversion failed\");\n")
                 .append("                            }\n")
                 .append("                        }\n")
+                .append("                        if (failure.getCause() instanceof Error fatal) {\n")
+                .append("                            throw fatal;\n")
+                .append("                        }\n")
+                .append("                        logSafeFailure(tool.name(), failure);\n")
                 .append("                        throw new IllegalStateException(\"Generated Tool execution failed\");\n")
                 .append("                    } catch (JacksonException failure) {\n")
+                .append("                        logSafeFailure(tool.name(), failure);\n")
                 .append("                        throw new IllegalStateException(\"Generated Tool argument conversion failed\");\n")
                 .append("                    } catch (RuntimeException failure) {\n")
+                .append("                        logSafeFailure(tool.name(), failure);\n")
                 .append("                        throw new IllegalStateException(\"Generated Tool execution failed\");\n")
                 .append("                    }\n")
                 .append("                })\n")
                 .append("                .build();\n")
+                .append("    }\n\n")
+                .append("    private static void logSafeFailure(String toolName, Throwable failure) {\n")
+                .append("        Throwable cause = failure.getCause();\n")
+                .append("        logger.error(\n")
+                .append("                \"generated_tool_adapter_failure tool={} exception={} cause={}\",\n")
+                .append("                toolName,\n")
+                .append("                failure.getClass().getName(),\n")
+                .append("                cause == null ? \"none\" : cause.getClass().getName());\n")
                 .append("    }\n\n")
                 .append("    private static Method toolMethod(String name, Class<?>... parameterTypes) {\n")
                 .append("        try {\n")

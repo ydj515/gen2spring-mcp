@@ -71,17 +71,34 @@ class GeneratedProjectSmokeTest {
                 new HttpExecutionDefinition(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/internal-failure", List.of(),
                         false, false, normalization),
+                List.of(new SecretBinding(
+                        "PROVIDER_SECRET", "service-secret", ParameterLocation.HEADER,
+                        "X-Service-Secret", true)), McpToolDefinition.OutputKind.GENERIC_JSON);
+        var fatalFailure = new McpToolDefinition(
+                "fatalFailure", "weather_fatal_failure", "Trigger a fatal failure.", List.of(),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), "/fatal-failure", List.of(),
+                        false, false, normalization),
                 List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(success, providerFailure, internalFailure)))
+                .generate(JavaSourceRendererTest.context(
+                        List.of(success, providerFailure, internalFailure, fatalFailure)))
                 .files();
         java.util.Map<String, byte[]> filesWithMcpTest = new java.util.LinkedHashMap<>(files);
         String toolPath = "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java";
         String tools = new String(files.get(toolPath), java.nio.charset.StandardCharsets.UTF_8)
                 .replace(
                         "return executor.execute(WeatherOperations.INTERNAL_FAILURE, input.toArguments());",
-                        "throw new IllegalStateException(\"private-internal-marker\");");
+                        "throw new IllegalStateException(\"private-internal-marker configured-secret-marker "
+                                + "raw-private-body-marker\", "
+                                + "new IllegalArgumentException(\"private-cause-marker\"));")
+                .replace(
+                        "return executor.execute(WeatherOperations.FATAL_FAILURE, input.toArguments());",
+                        "throw com.example.weather.application.FatalFailureProbe.ERROR;");
         filesWithMcpTest.put(toolPath, tools.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        filesWithMcpTest.put(
+                "src/main/java/com/example/weather/application/FatalFailureProbe.java",
+                fatalFailureProbe().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         filesWithMcpTest.put(
                 "src/test/java/com/example/weather/application/GeneratedMcpAdapterContractTest.java",
                 mcpAdapterContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -650,10 +667,14 @@ class GeneratedProjectSmokeTest {
                 import static org.junit.jupiter.api.Assertions.assertEquals;
                 import static org.junit.jupiter.api.Assertions.assertFalse;
                 import static org.junit.jupiter.api.Assertions.assertNotNull;
+                import static org.junit.jupiter.api.Assertions.assertSame;
+                import static org.junit.jupiter.api.Assertions.assertThrows;
                 import static org.junit.jupiter.api.Assertions.assertTrue;
 
                 import com.sun.net.httpserver.HttpExchange;
                 import com.sun.net.httpserver.HttpServer;
+                import io.modelcontextprotocol.server.McpServerFeatures;
+                import io.modelcontextprotocol.spec.McpSchema;
                 import java.io.IOException;
                 import java.net.InetSocketAddress;
                 import java.net.URI;
@@ -663,10 +684,17 @@ class GeneratedProjectSmokeTest {
                 import java.nio.charset.StandardCharsets;
                 import java.time.Duration;
                 import java.util.HashSet;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.concurrent.atomic.AtomicInteger;
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
+                import org.junit.jupiter.api.extension.ExtendWith;
+                import org.springframework.beans.factory.annotation.Autowired;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.boot.test.web.server.LocalServerPort;
+                import org.springframework.boot.test.system.CapturedOutput;
+                import org.springframework.boot.test.system.OutputCaptureExtension;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
                 import tools.jackson.databind.JsonNode;
@@ -678,10 +706,17 @@ class GeneratedProjectSmokeTest {
                                 "provider.response-max-bytes=1024",
                                 "provider.connect-timeout-millis=1000",
                                 "provider.read-timeout-millis=1000",
-                                "provider.total-timeout-millis=1000"
+                                "provider.total-timeout-millis=1000",
+                                "provider.secrets.service-secret=configured-secret-marker"
                         })
+                @ExtendWith(OutputCaptureExtension.class)
                 class GeneratedMcpAdapterContractTest {
                     private static HttpServer provider;
+                    private static final AtomicInteger providerFailureCalls = new AtomicInteger();
+
+                    @Autowired
+                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    private List<McpServerFeatures.SyncToolSpecification> specifications;
 
                     @LocalServerPort
                     private int port;
@@ -697,8 +732,10 @@ class GeneratedProjectSmokeTest {
                             provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
                             provider.createContext("/success", exchange -> respond(
                                     exchange, "{'code':'00','message':'OK','data':{'forecast':'sunny'}}"));
-                            provider.createContext("/provider-failure", exchange -> respond(
-                                    exchange, "{'code':'BUSINESS_42','message':'Safe provider failure'}"));
+                            provider.createContext("/provider-failure", exchange -> {
+                                providerFailureCalls.incrementAndGet();
+                                respond(exchange, "{'code':'BUSINESS_42','message':'Safe provider failure'}");
+                            });
                             provider.start();
                         } catch (IOException failure) {
                             throw new IllegalStateException(failure);
@@ -708,7 +745,8 @@ class GeneratedProjectSmokeTest {
                     }
 
                     @Test
-                    void separatesSuccessfulProviderAndInternalToolResultsOverStreamableHttp() throws Exception {
+                    void separatesSuccessfulProviderAndInternalToolResultsOverStreamableHttp(
+                            CapturedOutput output) throws Exception {
                         URI endpoint = URI.create("http://127.0.0.1:" + port + "/mcp");
                         HttpResponse<String> initialize = post(endpoint,
                                 "{'jsonrpc':'2.0','id':1,'method':'initialize','params':"
@@ -720,10 +758,10 @@ class GeneratedProjectSmokeTest {
                         JsonNode toolsResponse = response(post(endpoint,
                                 "{'jsonrpc':'2.0','id':2,'method':'tools/list','params':{}}", sessionId));
                         JsonNode tools = toolsResponse.path("result").path("tools");
-                        assertEquals(3, tools.size(), toolsResponse.toString());
+                        assertEquals(4, tools.size(), toolsResponse.toString());
                         var names = new HashSet<String>();
                         tools.forEach(tool -> names.add(tool.path("name").stringValue()));
-                        assertEquals(3, names.size(), toolsResponse.toString());
+                        assertEquals(4, names.size(), toolsResponse.toString());
                         assertEquals(json("{'type':'object','properties':{'city':"
                                         + "{'type':'string','description':'City'}},'required':['city']}"),
                                 tool(tools, "weather_get_success").path("inputSchema"));
@@ -733,6 +771,8 @@ class GeneratedProjectSmokeTest {
                                 tool(tools, "weather_get_provider_failure").path("inputSchema"));
                         assertEquals(json("{'type':'object','properties':{},'required':[]}"),
                                 tool(tools, "weather_internal_failure").path("inputSchema"));
+                        assertEquals(json("{'type':'object','properties':{},'required':[]}"),
+                                tool(tools, "weather_fatal_failure").path("inputSchema"));
 
                         JsonNode success = response(call(endpoint, sessionId, 3,
                                 "weather_get_success", "{'city':'Seoul'}"));
@@ -748,14 +788,76 @@ class GeneratedProjectSmokeTest {
                         assertEquals("PROVIDER_BUSINESS",
                                 parseOnlyText(providerResult).at("/error/category").stringValue());
 
-                        JsonNode internalFailure = response(call(endpoint, sessionId, 5,
+                        assertSafeValidationFailure(response(call(endpoint, sessionId, 5,
+                                "weather_get_provider_failure", "{}")));
+                        assertSafeValidationFailure(response(call(endpoint, sessionId, 6,
+                                "weather_get_provider_failure", "{'code':'raw-body-marker'}")));
+                        assertSafeValidationFailure(response(call(endpoint, sessionId, 7,
+                                "weather_get_provider_failure", "{'code':11}")));
+                        assertEquals(1, providerFailureCalls.get(), "schema-invalid calls reached provider");
+
+                        JsonNode internalFailure = response(call(endpoint, sessionId, 8,
                                 "weather_internal_failure", "{}"));
                         assertTrue(internalFailure.has("error"), internalFailure.toString());
                         assertFalse(internalFailure.has("result"), internalFailure.toString());
                         assertEquals("Generated Tool execution failed",
                                 internalFailure.at("/error/message").stringValue());
-                        assertFalse(internalFailure.toString().contains("private-internal-marker"),
+                        assertNoPrivateFailureDetail(internalFailure.toString());
+                        assertFalse(internalFailure.toString().contains("ToolExecutionException"),
                                 internalFailure.toString());
+
+                        String captured = output.getAll();
+                        String diagnostic = captured.lines()
+                                .filter(line -> line.contains("generated_tool_adapter_failure"))
+                                .findFirst()
+                                .orElseThrow(() -> new AssertionError("Missing safe adapter diagnostic:\\n" + captured));
+                        assertTrue(diagnostic.contains("tool=weather_internal_failure"), diagnostic);
+                        assertTrue(diagnostic.contains(
+                                "exception=org.springframework.ai.tool.execution.ToolExecutionException"), diagnostic);
+                        assertTrue(diagnostic.contains("cause=java.lang.IllegalStateException"), diagnostic);
+                        assertNoPrivateFailureDetail(diagnostic);
+                        assertFalse(diagnostic.contains("arguments="), diagnostic);
+                        assertFalse(diagnostic.contains("ToolExecutionException:"), diagnostic);
+                        assertNoPrivateFailureDetail(captured);
+                    }
+
+                    @Test
+                    void rethrowsTheOriginalFatalErrorInstance() {
+                        McpServerFeatures.SyncToolSpecification fatal = specifications.stream()
+                                .filter(specification -> "weather_fatal_failure"
+                                        .equals(specification.tool().name()))
+                                .findFirst()
+                                .orElseThrow();
+
+                        Error thrown = assertThrows(Error.class, () -> fatal.callHandler().apply(
+                                null, new McpSchema.CallToolRequest(
+                                        "weather_fatal_failure", Map.of())));
+
+                        assertSame(FatalFailureProbe.ERROR, thrown);
+                    }
+
+                    private void assertSafeValidationFailure(JsonNode response) throws Exception {
+                        assertFalse(response.has("error"), response.toString());
+                        JsonNode result = response.path("result");
+                        assertTrue(result.path("isError").booleanValue(), response.toString());
+                        assertEquals(1, result.path("content").size(), response.toString());
+                        assertEquals("text", result.path("content").get(0).path("type").stringValue(),
+                                response.toString());
+                        assertNoPrivateFailureDetail(response.toString());
+                        assertFalse(response.toString().contains("PROVIDER_BUSINESS"), response.toString());
+                        assertFalse(response.toString().contains("Generated Tool execution failed"),
+                                response.toString());
+                    }
+
+                    private void assertNoPrivateFailureDetail(String value) {
+                        assertFalse(value.contains("private-internal-marker"), value);
+                        assertFalse(value.contains("private-cause-marker"), value);
+                        assertFalse(value.contains("raw-private-body-marker"), value);
+                        assertFalse(value.contains("raw-body-marker"), value);
+                        assertFalse(value.contains("configured-secret-marker"), value);
+                        assertFalse(value.contains("IllegalArgumentException"), value);
+                        assertFalse(value.contains("at com.example"), value);
+                        assertFalse(value.contains("\\tat "), value);
                     }
 
                     private HttpResponse<String> call(
@@ -831,6 +933,19 @@ class GeneratedProjectSmokeTest {
                         if (provider != null) {
                             provider.stop(0);
                         }
+                    }
+                }
+                """;
+    }
+
+    private String fatalFailureProbe() {
+        return """
+                package com.example.weather.application;
+
+                public final class FatalFailureProbe {
+                    public static final AssertionError ERROR = new AssertionError("private-fatal-marker");
+
+                    private FatalFailureProbe() {
                     }
                 }
                 """;
