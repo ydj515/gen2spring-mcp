@@ -63,7 +63,7 @@ class P1GenerationIntegrationTest {
     private static final ProfileCase SPRING_AI_1_JAVA_17 = new ProfileCase(
             "spring-ai-1.1-java17-mvc-streamable",
             "generator-spring-ai-1",
-            "spring-ai-1-v1",
+            "spring-ai-1-v2",
             "3.5.16",
             "1.1.8",
             17,
@@ -72,7 +72,7 @@ class P1GenerationIntegrationTest {
     private static final ProfileCase SPRING_AI_1_JAVA_21 = new ProfileCase(
             "spring-ai-1.1-java21-mvc-streamable",
             "generator-spring-ai-1",
-            "spring-ai-1-v1",
+            "spring-ai-1-v2",
             "3.5.16",
             "1.1.8",
             21,
@@ -81,7 +81,7 @@ class P1GenerationIntegrationTest {
     private static final ProfileCase SPRING_AI_2_JAVA_17 = new ProfileCase(
             "spring-ai-2.0-java17-mvc-streamable",
             "generator-spring-ai-2",
-            "spring-ai-2-v2",
+            "spring-ai-2-v3",
             "4.1.0",
             "2.0.0",
             17,
@@ -90,7 +90,7 @@ class P1GenerationIntegrationTest {
     private static final ProfileCase SPRING_AI_2_JAVA_21 = new ProfileCase(
             "spring-ai-2.0-java21-mvc-streamable",
             "generator-spring-ai-2",
-            "spring-ai-2-v2",
+            "spring-ai-2-v3",
             "4.1.0",
             "2.0.0",
             21,
@@ -134,6 +134,7 @@ class P1GenerationIntegrationTest {
             "src/main/java/com/example/weather/runtime/ProviderErrorException.java",
             "src/main/java/com/example/weather/runtime/ResponseNormalizationPolicy.java",
             "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
+            "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
             "src/main/java/com/example/weather/runtime/SecretBinding.java",
             "src/main/resources/application.yml",
             "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
@@ -274,7 +275,7 @@ class P1GenerationIntegrationTest {
             assertEquals(expected.id(), actual.path("id").asText());
             assertEquals(expected.generatorModule(), actual.path("generatorModule").asText());
             assertEquals(expected.templateVersion(), actual.path("templateVersion").asText());
-            assertEquals("0.2.0", actual.path("runtimeVersion").asText());
+            assertEquals("0.3.0", actual.path("runtimeVersion").asText());
             assertEquals("9.6.1", actual.path("gradleVersion").asText());
             assertEquals(expected.containerImage(), actual.path("containerImage").asText());
             assertEquals(expected.javaFeature(), actual.path("target").path("javaVersion").asInt());
@@ -313,7 +314,7 @@ class P1GenerationIntegrationTest {
         JsonNode manifest = result.manifest();
         assertEquals("0.1.0", manifest.path("generatorVersion").asText());
         assertEquals(profile.templateVersion(), manifest.path("templateVersion").asText());
-        assertEquals("0.2.0", manifest.path("runtimeVersion").asText());
+        assertEquals("0.3.0", manifest.path("runtimeVersion").asText());
         assertEquals(profile.id(), manifest.path("targetProfileId").asText());
         assertEquals(profile.springBootVersion(), manifest.path("springBootVersion").asText());
         assertEquals(profile.springAiVersion(), manifest.path("springAiVersion").asText());
@@ -360,7 +361,7 @@ class P1GenerationIntegrationTest {
         assertTrue(generatedReadme.contains("- Compatibility profile: `" + profile.id() + "`"));
         assertTrue(generatedReadme.contains("- Template: `" + profile.templateVersion() + "`"));
         assertTrue(generatedReadme.contains("- Generator module: `" + profile.generatorModule() + "`"));
-        assertTrue(generatedReadme.contains("- Runtime version: `0.2.0`"));
+        assertTrue(generatedReadme.contains("- Runtime version: `0.3.0`"));
         assertTrue(generatedReadme.contains("- Gradle 9.6.1"));
         assertTrue(generatedReadme.contains("- Container image: `" + profile.containerImage() + "`"));
         assertTrue(generatedReadme.contains("- Java " + profile.javaFeature()));
@@ -473,8 +474,68 @@ class P1GenerationIntegrationTest {
             awaitApplication(application, applicationPort);
             new RawMcpClient(URI.create("http://127.0.0.1:" + applicationPort + "/mcp"))
                     .validate(expectedInputSchema(), normalizedResult());
+            assertIndependentMetrics(applicationPort, profile);
             upstream.sealAndAssert(Duration.ofMillis(250));
         }
+    }
+
+    private void assertIndependentMetrics(int applicationPort, ProfileCase profile) throws Exception {
+        URI endpoint = URI.create("http://127.0.0.1:" + applicationPort + "/actuator/prometheus");
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+        HttpResponse<String> response = client.send(HttpRequest.newBuilder(endpoint)
+                        .timeout(Duration.ofSeconds(5)).GET().build(),
+                HttpResponse.BodyHandlers.ofString(UTF_8));
+        assertEquals(200, response.statusCode(), "Prometheus endpoint is not available");
+        String scrape = response.body();
+        Set<String> helpNames = new TreeSet<>();
+        scrape.lines()
+                .filter(line -> line.startsWith("# HELP gen2spring_runtime_"))
+                .map(line -> line.split(" ", 3)[2].split(" ", 2)[0])
+                .forEach(helpNames::add);
+        assertEquals(Set.of(
+                "gen2spring_runtime_mcp_tool_call_seconds",
+                "gen2spring_runtime_mcp_tool_call_seconds_max",
+                "gen2spring_runtime_provider_request_seconds",
+                "gen2spring_runtime_provider_request_seconds_max",
+                "gen2spring_runtime_provider_response_bytes",
+                "gen2spring_runtime_provider_response_bytes_max",
+                "gen2spring_runtime_provider_executor_active",
+                "gen2spring_runtime_provider_executor_queued"), helpNames);
+
+        String toolCount = metricSample(scrape, "gen2spring_runtime_mcp_tool_call_seconds_count");
+        String providerCount = metricSample(scrape, "gen2spring_runtime_provider_request_seconds_count");
+        String responseCount = metricSample(scrape, "gen2spring_runtime_provider_response_bytes_count");
+        assertEquals(1.0, metricValue(toolCount));
+        assertEquals(1.0, metricValue(providerCount));
+        assertEquals(1.0, metricValue(responseCount));
+        assertTrue(toolCount.contains("target_profile=\"" + profile.id() + "\""), toolCount);
+        assertTrue(toolCount.contains("outcome=\"success\""), toolCount);
+        assertTrue(toolCount.contains("error_category=\"none\""), toolCount);
+        assertTrue(providerCount.contains("http_status_class=\"2xx\""), providerCount);
+        assertFalse(scrape.contains("gen2spring_runtime_mcp_tool_call_active"), scrape);
+        assertFalse(scrape.contains("gen2spring_runtime_provider_request_active"), scrape);
+        String custom = scrape.lines()
+                .filter(line -> line.contains("gen2spring_runtime_"))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        assertFalse(custom.contains("error=\""), custom);
+        assertFalse(custom.contains(LIVE_QUERY_SECRET), custom);
+        assertFalse(custom.contains(LIVE_HEADER_SECRET), custom);
+        assertFalse(custom.contains(REPRESENTATIVE_STATION_ID), custom);
+        assertFalse(custom.contains("NORMAL_SERVICE"), custom);
+        assertFalse(custom.contains("sunny"), custom);
+        assertFalse(custom.contains("/stations/"), custom);
+    }
+
+    private String metricSample(String scrape, String name) {
+        List<String> matches = scrape.lines()
+                .filter(line -> line.startsWith(name + "{"))
+                .toList();
+        assertEquals(1, matches.size(), name);
+        return matches.get(0);
+    }
+
+    private double metricValue(String sample) {
+        return Double.parseDouble(sample.substring(sample.lastIndexOf(' ') + 1));
     }
 
     private ProcessBuilder applicationProcess(
@@ -487,7 +548,10 @@ class P1GenerationIntegrationTest {
                     "-jar",
                     projectRoot.resolve("build/libs/weather-mcp-server.jar").toString(),
                     "--server.address=127.0.0.1",
-                    "--server.port=" + applicationPort);
+                    "--server.port=" + applicationPort,
+                    "--management.endpoints.web.exposure.include=health,prometheus",
+                    "--management.prometheus.metrics.export.enabled=true",
+                    "--management.tracing.sampling.probability=1.0");
         launch.environment().put("PROVIDER_BASE_URL", upstreamBaseUri.toString());
         launch.environment().put("KMA_SERVICE_KEY", LIVE_QUERY_SECRET);
         launch.environment().put("WEATHER_HEADER_KEY", LIVE_HEADER_SECRET);
@@ -1018,6 +1082,8 @@ class P1GenerationIntegrationTest {
                             exchange.getRequestURI().getRawPath(),
                             query(exchange.getRequestURI().getRawQuery()),
                             exchange.getRequestHeaders().getFirst("X-Weather-Key"),
+                            List.copyOf(exchange.getRequestHeaders().getOrDefault("traceparent", List.of())),
+                            propagationHeaders(exchange),
                             JSON.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                                     .readTree(exchange.getRequestBody()));
                     synchronized (this) {
@@ -1046,6 +1112,19 @@ class P1GenerationIntegrationTest {
                     }
                 }
             }
+        }
+
+        private Set<String> propagationHeaders(HttpExchange exchange) {
+            Set<String> result = new TreeSet<>();
+            exchange.getRequestHeaders().keySet().stream()
+                    .map(name -> name.toLowerCase(java.util.Locale.ROOT))
+                    .filter(name -> name.equals("traceparent")
+                            || name.equals("tracestate")
+                            || name.equals("baggage")
+                            || name.equals("b3")
+                            || name.startsWith("x-b3-"))
+                    .forEach(result::add);
+            return Set.copyOf(result);
         }
 
         private Map<String, List<String>> query(String rawQuery) {
@@ -1090,6 +1169,15 @@ class P1GenerationIntegrationTest {
                     "upstream query secret does not match");
             assertTrue(LIVE_HEADER_SECRET.equals(captured.weatherHeader()),
                     "upstream header secret does not match");
+            assertEquals(Set.of("traceparent"), captured.propagationHeaders());
+            assertEquals(1, captured.traceparent().size(), "upstream traceparent must occur exactly once");
+            String traceparent = captured.traceparent().get(0);
+            assertTrue(traceparent.matches("00-[0-9a-f]{32}-[0-9a-f]{16}-01"),
+                    "upstream traceparent is invalid");
+            assertFalse(traceparent.contains("00000000000000000000000000000000"),
+                    "upstream trace ID is invalid");
+            assertFalse(traceparent.contains("-0000000000000000-"),
+                    "upstream span ID is invalid");
             assertEquals(JSON.readTree("""
                     {"location":{"latitude":37.5,"longitude":127.0}}
                     """), captured.body());
@@ -1227,6 +1315,8 @@ class P1GenerationIntegrationTest {
             String rawPath,
             Map<String, List<String>> query,
             String weatherHeader,
+            List<String> traceparent,
+            Set<String> propagationHeaders,
             JsonNode body) {}
 
     private record GenerationResult(

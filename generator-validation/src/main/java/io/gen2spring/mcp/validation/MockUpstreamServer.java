@@ -33,6 +33,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 public final class MockUpstreamServer implements AutoCloseable {
     private static final int MAX_REQUEST_BYTES = 1024 * 1024;
@@ -47,8 +48,11 @@ public final class MockUpstreamServer implements AutoCloseable {
             "host",
             "http2-settings",
             "transfer-encoding",
+            "traceparent",
             "upgrade",
             "user-agent");
+    private static final Pattern TRACEPARENT = Pattern.compile(
+            "00-([0-9a-f]{32})-([0-9a-f]{16})-(00|01)");
 
     private final HttpServer server;
     private final ExecutorService executor;
@@ -244,10 +248,24 @@ public final class MockUpstreamServer implements AutoCloseable {
         if (!expectation.query().equals(query(exchange.getRequestURI().getRawQuery()))) {
             throw mismatch("Mock upstream request query does not match");
         }
+        verifyTraceparent(exchange);
         if (!contractHeaders(exchange).equals(expectation.headers())) {
             throw mismatch("Mock upstream request headers do not match");
         }
         verifyBody(body);
+    }
+
+    private void verifyTraceparent(HttpExchange exchange) {
+        List<String> values = exchange.getRequestHeaders().get("traceparent");
+        if (values == null || values.size() != 1) {
+            throw mismatch("Mock upstream trace context does not match");
+        }
+        var matcher = TRACEPARENT.matcher(values.get(0));
+        if (!matcher.matches()
+                || "00000000000000000000000000000000".equals(matcher.group(1))
+                || "0000000000000000".equals(matcher.group(2))) {
+            throw mismatch("Mock upstream trace context does not match");
+        }
     }
 
     private Map<String, List<String>> contractHeaders(HttpExchange exchange) {
