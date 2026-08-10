@@ -117,6 +117,8 @@ final class ResponseRuntimeRenderer {
                 package %s.runtime;
 
                 import java.security.SecureRandom;
+                import java.util.ArrayList;
+                import java.util.Comparator;
                 import java.util.List;
                 import java.util.Objects;
                 import java.util.regex.Pattern;
@@ -131,9 +133,14 @@ final class ResponseRuntimeRenderer {
 
                 public final class ResponseNormalizer {
                     private static final String UNSAFE_MESSAGE = "Provider returned an unsafe error message";
-                    private static final Pattern SENSITIVE_NAME = Pattern.compile(
-                            "authorization|api[-_ ]?key|service[-_ ]?key|client[-_ ]?secret|cookie",
-                            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    private static final List<String> SENSITIVE_NAMES = List.of(
+                            "authorization",
+                            "api key",
+                            "api_key",
+                            "apikey",
+                            "servicekey",
+                            "clientsecret",
+                            "cookie");
 
                     private final JsonMapper jsonMapper = JsonMapper.builder()
                             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
@@ -384,8 +391,11 @@ final class ResponseRuntimeRenderer {
                             }
                             String safe = message;
                             safe = mask(safe, secretValues, false);
-                            safe = mask(safe, secretNames, true);
-                            safe = SENSITIVE_NAME.matcher(safe).replaceAll("***");
+                            List<String> names = new ArrayList<>(SENSITIVE_NAMES);
+                            if (secretNames != null) {
+                                names.addAll(secretNames);
+                            }
+                            safe = mask(safe, names, true);
                             int codePoints = safe.codePointCount(0, safe.length());
                             if (codePoints > 512) {
                                 safe = safe.substring(0, safe.offsetByCodePoints(0, 512));
@@ -401,10 +411,12 @@ final class ResponseRuntimeRenderer {
                             return source;
                         }
                         String result = source;
-                        for (String value : values) {
-                            if (value == null || value.isEmpty()) {
-                                continue;
-                            }
+                        List<String> ordered = values.stream()
+                                .filter(value -> value != null && !value.isBlank())
+                                .distinct()
+                                .sorted(Comparator.comparingInt(String::length).reversed())
+                                .toList();
+                        for (String value : ordered) {
                             int flags = ignoreCase ? Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE : 0;
                             result = Pattern.compile(Pattern.quote(value), flags)
                                     .matcher(result)

@@ -43,6 +43,13 @@ class JavaSourceRendererTest {
                 files.get("src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
         assertArrayEquals(golden("weather/GetForecastInput.java"),
                 files.get("src/main/java/com/example/weather/generated/model/GetForecastInput.java"));
+        String tool = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
+        assertTrue(tool.contains("public JsonNode getForecast("));
+        assertTrue(tool.contains("var input = new GetForecastInput(nx, ny);"));
+        assertTrue(tool.contains(
+                "return executor.execute(WeatherOperations.GET_FORECAST, input.toArguments());"));
+        assertFalse(tool.contains("OperationOutcome"));
     }
 
     @Test
@@ -78,12 +85,14 @@ class JavaSourceRendererTest {
         String runtime = utf8(files.get(
                 "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java"));
         assertTrue(runtime.contains("readNBytes(responseMaxBytes + 1)"));
-        assertTrue(runtime.contains("UPSTREAM_RESPONSE_TOO_LARGE"));
-        assertTrue(runtime.contains("UPSTREAM_HTTP_ERROR"));
+        assertTrue(runtime.contains("new ResponseTooLargeException(status)"));
+        assertTrue(runtime.contains("responseNormalizer.normalize("));
+        assertTrue(runtime.contains("new ProviderErrorException"));
+        assertTrue(runtime.contains("ProviderErrorCategory.UPSTREAM_TIMEOUT"));
+        assertTrue(runtime.contains("ProviderErrorCategory.UPSTREAM_UNAVAILABLE"));
         assertTrue(runtime.contains("target.setAccept(List.of(MediaType.APPLICATION_JSON))"));
         assertTrue(runtime.contains("request.contentType(MediaType.APPLICATION_JSON)"));
         assertTrue(runtime.contains("jsonMapper.writeValueAsBytes(requestBody)"));
-        assertTrue(runtime.contains("UPSTREAM_REQUEST_BODY_SERIALIZATION_FAILED"));
         assertTrue(runtime.contains("tools.jackson.databind.JsonNode"));
         assertTrue(runtime.contains("tools.jackson.databind.json.JsonMapper"));
 

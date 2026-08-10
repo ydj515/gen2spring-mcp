@@ -55,6 +55,21 @@ class GeneratedProjectSmokeTest {
 
     @Test
     @Timeout(value = 5, unit = MINUTES)
+    void generatedExecutorMapsUpstreamFailures() throws Exception {
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(List.of(
+                        JavaSourceRendererTest.weatherTool(JavaSourceRendererTest.normalization()))))
+                .files();
+        java.util.Map<String, byte[]> filesWithExecutorTest = new java.util.LinkedHashMap<>(files);
+        filesWithExecutorTest.put(
+                "src/test/java/com/example/weather/runtime/GeneratedExecutorFailureContractTest.java",
+                executorFailureContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("executor-failures"), filesWithExecutorTest);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
     void generatedProjectValidatesMixedExplicitAndAnnotationDerivedToolArgumentsBeforeUpstreamCalls() throws Exception {
         ApiSchema mode = new ApiSchema(
                 SchemaType.STRING, null, false, List.of("brief", "full-detail"), null, null,
@@ -577,6 +592,433 @@ class GeneratedProjectSmokeTest {
                 """;
     }
 
+    private String executorFailureContractTest() {
+        return """
+                package com.example.weather.runtime;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
+                import static org.junit.jupiter.api.Assertions.assertNull;
+                import static org.junit.jupiter.api.Assertions.assertThrows;
+                import static org.junit.jupiter.api.Assertions.assertTrue;
+                import static org.junit.jupiter.api.Assertions.fail;
+
+                import com.sun.net.httpserver.HttpExchange;
+                import com.sun.net.httpserver.HttpServer;
+                import java.io.IOException;
+                import java.net.InetSocketAddress;
+                import java.net.ServerSocket;
+                import java.nio.charset.StandardCharsets;
+                import java.time.Duration;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.concurrent.CountDownLatch;
+                import java.util.concurrent.ExecutorService;
+                import java.util.concurrent.Executors;
+                import java.util.concurrent.TimeUnit;
+                import java.util.concurrent.atomic.AtomicBoolean;
+                import java.util.concurrent.atomic.AtomicReference;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.BeforeAll;
+                import org.junit.jupiter.api.Test;
+                import org.junit.jupiter.params.ParameterizedTest;
+                import org.junit.jupiter.params.provider.ValueSource;
+                import org.springframework.http.MediaType;
+                import org.springframework.mock.env.MockEnvironment;
+                import org.springframework.web.client.RestClient;
+                import tools.jackson.databind.JsonNode;
+                import tools.jackson.databind.node.StringNode;
+
+                class GeneratedExecutorFailureContractTest {
+                    private static final String OPERATION_ID = "executorFailureOperation";
+                    private static final String PRIVATE_BODY_MARKER = "private-body-marker";
+                    private static final String HEADER_MARKER = "header-secret-marker";
+                    private static final String QUERY_MARKER = "query-secret-marker";
+                    private static final String SECRET_VALUE = "secret-value";
+                    private static final CountDownLatch BLOCKED_REQUEST = new CountDownLatch(1);
+                    private static final CountDownLatch RELEASE_BLOCKED = new CountDownLatch(1);
+                    private static final CountDownLatch INTERRUPT_REQUEST = new CountDownLatch(1);
+
+                    private static HttpServer server;
+                    private static ExecutorService serverExecutor;
+                    private static String baseUrl;
+
+                    @BeforeAll
+                    static void startProvider() throws Exception {
+                        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                        serverExecutor = Executors.newCachedThreadPool(runnable -> {
+                            Thread thread = new Thread(runnable, "generated-test-provider");
+                            thread.setDaemon(true);
+                            return thread;
+                        });
+                        server.setExecutor(serverExecutor);
+                        server.createContext("/business", exchange -> json(exchange, 200,
+                                "{'code':'30','message':'Authorization provider.secrets.service-key "
+                                        + "serviceKey " + SECRET_VALUE + " " + HEADER_MARKER + " "
+                                        + QUERY_MARKER + " cookie','private':'"
+                                        + PRIVATE_BODY_MARKER + "','data':null}"));
+                        for (int status : List.of(400, 408, 425, 429, 500)) {
+                            server.createContext("/status/" + status, exchange -> text(exchange, status,
+                                    PRIVATE_BODY_MARKER + " " + HEADER_MARKER + " " + QUERY_MARKER));
+                        }
+                        server.createContext("/redirect", exchange -> text(exchange, 302, PRIVATE_BODY_MARKER));
+                        server.createContext("/invalid-json", exchange -> json(exchange, 200,
+                                "{'private':'" + PRIVATE_BODY_MARKER + "'"));
+                        server.createContext("/suffix-json", exchange -> problemJson(exchange, 200,
+                                "{'code':'00','message':'ok','data':{'accepted':true}}"));
+                        server.createContext("/oversize", exchange -> json(exchange, 200,
+                                "{'value':'" + "x".repeat(2048) + "'}"));
+                        server.createContext("/status-oversize", exchange -> json(exchange, 500,
+                                "{'value':'" + PRIVATE_BODY_MARKER.repeat(128) + "'}"));
+                        server.createContext("/read-timeout", exchange -> {
+                            sleep(Duration.ofMillis(500));
+                            json(exchange, 200, "{'code':'00','message':'ok','data':{}}");
+                        });
+                        server.createContext("/total-timeout", exchange -> {
+                            sleep(Duration.ofMillis(500));
+                            json(exchange, 200, "{'code':'00','message':'ok','data':{}}");
+                        });
+                        server.createContext("/blocked", exchange -> {
+                            BLOCKED_REQUEST.countDown();
+                            await(RELEASE_BLOCKED);
+                            json(exchange, 200, "{'code':'00','message':'ok','data':{}}");
+                        });
+                        server.createContext("/interrupt", exchange -> {
+                            INTERRUPT_REQUEST.countDown();
+                            sleep(Duration.ofSeconds(2));
+                            json(exchange, 200, "{'code':'00','message':'ok','data':{}}");
+                        });
+                        server.start();
+                        baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+                    }
+
+                    @Test
+                    void mapsHttpBusinessProtocolBoundAndTransportFailures() throws Exception {
+                        OpenApiOperationExecutor executor = executor(baseUrl, 512, 100, 1000, 4, 4);
+                        try {
+                            assertError(call(executor, "/business"), "PROVIDER_BUSINESS", false, 200);
+                            assertError(call(executor, "/status/400"), "UPSTREAM_CLIENT", false, 400);
+                            assertError(call(executor, "/status/408"), "UPSTREAM_CLIENT", true, 408);
+                            assertError(call(executor, "/status/425"), "UPSTREAM_CLIENT", true, 425);
+                            assertError(call(executor, "/status/429"), "UPSTREAM_CLIENT", true, 429);
+                            assertError(call(executor, "/status/500"), "UPSTREAM_SERVER", true, 500);
+                            assertError(call(executor, "/redirect"), "UPSTREAM_PROTOCOL", false, 302);
+                            assertError(call(executor, "/invalid-json"), "UPSTREAM_PROTOCOL", false, 200);
+                            assertError(call(executor, "/oversize"), "UPSTREAM_PROTOCOL", false, 200);
+                            assertError(call(executor, "/status-oversize"),
+                                    "UPSTREAM_SERVER", true, 500);
+                            assertEquals(true, executor.execute(operation("/suffix-json"), Map.of())
+                                    .at("/data/accepted").booleanValue());
+                        } finally {
+                            executor.shutdown();
+                        }
+
+                        OpenApiOperationExecutor readTimeout = executor(baseUrl, 512, 50, 1000, 1, 1);
+                        try {
+                            assertError(call(readTimeout, "/read-timeout"),
+                                    "UPSTREAM_TIMEOUT", true, null);
+                        } finally {
+                            readTimeout.shutdown();
+                        }
+
+                        OpenApiOperationExecutor totalTimeout = executor(baseUrl, 512, 1000, 50, 1, 1);
+                        try {
+                            assertError(call(totalTimeout, "/total-timeout"),
+                                    "UPSTREAM_TIMEOUT", true, null);
+                        } finally {
+                            totalTimeout.shutdown();
+                        }
+
+                        try (ServerSocket refused = new ServerSocket(0)) {
+                            int port = refused.getLocalPort();
+                            refused.close();
+                            OpenApiOperationExecutor unavailable = executor(
+                                    "http://127.0.0.1:" + port, 512, 100, 1000, 1, 1);
+                            try {
+                                assertError(call(unavailable, "/refused"),
+                                        "UPSTREAM_UNAVAILABLE", true, null);
+                            } finally {
+                                unavailable.shutdown();
+                            }
+                        }
+                    }
+
+                    @Test
+                    void mapsQueueSaturationAndInterruptionWithoutLosingInterruptState() throws Exception {
+                        OpenApiOperationExecutor saturated = executor(baseUrl, 512, 2000, 3000, 1, 1);
+                        AtomicReference<Throwable> firstFailure = new AtomicReference<>();
+                        AtomicReference<Throwable> secondFailure = new AtomicReference<>();
+                        Thread first = caller(saturated, "/blocked", firstFailure);
+                        Thread second = caller(saturated, "/blocked", secondFailure);
+                        try {
+                            first.start();
+                            assertTrue(BLOCKED_REQUEST.await(1, TimeUnit.SECONDS));
+                            second.start();
+                            awaitTimedWaiting(second);
+
+                            assertError(call(saturated, "/blocked"), "LOCAL_RESOURCE", false, null);
+                        } finally {
+                            RELEASE_BLOCKED.countDown();
+                            first.join(2000);
+                            second.join(2000);
+                            saturated.shutdown();
+                        }
+                        assertNull(firstFailure.get());
+                        assertNull(secondFailure.get());
+
+                        OpenApiOperationExecutor interrupted = executor(baseUrl, 512, 2000, 3000, 1, 1);
+                        AtomicReference<ProviderErrorException> interruption = new AtomicReference<>();
+                        AtomicBoolean interruptPreserved = new AtomicBoolean();
+                        Thread caller = new Thread(() -> {
+                            try {
+                                interrupted.execute(operation("/interrupt"), Map.of());
+                            } catch (ProviderErrorException failure) {
+                                interruption.set(failure);
+                                interruptPreserved.set(Thread.currentThread().isInterrupted());
+                            }
+                        }, "interrupted-executor-caller");
+                        try {
+                            caller.start();
+                            assertTrue(INTERRUPT_REQUEST.await(1, TimeUnit.SECONDS));
+                            caller.interrupt();
+                            caller.join(1000);
+                        } finally {
+                            interrupted.shutdown();
+                        }
+                        assertFalse(caller.isAlive());
+                        assertTrue(interruptPreserved.get());
+                        assertError(interruption.get(), "LOCAL_RESOURCE", false, null);
+                    }
+
+                    @Test
+                    void mapsUnexpectedWorkerFailuresWithoutExposingTheirMessages() {
+                        OpenApiOperationExecutor executor = executor(baseUrl, 512, 1000, 1000, 1, 1);
+                        OperationDefinition invalid = new OperationDefinition(
+                                OPERATION_ID,
+                                "GET",
+                                "/missing/{" + PRIVATE_BODY_MARKER + "}",
+                                List.of(),
+                                List.of(),
+                                false,
+                                false,
+                                null);
+                        try {
+                            ProviderErrorException failure = assertThrows(
+                                    ProviderErrorException.class,
+                                    () -> executor.execute(invalid, Map.of()));
+
+                            assertError(failure, "UPSTREAM_PROTOCOL", false, null);
+                        } finally {
+                            executor.shutdown();
+                        }
+                    }
+
+                    @ParameterizedTest
+                    @ValueSource(strings = {
+                            "secret-value", "Authorization failed", "serviceKey invalid",
+                            "clientSecret invalid", "cookie invalid"
+                    })
+                    void masksSecretValuesAndNames(String message) {
+                        ProviderError error = new ResponseNormalizer().error(
+                                operation("/business"), ProviderErrorCategory.PROVIDER_BUSINESS, 200,
+                                StringNode.valueOf("30"), message,
+                                List.of("Authorization", "serviceKey", "clientSecret", "cookie"),
+                                List.of("secret-value"));
+
+                        String serialized = error.payload().toString();
+                        assertFalse(serialized.contains(message));
+                        assertTrue(serialized.contains("***"));
+                    }
+
+                    @Test
+                    void masksLongestSecretsFirstAndIgnoresBlankSanitizerValues() {
+                        ResponseNormalizer normalizer = new ResponseNormalizer();
+                        ProviderError longest = normalizer.error(
+                                operation("/business"), ProviderErrorCategory.PROVIDER_BUSINESS, 200,
+                                null, "secret-value clientSecret",
+                                List.of("client", "clientSecret"),
+                                List.of("secret", "secret-value"));
+                        ProviderError blank = normalizer.error(
+                                operation("/business"), ProviderErrorCategory.PROVIDER_BUSINESS, 200,
+                                null, "safe message", List.of("\t"), List.of(" "));
+
+                        assertEquals("*** ***", longest.payload().at("/error/providerMessage").stringValue());
+                        assertEquals("safe message", blank.payload().at("/error/providerMessage").stringValue());
+                    }
+
+                    @Test
+                    void replacesControlMessagesAndBoundsByUnicodeCodePoint() {
+                        ResponseNormalizer normalizer = new ResponseNormalizer();
+                        ProviderError unsafe = normalizer.error(
+                                operation("/business"), ProviderErrorCategory.PROVIDER_BUSINESS, 200,
+                                null, "unsafe\u0000value", List.of(), List.of());
+                        ProviderError bounded = normalizer.error(
+                                operation("/business"), ProviderErrorCategory.PROVIDER_BUSINESS, 200,
+                                null, "가".repeat(600), List.of(), List.of());
+                        String providerMessage = bounded.payload().at("/error/providerMessage").stringValue();
+
+                        assertEquals("Provider returned an unsafe error message",
+                                unsafe.payload().at("/error/providerMessage").stringValue());
+                        assertEquals(512, providerMessage.codePointCount(0, providerMessage.length()));
+                    }
+
+                    private static Thread caller(
+                            OpenApiOperationExecutor executor,
+                            String path,
+                            AtomicReference<Throwable> failure) {
+                        return new Thread(() -> {
+                            try {
+                                executor.execute(operation(path), Map.of());
+                            } catch (Throwable thrown) {
+                                failure.set(thrown);
+                            }
+                        }, "executor-contract-caller");
+                    }
+
+                    private static void awaitTimedWaiting(Thread thread) throws InterruptedException {
+                        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+                        while (System.nanoTime() < deadline) {
+                            if (thread.getState() == Thread.State.TIMED_WAITING) {
+                                return;
+                            }
+                            Thread.sleep(5);
+                        }
+                        fail("queued caller did not enter timed wait: " + thread.getState());
+                    }
+
+                    private static ProviderErrorException call(
+                            OpenApiOperationExecutor executor, String path) {
+                        return assertThrows(ProviderErrorException.class,
+                                () -> executor.execute(operation(path), Map.of()));
+                    }
+
+                    private static void assertError(
+                            ProviderErrorException failure,
+                            String category,
+                            boolean retryable,
+                            Integer status) {
+                        assertEquals("Generated provider request failed", failure.getMessage());
+                        JsonNode error = failure.error().payload().get("error");
+                        assertEquals(category, error.get("category").stringValue());
+                        assertEquals(retryable, error.get("retryable").booleanValue());
+                        if (status == null) {
+                            assertTrue(error.get("httpStatus").isNull());
+                        } else {
+                            assertEquals(status.intValue(), error.get("httpStatus").intValue());
+                        }
+                        assertEquals(OPERATION_ID, error.get("operationId").stringValue());
+                        assertTrue(error.get("traceId").stringValue().matches("[0-9a-f]{32}"));
+                        String serialized = failure.error().payload().toString();
+                        for (String forbidden : List.of(
+                                PRIVATE_BODY_MARKER, HEADER_MARKER, QUERY_MARKER, SECRET_VALUE,
+                                "provider.secrets.service-key", "serviceKey", "Authorization",
+                                "Exception", "java.", "at ", "Connection refused")) {
+                            assertFalse(serialized.contains(forbidden), serialized);
+                        }
+                    }
+
+                    private static OperationDefinition operation(String path) {
+                        return new OperationDefinition(
+                                OPERATION_ID,
+                                "GET",
+                                path,
+                                List.of(),
+                                List.of(
+                                        new SecretBinding(
+                                                "provider.secrets.service-key",
+                                                ParameterLocation.QUERY,
+                                                "serviceKey",
+                                                true),
+                                        new SecretBinding(
+                                                "provider.secrets.authorization",
+                                                ParameterLocation.HEADER,
+                                                "Authorization",
+                                                true),
+                                        new SecretBinding(
+                                                "provider.secrets.query-token",
+                                                ParameterLocation.QUERY,
+                                                "queryToken",
+                                                true)),
+                                false,
+                                false,
+                                new ResponseNormalizationPolicy(
+                                        "/data", "/code", List.of(StringNode.valueOf("00")),
+                                        "/message", null));
+                    }
+
+                    private static OpenApiOperationExecutor executor(
+                            String providerBaseUrl,
+                            int responseMaxBytes,
+                            long readTimeoutMillis,
+                            long totalTimeoutMillis,
+                            int maxConcurrentRequests,
+                            int maxQueuedRequests) {
+                        MockEnvironment environment = new MockEnvironment()
+                                .withProperty("provider.base-url", providerBaseUrl)
+                                .withProperty("provider.response-max-bytes", String.valueOf(responseMaxBytes))
+                                .withProperty("provider.connect-timeout-millis", "100")
+                                .withProperty("provider.read-timeout-millis", String.valueOf(readTimeoutMillis))
+                                .withProperty("provider.total-timeout-millis", String.valueOf(totalTimeoutMillis))
+                                .withProperty("provider.max-concurrent-requests", String.valueOf(maxConcurrentRequests))
+                                .withProperty("provider.max-queued-requests", String.valueOf(maxQueuedRequests))
+                                .withProperty("provider.secrets.service-key", SECRET_VALUE)
+                                .withProperty("provider.secrets.authorization", HEADER_MARKER)
+                                .withProperty("provider.secrets.query-token", QUERY_MARKER);
+                        return new OpenApiOperationExecutor(RestClient.builder(), environment);
+                    }
+
+                    private static void json(HttpExchange exchange, int status, String body) throws IOException {
+                        respond(exchange, status, "application/json", body);
+                    }
+
+                    private static void problemJson(HttpExchange exchange, int status, String body) throws IOException {
+                        respond(exchange, status, "application/problem+json; charset=UTF-8", body);
+                    }
+
+                    private static void text(HttpExchange exchange, int status, String body) throws IOException {
+                        respond(exchange, status, "text/plain", body);
+                    }
+
+                    private static void respond(
+                            HttpExchange exchange, int status, String contentType, String body) throws IOException {
+                        byte[] bytes = body.replace('\\'', '"').getBytes(StandardCharsets.UTF_8);
+                        try (exchange) {
+                            exchange.getResponseHeaders().set("Content-Type", contentType);
+                            exchange.sendResponseHeaders(status, bytes.length);
+                            exchange.getResponseBody().write(bytes);
+                        }
+                    }
+
+                    private static void sleep(Duration duration) {
+                        try {
+                            Thread.sleep(duration.toMillis());
+                        } catch (InterruptedException failure) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+
+                    private static void await(CountDownLatch latch) {
+                        try {
+                            latch.await();
+                        } catch (InterruptedException failure) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+
+                    @AfterAll
+                    static void stopProvider() {
+                        RELEASE_BLOCKED.countDown();
+                        if (server != null) {
+                            server.stop(0);
+                        }
+                        if (serverExecutor != null) {
+                            serverExecutor.shutdownNow();
+                        }
+                    }
+                }
+                """;
+    }
+
     private String enumCallbackContractTest() {
         return """
                 package com.example.weather.application;
@@ -594,6 +1036,7 @@ class GeneratedProjectSmokeTest {
                 import java.util.concurrent.atomic.AtomicReference;
                 import com.example.weather.generated.metadata.WeatherOperations;
                 import com.example.weather.runtime.OpenApiOperationExecutor;
+                import com.example.weather.runtime.ProviderErrorException;
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
                 import org.springframework.ai.tool.ToolCallback;
@@ -703,10 +1146,11 @@ class GeneratedProjectSmokeTest {
 
                     @Test
                     void rejectsJsonLookingTextResponsesBeforeDeserializingThem() {
-                        var exception = assertThrows(IllegalStateException.class,
+                        var exception = assertThrows(ProviderErrorException.class,
                                 () -> executor.execute(WeatherOperations.GET_FORECAST, Map.of("nx", 99)));
 
-                        assertEquals("UPSTREAM_RESPONSE_MEDIA_TYPE_UNSUPPORTED", exception.getMessage());
+                        assertEquals("UPSTREAM_PROTOCOL",
+                                exception.error().payload().at("/error/category").stringValue());
                     }
 
                     private ToolCallback callback(String name) {

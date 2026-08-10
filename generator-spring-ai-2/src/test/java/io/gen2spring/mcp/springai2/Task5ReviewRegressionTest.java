@@ -74,7 +74,6 @@ class Task5ReviewRegressionTest {
         assertTrue(runtime.contains("request.cancel(true)"));
         assertTrue(runtime.contains("new ThreadPoolExecutor("));
         assertTrue(runtime.contains("new ArrayBlockingQueue<>(maxQueuedRequests)"));
-        assertTrue(runtime.contains("UPSTREAM_REQUEST_SATURATED"));
         assertTrue(contextTest.contains("slowUpstreamBodyTimesOutAndCancelsTheRequest"));
     }
 

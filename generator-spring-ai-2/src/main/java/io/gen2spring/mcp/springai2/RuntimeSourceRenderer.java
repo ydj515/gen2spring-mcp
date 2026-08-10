@@ -135,9 +135,12 @@ final class RuntimeSourceRenderer {
                 import java.io.IOException;
                 import java.io.InputStream;
                 import java.lang.reflect.Array;
+                import java.net.SocketTimeoutException;
                 import java.net.URI;
                 import java.net.http.HttpClient;
+                import java.net.http.HttpTimeoutException;
                 import java.time.Duration;
+                import java.util.ArrayList;
                 import java.util.LinkedHashMap;
                 import java.util.List;
                 import java.util.Map;
@@ -156,24 +159,19 @@ final class RuntimeSourceRenderer {
                 import org.springframework.http.MediaType;
                 import org.springframework.http.client.JdkClientHttpRequestFactory;
                 import org.springframework.stereotype.Component;
+                import org.springframework.web.client.ResourceAccessException;
                 import org.springframework.web.client.RestClient;
                 import org.springframework.web.util.UriComponentsBuilder;
                 import tools.jackson.core.JacksonException;
                 import tools.jackson.databind.JsonNode;
-                import tools.jackson.databind.node.NullNode;
-                import tools.jackson.databind.node.ObjectNode;
                 import tools.jackson.databind.json.JsonMapper;
 
                 @Component
                 public final class OpenApiOperationExecutor {
-                    private static final String REQUEST_FAILED = "UPSTREAM_REQUEST_FAILED";
-                    private static final String RESPONSE_TOO_LARGE = "UPSTREAM_RESPONSE_TOO_LARGE";
-                    private static final String REQUEST_BODY_SERIALIZATION_FAILED =
-                            "UPSTREAM_REQUEST_BODY_SERIALIZATION_FAILED";
-
                     private final RestClient restClient;
                     private final Environment environment;
                     private final JsonMapper jsonMapper;
+                    private final ResponseNormalizer responseNormalizer;
                     private final URI baseUrl;
                     private final int responseMaxBytes;
                     private final long totalTimeoutMillis;
@@ -185,6 +183,7 @@ final class RuntimeSourceRenderer {
                                 .changeDefaultPropertyInclusion(inclusion ->
                                         inclusion.withValueInclusion(JsonInclude.Include.NON_NULL))
                                 .build();
+                        this.responseNormalizer = new ResponseNormalizer();
                         this.baseUrl = requireHttpUri(environment.getRequiredProperty("provider.base-url"));
                         this.responseMaxBytes = requireResponseLimit(
                                 environment.getRequiredProperty("provider.response-max-bytes", Integer.class));
@@ -218,35 +217,66 @@ final class RuntimeSourceRenderer {
                     }
 
                     public JsonNode execute(OperationDefinition operation, Map<String, Object> arguments) {
-                        Future<JsonNode> request;
+                        List<String> secretNames = new ArrayList<>();
+                        List<String> secretValues = new ArrayList<>();
                         try {
-                            request = requestExecutor.submit(
-                                    () -> executeSafely(operation, arguments == null ? Map.of() : arguments));
-                        } catch (RejectedExecutionException exception) {
-                            throw new SafeExecutionException("UPSTREAM_REQUEST_SATURATED");
-                        }
-                        try {
-                            return request.get(totalTimeoutMillis, TimeUnit.MILLISECONDS);
-                        } catch (TimeoutException exception) {
-                            request.cancel(true);
-                            throw new SafeExecutionException("UPSTREAM_REQUEST_TIMEOUT");
-                        } catch (InterruptedException exception) {
-                            request.cancel(true);
-                            Thread.currentThread().interrupt();
-                            throw new SafeExecutionException(REQUEST_FAILED);
-                        } catch (ExecutionException exception) {
-                            if (exception.getCause() instanceof SafeExecutionException safeException) {
-                                throw safeException;
+                            OperationOutcome outcome = await(
+                                    operation,
+                                    arguments == null ? Map.of() : arguments,
+                                    secretNames,
+                                    secretValues);
+                            if (outcome instanceof NormalizedSuccess success) {
+                                return success.payload();
                             }
-                            throw new SafeExecutionException(REQUEST_FAILED);
-                        } catch (SafeExecutionException exception) {
-                            throw exception;
-                        } catch (RuntimeException exception) {
-                            throw new SafeExecutionException(REQUEST_FAILED);
+                            throw new ProviderErrorException((ProviderError) outcome);
+                        } catch (ProviderErrorException failure) {
+                            throw failure;
+                        } catch (RejectedExecutionException failure) {
+                            throw providerFailure(
+                                    operation,
+                                    ProviderErrorCategory.LOCAL_RESOURCE,
+                                    null,
+                                    secretNames,
+                                    secretValues);
                         }
                     }
 
-                    private JsonNode executeSafely(OperationDefinition operation, Map<String, Object> arguments) {
+                    private OperationOutcome await(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        Future<OperationOutcome> request = requestExecutor.submit(
+                                () -> executeSafely(operation, arguments, secretNames, secretValues));
+                        try {
+                            return request.get(totalTimeoutMillis, TimeUnit.MILLISECONDS);
+                        } catch (TimeoutException failure) {
+                            request.cancel(true);
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        } catch (InterruptedException failure) {
+                            request.cancel(true);
+                            Thread.currentThread().interrupt();
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.LOCAL_RESOURCE,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        } catch (ExecutionException failure) {
+                            return mapFailure(operation, failure.getCause(), secretNames, secretValues);
+                        }
+                    }
+
+                    private OperationOutcome executeSafely(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues) {
                         UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromUri(baseUrl).path(operation.path());
                         Map<String, Object> pathVariables = new LinkedHashMap<>();
                         HttpHeaders headers = new HttpHeaders();
@@ -262,13 +292,16 @@ final class RuntimeSourceRenderer {
                                     binding.targetName(), value, requestBody, operation.objectRequestBody());
                         }
                         for (SecretBinding binding : operation.secretBindings()) {
+                            secretNames.add(binding.propertyName());
+                            secretNames.add(binding.targetName());
                             String value = environment.getProperty(binding.propertyName());
                             if (value == null || value.isBlank()) {
                                 if (binding.required()) {
-                                    throw new SafeExecutionException("REQUIRED_PROVIDER_SECRET_MISSING");
+                                    throw new RequiredSecretException();
                                 }
                                 continue;
                             }
+                            secretValues.add(value);
                             requestBody = bind(uriBuilder, pathVariables, headers, binding.targetLocation(),
                                     binding.targetName(), value, requestBody, operation.objectRequestBody());
                         }
@@ -286,32 +319,32 @@ final class RuntimeSourceRenderer {
                                 request.contentType(MediaType.APPLICATION_JSON);
                                 request.body(jsonMapper.writeValueAsBytes(requestBody));
                             } catch (JacksonException exception) {
-                                throw new SafeExecutionException(REQUEST_BODY_SERIALIZATION_FAILED);
+                                throw new RequestSerializationException();
                             }
                         }
 
-                        RawResponse response = request.exchange((ignoredRequest, upstreamResponse) ->
-                                new RawResponse(
-                                        upstreamResponse.getStatusCode().value(),
-                                        upstreamResponse.getHeaders().getContentType(),
-                                        readBounded(upstreamResponse.getBody())));
+                        RawResponse response = request.exchange((ignoredRequest, upstreamResponse) -> {
+                            int status = upstreamResponse.getStatusCode().value();
+                            return new RawResponse(
+                                    status,
+                                    upstreamResponse.getHeaders().getContentType(),
+                                    readBounded(upstreamResponse.getBody(), status));
+                        });
                         if (response == null) {
-                            throw new SafeExecutionException(REQUEST_FAILED);
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_PROTOCOL,
+                                    null,
+                                    secretNames,
+                                    secretValues);
                         }
-                        if (response.status() < 200 || response.status() >= 300) {
-                            return httpError(response.status());
-                        }
-                        if (response.body().length == 0) {
-                            return NullNode.getInstance();
-                        }
-                        if (!isJsonResponse(response.contentType())) {
-                            throw new SafeExecutionException("UPSTREAM_RESPONSE_MEDIA_TYPE_UNSUPPORTED");
-                        }
-                        try {
-                            return jsonMapper.readTree(response.body());
-                        } catch (JacksonException exception) {
-                            throw new SafeExecutionException("UPSTREAM_RESPONSE_INVALID_JSON");
-                        }
+                        return responseNormalizer.normalize(
+                                operation,
+                                response.status(),
+                                response.contentType(),
+                                response.body(),
+                                secretNames,
+                                secretValues);
                     }
 
                     private Object bind(
@@ -378,19 +411,12 @@ final class RuntimeSourceRenderer {
                         }
                     }
 
-                    private byte[] readBounded(InputStream input) throws IOException {
+                    private byte[] readBounded(InputStream input, int status) throws IOException {
                         byte[] bytes = input.readNBytes(responseMaxBytes + 1);
                         if (bytes.length > responseMaxBytes) {
-                            throw new SafeExecutionException(RESPONSE_TOO_LARGE);
+                            throw new ResponseTooLargeException(status);
                         }
                         return bytes;
-                    }
-
-                    private JsonNode httpError(int status) {
-                        ObjectNode error = jsonMapper.createObjectNode();
-                        error.put("error", "UPSTREAM_HTTP_ERROR");
-                        error.put("status", status);
-                        return error;
                     }
 
                     private boolean allowsBody(String method) {
@@ -398,10 +424,118 @@ final class RuntimeSourceRenderer {
                                 || "PATCH".equals(method) || "DELETE".equals(method);
                     }
 
-                    private boolean isJsonResponse(MediaType contentType) {
-                        return contentType != null
-                                && "application".equalsIgnoreCase(contentType.getType())
-                                && "json".equalsIgnoreCase(contentType.getSubtype());
+                    private OperationOutcome mapFailure(
+                            OperationDefinition operation,
+                            Throwable failure,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        ResponseTooLargeException tooLarge = findCause(
+                                failure, ResponseTooLargeException.class);
+                        if (tooLarge != null) {
+                            if (tooLarge.status() < 200 || tooLarge.status() >= 300) {
+                                return responseNormalizer.normalize(
+                                        operation,
+                                        tooLarge.status(),
+                                        null,
+                                        new byte[0],
+                                        secretNames,
+                                        secretValues);
+                            }
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_PROTOCOL,
+                                    tooLarge.status(),
+                                    secretNames,
+                                    secretValues);
+                        }
+                        if (hasCause(failure, SocketTimeoutException.class)
+                                || hasCause(failure, HttpTimeoutException.class)) {
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        if (hasCause(failure, ResourceAccessException.class)
+                                || hasCause(failure, IOException.class)) {
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_UNAVAILABLE,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        if (hasCause(failure, RequiredSecretException.class)) {
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.LOCAL_RESOURCE,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        if (hasCause(failure, RequestSerializationException.class)) {
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_PROTOCOL,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        if (failure instanceof Error error) {
+                            throw error;
+                        }
+                        return providerError(
+                                operation,
+                                ProviderErrorCategory.UPSTREAM_PROTOCOL,
+                                null,
+                                secretNames,
+                                secretValues);
+                    }
+
+                    private OperationOutcome providerError(
+                            OperationDefinition operation,
+                            ProviderErrorCategory category,
+                            Integer status,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        return responseNormalizer.error(
+                                operation,
+                                category,
+                                status,
+                                null,
+                                null,
+                                secretNames,
+                                secretValues);
+                    }
+
+                    private ProviderErrorException providerFailure(
+                            OperationDefinition operation,
+                            ProviderErrorCategory category,
+                            Integer status,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        return new ProviderErrorException((ProviderError) providerError(
+                                operation, category, status, secretNames, secretValues));
+                    }
+
+                    private boolean hasCause(Throwable failure, Class<? extends Throwable> type) {
+                        return findCause(failure, type) != null;
+                    }
+
+                    private <T extends Throwable> T findCause(Throwable failure, Class<T> type) {
+                        Throwable current = failure;
+                        while (current != null) {
+                            if (type.isInstance(current)) {
+                                return type.cast(current);
+                            }
+                            Throwable cause = current.getCause();
+                            if (cause == current) {
+                                break;
+                            }
+                            current = cause;
+                        }
+                        return null;
                     }
 
                     private URI requireHttpUri(String value) {
@@ -409,32 +543,32 @@ final class RuntimeSourceRenderer {
                         try {
                             uri = URI.create(value);
                         } catch (IllegalArgumentException exception) {
-                            throw new SafeExecutionException("PROVIDER_BASE_URL_INVALID");
+                            throw new IllegalStateException("PROVIDER_BASE_URL_INVALID");
                         }
                         if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
                                 || uri.getHost() == null || uri.getUserInfo() != null) {
-                            throw new SafeExecutionException("PROVIDER_BASE_URL_INVALID");
+                            throw new IllegalStateException("PROVIDER_BASE_URL_INVALID");
                         }
                         return uri;
                     }
 
                     private int requireResponseLimit(Integer value) {
                         if (value == null || value <= 0 || value == Integer.MAX_VALUE) {
-                            throw new SafeExecutionException("PROVIDER_RESPONSE_LIMIT_INVALID");
+                            throw new IllegalStateException("PROVIDER_RESPONSE_LIMIT_INVALID");
                         }
                         return value;
                     }
 
                     private long requireTimeout(Long value) {
                         if (value == null || value <= 0 || value > 300_000) {
-                            throw new SafeExecutionException("PROVIDER_TIMEOUT_INVALID");
+                            throw new IllegalStateException("PROVIDER_TIMEOUT_INVALID");
                         }
                         return value;
                     }
 
                     private int requireRequestCapacity(Integer value) {
                         if (value == null || value <= 0 || value > 256) {
-                            throw new SafeExecutionException("PROVIDER_REQUEST_CAPACITY_INVALID");
+                            throw new IllegalStateException("PROVIDER_REQUEST_CAPACITY_INVALID");
                         }
                         return value;
                     }
@@ -446,11 +580,22 @@ final class RuntimeSourceRenderer {
 
                     private record RawResponse(int status, MediaType contentType, byte[] body) {}
 
-                    private static final class SafeExecutionException extends IllegalStateException {
-                        private SafeExecutionException(String message) {
-                            super(message);
+                    private static final class ResponseTooLargeException extends RuntimeException {
+                        private final int status;
+
+                        private ResponseTooLargeException(int status) {
+                            super("Generated provider response exceeded its configured limit");
+                            this.status = status;
+                        }
+
+                        private int status() {
+                            return status;
                         }
                     }
+
+                    private static final class RequiredSecretException extends RuntimeException {}
+
+                    private static final class RequestSerializationException extends RuntimeException {}
                 }
                 """.formatted(packageName);
     }
@@ -484,6 +629,7 @@ final class RuntimeSourceRenderer {
                 import java.util.Map;
                 import %s.runtime.OpenApiOperationExecutor;
                 import %s.runtime.OperationDefinition;
+                import %s.runtime.ProviderErrorException;
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
                 import org.springframework.beans.factory.annotation.Autowired;
@@ -532,10 +678,11 @@ final class RuntimeSourceRenderer {
 
                     @Test
                     void slowUpstreamBodyTimesOutAndCancelsTheRequest() {
-                        var exception = assertThrows(IllegalStateException.class, () -> executor.execute(
+                        var exception = assertThrows(ProviderErrorException.class, () -> executor.execute(
                                 new OperationDefinition("GET", "/slow", List.of(), List.of()), Map.of()));
 
-                        assertEquals("UPSTREAM_REQUEST_TIMEOUT", exception.getMessage());
+                        assertEquals("UPSTREAM_TIMEOUT",
+                                exception.error().payload().at("/error/category").stringValue());
                     }
 
                     @AfterAll
@@ -545,6 +692,6 @@ final class RuntimeSourceRenderer {
                         }
                     }
                 }
-                """.formatted(packageName, packageName, packageName, domainClass);
+                """.formatted(packageName, packageName, packageName, packageName, domainClass);
     }
 }
