@@ -8,22 +8,23 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.validation.LoopbackPortAllocator;
-import io.gen2spring.mcp.validation.McpStreamableHttpClient;
-import io.gen2spring.mcp.validation.MockUpstreamServer;
-import io.gen2spring.mcp.validation.UpstreamCallExpectation;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.math.BigDecimal;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,11 +35,14 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.Test;
@@ -200,17 +204,13 @@ class P1GenerationIntegrationTest {
         if (java17Home != null && !java17Home.isBlank()) {
             processBuilder.environment().put(JAVA_17_HOME, java17Home);
         }
-        Process process = processBuilder.start();
-        boolean finished = process.waitFor(Duration.ofMinutes(5).toMillis(), TimeUnit.MILLISECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-            process.waitFor();
-            throw new AssertionError("installed CLI timed out");
+        try (ObservedProcess process = ObservedProcess.start(processBuilder)) {
+            int exitCode = process.await(Duration.ofMinutes(5), "installed CLI timed out safely");
+            return new InstalledCliResult(
+                    exitCode,
+                    new String(process.stdout().readAllBytes(), UTF_8),
+                    new String(process.stderr().readAllBytes(), UTF_8));
         }
-        return new InstalledCliResult(
-                process.exitValue(),
-                new String(process.getInputStream().readAllBytes(), UTF_8),
-                new String(process.getErrorStream().readAllBytes(), UTF_8));
     }
 
     private void assertReleaseContract(
@@ -390,67 +390,40 @@ class P1GenerationIntegrationTest {
         assertTrue(Files.isRegularFile(targetJava), "target Java executable is unavailable");
         buildBootJar(result.projectRoot(), targetJavaHome);
 
-        Object rawProviderResponse = rawProviderResponse();
-        Object normalizedResult = normalizedResult();
-        UpstreamCallExpectation expectation = new UpstreamCallExpectation(
-                "getForecast",
-                "POST",
-                "/stations/STN01/forecast",
-                Map.of(
-                        "days", List.of("3"),
-                        "serviceKey", List.of(LIVE_QUERY_SECRET)),
-                Map.of("x-weather-key", List.of(LIVE_HEADER_SECRET)),
-                Map.of("location", Map.of(
-                        "latitude", new BigDecimal("37.5"),
-                        "longitude", new BigDecimal("127.0"))),
-                Map.of(
-                        "KMA_SERVICE_KEY", LIVE_QUERY_SECRET,
-                        "WEATHER_HEADER_KEY", LIVE_HEADER_SECRET),
-                200,
-                "application/json",
-                rawProviderResponse);
-        LoopbackPortAllocator ports = new LoopbackPortAllocator();
-        Process application = null;
-        try (MockUpstreamServer mock = MockUpstreamServer.start(expectation);
-                LoopbackPortAllocator.Reservation reservation = ports.reserve()) {
-            int applicationPort = reservation.port();
-            reservation.releaseForLaunch();
+        int applicationPort = reserveLoopbackPort();
+        try (IndependentUpstreamRecorder upstream = IndependentUpstreamRecorder.start(rawProviderResponse());
+                ObservedProcess application = ObservedProcess.start(applicationProcess(
+                        result.projectRoot(), targetJava, applicationPort, upstream.baseUri()))) {
+            awaitApplication(application, applicationPort);
+            new RawMcpClient(URI.create("http://127.0.0.1:" + applicationPort + "/mcp"))
+                    .validate(expectedInputSchema(), normalizedResult());
+            upstream.sealAndAssert(Duration.ofMillis(250));
+        }
+    }
+
+    private ProcessBuilder applicationProcess(
+            Path projectRoot,
+            Path targetJava,
+            int applicationPort,
+            URI upstreamBaseUri) {
             ProcessBuilder launch = new ProcessBuilder(
                     targetJava.toString(),
                     "-jar",
-                    result.projectRoot().resolve("build/libs/weather-mcp-server.jar").toString(),
+                    projectRoot.resolve("build/libs/weather-mcp-server.jar").toString(),
                     "--server.address=127.0.0.1",
                     "--server.port=" + applicationPort);
-            launch.environment().put("PROVIDER_BASE_URL", mock.baseUri().toString());
-            launch.environment().putAll(expectation.environmentOverrides());
-            launch.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            launch.redirectError(ProcessBuilder.Redirect.DISCARD);
-            application = launch.start();
-            awaitApplication(application, applicationPort);
-
-            ExpectedToolCall expectedCall = new ExpectedToolCall(
-                    liveTool(),
-                    liveArguments(),
-                    new ExpectedUpstreamResponse(200, "application/json", rawProviderResponse),
-                    normalizedResult);
-            var validation = new McpStreamableHttpClient().validate(
-                    ports.mcpUri(applicationPort),
-                    Map.of(TOOL_NAME, new ExpectedTool(TOOL_DESCRIPTION, expectedInputSchema())),
-                    expectedCall);
-
-            assertEquals(Set.of(TOOL_NAME), validation.toolNames());
-            assertEquals(List.of(TOOL_DESCRIPTION),
-                    validation.tools().stream().map(tool -> tool.description()).toList());
-            mock.sealAndAwaitVerified(Duration.ofSeconds(10));
-        } finally {
-            stopApplication(application);
-        }
+        launch.environment().put("PROVIDER_BASE_URL", upstreamBaseUri.toString());
+        launch.environment().put("KMA_SERVICE_KEY", LIVE_QUERY_SECRET);
+        launch.environment().put("WEATHER_HEADER_KEY", LIVE_HEADER_SECRET);
+        launch.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        launch.redirectError(ProcessBuilder.Redirect.DISCARD);
+        return launch;
     }
 
     private void buildBootJar(Path projectRoot, Path targetJavaHome) throws Exception {
         Path gradle = projectRoot.resolve("gradlew");
         assertTrue(Files.isExecutable(gradle), "generated Gradle wrapper is unavailable");
-        Process build = new ProcessBuilder(
+        ProcessBuilder processBuilder = new ProcessBuilder(
                 gradle.toString(),
                 "-Dorg.gradle.java.installations.auto-detect=false",
                 "-Dorg.gradle.java.installations.auto-download=false",
@@ -460,25 +433,20 @@ class P1GenerationIntegrationTest {
                 "--non-interactive")
                 .directory(projectRoot.toFile())
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
-        if (!build.waitFor(Duration.ofMinutes(5).toMillis(), TimeUnit.MILLISECONDS)) {
-            build.descendants().forEach(ProcessHandle::destroyForcibly);
-            build.destroyForcibly();
-            if (!build.waitFor(10, TimeUnit.SECONDS)) {
-                throw new AssertionError("generated project build cleanup failed safely");
-            }
-            throw new AssertionError("generated project build timed out safely");
+                .redirectError(ProcessBuilder.Redirect.DISCARD);
+        try (ObservedProcess build = ObservedProcess.start(processBuilder)) {
+            assertEquals(0, build.await(Duration.ofMinutes(5), "generated project build timed out safely"),
+                    "generated project build failed safely");
         }
-        assertEquals(0, build.exitValue(), "generated project build failed safely");
         assertTrue(Files.isRegularFile(projectRoot.resolve("build/libs/weather-mcp-server.jar")),
                 "generated boot JAR is unavailable");
     }
 
-    private void awaitApplication(Process application, int port) throws Exception {
+    private void awaitApplication(ObservedProcess application, int port) throws Exception {
         long deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos();
         while (System.nanoTime() < deadline) {
-            if (!application.isAlive()) {
+            application.observe();
+            if (!application.isRootAlive()) {
                 throw new AssertionError("generated application exited before readiness");
             }
             try (Socket socket = new Socket()) {
@@ -491,113 +459,72 @@ class P1GenerationIntegrationTest {
         throw new AssertionError("generated application readiness timed out safely");
     }
 
-    private void stopApplication(Process application) throws InterruptedException {
-        if (application == null) {
-            return;
-        }
-        application.destroy();
-        if (!application.waitFor(10, TimeUnit.SECONDS)) {
-            application.destroyForcibly();
-            if (!application.waitFor(10, TimeUnit.SECONDS)) {
-                throw new AssertionError("generated application cleanup failed safely");
-            }
+    private int reserveLoopbackPort() throws IOException {
+        try (ServerSocket reservation = new ServerSocket(
+                0, 1, InetAddress.getByAddress(new byte[] {127, 0, 0, 1}))) {
+            reservation.setReuseAddress(false);
+            return reservation.getLocalPort();
         }
     }
 
-    private Map<String, Object> expectedInputSchema() {
-        Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("clientVersion", Map.of(
-                "type", "string",
-                "description", "Calling client version."));
-        properties.put("days", Map.of(
-                "type", "integer",
-                "format", "int32",
-                "minimum", BigDecimal.ONE,
-                "maximum", BigDecimal.valueOf(7),
-                "description", "Number of forecast days."));
-        properties.put("includeAlerts", Map.of(
-                "type", "boolean",
-                "description", "includeAlerts"));
-        properties.put("location", Map.of(
-                "type", "object",
-                "properties", Map.of(
-                        "label", Map.of("type", "string", "description", "label"),
-                        "latitude", Map.of(
-                                "type", "number",
-                                "minimum", BigDecimal.valueOf(-90),
-                                "maximum", BigDecimal.valueOf(90),
-                                "description", "latitude"),
-                        "longitude", Map.of(
-                                "type", "number",
-                                "minimum", BigDecimal.valueOf(-180),
-                                "maximum", BigDecimal.valueOf(180),
-                                "description", "longitude")),
-                "required", List.of("latitude", "longitude"),
-                "description", "location"));
-        properties.put("mode", Map.of(
-                "type", "string",
-                "enum", List.of("brief", "full-detail"),
-                "description", "Forecast detail mode."));
-        properties.put("note", Map.of(
-                "type", "string",
-                "minLength", 1,
-                "maxLength", 80,
-                "description", "note"));
-        properties.put("stationId", Map.of(
-                "type", "string",
-                "minLength", 2,
-                "maxLength", 12,
-                "pattern", "^[A-Z0-9]+$",
-                "description", "Station identifier."));
-        properties.put("tags", Map.of(
-                "type", "array",
-                "items", Map.of("type", "string"),
-                "description", "Optional forecast tags."));
-        return Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("days", "location", "stationId"));
+    private JsonNode expectedInputSchema() {
+        return jsonLiteral("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "clientVersion": {"type": "string", "description": "Calling client version."},
+                    "days": {"type": "integer", "format": "int32", "minimum": 1, "maximum": 7,
+                      "description": "Number of forecast days."},
+                    "includeAlerts": {"type": "boolean", "description": "includeAlerts"},
+                    "location": {
+                      "type": "object",
+                      "properties": {
+                        "label": {"type": "string", "description": "label"},
+                        "latitude": {"type": "number", "minimum": -90, "maximum": 90,
+                          "description": "latitude"},
+                        "longitude": {"type": "number", "minimum": -180, "maximum": 180,
+                          "description": "longitude"}
+                      },
+                      "required": ["latitude", "longitude"],
+                      "description": "location"
+                    },
+                    "mode": {"type": "string", "enum": ["brief", "full-detail"],
+                      "description": "Forecast detail mode."},
+                    "note": {"type": "string", "minLength": 1, "maxLength": 80, "description": "note"},
+                    "stationId": {"type": "string", "minLength": 2, "maxLength": 12,
+                      "pattern": "^[A-Z0-9]+$", "description": "Station identifier."},
+                    "tags": {"type": "array", "items": {"type": "string"},
+                      "description": "Optional forecast tags."}
+                  },
+                  "required": ["days", "location", "stationId"]
+                }
+                """);
     }
 
-    private McpToolDefinition liveTool() {
-        return new McpToolDefinition(
-                "getForecast",
-                TOOL_NAME,
-                TOOL_DESCRIPTION,
-                List.of(),
-                null,
-                List.of(),
-                McpToolDefinition.OutputKind.GENERIC_JSON);
+    private JsonNode rawProviderResponse() {
+        return jsonLiteral("""
+                {"response": {
+                  "header": {"resultCode": "00", "resultMsg": "NORMAL_SERVICE", "rawHeader": true},
+                  "body": {"items": {"item": [{"forecast": "sunny"}]},
+                    "totalCount": 1, "rawBody": true}
+                }, "rawRoot": true}
+                """);
     }
 
-    private Map<String, Object> liveArguments() {
-        return Map.of(
-                "stationId", REPRESENTATIVE_STATION_ID,
-                "days", 3,
-                "location", Map.of(
-                        "latitude", new BigDecimal("37.5"),
-                        "longitude", new BigDecimal("127.0")));
+    private JsonNode normalizedResult() {
+        return jsonLiteral("""
+                {"data": [{"forecast": "sunny"}],
+                 "page": {"totalCount": 1},
+                 "provider": {"code": "00", "message": "NORMAL_SERVICE"}}
+                """);
     }
 
-    private Object rawProviderResponse() {
-        return Map.of(
-                "response", Map.of(
-                        "header", Map.of(
-                                "resultCode", "00",
-                                "resultMsg", "NORMAL_SERVICE",
-                                "rawHeader", true),
-                        "body", Map.of(
-                                "items", Map.of("item", List.of(Map.of("forecast", "sunny"))),
-                                "totalCount", 1,
-                                "rawBody", true)),
-                "rawRoot", true);
-    }
-
-    private Object normalizedResult() {
-        return Map.of(
-                "data", List.of(Map.of("forecast", "sunny")),
-                "page", Map.of("totalCount", 1),
-                "provider", Map.of("code", "00", "message", "NORMAL_SERVICE"));
+    private JsonNode jsonLiteral(String value) {
+        try {
+            return JSON.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
+        } catch (IOException exception) {
+            throw new AssertionError("independent JSON fixture is invalid", exception);
+        }
     }
 
     private void assertArtifactValuesAbsent(GenerationResult result, String... sensitiveValues) throws IOException {
@@ -776,6 +703,399 @@ class P1GenerationIntegrationTest {
     private JsonNode readJson(Path path) throws IOException {
         return JSON.readTree(Files.readAllBytes(path));
     }
+
+    private static final class RawMcpClient {
+        private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+
+        private final URI endpoint;
+        private final HttpClient client;
+
+        private RawMcpClient(URI endpoint) {
+            this.endpoint = endpoint;
+            this.client = HttpClient.newBuilder()
+                    .connectTimeout(REQUEST_TIMEOUT)
+                    .followRedirects(HttpClient.Redirect.NEVER)
+                    .build();
+        }
+
+        private void validate(JsonNode expectedSchema, JsonNode expectedResult) throws Exception {
+            HttpResponse<byte[]> initialize = send("""
+                    {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+                      "protocolVersion":"2025-03-26","capabilities":{},
+                      "clientInfo":{"name":"profile-acceptance-oracle","version":"1"}}}
+                    """, null);
+            JsonNode initializeResult = rpcResult(initialize, 1);
+            assertEquals("2025-03-26", initializeResult.path("protocolVersion").textValue());
+            assertTrue(initializeResult.path("capabilities").path("tools").isObject(),
+                    "MCP tools capability is missing");
+            assertTrue(initializeResult.path("serverInfo").path("name").isTextual(),
+                    "MCP server name is missing");
+            assertTrue(initializeResult.path("serverInfo").path("version").isTextual(),
+                    "MCP server version is missing");
+            String session = session(initialize, null);
+
+            HttpResponse<byte[]> initialized = send(
+                    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", session);
+            assertSuccess(initialized);
+            session = session(initialized, session);
+
+            JsonNode toolsResult = rpcResult(send(
+                    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}",
+                    session), 2);
+            JsonNode tools = toolsResult.get("tools");
+            assertTrue(tools != null && tools.isArray(), "MCP tools payload is invalid");
+            assertEquals(1, tools.size(), "MCP tool count does not match the fixture");
+            JsonNode tool = tools.get(0);
+            assertEquals(TOOL_NAME, tool.path("name").textValue());
+            assertEquals(TOOL_DESCRIPTION, tool.path("description").textValue());
+            assertEquals(expectedSchema, tool.get("inputSchema"), "MCP Tool input schema mismatch");
+
+            JsonNode callResult = rpcResult(send("""
+                    {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+                      "name":"kma_weather_get_forecast","arguments":{
+                        "stationId":"STN01","days":3,
+                        "location":{"latitude":37.5,"longitude":127.0}}}}
+                    """, session), 3);
+            assertFalse(callResult.path("isError").asBoolean(false), "MCP Tool call reported an error");
+            JsonNode content = callResult.get("content");
+            assertTrue(content != null && content.isArray(), "MCP Tool content is invalid");
+            assertEquals(1, content.size(), "MCP Tool must return exactly one content item");
+            JsonNode text = content.get(0);
+            assertEquals("text", text.path("type").textValue());
+            assertTrue(text.path("text").isTextual(), "MCP Tool text payload is missing");
+            JsonNode payload = strictJson(text.path("text").textValue());
+            assertEquals(expectedResult, payload, "normalized Tool result mismatch");
+            assertFalse(payload.has("response"), "raw provider envelope leaked into the Tool result");
+            assertTrue(payload.findValue("rawRoot") == null, "raw root sentinel leaked into the Tool result");
+            assertTrue(payload.findValue("rawHeader") == null, "raw header sentinel leaked into the Tool result");
+            assertTrue(payload.findValue("rawBody") == null, "raw body sentinel leaked into the Tool result");
+        }
+
+        private HttpResponse<byte[]> send(String body, String session) throws Exception {
+            HttpRequest.Builder request = HttpRequest.newBuilder(endpoint)
+                    .timeout(REQUEST_TIMEOUT)
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json, text/event-stream")
+                    .POST(HttpRequest.BodyPublishers.ofString(body, UTF_8));
+            if (session != null) {
+                request.header("Mcp-Session-Id", session);
+            }
+            return client.send(request.build(), HttpResponse.BodyHandlers.ofByteArray());
+        }
+
+        private JsonNode rpcResult(HttpResponse<byte[]> response, long expectedId) throws IOException {
+            assertSuccess(response);
+            JsonNode root = responseJson(response);
+            assertTrue(root.isObject(), "JSON-RPC response is invalid");
+            assertEquals("2.0", root.path("jsonrpc").textValue());
+            assertFalse(root.hasNonNull("error"), "JSON-RPC response reported an error");
+            assertTrue(root.path("id").isIntegralNumber(), "JSON-RPC response ID is invalid");
+            assertEquals(expectedId, root.path("id").longValue());
+            JsonNode result = root.get("result");
+            assertTrue(result != null && result.isObject(), "JSON-RPC result is invalid");
+            return result;
+        }
+
+        private void assertSuccess(HttpResponse<?> response) {
+            assertTrue(response.statusCode() >= 200 && response.statusCode() < 300,
+                    "MCP response status is unsuccessful");
+        }
+
+        private String session(HttpResponse<?> response, String fallback) {
+            String value = response.headers().firstValue("Mcp-Session-Id").orElse(fallback);
+            assertTrue(value != null && !value.isBlank(), "MCP session identifier is missing");
+            return value;
+        }
+
+        private JsonNode responseJson(HttpResponse<byte[]> response) throws IOException {
+            String contentType = response.headers().firstValue("Content-Type").orElse("")
+                    .split(";", 2)[0].trim().toLowerCase(java.util.Locale.ROOT);
+            String payload;
+            if ("application/json".equals(contentType)) {
+                payload = new String(response.body(), UTF_8);
+            } else if ("text/event-stream".equals(contentType)) {
+                payload = firstSseData(response.body());
+            } else {
+                throw new AssertionError("MCP response content type is unsupported");
+            }
+            return strictJson(payload);
+        }
+
+        private String firstSseData(byte[] body) {
+            List<String> data = new ArrayList<>();
+            String text = new String(body, UTF_8).replace("\r\n", "\n");
+            for (String line : text.split("\n", -1)) {
+                if (line.isEmpty() && !data.isEmpty()) {
+                    return String.join("\n", data);
+                }
+                if (line.startsWith("data:")) {
+                    String value = line.substring(5);
+                    data.add(value.startsWith(" ") ? value.substring(1) : value);
+                }
+            }
+            if (!data.isEmpty()) {
+                return String.join("\n", data);
+            }
+            throw new AssertionError("MCP SSE response contains no data event");
+        }
+
+        private JsonNode strictJson(String value) throws IOException {
+            return JSON.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
+        }
+    }
+
+    private static final class IndependentUpstreamRecorder implements AutoCloseable {
+        private final HttpServer server;
+        private final ExecutorService executor;
+        private final byte[] response;
+        private int requestCount;
+        private RecordedRequest request;
+        private boolean captureFailed;
+        private boolean sealed;
+        private boolean lateRequest;
+
+        private IndependentUpstreamRecorder(HttpServer server, ExecutorService executor, byte[] response) {
+            this.server = server;
+            this.executor = executor;
+            this.response = response;
+        }
+
+        private static IndependentUpstreamRecorder start(JsonNode response) throws IOException {
+            HttpServer server = HttpServer.create(
+                    new InetSocketAddress(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), 0), 0);
+            ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+            IndependentUpstreamRecorder recorder =
+                    new IndependentUpstreamRecorder(server, executor, JSON.writeValueAsBytes(response));
+            server.createContext("/", recorder::handle);
+            server.setExecutor(executor);
+            server.start();
+            return recorder;
+        }
+
+        private URI baseUri() {
+            return URI.create("http://127.0.0.1:" + server.getAddress().getPort());
+        }
+
+        private void handle(HttpExchange exchange) {
+            int status = 200;
+            byte[] body = response;
+            try (exchange) {
+                try {
+                    RecordedRequest captured = new RecordedRequest(
+                            exchange.getRequestMethod(),
+                            exchange.getRequestURI().getRawPath(),
+                            query(exchange.getRequestURI().getRawQuery()),
+                            exchange.getRequestHeaders().getFirst("X-Weather-Key"),
+                            JSON.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                                    .readTree(exchange.getRequestBody()));
+                    synchronized (this) {
+                        requestCount++;
+                        lateRequest |= sealed;
+                        if (request == null) {
+                            request = captured;
+                        }
+                    }
+                } catch (IOException | RuntimeException failure) {
+                    synchronized (this) {
+                        requestCount++;
+                        lateRequest |= sealed;
+                        captureFailed = true;
+                    }
+                    status = 500;
+                    body = "{}".getBytes(UTF_8);
+                }
+                try {
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(status, body.length);
+                    exchange.getResponseBody().write(body);
+                } catch (IOException ignored) {
+                    synchronized (this) {
+                        captureFailed = true;
+                    }
+                }
+            }
+        }
+
+        private Map<String, List<String>> query(String rawQuery) {
+            if (rawQuery == null || rawQuery.isEmpty()) {
+                return Map.of();
+            }
+            Map<String, List<String>> result = new LinkedHashMap<>();
+            for (String pair : rawQuery.split("&", -1)) {
+                int separator = pair.indexOf('=');
+                String name = URLDecoder.decode(separator < 0 ? pair : pair.substring(0, separator), UTF_8);
+                String value = URLDecoder.decode(separator < 0 ? "" : pair.substring(separator + 1), UTF_8);
+                result.computeIfAbsent(name, ignored -> new ArrayList<>()).add(value);
+            }
+            result.replaceAll((ignored, values) -> List.copyOf(values));
+            return Map.copyOf(result);
+        }
+
+        private void sealAndAssert(Duration lateRequestWindow) throws Exception {
+            synchronized (this) {
+                sealed = true;
+            }
+            Thread.sleep(lateRequestWindow.toMillis());
+            RecordedRequest captured;
+            int count;
+            boolean failed;
+            boolean late;
+            synchronized (this) {
+                captured = request;
+                count = requestCount;
+                failed = captureFailed;
+                late = lateRequest;
+            }
+            assertFalse(failed, "upstream request capture failed safely");
+            assertFalse(late, "upstream request arrived after observation was sealed");
+            assertEquals(1, count, "upstream request count must be exactly one");
+            assertNotNull(captured, "upstream request is missing");
+            assertEquals("POST", captured.method());
+            assertEquals("/stations/STN01/forecast", captured.rawPath());
+            assertEquals(Set.of("days", "serviceKey"), captured.query().keySet());
+            assertEquals(List.of("3"), captured.query().get("days"));
+            assertTrue(List.of(LIVE_QUERY_SECRET).equals(captured.query().get("serviceKey")),
+                    "upstream query secret does not match");
+            assertTrue(LIVE_HEADER_SECRET.equals(captured.weatherHeader()),
+                    "upstream header secret does not match");
+            assertEquals(JSON.readTree("""
+                    {"location":{"latitude":37.5,"longitude":127.0}}
+                    """), captured.body());
+        }
+
+        @Override
+        public void close() throws InterruptedException {
+            server.stop(0);
+            executor.shutdownNow();
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("upstream recorder cleanup timed out safely");
+            }
+            synchronized (this) {
+                if (sealed && (lateRequest || requestCount != 1)) {
+                    throw new AssertionError("upstream request count changed after observation was sealed");
+                }
+            }
+        }
+    }
+
+    private static final class ObservedProcess implements AutoCloseable {
+        private static final Duration POLL_INTERVAL = Duration.ofMillis(50);
+        private static final Duration DESCENDANT_GRACE = Duration.ofSeconds(2);
+        private static final Duration TERMINATION_GRACE = Duration.ofSeconds(5);
+        private static final Duration FORCED_TERMINATION_GRACE = Duration.ofSeconds(10);
+
+        private final Process process;
+        private final Map<Long, ProcessHandle> observed = new LinkedHashMap<>();
+
+        private ObservedProcess(Process process) {
+            this.process = process;
+            observe();
+        }
+
+        private static ObservedProcess start(ProcessBuilder builder) throws IOException {
+            return new ObservedProcess(builder.start());
+        }
+
+        private int await(Duration timeout, String timeoutMessage) throws InterruptedException {
+            long deadline = deadline(timeout);
+            while (process.isAlive() && System.nanoTime() < deadline) {
+                observe();
+                Thread.sleep(POLL_INTERVAL.toMillis());
+            }
+            observe();
+            if (process.isAlive()) {
+                terminate();
+                throw new AssertionError(timeoutMessage);
+            }
+            if (!awaitObservedExit(DESCENDANT_GRACE)) {
+                terminate();
+                throw new AssertionError("process left a running descendant safely");
+            }
+            return process.exitValue();
+        }
+
+        private void observe() {
+            observed.put(process.pid(), process.toHandle());
+            if (process.isAlive()) {
+                process.descendants().forEach(handle -> observed.put(handle.pid(), handle));
+            }
+        }
+
+        private boolean isRootAlive() {
+            return process.isAlive();
+        }
+
+        private java.io.InputStream stdout() {
+            return process.getInputStream();
+        }
+
+        private java.io.InputStream stderr() {
+            return process.getErrorStream();
+        }
+
+        private void terminate() throws InterruptedException {
+            observe();
+            destroyObserved(false);
+            if (awaitObservedExit(TERMINATION_GRACE)) {
+                return;
+            }
+            observe();
+            destroyObserved(true);
+            if (!awaitObservedExit(FORCED_TERMINATION_GRACE)) {
+                throw new AssertionError("process tree cleanup timed out safely");
+            }
+        }
+
+        private void destroyObserved(boolean forcibly) {
+            List<ProcessHandle> handles = new ArrayList<>(observed.values());
+            handles.sort(Comparator.comparingInt(handle -> handle.pid() == process.pid() ? 1 : 0));
+            for (ProcessHandle handle : handles) {
+                if (handle.isAlive()) {
+                    if (forcibly) {
+                        handle.destroyForcibly();
+                    } else {
+                        handle.destroy();
+                    }
+                }
+            }
+        }
+
+        private boolean awaitObservedExit(Duration timeout) throws InterruptedException {
+            long deadline = deadline(timeout);
+            while (System.nanoTime() < deadline) {
+                observe();
+                if (observed.values().stream().noneMatch(ProcessHandle::isAlive)) {
+                    return true;
+                }
+                Thread.sleep(POLL_INTERVAL.toMillis());
+            }
+            observe();
+            return observed.values().stream().noneMatch(ProcessHandle::isAlive);
+        }
+
+        private static long deadline(Duration timeout) {
+            long now = System.nanoTime();
+            long nanos = timeout.toNanos();
+            return Long.MAX_VALUE - now < nanos ? Long.MAX_VALUE : now + nanos;
+        }
+
+        @Override
+        public void close() throws Exception {
+            if (observed.values().stream().anyMatch(ProcessHandle::isAlive)) {
+                terminate();
+            }
+            process.getOutputStream().close();
+            process.getInputStream().close();
+            process.getErrorStream().close();
+        }
+    }
+
+    private record RecordedRequest(
+            String method,
+            String rawPath,
+            Map<String, List<String>> query,
+            String weatherHeader,
+            JsonNode body) {}
 
     private record GenerationResult(
             Path projectRoot,
