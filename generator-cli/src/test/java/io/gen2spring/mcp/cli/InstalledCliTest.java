@@ -38,11 +38,19 @@ class InstalledCliTest {
         assertEquals(profiles.stdout(), repeatedProfiles.stdout());
         assertEquals("", repeatedProfiles.stderr());
         var installedProfiles = JSON.readTree(profiles.stdout()).path("profiles");
-        assertEquals(2, installedProfiles.size());
+        assertEquals(4, installedProfiles.size());
         assertInstalledProfile(installedProfiles.get(0),
-                "spring-ai-2.0-java17-mvc-streamable", 17, JAVA_17_IMAGE);
+                "spring-ai-1.1-java17-mvc-streamable", 17, "3.5.16", "1.1.8",
+                "generator-spring-ai-1", "spring-ai-1-v1", JAVA_17_IMAGE);
         assertInstalledProfile(installedProfiles.get(1),
-                "spring-ai-2.0-java21-mvc-streamable", 21, JAVA_21_IMAGE);
+                "spring-ai-1.1-java21-mvc-streamable", 21, "3.5.16", "1.1.8",
+                "generator-spring-ai-1", "spring-ai-1-v1", JAVA_21_IMAGE);
+        assertInstalledProfile(installedProfiles.get(2),
+                "spring-ai-2.0-java17-mvc-streamable", 17, "4.1.0", "2.0.0",
+                "generator-spring-ai-2", "spring-ai-2-v2", JAVA_17_IMAGE);
+        assertInstalledProfile(installedProfiles.get(3),
+                "spring-ai-2.0-java21-mvc-streamable", 21, "4.1.0", "2.0.0",
+                "generator-spring-ai-2", "spring-ai-2-v2", JAVA_21_IMAGE);
 
         Path safeTemp = tempDir.toRealPath();
         Path specification = Files.writeString(safeTemp.resolve("weather.yaml"), """
@@ -251,16 +259,20 @@ class InstalledCliTest {
             com.fasterxml.jackson.databind.JsonNode profile,
             String id,
             int javaVersion,
+            String springBootVersion,
+            String springAiVersion,
+            String generatorModule,
+            String templateVersion,
             String containerImage) {
         assertEquals(id, profile.path("id").asText());
-        assertEquals("generator-spring-ai-2", profile.path("generatorModule").asText());
-        assertEquals("spring-ai-2-v2", profile.path("templateVersion").asText());
+        assertEquals(generatorModule, profile.path("generatorModule").asText());
+        assertEquals(templateVersion, profile.path("templateVersion").asText());
         assertEquals("0.2.0", profile.path("runtimeVersion").asText());
         assertEquals("9.6.1", profile.path("gradleVersion").asText());
         assertEquals(containerImage, profile.path("containerImage").asText());
         assertEquals(javaVersion, profile.path("target").path("javaVersion").asInt());
-        assertEquals("4.1.0", profile.path("target").path("springBootVersion").asText());
-        assertEquals("2.0.0", profile.path("target").path("springAiVersion").asText());
+        assertEquals(springBootVersion, profile.path("target").path("springBootVersion").asText());
+        assertEquals(springAiVersion, profile.path("target").path("springAiVersion").asText());
         assertEquals("GRADLE_KOTLIN", profile.path("target").path("buildTool").asText());
         assertEquals("MVC", profile.path("target").path("webStack").asText());
         assertEquals("SYNC", profile.path("target").path("programmingModel").asText());

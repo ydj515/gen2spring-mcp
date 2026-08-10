@@ -2,6 +2,7 @@ package io.gen2spring.mcp.cli;
 
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SERVER_SECRET;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,11 +53,25 @@ class GenerationConfigurationReaderTest {
 
     @Test
     void readsEveryRegisteredTargetProfile() throws Exception {
-        Path java17 = copyResource("/config/weather-generation-java17.yaml", "generation-java17.yaml");
-        Path java21 = copyResource("/config/weather-generation.yaml", "generation-java21.yaml");
+        Path ai2Java17 = copyResource("/config/weather-generation-java17.yaml", "generation-ai2-java17.yaml");
+        Path ai2Java21 = copyResource("/config/weather-generation.yaml", "generation-ai2-java21.yaml");
+        Path ai1Java17 = copyResource(
+                "/config/weather-generation-spring-ai1-java17.yaml", "generation-ai1-java17.yaml");
+        Path ai1Java21 = copyResource(
+                "/config/weather-generation-spring-ai1-java21.yaml", "generation-ai1-java21.yaml");
 
-        assertEquals("spring-ai-2.0-java17-mvc-streamable", reader.read(java17).targetProfileId());
-        assertEquals("spring-ai-2.0-java21-mvc-streamable", reader.read(java21).targetProfileId());
+        assertEquals("spring-ai-1.1-java17-mvc-streamable", reader.read(ai1Java17).targetProfileId());
+        assertEquals("spring-ai-1.1-java21-mvc-streamable", reader.read(ai1Java21).targetProfileId());
+        assertEquals("spring-ai-2.0-java17-mvc-streamable", reader.read(ai2Java17).targetProfileId());
+        assertEquals("spring-ai-2.0-java21-mvc-streamable", reader.read(ai2Java21).targetProfileId());
+        assertEquals(
+                Files.readString(ai2Java17).replace(
+                        "spring-ai-2.0-java17-mvc-streamable", "spring-ai-1.1-java17-mvc-streamable"),
+                Files.readString(ai1Java17));
+        assertEquals(
+                Files.readString(ai2Java21).replace(
+                        "spring-ai-2.0-java21-mvc-streamable", "spring-ai-1.1-java21-mvc-streamable"),
+                Files.readString(ai1Java21));
     }
 
     @Test
@@ -70,7 +85,21 @@ class GenerationConfigurationReaderTest {
                 () -> restrictedReader.read(java17));
 
         assertEquals("Target profile is unavailable", exception.getMessage());
-        assertTrue(!exception.getMessage().contains("spring-ai-2.0-java17-mvc-streamable"));
+        assertFalse(exception.getMessage().contains("spring-ai-2.0-java17-mvc-streamable"));
+    }
+
+    @Test
+    void rejectsAnUnknownProfileWithAFixedValueFreeFailure() throws Exception {
+        String unknownProfile = "spring-ai-secret-unknown";
+        Path configuration = write("unknown-profile.yaml", validConfiguration().replace(
+                "spring-ai-2.0-java21-mvc-streamable", unknownProfile));
+
+        CliConfigurationException exception = assertThrows(
+                CliConfigurationException.class,
+                () -> reader.read(configuration));
+
+        assertEquals("Target profile is unavailable", exception.getMessage());
+        assertFalse(exception.getMessage().contains(unknownProfile));
     }
 
     @Test

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,49 +13,53 @@ import org.junit.jupiter.api.Test;
 
 class CompatibilityProfileRegistryTest {
     private static final String INVALID_PROFILES_MESSAGE = "Compatibility profiles are invalid";
+    private static final String JAVA_17_IMAGE = "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
+            + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8";
+    private static final String JAVA_21_IMAGE = "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
+            + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64";
 
     @Test
     void exposesThePinnedProfilesInAscendingIdOrder() {
         var registry = CompatibilityProfileRegistry.defaults();
 
         assertEquals(List.of(
+                "spring-ai-1.1-java17-mvc-streamable",
+                "spring-ai-1.1-java21-mvc-streamable",
                 "spring-ai-2.0-java17-mvc-streamable",
                 "spring-ai-2.0-java21-mvc-streamable"),
                 registry.profiles().stream().map(CompatibilityProfile::id).toList());
 
-        var java17 = registry.profiles().get(0);
-        assertEquals(new CompatibilityProfile.TargetPlatform(
-                17, "4.1.0", "2.0.0", "GRADLE_KOTLIN", "MVC", "SYNC", "STREAMABLE_HTTP"),
-                java17.target());
-        assertEquals("generator-spring-ai-2", java17.generatorModule());
-        assertEquals("spring-ai-2-v2", java17.templateVersion());
-        assertEquals("0.2.0", java17.runtimeVersion());
-        assertEquals("9.6.1", java17.gradleVersion());
-        assertEquals(
-                "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
-                        + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8",
-                java17.containerImage());
-
-        var java21 = registry.profiles().get(1);
-        assertEquals(new CompatibilityProfile.TargetPlatform(
-                21, "4.1.0", "2.0.0", "GRADLE_KOTLIN", "MVC", "SYNC", "STREAMABLE_HTTP"),
-                java21.target());
-        assertEquals("generator-spring-ai-2", java21.generatorModule());
-        assertEquals("spring-ai-2-v2", java21.templateVersion());
-        assertEquals("0.2.0", java21.runtimeVersion());
-        assertEquals("9.6.1", java21.gradleVersion());
-        assertEquals(
-                "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
-                        + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64",
-                java21.containerImage());
+        assertProfile(registry.profiles().get(0),
+                "spring-ai-1.1-java17-mvc-streamable", 17, "3.5.16", "1.1.8",
+                "generator-spring-ai-1", "spring-ai-1-v1", JAVA_17_IMAGE);
+        assertProfile(registry.profiles().get(1),
+                "spring-ai-1.1-java21-mvc-streamable", 21, "3.5.16", "1.1.8",
+                "generator-spring-ai-1", "spring-ai-1-v1", JAVA_21_IMAGE);
+        assertProfile(registry.profiles().get(2),
+                "spring-ai-2.0-java17-mvc-streamable", 17, "4.1.0", "2.0.0",
+                "generator-spring-ai-2", "spring-ai-2-v2", JAVA_17_IMAGE);
+        assertProfile(registry.profiles().get(3),
+                "spring-ai-2.0-java21-mvc-streamable", 21, "4.1.0", "2.0.0",
+                "generator-spring-ai-2", "spring-ai-2-v2", JAVA_21_IMAGE);
     }
 
     @Test
     void returnsCanonicalProfilesByIdWithoutFallback() {
         var registry = CompatibilityProfileRegistry.defaults();
-        var java17 = registry.profiles().get(0);
-
-        assertSame(java17, registry.find(java17.id()).orElseThrow());
+        for (String id : List.of(
+                "spring-ai-1.1-java17-mvc-streamable",
+                "spring-ai-1.1-java21-mvc-streamable",
+                "spring-ai-2.0-java17-mvc-streamable",
+                "spring-ai-2.0-java21-mvc-streamable")) {
+            var found = registry.find(id);
+            assertTrue(found.isPresent(), id);
+            CompatibilityProfile listed = registry.profiles().stream()
+                    .filter(profile -> id.equals(profile.id()))
+                    .findFirst()
+                    .orElseThrow();
+            assertSame(listed, found.orElseThrow(), id);
+        }
+        assertSame(registry.find("spring-ai-2.0-java21-mvc-streamable").orElseThrow(), CompatibilityProfile.p0());
         assertFalse(registry.find("spring-ai-2.0-java99-mvc-streamable").isPresent());
         assertFalse(registry.find(null).isPresent());
         assertFalse(registry.find("  ").isPresent());
@@ -150,6 +155,26 @@ class CompatibilityProfileRegistryTest {
             CompatibilityProfile.TargetPlatform target) {
         return new CompatibilityProfile(
                 id, target, "generator-spring-ai-2", "spring-ai-2-v2", "0.2.0", "9.6.1", "image");
+    }
+
+    private static void assertProfile(
+            CompatibilityProfile profile,
+            String id,
+            int javaVersion,
+            String springBootVersion,
+            String springAiVersion,
+            String generatorModule,
+            String templateVersion,
+            String containerImage) {
+        assertEquals(id, profile.id());
+        assertEquals(new CompatibilityProfile.TargetPlatform(
+                javaVersion, springBootVersion, springAiVersion,
+                "GRADLE_KOTLIN", "MVC", "SYNC", "STREAMABLE_HTTP"), profile.target());
+        assertEquals(generatorModule, profile.generatorModule());
+        assertEquals(templateVersion, profile.templateVersion());
+        assertEquals("0.2.0", profile.runtimeVersion());
+        assertEquals("9.6.1", profile.gradleVersion());
+        assertEquals(containerImage, profile.containerImage());
     }
 
     private static void assertInvalid(org.junit.jupiter.api.function.Executable executable) {
