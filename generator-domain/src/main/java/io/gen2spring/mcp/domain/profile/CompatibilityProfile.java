@@ -5,12 +5,13 @@ public record CompatibilityProfile(
         TargetPlatform target,
         String generatorModule,
         String templateVersion,
-        String runtimeVersion) {
+        String runtimeVersion,
+        String gradleVersion,
+        String containerImage) {
     public static CompatibilityProfile p0() {
-        return new CompatibilityProfile(
-                "spring-ai-2.0-java21-mvc-streamable",
-                new TargetPlatform(21, "4.1.0", "2.0.0", "GRADLE_KOTLIN", "MVC", "SYNC", "STREAMABLE_HTTP"),
-                "generator-spring-ai-2", "spring-ai-2-v1", "0.1.0");
+        return CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java21-mvc-streamable")
+                .orElseThrow();
     }
 
     public boolean supports(TargetPlatform candidate) {
