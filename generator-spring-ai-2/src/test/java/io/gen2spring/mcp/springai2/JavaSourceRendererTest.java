@@ -74,6 +74,7 @@ class JavaSourceRendererTest {
                 "src/main/java/com/example/weather/runtime/ResponseNormalizationPolicy.java",
                 "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
                 "src/main/java/com/example/weather/runtime/SecretBinding.java",
+                "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java")),
                 new TreeSet<>(files.keySet()));
 
@@ -100,6 +101,12 @@ class JavaSourceRendererTest {
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java"));
         assertTrue(contextTest.contains("webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT"));
         assertTrue(contextTest.contains("void contextLoads()"));
+    }
+
+    @Test
+    void emitsTheTargetJavaRuntimeFeatureAssertionForBothSupportedProfiles() {
+        assertRuntimeFeature(profile(17), 17);
+        assertRuntimeFeature(profile(21), 21);
     }
 
     @Test
@@ -426,16 +433,39 @@ class JavaSourceRendererTest {
         return context(List.of(weatherTool()));
     }
 
+    static GenerationContext contextWithWeatherTool(CompatibilityProfile profile) {
+        return context(profile, List.of(weatherTool()));
+    }
+
     static GenerationContext context(List<McpToolDefinition> tools) {
+        return context(CompatibilityProfile.p0(), tools);
+    }
+
+    static GenerationContext context(CompatibilityProfile profile, List<McpToolDefinition> tools) {
         var coordinates = new GenerationRequest.ProjectCoordinates(
                 "com.example", "weather-mcp-server", "com.example.weather");
         var request = new GenerationRequest(
-                coordinates, "kma", "weather", CompatibilityProfile.p0().id(),
+                coordinates, "kma", "weather", profile.id(),
                 GenerationRequest.ValidationLevel.MCP_PROTOCOL,
                 new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
                         "getForecast", Map.of("nx", 60, "ny", 127))),
                 List.of());
-        return new GenerationContext(null, tools, request, CompatibilityProfile.p0(), new byte[0]);
+        return new GenerationContext(null, tools, request, profile, new byte[0]);
+    }
+
+    private void assertRuntimeFeature(CompatibilityProfile profile, int expectedFeature) {
+        var files = new JavaSourceRenderer(profile).render(contextWithWeatherTool(profile));
+        String path = "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java";
+
+        assertTrue(files.containsKey(path), profile.id());
+        String source = utf8(files.get(path));
+        assertTrue(source.contains("assertEquals(" + expectedFeature + ", Runtime.version().feature())"), source);
+    }
+
+    private static CompatibilityProfile profile(int javaVersion) {
+        return io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java" + javaVersion + "-mvc-streamable")
+                .orElseThrow();
     }
 
     static McpToolDefinition weatherTool() {

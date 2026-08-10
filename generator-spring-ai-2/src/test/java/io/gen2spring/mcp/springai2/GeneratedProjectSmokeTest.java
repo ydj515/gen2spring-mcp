@@ -10,6 +10,7 @@ import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
@@ -37,6 +38,20 @@ class GeneratedProjectSmokeTest {
                 .generate(JavaSourceRendererTest.contextWithWeatherTool())
                 .files();
         assertProjectBuilds(tempDir.resolve("weather"), files);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedJava17ProjectCompilesAndRunsOnTheConfiguredTargetRuntime() throws Exception {
+        CompatibilityProfile profile = profile(17);
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.contextWithWeatherTool(profile))
+                .files();
+
+        assertProjectBuilds(
+                tempDir.resolve("weather-java17"),
+                files,
+                requiredJavaHome("GEN2SPRING_JAVA_17_HOME"));
     }
 
     @Test
@@ -412,6 +427,13 @@ class GeneratedProjectSmokeTest {
     }
 
     private void assertProjectBuilds(Path project, Map<String, byte[]> files) throws Exception {
+        assertProjectBuilds(project, files, null);
+    }
+
+    private void assertProjectBuilds(
+            Path project,
+            Map<String, byte[]> files,
+            Path targetJavaHome) throws Exception {
         for (var entry : files.entrySet()) {
             Path target = project.resolve(entry.getKey()).normalize();
             assertTrue(target.startsWith(project), entry.getKey());
@@ -420,8 +442,14 @@ class GeneratedProjectSmokeTest {
         }
         assertTrue(project.resolve("gradlew").toFile().setExecutable(true));
 
-        Process process = new ProcessBuilder(
-                "./gradlew", "test", "--no-daemon", "--non-interactive")
+        List<String> command = new java.util.ArrayList<>(List.of(
+                "./gradlew", "test", "--no-daemon", "--non-interactive"));
+        if (targetJavaHome != null) {
+            command.add("-Dorg.gradle.java.installations.auto-detect=false");
+            command.add("-Dorg.gradle.java.installations.auto-download=false");
+            command.add("-Dorg.gradle.java.installations.paths=" + targetJavaHome);
+        }
+        Process process = new ProcessBuilder(command)
                 .directory(project.toFile())
                 .redirectErrorStream(true)
                 .start();
@@ -430,6 +458,20 @@ class GeneratedProjectSmokeTest {
         String buildOutput = result.output();
         assertEquals(0, result.exitCode(), buildOutput);
         assertTrue(buildOutput.contains("BUILD SUCCESSFUL"), buildOutput);
+    }
+
+    private CompatibilityProfile profile(int javaVersion) {
+        return io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java" + javaVersion + "-mvc-streamable")
+                .orElseThrow();
+    }
+
+    private Path requiredJavaHome(String environmentVariable) {
+        String configured = System.getenv(environmentVariable);
+        assertTrue(configured != null && !configured.isBlank(), environmentVariable + " must be configured");
+        Path javaHome = Path.of(configured).toAbsolutePath().normalize();
+        assertTrue(Files.isRegularFile(javaHome.resolve("bin/java")), environmentVariable);
+        return javaHome;
     }
 
     private String responseNormalizerContractTest() {

@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 public final class ProjectFileRenderer {
-    private static final CompatibilityProfile PINNED_PROFILE = CompatibilityProfile.p0();
     private static final Pattern ARTIFACT_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
     private static final Pattern SECRET_PROPERTY = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,127}");
     private static final Pattern ENVIRONMENT_VARIABLE = Pattern.compile("[A-Z][A-Z0-9_]{0,127}");
@@ -38,9 +37,9 @@ public final class ProjectFileRenderer {
     private final CompatibilityProfile profile;
 
     public ProjectFileRenderer(CompatibilityProfile profile) {
-        if (!PINNED_PROFILE.equals(profile)) {
+        if (!supports(profile)) {
             throw GeneratorException.user(SOURCE_GENERATION_FAILED, "spring-ai-2-render",
-                    "The Spring AI 2 renderer requires the pinned compatibility profile");
+                    "The compatibility profile is not supported by the Spring AI 2 renderer");
         }
         this.profile = profile;
     }
@@ -144,10 +143,22 @@ public final class ProjectFileRenderer {
     public String dockerfile(ProjectCoordinates coordinates) {
         String artifactId = requireCoordinates(coordinates).artifactId();
         return """
-                FROM eclipse-temurin:21-jre
+                FROM %s
                 WORKDIR /app
                 COPY build/libs/%s.jar /app/app.jar
+                USER 10001:10001
                 ENTRYPOINT [\"java\", \"-jar\", \"/app/app.jar\"]
+                """.formatted(profile.containerImage(), artifactId);
+    }
+
+    public String dockerignore(ProjectCoordinates coordinates) {
+        String artifactId = requireCoordinates(coordinates).artifactId();
+        return """
+                **
+                !Dockerfile
+                !build/
+                !build/libs/
+                !build/libs/%s.jar
                 """.formatted(artifactId);
     }
 
@@ -224,6 +235,8 @@ public final class ProjectFileRenderer {
                 - Template: `%s`
                 - Generator module: `%s`
                 - Runtime version: `%s`
+                - Gradle %s
+                - Container image: `%s`
                 - Java %d
                 - Spring Boot %s
                 - Spring AI %s
@@ -232,8 +245,8 @@ public final class ProjectFileRenderer {
                 """.formatted(
                 coordinates.artifactId(), target.javaVersion(), secrets, coordinates.artifactId(), tools,
                 coordinates.artifactId(), dockerEnvironment, coordinates.artifactId(), profile.id(), profile.templateVersion(),
-                profile.generatorModule(), profile.runtimeVersion(), target.javaVersion(), target.springBootVersion(),
-                target.springAiVersion(), responseHandling);
+                profile.generatorModule(), profile.runtimeVersion(), profile.gradleVersion(), profile.containerImage(),
+                target.javaVersion(), target.springBootVersion(), target.springAiVersion(), responseHandling);
     }
 
     public String gitignore() {
@@ -254,11 +267,27 @@ public final class ProjectFileRenderer {
     }
 
     ProjectCoordinates requireContext(GenerationContext context) {
-        if (context == null || !PINNED_PROFILE.equals(context.profile()) || context.request() == null) {
+        if (context == null || !profile.equals(context.profile()) || context.request() == null) {
             throw GeneratorException.user(SOURCE_GENERATION_FAILED, "spring-ai-2-render",
-                    "A generation context for the pinned compatibility profile is required");
+                    "A generation context for the renderer compatibility profile is required");
         }
         return requireCoordinates(context.request().project());
+    }
+
+    private boolean supports(CompatibilityProfile candidate) {
+        if (candidate == null || candidate.target() == null) {
+            return false;
+        }
+        var target = candidate.target();
+        return "generator-spring-ai-2".equals(candidate.generatorModule())
+                && "9.6.1".equals(candidate.gradleVersion())
+                && (target.javaVersion() == 17 || target.javaVersion() == 21)
+                && "4.1.0".equals(target.springBootVersion())
+                && "2.0.0".equals(target.springAiVersion())
+                && "GRADLE_KOTLIN".equals(target.buildTool())
+                && "MVC".equals(target.webStack())
+                && "SYNC".equals(target.programmingModel())
+                && "STREAMABLE_HTTP".equals(target.transport());
     }
 
     private ProjectCoordinates requireCoordinates(ProjectCoordinates coordinates) {

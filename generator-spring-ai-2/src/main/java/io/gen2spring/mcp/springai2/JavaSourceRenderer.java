@@ -9,6 +9,7 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,8 +38,11 @@ public final class JavaSourceRenderer {
     private final ObjectMapper objectMapper;
 
     public JavaSourceRenderer() {
-        this.projectRenderer = new ProjectFileRenderer(
-                io.gen2spring.mcp.domain.profile.CompatibilityProfile.p0());
+        this(CompatibilityProfile.p0());
+    }
+
+    public JavaSourceRenderer(CompatibilityProfile profile) {
+        this.projectRenderer = new ProjectFileRenderer(profile);
         this.inputRenderer = new InputRecordRenderer();
         this.toolRenderer = new ToolClassRenderer();
         this.toolCallbackConfigurationRenderer = new ToolCallbackConfigurationRenderer();
@@ -66,11 +70,30 @@ public final class JavaSourceRenderer {
                 metadataRenderer.render(packageName, domainClass, tools));
         putAll(sources, runtimeRenderer.render(packageName, packagePath, domainClass));
         putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
+        put(sources, "src/test/java/" + packagePath + "/application/GeneratedJavaRuntimeTest.java",
+                runtimeFeatureTest(packageName, context.profile().target().javaVersion()));
 
         Map<String, byte[]> result = new LinkedHashMap<>();
         sources.entrySet().stream().sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> result.put(entry.getKey(), entry.getValue().getBytes(UTF_8)));
         return Collections.unmodifiableMap(result);
+    }
+
+    private String runtimeFeatureTest(String packageName, int javaVersion) {
+        return """
+                package %s.application;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import org.junit.jupiter.api.Test;
+
+                class GeneratedJavaRuntimeTest {
+                    @Test
+                    void usesTheConfiguredJavaRuntime() {
+                        assertEquals(%d, Runtime.version().feature());
+                    }
+                }
+                """.formatted(packageName, javaVersion);
     }
 
     static String upperCamel(String value) {

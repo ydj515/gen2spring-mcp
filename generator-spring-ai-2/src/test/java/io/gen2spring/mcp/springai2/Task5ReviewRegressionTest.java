@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.springai2;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -104,6 +105,29 @@ class Task5ReviewRegressionTest {
                 () -> sourceRenderer.render(JavaSourceRendererTest.context(List.of(tool))));
 
         assertTrue(exception.safeMessage().contains("Spring AI Tool schema"));
+    }
+
+    @Test
+    void keepsGeneratedRuntimeAndSecuritySourcesEqualAcrossJavaProfiles() {
+        CompatibilityProfile java17 = profile(17);
+        CompatibilityProfile java21 = profile(21);
+        var java17Files = new JavaSourceRenderer(java17)
+                .render(JavaSourceRendererTest.contextWithWeatherTool(java17));
+        var java21Files = new JavaSourceRenderer(java21)
+                .render(JavaSourceRendererTest.contextWithWeatherTool(java21));
+
+        assertTrue(java17Files.keySet().equals(java21Files.keySet()));
+        for (String path : java17Files.keySet()) {
+            if (!path.endsWith("/GeneratedJavaRuntimeTest.java")) {
+                assertArrayEquals(java17Files.get(path), java21Files.get(path), path);
+            }
+        }
+    }
+
+    private CompatibilityProfile profile(int javaVersion) {
+        return io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java" + javaVersion + "-mvc-streamable")
+                .orElseThrow();
     }
 
     private String utf8(byte[] value) {
