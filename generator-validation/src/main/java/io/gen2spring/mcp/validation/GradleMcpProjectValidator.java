@@ -15,6 +15,7 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -62,6 +63,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private final ApplicationLaunchHook applicationLaunchHook;
     private final MockUpstreamFactory mockUpstreamFactory;
     private final ApplicationCleanupHook applicationCleanupHook;
+    private final JavaRuntimeResolver javaRuntimeResolver;
 
     public GradleMcpProjectValidator() {
         this(new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
@@ -145,6 +147,24 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             ApplicationLaunchHook applicationLaunchHook,
             MockUpstreamFactory mockUpstreamFactory,
             ApplicationCleanupHook applicationCleanupHook) {
+        this(processRunner, portAllocator, mcpClient, buildTimeout, startupTimeout, pollInterval,
+                maxProcessOutputBytes, wrapperSnapshotHook, applicationLaunchHook, mockUpstreamFactory,
+                applicationCleanupHook, new JavaRuntimeResolver());
+    }
+
+    GradleMcpProjectValidator(
+            BoundedProcessRunner processRunner,
+            LoopbackPortAllocator portAllocator,
+            McpStreamableHttpClient mcpClient,
+            Duration buildTimeout,
+            Duration startupTimeout,
+            Duration pollInterval,
+            int maxProcessOutputBytes,
+            WrapperSnapshotHook wrapperSnapshotHook,
+            ApplicationLaunchHook applicationLaunchHook,
+            MockUpstreamFactory mockUpstreamFactory,
+            ApplicationCleanupHook applicationCleanupHook,
+            JavaRuntimeResolver javaRuntimeResolver) {
         this.processRunner = Objects.requireNonNull(processRunner, "processRunner");
         this.portAllocator = Objects.requireNonNull(portAllocator, "portAllocator");
         this.mcpClient = Objects.requireNonNull(mcpClient, "mcpClient");
@@ -155,6 +175,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         this.applicationLaunchHook = Objects.requireNonNull(applicationLaunchHook, "applicationLaunchHook");
         this.mockUpstreamFactory = Objects.requireNonNull(mockUpstreamFactory, "mockUpstreamFactory");
         this.applicationCleanupHook = Objects.requireNonNull(applicationCleanupHook, "applicationCleanupHook");
+        this.javaRuntimeResolver = Objects.requireNonNull(javaRuntimeResolver, "javaRuntimeResolver");
         if (maxProcessOutputBytes <= 0) {
             throw new IllegalArgumentException("maxProcessOutputBytes must be positive");
         }
@@ -167,6 +188,12 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         List<ValidationStageResult> stages = new ArrayList<>();
 
         long compileStarted = System.nanoTime();
+        try {
+            validated = validated.withRuntime(javaRuntimeResolver.resolve(validated.profile()));
+        } catch (JavaRuntimeResolver.JavaRuntimeException exception) {
+            stages.add(failed("COMPILE", compileStarted, exception.getMessage()));
+            return failedReport(stages, List.of());
+        }
         VerifiedGradleWrapper gradleWrapper;
         try {
             gradleWrapper = pinGradleWrapper(validated.root(), validated.root().resolve("gradlew"));
@@ -177,13 +204,22 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         BoundedProcessRunner.Result build;
         try (gradleWrapper) {
             wrapperSnapshotHook.beforeExecution(gradleWrapper.original(), gradleWrapper.snapshot());
+            validated.runtime().requireStable();
             Path executable = gradleWrapper.verifiedExecutable();
             build = processRunner.run(
-                    List.of(executable.toString(), "classes", "test", "bootJar", "--no-daemon", "--non-interactive"),
+                    List.of(
+                            executable.toString(),
+                            "-Dorg.gradle.java.installations.auto-detect=false",
+                            "-Dorg.gradle.java.installations.auto-download=false",
+                            "-Dorg.gradle.java.installations.paths=" + validated.runtime().home(),
+                            "classes", "test", "bootJar", "--no-daemon", "--non-interactive"),
                     validated.root(), buildTimeout, maxProcessOutputBytes);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             stages.add(failed("COMPILE", compileStarted, "build interrupted"));
+            return failedReport(stages, List.of());
+        } catch (JavaRuntimeResolver.JavaRuntimeException exception) {
+            stages.add(failed("COMPILE", compileStarted, exception.getMessage()));
             return failedReport(stages, List.of());
         } catch (IOException | RuntimeException exception) {
             stages.add(failed("COMPILE", compileStarted, "build process failed safely"));
@@ -230,9 +266,10 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 Map<String, String> environment = new TreeMap<>(upstream.environmentOverrides());
                 environment.put("PROVIDER_BASE_URL", upstream.baseUri().toString());
                 List<String> command = List.of(
-                        javaExecutable(), "-jar", jar.toString(),
+                        request.runtime().executable().toString(), "-jar", jar.toString(),
                         "--server.address=127.0.0.1", "--server.port=0");
                 applicationLaunchHook.beforeLaunch(command);
+                request.runtime().requireStable();
                 application = processRunner.start(command, request.root(), maxProcessOutputBytes, environment);
                 phase = ValidationPhase.APPLICATION_READINESS;
                 ReadinessResult readinessResult = awaitReadiness(application);
@@ -707,7 +744,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             throw new IllegalArgumentException("Expected Tool call is not bound to expected Tool metadata");
         }
         return new ValidatedRequest(
-                root, request.artifactId(), Collections.unmodifiableMap(expected), expectedToolCall);
+                root, request.artifactId(), Collections.unmodifiableMap(expected), expectedToolCall,
+                request.profile(), null);
     }
 
     private ValidationReport failedReport(List<ValidationStageResult> attempted, List<ObservedTool> observed) {
@@ -735,10 +773,6 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     private static String safeApplicationSuffix(BoundedProcessRunner.Result result) {
         return result == null ? "" : "; " + result.safeSummary();
-    }
-
-    private static String javaExecutable() {
-        return Path.of(System.getProperty("java.home"), "bin", "java").toString();
     }
 
     private static Duration positive(Duration value, String name) {
@@ -894,7 +928,13 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             Path root,
             String artifactId,
             Map<String, ExpectedTool> expectedTools,
-            ExpectedToolCall expectedToolCall) {}
+            ExpectedToolCall expectedToolCall,
+            CompatibilityProfile profile,
+            JavaRuntimeResolver.ResolvedJavaRuntime runtime) {
+        private ValidatedRequest withRuntime(JavaRuntimeResolver.ResolvedJavaRuntime resolvedRuntime) {
+            return new ValidatedRequest(root, artifactId, expectedTools, expectedToolCall, profile, resolvedRuntime);
+        }
+    }
 
     private enum ValidationPhase {
         MOCK_START,

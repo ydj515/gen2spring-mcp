@@ -19,6 +19,7 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
@@ -269,7 +270,12 @@ class GradleMcpProjectValidatorTest {
         assertTrue(report.stages().stream().allMatch(stage -> stage.status() == SUCCESS));
         assertEquals(List.of("kma_weather_get_forecast"),
                 report.tools().stream().map(tool -> tool.name()).toList());
-        assertEquals(List.of("classes", "test", "bootJar", "--no-daemon", "--non-interactive"),
+        Path currentJavaHome = Path.of(System.getProperty("java.home")).toAbsolutePath().normalize();
+        assertEquals(List.of(
+                        "-Dorg.gradle.java.installations.auto-detect=false",
+                        "-Dorg.gradle.java.installations.auto-download=false",
+                        "-Dorg.gradle.java.installations.paths=" + currentJavaHome,
+                        "classes", "test", "bootJar", "--no-daemon", "--non-interactive"),
                 Files.readAllLines(root.resolve("gradle.args")));
         Path executedWrapper = Path.of(Files.readString(root.resolve("gradle.executable")).trim());
         assertEquals(root, executedWrapper.getParent());
@@ -282,6 +288,65 @@ class GradleMcpProjectValidatorTest {
                         .toList());
         assertTrue(waitUntilDead(readPid(root)));
         assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void reportsTargetRuntimeResolutionFailureAtCompileWithoutLeakingTheConfiguredPath() throws Exception {
+        Path root = project("#!/bin/sh\nprintf 'unexpected' > wrapper-ran\nexit 0\n");
+        Path unavailable = tempDir.resolve("secret-java17-home").toAbsolutePath();
+        JavaRuntimeResolver resolver = new JavaRuntimeResolver(
+                Map.of("GEN2SPRING_JAVA_17_HOME", unavailable.toString()),
+                Path.of(System.getProperty("java.home")),
+                executable -> 17);
+
+        var report = validator(resolver).validate(request(root, EXPECTED, java17()));
+
+        assertEquals(UNVERIFIED, report.status());
+        assertEquals(List.of(FAILED, SKIPPED, SKIPPED, SKIPPED, SKIPPED),
+                report.stages().stream().map(stage -> stage.status()).toList());
+        assertEquals("Target Java runtime is unavailable or invalid", report.stages().getFirst().summary());
+        assertFalse(report.toString().contains(unavailable.toString()));
+        assertFalse(Files.exists(root.resolve("wrapper-ran")));
+    }
+
+    @Test
+    void rechecksRuntimeIdentityAfterTheWrapperHookAndBeforeGradleExecution() throws Exception {
+        Path root = project("#!/bin/sh\nprintf 'unexpected' > wrapper-ran\nexit 0\n");
+        RuntimeFixture runtime = runtimeFixture("compile-swap");
+        JavaRuntimeResolver resolver = resolver(runtime, 21);
+        var validator = validator(resolver, (original, snapshot) -> replace(runtime.executable()),
+                GradleMcpProjectValidator.ApplicationLaunchHook.NOOP);
+
+        var report = validator.validate(request(root, EXPECTED));
+
+        assertEquals(FAILED, report.stages().getFirst().status());
+        assertEquals("Target Java runtime is unavailable or invalid", report.stages().getFirst().summary());
+        assertFalse(Files.exists(root.resolve("wrapper-ran")));
+        assertFalse(report.toString().contains(runtime.home().toString()));
+    }
+
+    @Test
+    void launchesTheBootJarWithTheResolvedRuntimeAndRechecksItsIdentityLast() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
+        RuntimeFixture runtime = runtimeFixture("boot-swap");
+        JavaRuntimeResolver resolver = resolver(runtime, 21);
+        AtomicReference<List<String>> command = new AtomicReference<>();
+        var validator = validator(
+                resolver,
+                GradleMcpProjectValidator.WrapperSnapshotHook.NOOP,
+                arguments -> {
+                    command.set(List.copyOf(arguments));
+                    replace(runtime.executable());
+                });
+
+        var report = validator.validate(request(root, EXPECTED));
+
+        assertEquals(runtime.executable().toString(), command.get().getFirst());
+        assertEquals(FAILED, report.stages().get(1).status());
+        assertEquals("application process failed safely", report.stages().get(1).summary());
+        assertFalse(Files.exists(root.resolve("app.pid")));
+        assertFalse(report.toString().contains(runtime.home().toString()));
     }
 
     @Test
@@ -810,6 +875,24 @@ class GradleMcpProjectValidatorTest {
                 GradleMcpProjectValidator.WrapperSnapshotHook.NOOP, hook);
     }
 
+    private GradleMcpProjectValidator validator(JavaRuntimeResolver resolver) {
+        return validator(
+                resolver,
+                GradleMcpProjectValidator.WrapperSnapshotHook.NOOP,
+                GradleMcpProjectValidator.ApplicationLaunchHook.NOOP);
+    }
+
+    private GradleMcpProjectValidator validator(
+            JavaRuntimeResolver resolver,
+            GradleMcpProjectValidator.WrapperSnapshotHook wrapperHook,
+            GradleMcpProjectValidator.ApplicationLaunchHook launchHook) {
+        return new GradleMcpProjectValidator(
+                new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
+                Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofMillis(20), 8 * 1024,
+                wrapperHook, launchHook, new TrackingMockFactory(false),
+                GradleMcpProjectValidator.ApplicationCleanupHook.NOOP, resolver);
+    }
+
     private ValidationRequest request(Path root, Map<String, ExpectedTool> expected) {
         return new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, expected, expectedToolCall());
     }
@@ -819,6 +902,13 @@ class GradleMcpProjectValidatorTest {
             Map<String, ExpectedTool> expected,
             ExpectedToolCall expectedToolCall) {
         return new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, expected, expectedToolCall);
+    }
+
+    private ValidationRequest request(
+            Path root,
+            Map<String, ExpectedTool> expected,
+            CompatibilityProfile profile) {
+        return new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, expected, expectedToolCall(), profile);
     }
 
     private ExpectedToolCall expectedToolCall() {
@@ -847,6 +937,35 @@ class GradleMcpProjectValidatorTest {
         }
         return root;
     }
+
+    private CompatibilityProfile java17() {
+        return CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java17-mvc-streamable")
+                .orElseThrow();
+    }
+
+    private RuntimeFixture runtimeFixture(String name) throws IOException {
+        Path home = Files.createDirectories(tempDir.resolve(name).resolve("bin")).getParent().toRealPath();
+        Path executable = home.resolve("bin/java");
+        Files.createLink(executable, Path.of(System.getProperty("java.home"), "bin", "java"));
+        assertTrue(Files.isExecutable(executable));
+        return new RuntimeFixture(home, executable);
+    }
+
+    private JavaRuntimeResolver resolver(RuntimeFixture runtime, int feature) {
+        return new JavaRuntimeResolver(
+                Map.of("GEN2SPRING_JAVA_" + feature + "_HOME", runtime.home().toString()),
+                Path.of(System.getProperty("java.home")),
+                executable -> feature);
+    }
+
+    private void replace(Path executable) throws IOException {
+        Files.delete(executable);
+        Files.writeString(executable, "replacement");
+        assertTrue(executable.toFile().setExecutable(true));
+    }
+
+    private record RuntimeFixture(Path home, Path executable) {}
 
     private void assertCallFailureAndCleanup(
             io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport report,

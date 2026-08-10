@@ -33,8 +33,10 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -85,11 +87,19 @@ class GeneratedWeatherValidationSmokeTest {
         assertEquals(8, region.get("maxLength"));
         assertEquals("[a-z]+", region.get("pattern"));
 
-        var report = new GradleMcpProjectValidator().validate(new ValidationRequest(
+        AtomicReference<List<String>> applicationCommand = new AtomicReference<>();
+        var validator = new GradleMcpProjectValidator(
+                Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofMillis(100), 64 * 1024,
+                GradleMcpProjectValidator.WrapperSnapshotHook.NOOP,
+                command -> applicationCommand.set(List.copyOf(command)));
+        var report = validator.validate(new ValidationRequest(
                 root, coordinates.artifactId(), MCP_PROTOCOL, expectedTools,
                 new ExpectedToolCall(tool, weatherArguments()), CompatibilityProfile.p0()));
 
         assertEquals(VALIDATED, report.status(), report.toString());
+        assertEquals(
+                Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().normalize().toString(),
+                applicationCommand.get().getFirst());
         assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),
                 report.stages().stream().map(stage -> stage.stage()).toList());
         assertTrue(report.stages().stream().allMatch(stage -> stage.status() == SUCCESS));
