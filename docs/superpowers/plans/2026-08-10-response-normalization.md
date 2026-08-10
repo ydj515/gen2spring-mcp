@@ -1057,7 +1057,7 @@ void derivesRawProviderEnvelopeAndNormalizedExpectedResult() {
     assertEquals("00", at(result.upstreamResponse().body(), "/response/header/resultCode"));
     assertEquals(1, at(result.upstreamResponse().body(), "/response/body/totalCount"));
     assertEquals(Map.of(
-            "data", List.of(Map.of("validated", true, "operationId", "getForecast")),
+            "data", Map.of("validated", true, "operationId", "getForecast"),
             "page", Map.of("totalCount", 1),
             "provider", Map.of("code", "00", "message", "NORMAL_SERVICE")),
             result.expectedResult());
@@ -1067,9 +1067,17 @@ void derivesRawProviderEnvelopeAndNormalizedExpectedResult() {
 void supportsArrayPointersAndDataAncestorsDeterministically() {
     ExpectedToolResponse first = factory.create(tool(policy("/items/0", "/code", List.of("00"), null, null)));
     ExpectedToolResponse second = factory.create(tool(policy("/items/0", "/code", List.of("00"), null, null)));
+    assertEquals(Map.of("validated", true, "operationId", "getForecast"),
+            at(first.upstreamResponse().body(), "/items/0"));
+    assertEquals(Map.of("validated", true, "operationId", "getForecast"),
+            ((Map<?, ?>) first.expectedResult()).get("data"));
     assertEquals(first, second);
 }
 ```
+
+`dataPointer` is evaluated exactly like generated runtime: when it ends at an array element such as
+`/response/body/items/0`, normalized `data` is that element, not its containing array. Array-container
+synthesis and ordering are asserted separately on the raw response tree.
 
 - [ ] **Step 2: Run the core fixture tests to verify RED**
 
@@ -1085,7 +1093,7 @@ Expected: `compileTestJava` fails because the response factory and contracts do 
 
 - [ ] **Step 3: Add immutable expected-response contracts**
 
-In `GenerationContracts`, deep-copy JSON-compatible maps/lists/scalars for both response body and expected result. Permit explicit JSON null only in expected result error fields by representing it as Jackson-independent `null` map values; update `immutableJsonValue` with an `allowNull` flag rather than allowing null in Tool arguments or schemas.
+In `GenerationContracts`, deep-copy JSON-compatible maps/lists/scalars for both response body and expected result. Permit explicit JSON null in `ExpectedUpstreamResponse.body` and `expectedResult`, including deterministic sparse-array placeholders required to reach an indexed pointer such as `/items/2`. Keep null forbidden in Tool arguments and schemas; update `immutableJsonValue` with an `allowNull` flag scoped only to response fixtures/results.
 
 Use:
 
@@ -1108,6 +1116,10 @@ The compatibility constructor must produce HTTP 200, `application/json`, and `{"
 - [ ] **Step 4: Implement deterministic pointer-tree synthesis**
 
 `ExpectedToolResponseFactory` must decode Task 1-validated RFC 6901 tokens, create `LinkedHashMap` for object tokens and `ArrayList` for numeric next tokens, grow arrays with null placeholders only until the exact configured index, and reject impossible collisions with the fixed message `Expected response fixture cannot be derived`.
+
+Add a regression for `/items/2` proving the raw response contains exactly two leading null placeholders and
+the marker at index 2. The immutable response contract must preserve those nulls while continuing to reject
+mutable or non-JSON scalar values.
 
 Insertion order:
 

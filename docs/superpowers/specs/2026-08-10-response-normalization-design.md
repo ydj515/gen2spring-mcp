@@ -334,6 +334,9 @@ Policy가 있는 대표 호출의 raw success response는 pointer 구조를 따�
 - data leaf는 `{"validated": true, "operationId": "..."}`다.
 - data pointer가 다른 metadata pointer의 ancestor이면 container를 유지하고 expected result를 실제
   합성 tree에서 계산한다.
+- 배열 index pointer가 앞선 원소 없이 시작하면 해당 index까지 JSON null placeholder를 채운다. 이
+  null은 raw response fixture와 그 fixture에서 계산한 expected result에만 허용하며 Tool arguments와
+  schemas의 null 금지 계약은 유지한다.
 
 MCP client는 hard-coded payload를 비교하지 않고 `ExpectedToolCall`의 expected result와 canonical
 JSON equality를 비교한다. 이 representative call은 기존 exactly-one upstream request gate를
