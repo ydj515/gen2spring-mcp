@@ -310,7 +310,15 @@ sealed interface OperationOutcome permits NormalizedSuccess, ProviderError {}
 
 Spring AI 2.x adapter는 `NormalizedSuccess`를 `isError=false`, `ProviderError`를 `isError=true`인
 단일 JSON text content로 변환한다. Tool business 오류를 Java exception message에 직렬화하지
-않는다. 이후 Spring AI 1.x adapter도 동일한 JSON payload를 사용하고 profile API 차이만 흡수한다.
+않는다. MCP SDK가 handler 호출 전에 발견한 missing/invalid/range Tool argument는 호출자 입력 오류이므로
+SDK의 안전한 `isError=true` 결과를 유지한다. 이 경로는 generated runtime 내부 결함을 나타내는
+JSON-RPC error로 승격하지 않는다.
+
+Handler 실행 중 예상하지 못한 non-fatal 결함은 고정된 client-visible 메시지의 JSON-RPC internal
+error로 변환한다. 원래 예외 메시지, cause chain, stack trace, arguments, secret은 client에 노출하거나
+log에 기록하지 않고, 서버 진단에는 고정 event와 Tool 이름 및 예외 타입만 남긴다. Callback invocation이
+감싼 `Error`는 ordinary Tool failure로 변환하지 않고 원래 `Error`를 재전파한다. 이후 Spring AI 1.x
+adapter도 동일한 JSON payload와 failure boundary를 사용하고 profile API 차이만 흡수한다.
 
 ## 11. Validation contract
 

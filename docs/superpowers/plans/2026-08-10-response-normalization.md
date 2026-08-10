@@ -861,6 +861,8 @@ git commit -m "feat(runtime): map provider failures safely"
 - Consumes: generated `ProviderErrorException` and `ProviderError.payload()` from Tasks 3-4.
 - Produces: generated bean `List<McpServerFeatures.SyncToolSpecification> generatedToolSpecifications(JsonMapper jsonMapper)` for every generated Tool.
 - Produces: success `CallToolResult` with one JSON text content and `isError=false`; expected provider failure with one safe JSON text content and `isError=true`; unexpected failure rethrown with fixed message for JSON-RPC error handling.
+- Preserves MCP SDK pre-handler schema failures for missing, invalid, or out-of-range Tool arguments as safe `isError=true` caller errors; these are not generated runtime defects.
+- Produces safe server diagnostics containing only a fixed event, Tool name, and exception type; rethrows callback-wrapped `Error` rather than converting it into an ordinary JSON-RPC failure.
 
 - [ ] **Step 1: Write source-contract RED assertions**
 
@@ -922,11 +924,17 @@ private static McpServerFeatures.SyncToolSpecification specification(
                             throw new IllegalStateException("Generated Tool result conversion failed");
                         }
                     }
-                    throw new IllegalStateException("Generated Tool execution failed", failure);
+                    if (failure.getCause() instanceof Error fatal) {
+                        throw fatal;
+                    }
+                    logSafeFailure(tool.name(), failure);
+                    throw new IllegalStateException("Generated Tool execution failed");
                 } catch (JacksonException failure) {
+                    logSafeFailure(tool.name(), failure);
                     throw new IllegalStateException("Generated Tool argument conversion failed");
                 } catch (RuntimeException failure) {
-                    throw new IllegalStateException("Generated Tool execution failed", failure);
+                    logSafeFailure(tool.name(), failure);
+                    throw new IllegalStateException("Generated Tool execution failed");
                 }
             })
             .build();
@@ -968,6 +976,13 @@ assertFalse(internalFailure.toString().contains("private-internal-marker"));
 ```
 
 Induce the internal case with a test-only generated Tool method that throws `IllegalStateException("private-internal-marker")`; verify the response is a JSON-RPC error and client-visible text uses only the fixed adapter message.
+
+Also send missing, invalid-type, and out-of-range arguments over real Streamable HTTP MCP. Verify each
+request is rejected by the MCP SDK before the handler as a safe `isError=true` result, with no provider
+payload, internal marker, cause chain, stack trace, raw body, or configured secret. Invoke the generated
+handler with a Tool method that throws an `Error` and assert the original instance is rethrown. Capture the
+server diagnostic for a non-fatal internal exception and assert it contains only the fixed event, Tool name,
+and exception type, never the exception message or argument values.
 
 - [ ] **Step 6: Run the MCP adapter test to verify RED then GREEN**
 
@@ -1325,4 +1340,4 @@ git commit -m "feat(cli): verify normalized response journey"
 
 ## Completion Gate
 
-The slice is complete only when all seven task commits exist, the exact full acceptance command passes from a clean checkout, the installed CLI representative call observes exactly one upstream request, expected provider failures are MCP `isError=true`, unexpected failures are JSON-RPC errors with fixed client-visible text, and no configured secret or raw provider body marker appears in generated artifacts or validation output.
+The slice is complete only when all seven task commits exist, the exact full acceptance command passes from a clean checkout, the installed CLI representative call observes exactly one upstream request, expected provider failures and SDK-detected malformed Tool arguments are MCP `isError=true`, unexpected non-fatal handler failures are JSON-RPC errors with fixed client-visible text, callback-wrapped `Error` is rethrown, and no configured secret or raw provider body marker appears in generated artifacts, diagnostics, or validation output.
