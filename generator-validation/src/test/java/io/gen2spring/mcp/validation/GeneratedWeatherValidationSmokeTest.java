@@ -87,7 +87,7 @@ class GeneratedWeatherValidationSmokeTest {
 
         var report = new GradleMcpProjectValidator().validate(new ValidationRequest(
                 root, coordinates.artifactId(), MCP_PROTOCOL, expectedTools,
-                new ExpectedToolCall(tool, weatherArguments())));
+                new ExpectedToolCall(tool, weatherArguments()), CompatibilityProfile.p0()));
 
         assertEquals(VALIDATED, report.status(), report.toString());
         assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),

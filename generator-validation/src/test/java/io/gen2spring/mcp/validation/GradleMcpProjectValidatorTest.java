@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
@@ -60,6 +61,13 @@ class GradleMcpProjectValidatorTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void fiveArgumentValidationRequestUsesTheJava21CompatibilityProfile() throws IOException {
+        ValidationRequest request = request(project("#!/bin/sh\nexit 0\n"), EXPECTED);
+
+        assertSame(CompatibilityProfile.p0(), request.profile());
+    }
 
     @Test
     void reportsBuildFailureAndSkipsLaterStagesWithoutRetainingRawOutput() throws Exception {

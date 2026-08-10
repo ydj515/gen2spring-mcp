@@ -22,6 +22,7 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
 import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
 import io.gen2spring.mcp.policy.ToolModelFactory;
@@ -39,8 +40,8 @@ public final class GenerationPipeline {
 
     private final SpecificationAnalyzer analyzer;
     private final ToolModelFactory toolModelFactory;
-    private final CompatibilityProfile profile;
-    private final ProjectGenerator projectGenerator;
+    private final CompatibilityProfileRegistry profiles;
+    private final ProjectGeneratorRegistry projectGenerators;
     private final SafeProjectWriter projectWriter;
     private final SourceTreeChecksum sourceTreeChecksum;
     private final GenerationManifestWriter manifestWriter;
@@ -61,10 +62,35 @@ public final class GenerationPipeline {
             GeneratedProjectValidator validator,
             ValidationReportWriter reportWriter,
             DeterministicZipPackager zipPackager) {
+        this(
+                analyzer,
+                toolModelFactory,
+                CompatibilityProfileRegistry.of(List.of(Objects.requireNonNull(profile, "profile"))),
+                ProjectGeneratorRegistry.of(Map.of(
+                        profile.generatorModule(), Objects.requireNonNull(projectGenerator, "projectGenerator"))),
+                projectWriter,
+                sourceTreeChecksum,
+                manifestWriter,
+                validator,
+                reportWriter,
+                zipPackager);
+    }
+
+    public GenerationPipeline(
+            SpecificationAnalyzer analyzer,
+            ToolModelFactory toolModelFactory,
+            CompatibilityProfileRegistry profiles,
+            ProjectGeneratorRegistry projectGenerators,
+            SafeProjectWriter projectWriter,
+            SourceTreeChecksum sourceTreeChecksum,
+            GenerationManifestWriter manifestWriter,
+            GeneratedProjectValidator validator,
+            ValidationReportWriter reportWriter,
+            DeterministicZipPackager zipPackager) {
         this.analyzer = Objects.requireNonNull(analyzer, "analyzer");
         this.toolModelFactory = Objects.requireNonNull(toolModelFactory, "toolModelFactory");
-        this.profile = Objects.requireNonNull(profile, "profile");
-        this.projectGenerator = Objects.requireNonNull(projectGenerator, "projectGenerator");
+        this.profiles = Objects.requireNonNull(profiles, "profiles");
+        this.projectGenerators = Objects.requireNonNull(projectGenerators, "projectGenerators");
         this.projectWriter = Objects.requireNonNull(projectWriter, "projectWriter");
         this.sourceTreeChecksum = Objects.requireNonNull(sourceTreeChecksum, "sourceTreeChecksum");
         this.manifestWriter = Objects.requireNonNull(manifestWriter, "manifestWriter");
@@ -77,9 +103,11 @@ public final class GenerationPipeline {
         Path requestedRoot = normalizedOutputRoot(outputRoot);
         Path requestedArchive = archivePath(requestedRoot);
         zipPackager.requireArchiveAvailable(requestedRoot, requestedArchive);
+        CompatibilityProfile profile = resolveProfile(request);
+        ProjectGenerator projectGenerator = projectGenerators.require(profile);
+        validateTargetConfiguration(request);
         var analysis = analyzer.analyze(specification, DEFAULT_MAX_SPECIFICATION_BYTES);
         List<McpToolDefinition> tools = toolModelFactory.create(analysis.document(), request);
-        validateTarget(request);
         ExpectedToolCall expectedCall = expectedToolCallFactory.create(tools, request.validation());
         List<String> sensitiveNames = sensitiveNames(request, tools);
 
@@ -100,7 +128,7 @@ public final class GenerationPipeline {
         try (ValidationWorkspace workspace = ValidationWorkspace.copyOf(projectRoot, projectWriter)) {
             report = validator.validate(new ValidationRequest(
                     workspace.root(), request.project().artifactId(), request.validationLevel(),
-                    expectedToolSchemaFactory.create(tools), expectedCall));
+                    expectedToolSchemaFactory.create(tools), expectedCall, profile));
             if (report == null) {
                 throw GeneratorException.system(
                         INTERNAL_ERROR, "VALIDATION", "Generated project validation returned no report", null);
@@ -129,17 +157,16 @@ public final class GenerationPipeline {
         return new GenerationOutcome(projectRoot, archive, report.status(), sourceChecksum);
     }
 
-    private void validateTarget(GenerationRequest request) {
-        if (request == null || request.targetProfileId() == null || !profile.id().equals(request.targetProfileId())) {
+    private CompatibilityProfile resolveProfile(GenerationRequest request) {
+        if (request == null) {
             throw GeneratorException.user(
                     TARGET_PROFILE_NOT_FOUND, "TARGET_VALIDATE", "The requested compatibility profile is unavailable");
         }
-        if (!CompatibilityProfile.p0().equals(profile)) {
-            throw GeneratorException.user(
-                    TARGET_COMBINATION_UNSUPPORTED,
-                    "TARGET_VALIDATE",
-                    "The configured compatibility profile is not the pinned P0 target");
-        }
+        return profiles.find(request.targetProfileId()).orElseThrow(() -> GeneratorException.user(
+                TARGET_PROFILE_NOT_FOUND, "TARGET_VALIDATE", "The requested compatibility profile is unavailable"));
+    }
+
+    private void validateTargetConfiguration(GenerationRequest request) {
         if (request.project() == null || request.validationLevel() == null) {
             throw GeneratorException.user(
                     TARGET_COMBINATION_UNSUPPORTED, "TARGET_VALIDATE", "Generation target configuration is incomplete");

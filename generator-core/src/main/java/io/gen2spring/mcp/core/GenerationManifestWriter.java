@@ -25,7 +25,6 @@ public final class GenerationManifestWriter {
     public static final String MANIFEST_FILE = "GENERATION_MANIFEST.json";
     private static final String STAGE = "REPORT";
     private static final String GENERATOR_VERSION = "0.1.0";
-    private static final String GRADLE_VERSION = "9.6.1";
 
     private final ObjectMapper objectMapper;
 
@@ -53,7 +52,8 @@ public final class GenerationManifestWriter {
         manifest.put("springBootVersion", profile.target().springBootVersion());
         manifest.put("springAiVersion", profile.target().springAiVersion());
         manifest.put("javaVersion", profile.target().javaVersion());
-        manifest.put("gradleVersion", GRADLE_VERSION);
+        manifest.put("gradleVersion", profile.gradleVersion());
+        manifest.put("containerImage", profile.containerImage());
         manifest.put("originalSpecificationChecksum", document.checksum());
         manifest.put("sourceChecksum", sourceChecksum);
         ArrayNode mappings = manifest.putArray("operationMappings");

@@ -36,11 +36,21 @@ public final class GenerationContracts {
             String artifactId,
             GenerationRequest.ValidationLevel level,
             Map<String, ExpectedTool> expectedTools,
-            ExpectedToolCall expectedToolCall) {
+            ExpectedToolCall expectedToolCall,
+            CompatibilityProfile profile) {
         public ValidationRequest {
-            if (expectedToolCall == null) {
+            if (expectedToolCall == null || profile == null) {
                 throw new IllegalArgumentException("Validation request expected Tool call is incomplete");
             }
+        }
+
+        public ValidationRequest(
+                Path projectRoot,
+                String artifactId,
+                GenerationRequest.ValidationLevel level,
+                Map<String, ExpectedTool> expectedTools,
+                ExpectedToolCall expectedToolCall) {
+            this(projectRoot, artifactId, level, expectedTools, expectedToolCall, CompatibilityProfile.p0());
         }
     }
 
