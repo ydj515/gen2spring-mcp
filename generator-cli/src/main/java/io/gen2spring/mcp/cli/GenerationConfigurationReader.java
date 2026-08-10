@@ -15,7 +15,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel;
-import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource;
@@ -77,12 +77,23 @@ public final class GenerationConfigurationReader {
 
     private final ObjectMapper yaml;
     private final LocalPathBoundary pathBoundary;
+    private final CompatibilityProfileRegistry profiles;
 
     public GenerationConfigurationReader() {
-        this(new LocalPathBoundary());
+        this(CompatibilityProfileRegistry.defaults());
+    }
+
+    public GenerationConfigurationReader(CompatibilityProfileRegistry profiles) {
+        this(profiles, new LocalPathBoundary());
     }
 
     GenerationConfigurationReader(LocalPathBoundary pathBoundary) {
+        this(CompatibilityProfileRegistry.defaults(), pathBoundary);
+    }
+
+    GenerationConfigurationReader(
+            CompatibilityProfileRegistry profiles,
+            LocalPathBoundary pathBoundary) {
         YAMLFactory factory = YAMLFactory.builder()
                 .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
                 .build();
@@ -95,6 +106,7 @@ public final class GenerationConfigurationReader {
                 .enable(MapperFeature.BLOCK_UNSAFE_POLYMORPHIC_BASE_TYPES)
                 .build();
         this.pathBoundary = java.util.Objects.requireNonNull(pathBoundary, "pathBoundary");
+        this.profiles = java.util.Objects.requireNonNull(profiles, "profiles");
     }
 
     public GenerationRequest read(Path configuration) {
@@ -368,7 +380,7 @@ public final class GenerationConfigurationReader {
         String packageName = javaPackage(raw.project().packageName(), "Project packageName");
         String provider = matches(raw.provider(), COMPONENT, "Provider");
         String domain = matches(raw.domain(), COMPONENT, "Domain");
-        if (!CompatibilityProfile.p0().id().equals(raw.targetProfileId())) {
+        if (profiles.find(raw.targetProfileId()).isEmpty()) {
             throw invalid("Target profile is unavailable");
         }
         if (raw.validationLevel() != ValidationLevel.MCP_PROTOCOL) {

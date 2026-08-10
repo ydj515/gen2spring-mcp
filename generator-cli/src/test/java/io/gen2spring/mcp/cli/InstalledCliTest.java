@@ -28,7 +28,14 @@ class InstalledCliTest {
         Result profiles = run(executable, "profiles");
         assertEquals(0, profiles.exitCode(), profiles.stderr());
         assertEquals("", profiles.stderr());
-        assertEquals(1, JSON.readTree(profiles.stdout()).path("profiles").size());
+        var installedProfiles = JSON.readTree(profiles.stdout()).path("profiles");
+        assertEquals(2, installedProfiles.size());
+        assertEquals("spring-ai-2.0-java17-mvc-streamable", installedProfiles.get(0).path("id").asText());
+        assertEquals("9.6.1", installedProfiles.get(0).path("gradleVersion").asText());
+        assertTrue(installedProfiles.get(0).path("containerImage").asText().contains("@sha256:"));
+        assertEquals("spring-ai-2.0-java21-mvc-streamable", installedProfiles.get(1).path("id").asText());
+        assertEquals("9.6.1", installedProfiles.get(1).path("gradleVersion").asText());
+        assertTrue(installedProfiles.get(1).path("containerImage").asText().contains("@sha256:"));
 
         Path safeTemp = tempDir.toRealPath();
         Path specification = Files.writeString(safeTemp.resolve("weather.yaml"), """

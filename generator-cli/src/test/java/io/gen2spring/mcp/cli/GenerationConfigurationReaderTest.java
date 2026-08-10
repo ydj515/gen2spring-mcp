@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -46,6 +48,29 @@ class GenerationConfigurationReaderTest {
         assertEquals(Map.of("latitude", new BigDecimal("37.5"), "longitude", new BigDecimal("127.0")),
                 call.arguments().get("location"));
         assertThrows(UnsupportedOperationException.class, () -> call.arguments().put("days", 4));
+    }
+
+    @Test
+    void readsEveryRegisteredTargetProfile() throws Exception {
+        Path java17 = copyResource("/config/weather-generation-java17.yaml", "generation-java17.yaml");
+        Path java21 = copyResource("/config/weather-generation.yaml", "generation-java21.yaml");
+
+        assertEquals("spring-ai-2.0-java17-mvc-streamable", reader.read(java17).targetProfileId());
+        assertEquals("spring-ai-2.0-java21-mvc-streamable", reader.read(java21).targetProfileId());
+    }
+
+    @Test
+    void usesTheInjectedProfileRegistryAndDoesNotEchoAnUnknownProfile() throws Exception {
+        var java21Only = CompatibilityProfileRegistry.of(List.of(CompatibilityProfile.p0()));
+        var restrictedReader = new GenerationConfigurationReader(java21Only);
+        Path java17 = copyResource("/config/weather-generation-java17.yaml", "restricted-java17.yaml");
+
+        CliConfigurationException exception = assertThrows(
+                CliConfigurationException.class,
+                () -> restrictedReader.read(java17));
+
+        assertEquals("Target profile is unavailable", exception.getMessage());
+        assertTrue(!exception.getMessage().contains("spring-ai-2.0-java17-mvc-streamable"));
     }
 
     @Test

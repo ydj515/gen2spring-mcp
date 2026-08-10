@@ -20,12 +20,14 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
 public final class CliApplication {
@@ -36,7 +38,7 @@ public final class CliApplication {
     private final GenerationConfigurationReader configurationReader;
     private final SpecificationAnalyzer analyzer;
     private final GenerationExecutor generationExecutor;
-    private final CompatibilityProfile profile;
+    private final CompatibilityProfileRegistry profiles;
     private final ObjectMapper json;
     private final LocalPathBoundary pathBoundary;
     private final PublicationHook publicationHook;
@@ -48,7 +50,14 @@ public final class CliApplication {
             GenerationExecutor generationExecutor,
             CompatibilityProfile profile,
             ObjectMapper json) {
-        this(commandLine, configurationReader, analyzer, generationExecutor, profile, json, PublicationHook.NONE);
+        this(
+                commandLine,
+                configurationReader,
+                analyzer,
+                generationExecutor,
+                CompatibilityProfileRegistry.of(List.of(Objects.requireNonNull(profile, "profile"))),
+                json,
+                PublicationHook.NONE);
     }
 
     CliApplication(
@@ -59,11 +68,39 @@ public final class CliApplication {
             CompatibilityProfile profile,
             ObjectMapper json,
             PublicationHook publicationHook) {
+        this(
+                commandLine,
+                configurationReader,
+                analyzer,
+                generationExecutor,
+                CompatibilityProfileRegistry.of(List.of(Objects.requireNonNull(profile, "profile"))),
+                json,
+                publicationHook);
+    }
+
+    CliApplication(
+            CommandLine commandLine,
+            GenerationConfigurationReader configurationReader,
+            SpecificationAnalyzer analyzer,
+            GenerationExecutor generationExecutor,
+            CompatibilityProfileRegistry profiles,
+            ObjectMapper json) {
+        this(commandLine, configurationReader, analyzer, generationExecutor, profiles, json, PublicationHook.NONE);
+    }
+
+    CliApplication(
+            CommandLine commandLine,
+            GenerationConfigurationReader configurationReader,
+            SpecificationAnalyzer analyzer,
+            GenerationExecutor generationExecutor,
+            CompatibilityProfileRegistry profiles,
+            ObjectMapper json,
+            PublicationHook publicationHook) {
         this.commandLine = Objects.requireNonNull(commandLine, "commandLine");
         this.configurationReader = Objects.requireNonNull(configurationReader, "configurationReader");
         this.analyzer = Objects.requireNonNull(analyzer, "analyzer");
         this.generationExecutor = Objects.requireNonNull(generationExecutor, "generationExecutor");
-        this.profile = Objects.requireNonNull(profile, "profile");
+        this.profiles = Objects.requireNonNull(profiles, "profiles");
         this.json = Objects.requireNonNull(json, "json").copy()
                 .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
         this.pathBoundary = new LocalPathBoundary();
@@ -94,19 +131,24 @@ public final class CliApplication {
 
     private int profiles(PrintWriter stdout) {
         ObjectNode root = json.createObjectNode();
-        ObjectNode item = root.putArray("profiles").addObject();
-        item.put("id", profile.id());
-        item.put("generatorModule", profile.generatorModule());
-        item.put("templateVersion", profile.templateVersion());
-        item.put("runtimeVersion", profile.runtimeVersion());
-        ObjectNode target = item.putObject("target");
-        target.put("javaVersion", profile.target().javaVersion());
-        target.put("springBootVersion", profile.target().springBootVersion());
-        target.put("springAiVersion", profile.target().springAiVersion());
-        target.put("buildTool", profile.target().buildTool());
-        target.put("webStack", profile.target().webStack());
-        target.put("programmingModel", profile.target().programmingModel());
-        target.put("transport", profile.target().transport());
+        var items = root.putArray("profiles");
+        for (CompatibilityProfile profile : profiles.profiles()) {
+            ObjectNode item = items.addObject();
+            item.put("id", profile.id());
+            item.put("generatorModule", profile.generatorModule());
+            item.put("templateVersion", profile.templateVersion());
+            item.put("runtimeVersion", profile.runtimeVersion());
+            item.put("gradleVersion", profile.gradleVersion());
+            item.put("containerImage", profile.containerImage());
+            ObjectNode target = item.putObject("target");
+            target.put("javaVersion", profile.target().javaVersion());
+            target.put("springBootVersion", profile.target().springBootVersion());
+            target.put("springAiVersion", profile.target().springAiVersion());
+            target.put("buildTool", profile.target().buildTool());
+            target.put("webStack", profile.target().webStack());
+            target.put("programmingModel", profile.target().programmingModel());
+            target.put("transport", profile.target().transport());
+        }
         writeSuccess(stdout, root);
         return 0;
     }

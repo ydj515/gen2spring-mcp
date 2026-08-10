@@ -18,6 +18,7 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
 import java.io.ByteArrayOutputStream;
@@ -48,10 +49,34 @@ class CliApplicationTest {
         assertEquals(0, result.exitCode());
         assertEquals("", result.stderr());
         JsonNode json = JSON.readTree(result.stdout());
-        assertEquals(1, json.path("profiles").size());
-        assertEquals(CompatibilityProfile.p0().id(), json.path("profiles").get(0).path("id").asText());
+        JsonNode profiles = json.path("profiles");
+        assertEquals(2, profiles.size());
+        assertProfile(
+                profiles.get(0),
+                "spring-ai-2.0-java17-mvc-streamable",
+                17,
+                "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
+                        + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
+        assertProfile(
+                profiles.get(1),
+                "spring-ai-2.0-java21-mvc-streamable",
+                21,
+                "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
+                        + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
         assertTrue(result.stdout().endsWith("\n"));
         assertEquals(result.stdout(), run(application(unusedAnalyzer(), unusedGenerator()), "profiles").stdout());
+    }
+
+    @Test
+    void compatibilityProfileConstructorExposesOnlyItsAdaptedProfile() throws Exception {
+        var application = new CliApplication(
+                new CommandLine(), new GenerationConfigurationReader(), unusedAnalyzer(), unusedGenerator(),
+                CompatibilityProfile.p0(), JSON);
+
+        JsonNode profiles = JSON.readTree(run(application, "profiles").stdout()).path("profiles");
+
+        assertEquals(1, profiles.size());
+        assertEquals("spring-ai-2.0-java21-mvc-streamable", profiles.get(0).path("id").asText());
     }
 
     @Test
@@ -342,7 +367,24 @@ class CliApplicationTest {
             CliApplication.PublicationHook publicationHook) {
         return new CliApplication(
                 new CommandLine(), new GenerationConfigurationReader(), analyzer, generationExecutor,
-                CompatibilityProfile.p0(), JSON, publicationHook);
+                CompatibilityProfileRegistry.defaults(), JSON, publicationHook);
+    }
+
+    private void assertProfile(JsonNode profile, String id, int javaVersion, String containerImage) {
+        assertEquals(id, profile.path("id").asText());
+        assertEquals("generator-spring-ai-2", profile.path("generatorModule").asText());
+        assertEquals("spring-ai-2-v2", profile.path("templateVersion").asText());
+        assertEquals("0.2.0", profile.path("runtimeVersion").asText());
+        assertEquals("9.6.1", profile.path("gradleVersion").asText());
+        assertEquals(containerImage, profile.path("containerImage").asText());
+        JsonNode target = profile.path("target");
+        assertEquals(javaVersion, target.path("javaVersion").asInt());
+        assertEquals("4.1.0", target.path("springBootVersion").asText());
+        assertEquals("2.0.0", target.path("springAiVersion").asText());
+        assertEquals("GRADLE_KOTLIN", target.path("buildTool").asText());
+        assertEquals("MVC", target.path("webStack").asText());
+        assertEquals("SYNC", target.path("programmingModel").asText());
+        assertEquals("STREAMABLE_HTTP", target.path("transport").asText());
     }
 
     private SpecificationAnalyzer unusedAnalyzer() {
