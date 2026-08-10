@@ -5,6 +5,7 @@ include(
     "generator-openapi",
     "generator-policy",
     "generator-core",
+    "generator-spring-ai-1",
     "generator-spring-ai-2",
     "generator-validation",
     "generator-cli",
