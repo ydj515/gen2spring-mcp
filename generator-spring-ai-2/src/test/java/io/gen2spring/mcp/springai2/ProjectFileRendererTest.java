@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
@@ -29,6 +31,7 @@ import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 
 class ProjectFileRendererTest {
+    private static final YAMLMapper YAML = YAMLMapper.builder().build();
     private static final String JAVA_17_IMAGE = "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
             + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8";
     private static final String JAVA_21_IMAGE = "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
@@ -47,6 +50,62 @@ class ProjectFileRendererTest {
         assertTrue(build.contains("archiveFileName.set(\"weather-mcp-server.jar\")"));
         assertFalse(build.contains("SNAPSHOT"));
         assertFalse(build.contains("latest"));
+    }
+
+    @Test
+    void rendersTheExactBoot41ObservabilityDependenciesWithoutUnmanagedVersions() {
+        String build = renderer.buildGradle(projectCoordinates());
+
+        assertEquals(List.of(
+                        "implementation(platform(\"org.springframework.boot:spring-boot-dependencies:4.1.0\"))",
+                        "implementation(platform(\"org.springframework.ai:spring-ai-bom:2.0.0\"))",
+                        "implementation(\"org.springframework.ai:spring-ai-starter-mcp-server-webmvc\")",
+                        "implementation(\"org.springframework.boot:spring-boot-restclient\")",
+                        "implementation(\"org.springframework.boot:spring-boot-starter-validation\")",
+                        "implementation(\"org.springframework.boot:spring-boot-starter-actuator\")",
+                        "implementation(\"org.springframework.boot:spring-boot-starter-opentelemetry\")",
+                        "implementation(\"io.micrometer:micrometer-registry-prometheus\")",
+                        "implementation(\"io.micrometer:micrometer-registry-otlp\")"),
+                implementationLines(build));
+        assertFalse(build.contains("micrometer-tracing-bridge-otel"));
+        assertFalse(build.contains("opentelemetry-exporter-otlp"));
+        assertFalse(build.contains("latest"));
+        assertFalse(build.contains("SNAPSHOT"));
+        assertFalse(build.contains("+"));
+    }
+
+    @Test
+    void rendersTheExactBoot41SafeObservabilityDefaultsWithoutCommonTagsOrEndpoints() throws Exception {
+        JsonNode root = YAML.readTree(renderer.applicationYaml(contextWithSecret("service-key")));
+        JsonNode expectedManagement = YAML.readTree("""
+                management:
+                  endpoints:
+                    web:
+                      exposure:
+                        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health}
+                  endpoint:
+                    health:
+                      show-details: never
+                  tracing:
+                    propagation:
+                      type: W3C
+                    sampling:
+                      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:0.1}
+                    export:
+                      otlp:
+                        enabled: ${MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED:false}
+                  otlp:
+                    metrics:
+                      export:
+                        enabled: ${MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED:false}
+                """).path("management");
+
+        assertEquals(expectedManagement, root.path("management"));
+        assertTrue(root.at("/spring/ai/tools/observations/include-content").isBoolean());
+        assertFalse(root.at("/spring/ai/tools/observations/include-content").booleanValue());
+        assertTrue(root.path("otel").isMissingNode());
+        assertTrue(root.path("management").path("server").isMissingNode());
+        assertTrue(root.path("management").path("metrics").path("tags").isMissingNode());
     }
 
     @Test
@@ -361,6 +420,13 @@ class ProjectFileRendererTest {
         assertTrue(readme.contains("- Container image: `" + containerImage + "`"), profile.id());
         assertTrue(new String(files.get("gradle/wrapper/gradle-wrapper.properties"), UTF_8)
                 .contains("distributionUrl=https\\://services.gradle.org/distributions/gradle-9.6.1-bin.zip"));
+    }
+
+    private List<String> implementationLines(String build) {
+        return build.lines()
+                .map(String::strip)
+                .filter(line -> line.startsWith("implementation("))
+                .toList();
     }
 
     private void assertDockerContext(CompatibilityProfile profile, String containerImage) {

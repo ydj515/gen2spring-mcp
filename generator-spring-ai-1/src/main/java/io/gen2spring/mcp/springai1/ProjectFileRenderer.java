@@ -73,6 +73,11 @@ public final class ProjectFileRenderer {
                     implementation(\"org.springframework.ai:spring-ai-starter-mcp-server-webmvc\")
                     implementation(\"org.springframework.boot:spring-boot-starter-web\")
                     implementation(\"org.springframework.boot:spring-boot-starter-validation\")
+                    implementation(\"org.springframework.boot:spring-boot-starter-actuator\")
+                    implementation(\"io.micrometer:micrometer-registry-prometheus\")
+                    implementation(\"io.micrometer:micrometer-registry-otlp\")
+                    implementation(\"io.micrometer:micrometer-tracing-bridge-otel\")
+                    implementation(\"io.opentelemetry:opentelemetry-exporter-otlp\")
                     testImplementation(\"org.springframework.boot:spring-boot-starter-test\")
                 }
 
@@ -121,6 +126,7 @@ public final class ProjectFileRenderer {
         root.put("spring", spring);
         root.put("logging", Map.of(
                 "level", Map.of("org.springframework.ai.tool.method.MethodToolCallback", "ERROR")));
+        root.put("management", managementConfiguration());
 
         Map<String, Object> provider = new LinkedHashMap<>();
         provider.put("base-url", "${PROVIDER_BASE_URL:https://api.example.test}");
@@ -141,6 +147,27 @@ public final class ProjectFileRenderer {
             throw GeneratorException.system(SOURCE_GENERATION_FAILED, "spring-ai-1-render",
                     "Failed to render application configuration", exception);
         }
+    }
+
+    private Map<String, Object> managementConfiguration() {
+        Map<String, Object> tracing = new LinkedHashMap<>();
+        tracing.put("propagation", Map.of("type", "W3C"));
+        tracing.put("sampling", Map.of(
+                "probability", "${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:0.1}"));
+
+        Map<String, Object> otlp = new LinkedHashMap<>();
+        otlp.put("metrics", Map.of("export", Map.of(
+                "enabled", "${MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED:false}")));
+        otlp.put("tracing", Map.of("export", Map.of(
+                "enabled", "${MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED:false}")));
+
+        Map<String, Object> management = new LinkedHashMap<>();
+        management.put("endpoints", Map.of("web", Map.of("exposure", Map.of(
+                "include", "${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health}"))));
+        management.put("endpoint", Map.of("health", Map.of("show-details", "never")));
+        management.put("tracing", tracing);
+        management.put("otlp", otlp);
+        return management;
     }
 
     public String dockerfile(ProjectCoordinates coordinates) {

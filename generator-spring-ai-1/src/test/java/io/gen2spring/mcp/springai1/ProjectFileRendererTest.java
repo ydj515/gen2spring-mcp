@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
@@ -28,6 +30,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class ProjectFileRendererTest {
+    private static final YAMLMapper YAML = YAMLMapper.builder().build();
     private static final String SAFE_PROFILE_FAILURE =
             "The compatibility profile is not supported by the Spring AI 1 renderer";
     private static final String JAVA_17_IMAGE = "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
@@ -39,6 +42,62 @@ class ProjectFileRendererTest {
     void rendersThePinnedBoot35ProjectContractForBothProfiles() {
         assertProjectContract(profile(17), 17, JAVA_17_IMAGE);
         assertProjectContract(profile(21), 21, JAVA_21_IMAGE);
+    }
+
+    @Test
+    void rendersTheExactBoot35ObservabilityDependenciesWithoutUnmanagedVersions() {
+        String build = new ProjectFileRenderer(profile(17)).buildGradle(coordinates());
+
+        assertEquals(List.of(
+                        "implementation(platform(\"org.springframework.boot:spring-boot-dependencies:3.5.16\"))",
+                        "implementation(platform(\"org.springframework.ai:spring-ai-bom:1.1.8\"))",
+                        "implementation(\"org.springframework.ai:spring-ai-starter-mcp-server-webmvc\")",
+                        "implementation(\"org.springframework.boot:spring-boot-starter-web\")",
+                        "implementation(\"org.springframework.boot:spring-boot-starter-validation\")",
+                        "implementation(\"org.springframework.boot:spring-boot-starter-actuator\")",
+                        "implementation(\"io.micrometer:micrometer-registry-prometheus\")",
+                        "implementation(\"io.micrometer:micrometer-registry-otlp\")",
+                        "implementation(\"io.micrometer:micrometer-tracing-bridge-otel\")",
+                        "implementation(\"io.opentelemetry:opentelemetry-exporter-otlp\")"),
+                implementationLines(build));
+        assertFalse(build.contains("spring-boot-starter-opentelemetry"));
+        assertFalse(build.contains("latest"));
+        assertFalse(build.contains("SNAPSHOT"));
+        assertFalse(build.contains("+"));
+    }
+
+    @Test
+    void rendersTheExactBoot35SafeObservabilityDefaultsWithoutCommonTagsOrEndpoints() throws Exception {
+        JsonNode root = YAML.readTree(new ProjectFileRenderer(profile(17))
+                .applicationYaml(context(profile(17), List.of(normalizedTool()))));
+        JsonNode expectedManagement = YAML.readTree("""
+                management:
+                  endpoints:
+                    web:
+                      exposure:
+                        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health}
+                  endpoint:
+                    health:
+                      show-details: never
+                  tracing:
+                    propagation:
+                      type: W3C
+                    sampling:
+                      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:0.1}
+                  otlp:
+                    metrics:
+                      export:
+                        enabled: ${MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED:false}
+                    tracing:
+                      export:
+                        enabled: ${MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED:false}
+                """).path("management");
+
+        assertEquals(expectedManagement, root.path("management"));
+        assertTrue(root.at("/spring/ai/tools").isMissingNode());
+        assertTrue(root.path("otel").isMissingNode());
+        assertTrue(root.path("management").path("server").isMissingNode());
+        assertTrue(root.path("management").path("metrics").path("tags").isMissingNode());
     }
 
     @Test
@@ -180,6 +239,13 @@ class ProjectFileRendererTest {
         assertEquals(SOURCE_GENERATION_FAILED, failure.code());
         assertEquals("spring-ai-1-render", failure.stage());
         assertEquals(SAFE_PROFILE_FAILURE, failure.safeMessage());
+    }
+
+    private List<String> implementationLines(String build) {
+        return build.lines()
+                .map(String::strip)
+                .filter(line -> line.startsWith("implementation("))
+                .toList();
     }
 
     private CompatibilityProfile profile(int javaVersion) {

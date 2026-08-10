@@ -73,6 +73,10 @@ public final class ProjectFileRenderer {
                     implementation(\"org.springframework.ai:spring-ai-starter-mcp-server-webmvc\")
                     implementation(\"org.springframework.boot:spring-boot-restclient\")
                     implementation(\"org.springframework.boot:spring-boot-starter-validation\")
+                    implementation(\"org.springframework.boot:spring-boot-starter-actuator\")
+                    implementation(\"org.springframework.boot:spring-boot-starter-opentelemetry\")
+                    implementation(\"io.micrometer:micrometer-registry-prometheus\")
+                    implementation(\"io.micrometer:micrometer-registry-otlp\")
                     testImplementation(\"org.springframework.boot:spring-boot-starter-test\")
                 }
 
@@ -117,8 +121,12 @@ public final class ProjectFileRenderer {
         server.put("protocol", "STREAMABLE");
         server.put("annotation-scanner", Map.of("enabled", false));
         server.put("streamable-http", Map.of("mcp-endpoint", "/mcp"));
-        spring.put("ai", Map.of("mcp", Map.of("server", server)));
+        Map<String, Object> ai = new LinkedHashMap<>();
+        ai.put("mcp", Map.of("server", server));
+        ai.put("tools", Map.of("observations", Map.of("include-content", false)));
+        spring.put("ai", ai);
         root.put("spring", spring);
+        root.put("management", managementConfiguration());
 
         Map<String, Object> provider = new LinkedHashMap<>();
         provider.put("base-url", "${PROVIDER_BASE_URL:https://api.example.test}");
@@ -139,6 +147,24 @@ public final class ProjectFileRenderer {
             throw GeneratorException.system(SOURCE_GENERATION_FAILED, "spring-ai-2-render",
                     "Failed to render application configuration", exception);
         }
+    }
+
+    private Map<String, Object> managementConfiguration() {
+        Map<String, Object> tracing = new LinkedHashMap<>();
+        tracing.put("propagation", Map.of("type", "W3C"));
+        tracing.put("sampling", Map.of(
+                "probability", "${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:0.1}"));
+        tracing.put("export", Map.of("otlp", Map.of(
+                "enabled", "${MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED:false}")));
+
+        Map<String, Object> management = new LinkedHashMap<>();
+        management.put("endpoints", Map.of("web", Map.of("exposure", Map.of(
+                "include", "${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health}"))));
+        management.put("endpoint", Map.of("health", Map.of("show-details", "never")));
+        management.put("tracing", tracing);
+        management.put("otlp", Map.of("metrics", Map.of("export", Map.of(
+                "enabled", "${MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED:false}"))));
+        return management;
     }
 
     public String dockerfile(ProjectCoordinates coordinates) {
