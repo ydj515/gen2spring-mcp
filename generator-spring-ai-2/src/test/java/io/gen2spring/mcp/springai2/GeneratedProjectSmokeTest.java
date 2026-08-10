@@ -19,6 +19,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,56 @@ class GeneratedProjectSmokeTest {
                 .generate(JavaSourceRendererTest.contextWithWeatherTool())
                 .files();
         assertProjectBuilds(tempDir.resolve("weather"), files);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedMcpAdapterSeparatesExpectedAndInternalFailures() throws Exception {
+        ApiSchema city = new ApiSchema(
+                SchemaType.STRING, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema code = new ApiSchema(
+                SchemaType.INTEGER, "int32", false, List.of(), BigDecimal.ZERO, BigDecimal.TEN,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ResponseNormalizationPolicy normalization = new ResponseNormalizationPolicy(
+                "/data", "/code", List.of("00"), "/message", null);
+        var success = new McpToolDefinition(
+                "getSuccess", "weather_get_success", "Get a successful weather response.",
+                List.of(new McpInputDefinition("city", "city", "City", true, city)),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), "/success",
+                        List.of(new ParameterBinding("city", ParameterLocation.QUERY, "city")),
+                        false, false, normalization),
+                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+        var providerFailure = new McpToolDefinition(
+                "getProviderFailure", "weather_get_provider_failure", "Get a provider failure.",
+                List.of(new McpInputDefinition("code", "code", "Code", true, code)),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), "/provider-failure",
+                        List.of(new ParameterBinding("code", ParameterLocation.QUERY, "code")),
+                        false, false, normalization),
+                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+        var internalFailure = new McpToolDefinition(
+                "internalFailure", "weather_internal_failure", "Trigger an internal failure.", List.of(),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), "/internal-failure", List.of(),
+                        false, false, normalization),
+                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(List.of(success, providerFailure, internalFailure)))
+                .files();
+        java.util.Map<String, byte[]> filesWithMcpTest = new java.util.LinkedHashMap<>(files);
+        String toolPath = "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java";
+        String tools = new String(files.get(toolPath), java.nio.charset.StandardCharsets.UTF_8)
+                .replace(
+                        "return executor.execute(WeatherOperations.INTERNAL_FAILURE, input.toArguments());",
+                        "throw new IllegalStateException(\"private-internal-marker\");");
+        filesWithMcpTest.put(toolPath, tools.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        filesWithMcpTest.put(
+                "src/test/java/com/example/weather/application/GeneratedMcpAdapterContractTest.java",
+                mcpAdapterContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("mcp-adapter"), filesWithMcpTest);
     }
 
     @Test
@@ -592,6 +643,199 @@ class GeneratedProjectSmokeTest {
                 """;
     }
 
+    private String mcpAdapterContractTest() {
+        return """
+                package com.example.weather.application;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
+                import static org.junit.jupiter.api.Assertions.assertNotNull;
+                import static org.junit.jupiter.api.Assertions.assertTrue;
+
+                import com.sun.net.httpserver.HttpExchange;
+                import com.sun.net.httpserver.HttpServer;
+                import java.io.IOException;
+                import java.net.InetSocketAddress;
+                import java.net.URI;
+                import java.net.http.HttpClient;
+                import java.net.http.HttpRequest;
+                import java.net.http.HttpResponse;
+                import java.nio.charset.StandardCharsets;
+                import java.time.Duration;
+                import java.util.HashSet;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.boot.test.context.SpringBootTest;
+                import org.springframework.boot.test.web.server.LocalServerPort;
+                import org.springframework.test.context.DynamicPropertyRegistry;
+                import org.springframework.test.context.DynamicPropertySource;
+                import tools.jackson.databind.JsonNode;
+                import tools.jackson.databind.json.JsonMapper;
+
+                @SpringBootTest(
+                        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+                        properties = {
+                                "provider.response-max-bytes=1024",
+                                "provider.connect-timeout-millis=1000",
+                                "provider.read-timeout-millis=1000",
+                                "provider.total-timeout-millis=1000"
+                        })
+                class GeneratedMcpAdapterContractTest {
+                    private static HttpServer provider;
+
+                    @LocalServerPort
+                    private int port;
+
+                    private final HttpClient client = HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(2))
+                            .build();
+                    private final JsonMapper jsonMapper = JsonMapper.builder().build();
+
+                    @DynamicPropertySource
+                    static void provider(DynamicPropertyRegistry registry) {
+                        try {
+                            provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                            provider.createContext("/success", exchange -> respond(
+                                    exchange, "{'code':'00','message':'OK','data':{'forecast':'sunny'}}"));
+                            provider.createContext("/provider-failure", exchange -> respond(
+                                    exchange, "{'code':'BUSINESS_42','message':'Safe provider failure'}"));
+                            provider.start();
+                        } catch (IOException failure) {
+                            throw new IllegalStateException(failure);
+                        }
+                        registry.add("provider.base-url",
+                                () -> "http://127.0.0.1:" + provider.getAddress().getPort());
+                    }
+
+                    @Test
+                    void separatesSuccessfulProviderAndInternalToolResultsOverStreamableHttp() throws Exception {
+                        URI endpoint = URI.create("http://127.0.0.1:" + port + "/mcp");
+                        HttpResponse<String> initialize = post(endpoint,
+                                "{'jsonrpc':'2.0','id':1,'method':'initialize','params':"
+                                        + "{'protocolVersion':'2025-03-26','capabilities':{},"
+                                        + "'clientInfo':{'name':'adapter-test','version':'1.0'}}}", null);
+                        String sessionId = initialize.headers().firstValue("Mcp-Session-Id").orElseThrow();
+                        post(endpoint, "{'jsonrpc':'2.0','method':'notifications/initialized'}", sessionId);
+
+                        JsonNode toolsResponse = response(post(endpoint,
+                                "{'jsonrpc':'2.0','id':2,'method':'tools/list','params':{}}", sessionId));
+                        JsonNode tools = toolsResponse.path("result").path("tools");
+                        assertEquals(3, tools.size(), toolsResponse.toString());
+                        var names = new HashSet<String>();
+                        tools.forEach(tool -> names.add(tool.path("name").stringValue()));
+                        assertEquals(3, names.size(), toolsResponse.toString());
+                        assertEquals(json("{'type':'object','properties':{'city':"
+                                        + "{'type':'string','description':'City'}},'required':['city']}"),
+                                tool(tools, "weather_get_success").path("inputSchema"));
+                        assertEquals(json("{'type':'object','properties':{'code':"
+                                        + "{'type':'integer','format':'int32','minimum':0,'maximum':10,"
+                                        + "'description':'Code'}},'required':['code']}"),
+                                tool(tools, "weather_get_provider_failure").path("inputSchema"));
+                        assertEquals(json("{'type':'object','properties':{},'required':[]}"),
+                                tool(tools, "weather_internal_failure").path("inputSchema"));
+
+                        JsonNode success = response(call(endpoint, sessionId, 3,
+                                "weather_get_success", "{'city':'Seoul'}"));
+                        JsonNode successResult = success.path("result");
+                        assertFalse(successResult.path("isError").booleanValue(), success.toString());
+                        assertEquals(json("{'data':{'forecast':'sunny'},"
+                                + "'provider':{'code':'00','message':'OK'}}"), parseOnlyText(successResult));
+
+                        JsonNode providerFailure = response(call(endpoint, sessionId, 4,
+                                "weather_get_provider_failure", "{'code':5}"));
+                        JsonNode providerResult = providerFailure.path("result");
+                        assertTrue(providerResult.path("isError").booleanValue(), providerFailure.toString());
+                        assertEquals("PROVIDER_BUSINESS",
+                                parseOnlyText(providerResult).at("/error/category").stringValue());
+
+                        JsonNode internalFailure = response(call(endpoint, sessionId, 5,
+                                "weather_internal_failure", "{}"));
+                        assertTrue(internalFailure.has("error"), internalFailure.toString());
+                        assertFalse(internalFailure.has("result"), internalFailure.toString());
+                        assertEquals("Generated Tool execution failed",
+                                internalFailure.at("/error/message").stringValue());
+                        assertFalse(internalFailure.toString().contains("private-internal-marker"),
+                                internalFailure.toString());
+                    }
+
+                    private HttpResponse<String> call(
+                            URI endpoint, String sessionId, int id, String name, String arguments) throws Exception {
+                        return post(endpoint,
+                                "{'jsonrpc':'2.0','id':" + id + ",'method':'tools/call','params':{'name':'"
+                                        + name + "','arguments':" + arguments + "}}",
+                                sessionId);
+                    }
+
+                    private HttpResponse<String> post(URI endpoint, String body, String sessionId) throws Exception {
+                        HttpRequest.Builder request = HttpRequest.newBuilder(endpoint)
+                                .timeout(Duration.ofSeconds(5))
+                                .header("Content-Type", "application/json")
+                                .header("Accept", "application/json, text/event-stream")
+                                .POST(HttpRequest.BodyPublishers.ofString(body.replace('\\'', '"')));
+                        if (sessionId != null) {
+                            request.header("Mcp-Session-Id", sessionId);
+                        }
+                        HttpResponse<String> response = client.send(
+                                request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                        assertTrue(response.statusCode() >= 200 && response.statusCode() < 300,
+                                response.statusCode() + " " + response.body());
+                        return response;
+                    }
+
+                    private JsonNode response(HttpResponse<String> response) throws Exception {
+                        String body = response.body();
+                        java.util.Optional<String> data = body.lines()
+                                    .filter(line -> line.startsWith("data:"))
+                                    .map(line -> line.substring("data:".length()).stripLeading())
+                                    .findFirst();
+                        if (data.isPresent()) {
+                            body = data.get();
+                        }
+                        return jsonMapper.readTree(body);
+                    }
+
+                    private JsonNode parseOnlyText(JsonNode result) throws Exception {
+                        JsonNode content = result.path("content");
+                        assertEquals(1, content.size(), result.toString());
+                        assertEquals("text", content.get(0).path("type").stringValue(), result.toString());
+                        String text = content.get(0).path("text").stringValue();
+                        assertNotNull(text, result.toString());
+                        assertTrue(text.stripLeading().startsWith("{"), text);
+                        return jsonMapper.readTree(text);
+                    }
+
+                    private JsonNode tool(JsonNode tools, String name) {
+                        for (JsonNode tool : tools) {
+                            if (name.equals(tool.path("name").stringValue())) {
+                                return tool;
+                            }
+                        }
+                        throw new AssertionError("Missing Tool " + name + ": " + tools);
+                    }
+
+                    private JsonNode json(String value) throws Exception {
+                        return jsonMapper.readTree(value.replace('\\'', '"'));
+                    }
+
+                    private static void respond(HttpExchange exchange, String body) throws IOException {
+                        byte[] bytes = body.replace('\\'', '"').getBytes(StandardCharsets.UTF_8);
+                        try (exchange) {
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(200, bytes.length);
+                            exchange.getResponseBody().write(bytes);
+                        }
+                    }
+
+                    @AfterAll
+                    static void stopProvider() {
+                        if (provider != null) {
+                            provider.stop(0);
+                        }
+                    }
+                }
+                """;
+    }
+
     private String executorFailureContractTest() {
         return """
                 package com.example.weather.runtime;
@@ -1029,7 +1273,6 @@ class GeneratedProjectSmokeTest {
 
                 import com.sun.net.httpserver.HttpServer;
                 import java.net.InetSocketAddress;
-                import java.util.Arrays;
                 import java.util.List;
                 import java.util.Map;
                 import java.util.concurrent.atomic.AtomicInteger;
@@ -1039,12 +1282,13 @@ class GeneratedProjectSmokeTest {
                 import com.example.weather.runtime.ProviderErrorException;
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
-                import org.springframework.ai.tool.ToolCallback;
-                import org.springframework.ai.tool.ToolCallbackProvider;
+                import io.modelcontextprotocol.server.McpServerFeatures;
+                import io.modelcontextprotocol.spec.McpSchema;
                 import org.springframework.beans.factory.annotation.Autowired;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
+                import tools.jackson.databind.json.JsonMapper;
 
                 @SpringBootTest(properties = {
                         "provider.response-max-bytes=1024",
@@ -1059,7 +1303,10 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicInteger requestCount = new AtomicInteger();
 
                     @Autowired
-                    private ToolCallbackProvider toolCallbackProvider;
+                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    private List<McpServerFeatures.SyncToolSpecification> specifications;
+
+                    private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
                     @Autowired
                     private OpenApiOperationExecutor executor;
@@ -1097,7 +1344,7 @@ class GeneratedProjectSmokeTest {
 
                     @Test
                     void acceptsTheWireEnumValueAndForwardsItToTheUpstreamQuery() {
-                        callback("kma_weather_get_forecast").call(
+                        callTool("kma_weather_get_forecast",
                                 "{\\\"nx\\\":1,\\\"accept\\\":\\\"text/plain\\\",\\\"mode\\\":\\\"full-detail\\\",\\\"options\\\":{\\\"city\\\":\\\"Seoul\\\"}}");
 
                         assertTrue(query.get().contains("nx=1"), query.get());
@@ -1110,7 +1357,7 @@ class GeneratedProjectSmokeTest {
                         int before = requestCount.get();
 
                         assertThrows(RuntimeException.class,
-                                () -> callback("kma_weather_get_forecast").call(
+                                () -> callTool("kma_weather_get_forecast",
                                         "{\\\"nx\\\":1,\\\"mode\\\":\\\"unknown\\\",\\\"options\\\":{\\\"city\\\":\\\"Seoul\\\"}}"));
 
                         assertEquals(before, requestCount.get());
@@ -1121,13 +1368,13 @@ class GeneratedProjectSmokeTest {
                         int before = requestCount.get();
 
                         assertThrows(RuntimeException.class,
-                                () -> callback("kma_weather_get_forecast").call(
+                                () -> callTool("kma_weather_get_forecast",
                                         "{\\\"mode\\\":\\\"brief\\\",\\\"options\\\":{\\\"city\\\":\\\"Seoul\\\"}}"));
                         assertThrows(RuntimeException.class,
-                                () -> callback("kma_weather_get_forecast").call(
+                                () -> callTool("kma_weather_get_forecast",
                                         "{\\\"nx\\\":1,\\\"options\\\":{}}"));
                         assertThrows(RuntimeException.class,
-                                () -> callback("kma_weather_get_alerts").call("{}"));
+                                () -> callTool("kma_weather_get_alerts", "{}"));
 
                         assertEquals(before, requestCount.get());
                     }
@@ -1136,9 +1383,9 @@ class GeneratedProjectSmokeTest {
                     void acceptsTheOptionalEnumArgumentWhenItIsOmitted() {
                         int before = requestCount.get();
 
-                        callback("kma_weather_get_forecast").call(
+                        callTool("kma_weather_get_forecast",
                                 "{\\\"nx\\\":2,\\\"options\\\":{\\\"city\\\":\\\"Busan\\\"}}");
-                        callback("kma_weather_get_alerts").call("{\\\"region\\\":\\\"Busan\\\"}");
+                        callTool("kma_weather_get_alerts", "{\\\"region\\\":\\\"Busan\\\"}");
 
                         assertEquals(before + 2, requestCount.get());
                         assertEquals("nx=2", query.get());
@@ -1153,11 +1400,15 @@ class GeneratedProjectSmokeTest {
                                 exception.error().payload().at("/error/category").stringValue());
                     }
 
-                    private ToolCallback callback(String name) {
-                        return Arrays.stream(toolCallbackProvider.getToolCallbacks())
-                                .filter(candidate -> candidate.getToolDefinition().name().equals(name))
+                    private void callTool(String name, String arguments) {
+                        var specification = specifications.stream()
+                                .filter(candidate -> candidate.tool().name().equals(name))
                                 .findFirst()
                                 .orElseThrow();
+                        specification.callHandler().apply(
+                                null,
+                                new McpSchema.CallToolRequest(
+                                        name, jsonMapper.readValue(arguments, Map.class)));
                     }
 
                     @AfterAll
@@ -1180,17 +1431,19 @@ class GeneratedProjectSmokeTest {
                 import com.sun.net.httpserver.HttpServer;
                 import java.net.InetSocketAddress;
                 import java.nio.charset.StandardCharsets;
-                import java.util.Arrays;
+                import java.util.List;
+                import java.util.Map;
                 import java.util.concurrent.atomic.AtomicInteger;
                 import java.util.concurrent.atomic.AtomicReference;
+                import io.modelcontextprotocol.server.McpServerFeatures;
+                import io.modelcontextprotocol.spec.McpSchema;
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
-                import org.springframework.ai.tool.ToolCallback;
-                import org.springframework.ai.tool.ToolCallbackProvider;
                 import org.springframework.beans.factory.annotation.Autowired;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
+                import tools.jackson.databind.json.JsonMapper;
 
                 @SpringBootTest(properties = {
                         "provider.response-max-bytes=1024",
@@ -1204,7 +1457,10 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicInteger requestCount = new AtomicInteger();
 
                     @Autowired
-                    private ToolCallbackProvider toolCallbackProvider;
+                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    private List<McpServerFeatures.SyncToolSpecification> specifications;
+
+                    private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
                     @DynamicPropertySource
                     static void provider(DynamicPropertyRegistry registry) {
@@ -1227,7 +1483,7 @@ class GeneratedProjectSmokeTest {
 
                     @Test
                     void acceptsAValidNestedEnumAndPreservesItsSpacedJsonProperty() {
-                        callback().call("{\\\"details\\\":{\\\"display name\\\":\\\"full-detail\\\"}}");
+                        callTool("{\\\"details\\\":{\\\"display name\\\":\\\"full-detail\\\"}}");
 
                         assertEquals("{\\\"display name\\\":\\\"full-detail\\\"}", body.get());
                     }
@@ -1236,18 +1492,23 @@ class GeneratedProjectSmokeTest {
                     void rejectsAnUnknownNestedEnumBeforeCallingTheUpstream() {
                         int before = requestCount.get();
 
-                        assertThrows(RuntimeException.class, () -> callback().call(
+                        assertThrows(RuntimeException.class, () -> callTool(
                                 "{\\\"details\\\":{\\\"display name\\\":\\\"unknown\\\"}}"));
 
                         assertEquals(before, requestCount.get());
                     }
 
-                    private ToolCallback callback() {
-                        return Arrays.stream(toolCallbackProvider.getToolCallbacks())
-                                .filter(candidate -> candidate.getToolDefinition().name()
+                    private void callTool(String arguments) {
+                        var specification = specifications.stream()
+                                .filter(candidate -> candidate.tool().name()
                                         .equals("kma_weather_submit_details"))
                                 .findFirst()
                                 .orElseThrow();
+                        specification.callHandler().apply(
+                                null,
+                                new McpSchema.CallToolRequest(
+                                        "kma_weather_submit_details",
+                                        jsonMapper.readValue(arguments, Map.class)));
                     }
 
                     @AfterAll
@@ -1269,15 +1530,18 @@ class GeneratedProjectSmokeTest {
                 import com.sun.net.httpserver.HttpServer;
                 import java.net.InetSocketAddress;
                 import java.nio.charset.StandardCharsets;
-                import java.util.Arrays;
+                import java.util.List;
+                import java.util.Map;
                 import java.util.concurrent.atomic.AtomicReference;
+                import io.modelcontextprotocol.server.McpServerFeatures;
+                import io.modelcontextprotocol.spec.McpSchema;
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
-                import org.springframework.ai.tool.ToolCallbackProvider;
                 import org.springframework.beans.factory.annotation.Autowired;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
+                import tools.jackson.databind.json.JsonMapper;
 
                 @SpringBootTest(properties = {
                         "provider.response-max-bytes=1024",
@@ -1291,7 +1555,10 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicReference<String> contentType = new AtomicReference<>();
 
                     @Autowired
-                    private ToolCallbackProvider toolCallbackProvider;
+                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    private List<McpServerFeatures.SyncToolSpecification> specifications;
+
+                    private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
                     @DynamicPropertySource
                     static void provider(DynamicPropertyRegistry registry) {
@@ -1314,11 +1581,15 @@ class GeneratedProjectSmokeTest {
 
                     @Test
                     void serializesAStringBodyAsQuotedJsonWithTheJsonContentType() {
-                        Arrays.stream(toolCallbackProvider.getToolCallbacks())
-                                .filter(callback -> callback.getToolDefinition().name().equals("kma_weather_submit_value"))
+                        var specification = specifications.stream()
+                                .filter(candidate -> candidate.tool().name().equals("kma_weather_submit_value"))
                                 .findFirst()
-                                .orElseThrow()
-                                .call("{\\\"body\\\":\\\"hello\\\"}");
+                                .orElseThrow();
+                        specification.callHandler().apply(
+                                null,
+                                new McpSchema.CallToolRequest(
+                                        "kma_weather_submit_value",
+                                        jsonMapper.readValue("{\\\"body\\\":\\\"hello\\\"}", Map.class)));
 
                         assertEquals("\\\"hello\\\"", body.get());
                         assertEquals("application/json", contentType.get());
@@ -1492,15 +1763,18 @@ class GeneratedProjectSmokeTest {
                 import com.sun.net.httpserver.HttpServer;
                 import java.net.InetSocketAddress;
                 import java.nio.charset.StandardCharsets;
-                import java.util.Arrays;
+                import java.util.List;
+                import java.util.Map;
                 import java.util.concurrent.atomic.AtomicReference;
+                import io.modelcontextprotocol.server.McpServerFeatures;
+                import io.modelcontextprotocol.spec.McpSchema;
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
-                import org.springframework.ai.tool.ToolCallbackProvider;
                 import org.springframework.beans.factory.annotation.Autowired;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
+                import tools.jackson.databind.json.JsonMapper;
 
                 @SpringBootTest(properties = {
                         "provider.response-max-bytes=1024",
@@ -1513,7 +1787,10 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicReference<String> body = new AtomicReference<>();
 
                     @Autowired
-                    private ToolCallbackProvider toolCallbackProvider;
+                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    private List<McpServerFeatures.SyncToolSpecification> specifications;
+
+                    private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
                     @DynamicPropertySource
                     static void provider(DynamicPropertyRegistry registry) {
@@ -1535,11 +1812,17 @@ class GeneratedProjectSmokeTest {
 
                     @Test
                     void invokesTheExplicitCallbackWithJavaSafeKeysAndPreservesUpstreamJsonProperties() {
-                        Arrays.stream(toolCallbackProvider.getToolCallbacks())
-                                .filter(callback -> callback.getToolDefinition().name().equals("kma_weather_submit_address"))
+                        var specification = specifications.stream()
+                                .filter(candidate -> candidate.tool().name().equals("kma_weather_submit_address"))
                                 .findFirst()
-                                .orElseThrow()
-                                .call("{\\\"postalCode\\\":\\\"12345\\\",\\\"deliveryMode\\\":\\\"express\\\"}");
+                                .orElseThrow();
+                        specification.callHandler().apply(
+                                null,
+                                new McpSchema.CallToolRequest(
+                                        "kma_weather_submit_address",
+                                        jsonMapper.readValue(
+                                                "{\\\"postalCode\\\":\\\"12345\\\",\\\"deliveryMode\\\":\\\"express\\\"}",
+                                                Map.class)));
 
                         assertEquals("{\\\"delivery-mode\\\":\\\"express\\\",\\\"postal-code\\\":\\\"12345\\\"}", body.get());
                     }

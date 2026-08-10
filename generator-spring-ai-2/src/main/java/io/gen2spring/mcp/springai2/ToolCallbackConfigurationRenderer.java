@@ -15,13 +15,19 @@ final class ToolCallbackConfigurationRenderer {
             List<McpToolDefinition> tools,
             Map<String, String> inputSchemas) {
         Set<String> imports = new TreeSet<>(Set.of(
+                packageName + ".runtime.ProviderErrorException",
+                "io.modelcontextprotocol.server.McpServerFeatures",
+                "io.modelcontextprotocol.spec.McpSchema",
                 "java.lang.reflect.Method",
-                "org.springframework.ai.tool.StaticToolCallbackProvider",
-                "org.springframework.ai.tool.ToolCallbackProvider",
+                "java.util.List",
+                "org.springframework.ai.mcp.McpToolUtils",
                 "org.springframework.ai.tool.definition.DefaultToolDefinition",
+                "org.springframework.ai.tool.execution.ToolExecutionException",
                 "org.springframework.ai.tool.method.MethodToolCallback",
                 "org.springframework.context.annotation.Bean",
-                "org.springframework.context.annotation.Configuration"));
+                "org.springframework.context.annotation.Configuration",
+                "tools.jackson.core.JacksonException",
+                "tools.jackson.databind.json.JsonMapper"));
         for (McpToolDefinition tool : tools) {
             for (McpInputDefinition input : InputRecordRenderer.inputs(tool)) {
                 String type = JavaSourceRenderer.javaType(
@@ -49,15 +55,16 @@ final class ToolCallbackConfigurationRenderer {
                 .append("        this.tools = tools;\n")
                 .append("    }\n\n")
                 .append("    @Bean\n")
-                .append("    public ToolCallbackProvider generatedToolCallbacks() {\n")
-                .append("        return new StaticToolCallbackProvider(\n");
+                .append("    public List<McpServerFeatures.SyncToolSpecification> generatedToolSpecifications(\n")
+                .append("            JsonMapper jsonMapper) {\n")
+                .append("        return List.of(\n");
         for (int index = 0; index < tools.size(); index++) {
             McpToolDefinition tool = tools.get(index);
             String schema = inputSchemas.get(tool.name());
             if (schema == null) {
                 throw JavaSourceRenderer.invalid("Explicit MCP Tool schemas must be present for every Tool");
             }
-            source.append("                MethodToolCallback.builder()\n")
+            source.append("                specification(MethodToolCallback.builder()\n")
                     .append("                        .toolDefinition(DefaultToolDefinition.builder()\n")
                     .append("                                .name(").append(JavaStringLiteral.quote(tool.name())).append(")\n")
                     .append("                                .description(").append(JavaStringLiteral.quote(tool.description())).append(")\n")
@@ -72,10 +79,47 @@ final class ToolCallbackConfigurationRenderer {
             }
             source.append("))\n")
                     .append("                        .toolObject(tools)\n")
-                    .append("                        .build()")
+                    .append("                        .build(), jsonMapper)")
                     .append(index + 1 == tools.size() ? "\n" : ",\n");
         }
         return source.append("        );\n")
+                .append("    }\n\n")
+                .append("    private static McpServerFeatures.SyncToolSpecification specification(\n")
+                .append("            MethodToolCallback callback,\n")
+                .append("            JsonMapper jsonMapper) {\n")
+                .append("        McpSchema.Tool tool = McpToolUtils.toSyncToolSpecification(callback).tool();\n")
+                .append("        return McpServerFeatures.SyncToolSpecification.builder()\n")
+                .append("                .tool(tool)\n")
+                .append("                .callHandler((exchange, request) -> {\n")
+                .append("                    try {\n")
+                .append("                        String input = jsonMapper.writeValueAsString(request.arguments());\n")
+                .append("                        String output = callback.call(input);\n")
+                .append("                        return McpSchema.CallToolResult.builder()\n")
+                .append("                                .content(List.of(new McpSchema.TextContent(output)))\n")
+                .append("                                .isError(false)\n")
+                .append("                                .build();\n")
+                .append("                    } catch (ToolExecutionException failure) {\n")
+                .append("                        if (failure.getCause() instanceof ProviderErrorException providerFailure) {\n")
+                .append("                            try {\n")
+                .append("                                String output = jsonMapper.writeValueAsString(\n")
+                .append("                                        providerFailure.error().payload());\n")
+                .append("                                return McpSchema.CallToolResult.builder()\n")
+                .append("                                        .content(List.of(new McpSchema.TextContent(output)))\n")
+                .append("                                        .isError(true)\n")
+                .append("                                        .build();\n")
+                .append("                            } catch (JacksonException serializationFailure) {\n")
+                .append("                                throw new IllegalStateException(\n")
+                .append("                                        \"Generated Tool result conversion failed\");\n")
+                .append("                            }\n")
+                .append("                        }\n")
+                .append("                        throw new IllegalStateException(\"Generated Tool execution failed\");\n")
+                .append("                    } catch (JacksonException failure) {\n")
+                .append("                        throw new IllegalStateException(\"Generated Tool argument conversion failed\");\n")
+                .append("                    } catch (RuntimeException failure) {\n")
+                .append("                        throw new IllegalStateException(\"Generated Tool execution failed\");\n")
+                .append("                    }\n")
+                .append("                })\n")
+                .append("                .build();\n")
                 .append("    }\n\n")
                 .append("    private static Method toolMethod(String name, Class<?>... parameterTypes) {\n")
                 .append("        try {\n")

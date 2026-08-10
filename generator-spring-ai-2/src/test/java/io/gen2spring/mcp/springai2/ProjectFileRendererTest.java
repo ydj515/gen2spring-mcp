@@ -70,6 +70,16 @@ class ProjectFileRendererTest {
         assertTrue(yaml.contains("max-concurrent-requests: 16"));
         assertTrue(yaml.contains("max-queued-requests: 64"));
         assertTrue(yaml.contains("service-key: \"${KMA_SERVICE_KEY:}\""));
+        assertTrue(yaml.contains("annotation-scanner:\n          enabled: false"));
+    }
+
+    @Test
+    void disablesAnnotationScanningForConstrainedAndUnconstrainedTools() {
+        String unconstrained = renderer.applicationYaml(contextWithSecret("service-key"));
+        String constrained = renderer.applicationYaml(JavaSourceRendererTest.contextWithWeatherTool());
+
+        assertTrue(unconstrained.contains("annotation-scanner:\n          enabled: false"));
+        assertTrue(constrained.contains("annotation-scanner:\n          enabled: false"));
     }
 
     @Test

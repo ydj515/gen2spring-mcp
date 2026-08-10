@@ -112,7 +112,7 @@ public final class ProjectFileRenderer {
         server.put("version", profile.runtimeVersion());
         server.put("type", "SYNC");
         server.put("protocol", "STREAMABLE");
-        server.put("annotation-scanner", Map.of("enabled", !JavaSourceRenderer.requiresExplicitToolSchema(context.tools())));
+        server.put("annotation-scanner", Map.of("enabled", false));
         server.put("streamable-http", Map.of("mcp-endpoint", "/mcp"));
         spring.put("ai", Map.of("mcp", Map.of("server", server)));
         root.put("spring", spring);

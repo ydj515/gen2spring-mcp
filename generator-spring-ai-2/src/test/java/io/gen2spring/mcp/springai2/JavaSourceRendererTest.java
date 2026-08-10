@@ -214,6 +214,26 @@ class JavaSourceRendererTest {
     }
 
     @Test
+    void registersLowLevelSpecificationsForEveryTool() {
+        ApiSchema text = schema(SchemaType.STRING, null, null, null, null, null, null, List.of());
+        McpToolDefinition tool = weatherTool(
+                List.of(new McpInputDefinition("city", "city", "City", true, text)),
+                List.of(new ParameterBinding("city", ParameterLocation.QUERY, "city")));
+
+        var files = renderer.render(context(List.of(tool)));
+        String callbacks = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+        String tools = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
+
+        assertTrue(callbacks.contains("List<McpServerFeatures.SyncToolSpecification>"));
+        assertTrue(callbacks.contains("McpToolUtils.toSyncToolSpecification(callback).tool()"));
+        assertTrue(callbacks.contains("instanceof ProviderErrorException"));
+        assertFalse(callbacks.contains("ToolCallbackProvider"));
+        assertFalse(tools.contains("@McpTool("));
+    }
+
+    @Test
     void importsCollectionAndDecimalTypesUsedByGeneratedInputs() {
         ApiSchema number = schema(SchemaType.NUMBER, null, null, null, null, null, null, List.of());
         ApiSchema strings = new ApiSchema(

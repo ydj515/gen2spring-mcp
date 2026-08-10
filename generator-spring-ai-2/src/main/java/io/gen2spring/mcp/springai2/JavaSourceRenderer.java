@@ -56,16 +56,12 @@ public final class JavaSourceRenderer {
         String domainClass = upperCamel(requireSourceName(context.request().domain(), "domain"));
         List<McpToolDefinition> tools = orderedTools(context.tools());
         validateTools(tools);
-        boolean explicitToolSchema = requiresExplicitToolSchema(tools);
-
         Map<String, String> sources = new LinkedHashMap<>();
         putAll(sources, inputRenderer.render(packageName, packagePath, tools));
         put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpTools.java",
-                toolRenderer.render(packageName, domainClass, tools, explicitToolSchema));
-        if (explicitToolSchema) {
-            put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpToolCallbacks.java",
-                    toolCallbackConfigurationRenderer.render(packageName, domainClass, tools, toolSchemas(tools)));
-        }
+                toolRenderer.render(packageName, domainClass, tools));
+        put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpToolCallbacks.java",
+                toolCallbackConfigurationRenderer.render(packageName, domainClass, tools, toolSchemas(tools)));
         put(sources, "src/main/java/" + packagePath + "/generated/metadata/" + domainClass + "Operations.java",
                 metadataRenderer.render(packageName, domainClass, tools));
         putAll(sources, runtimeRenderer.render(packageName, packagePath, domainClass));
@@ -195,31 +191,6 @@ public final class JavaSourceRenderer {
 
     static GeneratorException invalid(String message) {
         return GeneratorException.user(SOURCE_GENERATION_FAILED, "spring-ai-2-render", message);
-    }
-
-    static boolean requiresExplicitToolSchema(List<McpToolDefinition> tools) {
-        return (tools == null ? List.<McpToolDefinition>of() : tools).stream()
-                .flatMap(tool -> InputRecordRenderer.inputs(tool).stream())
-                .anyMatch(input -> containsP0Constraint(input.schema()));
-    }
-
-    private static boolean containsP0Constraint(ApiSchema schema) {
-        if (schema == null) {
-            return false;
-        }
-        if (((schema.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.STRING
-                        || schema.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.NUMBER)
-                        && schema.format() != null && !schema.format().isBlank())
-                || schema.enumValues() != null && !schema.enumValues().isEmpty()
-                || schema.minimum() != null || schema.maximum() != null
-                || schema.minLength() != null || schema.maxLength() != null || schema.pattern() != null) {
-            return true;
-        }
-        if (schema.properties() != null && schema.properties().values().stream()
-                .anyMatch(JavaSourceRenderer::containsP0Constraint)) {
-            return true;
-        }
-        return schema.items() != null && containsP0Constraint(schema.items());
     }
 
     private Map<String, String> toolSchemas(List<McpToolDefinition> tools) {
