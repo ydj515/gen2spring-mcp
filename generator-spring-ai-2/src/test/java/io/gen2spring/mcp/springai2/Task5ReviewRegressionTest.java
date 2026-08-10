@@ -2,6 +2,7 @@ package io.gen2spring.mcp.springai2;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -118,10 +119,28 @@ class Task5ReviewRegressionTest {
 
         assertTrue(java17Files.keySet().equals(java21Files.keySet()));
         for (String path : java17Files.keySet()) {
-            if (!path.endsWith("/GeneratedJavaRuntimeTest.java")) {
+            if (path.endsWith("/GeneratedJavaRuntimeTest.java")) {
+                continue;
+            }
+            if (path.endsWith("/RuntimeTelemetry.java")) {
+                String java17Source = utf8(java17Files.get(path));
+                String java21Source = utf8(java21Files.get(path));
+                assertTrue(java17Source.contains("spring-ai-2.0-java17-mvc-streamable"));
+                assertTrue(java21Source.contains("spring-ai-2.0-java21-mvc-streamable"));
+                assertEquals(
+                        normalizeTelemetryProfile(java17Source),
+                        normalizeTelemetryProfile(java21Source),
+                        path);
+            } else {
                 assertArrayEquals(java17Files.get(path), java21Files.get(path), path);
             }
         }
+    }
+
+    private String normalizeTelemetryProfile(String source) {
+        return source
+                .replace("spring-ai-2.0-java17-mvc-streamable", "<spring-ai-2-java-profile>")
+                .replace("spring-ai-2.0-java21-mvc-streamable", "<spring-ai-2-java-profile>");
     }
 
     private CompatibilityProfile profile(int javaVersion) {

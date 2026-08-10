@@ -34,6 +34,7 @@ public final class JavaSourceRenderer {
     private final OperationMetadataRenderer metadataRenderer;
     private final RuntimeSourceRenderer runtimeRenderer;
     private final ResponseRuntimeRenderer responseRuntimeRenderer;
+    private final RuntimeTelemetryRenderer runtimeTelemetryRenderer;
     private final ExpectedToolSchemaFactory expectedToolSchemaFactory;
     private final ObjectMapper objectMapper;
 
@@ -49,6 +50,7 @@ public final class JavaSourceRenderer {
         this.metadataRenderer = new OperationMetadataRenderer();
         this.runtimeRenderer = new RuntimeSourceRenderer();
         this.responseRuntimeRenderer = new ResponseRuntimeRenderer();
+        this.runtimeTelemetryRenderer = new RuntimeTelemetryRenderer(profile);
         this.expectedToolSchemaFactory = new ExpectedToolSchemaFactory();
         this.objectMapper = new ObjectMapper();
     }
@@ -70,6 +72,8 @@ public final class JavaSourceRenderer {
                 metadataRenderer.render(packageName, domainClass, tools));
         putAll(sources, runtimeRenderer.render(packageName, packagePath, domainClass));
         putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
+        put(sources, "src/main/java/" + packagePath + "/runtime/RuntimeTelemetry.java",
+                runtimeTelemetryRenderer.render(packageName, tools));
         put(sources, "src/test/java/" + packagePath + "/application/GeneratedJavaRuntimeTest.java",
                 runtimeFeatureTest(packageName, context.profile().target().javaVersion()));
 

@@ -73,6 +73,7 @@ class JavaSourceRendererTest {
                 "src/main/java/com/example/weather/runtime/ProviderErrorException.java",
                 "src/main/java/com/example/weather/runtime/ResponseNormalizationPolicy.java",
                 "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
+                "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
                 "src/main/java/com/example/weather/runtime/SecretBinding.java",
                 "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java")),
@@ -105,6 +106,41 @@ class JavaSourceRendererTest {
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java"));
         assertTrue(contextTest.contains("webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT"));
         assertTrue(contextTest.contains("void contextLoads()"));
+    }
+
+    @Test
+    void emitsTheCanonicalRuntimeTelemetryContract() {
+        String telemetry = utf8(renderer.render(contextWithWeatherTool()).get(
+                "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java"));
+
+        for (String literal : List.of(
+                "gen2spring.runtime.mcp.tool.call",
+                "gen2spring.runtime.provider.request",
+                "gen2spring.runtime.provider.response.bytes",
+                "gen2spring.runtime.provider.executor.active",
+                "gen2spring.runtime.provider.executor.queued",
+                "target.profile", "outcome", "error.category", "http.status.class",
+                "gen2spring.tool.name", "gen2spring.operation.id",
+                "http.request.method", "http.response.status_code",
+                "success", "expected_error", "internal_error", "fatal",
+                "provider_business", "upstream_client", "upstream_server",
+                "upstream_timeout", "upstream_unavailable", "upstream_protocol",
+                "local_resource", "argument_conversion", "result_conversion",
+                "tool_execution", "unexpected_runtime",
+                "2xx", "4xx", "5xx", "other", "none",
+                "spring-ai-1.1-java21-mvc-streamable",
+                "Set.of(\"getForecast\")", "Set.of(\"kma_weather_get_forecast\")",
+                "[A-Za-z0-9][A-Za-z0-9_.-]{0,127}",
+                "[a-z][a-z0-9_]{0,63}",
+                "currentTraceIdOrFallback()", "currentTraceparent()",
+                "new SecureRandom()", "HexFormat.of().formatHex")) {
+            assertTrue(telemetry.contains(literal), literal);
+        }
+        assertFalse(telemetry.contains("tool.name\", targetProfileId"));
+        assertFalse(telemetry.contains("operation.id\", targetProfileId"));
+        assertFalse(telemetry.contains("Throwable failure"));
+        assertFalse(telemetry.contains("failure.getMessage()"));
+        assertFalse(telemetry.contains("application"));
     }
 
     @Test
@@ -529,6 +565,9 @@ class JavaSourceRendererTest {
         assertTrue(files.containsKey(path), profile.id());
         String source = utf8(files.get(path));
         assertTrue(source.contains("assertEquals(" + expectedFeature + ", Runtime.version().feature())"), source);
+        String telemetry = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java"));
+        assertTrue(telemetry.contains("TARGET_PROFILE_ID = \"" + profile.id() + "\""), telemetry);
     }
 
     private static CompatibilityProfile profile(int javaVersion) {
