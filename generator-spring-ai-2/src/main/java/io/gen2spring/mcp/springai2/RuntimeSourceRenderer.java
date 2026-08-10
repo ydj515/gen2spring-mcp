@@ -156,6 +156,7 @@ final class RuntimeSourceRenderer {
                 import org.springframework.core.env.Environment;
                 import org.springframework.http.HttpHeaders;
                 import org.springframework.http.HttpMethod;
+                import org.springframework.http.InvalidMediaTypeException;
                 import org.springframework.http.MediaType;
                 import org.springframework.http.client.JdkClientHttpRequestFactory;
                 import org.springframework.stereotype.Component;
@@ -327,7 +328,7 @@ final class RuntimeSourceRenderer {
                             int status = upstreamResponse.getStatusCode().value();
                             return new RawResponse(
                                     status,
-                                    upstreamResponse.getHeaders().getContentType(),
+                                    upstreamResponse.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE),
                                     readBounded(upstreamResponse.getBody(), status));
                         });
                         if (response == null) {
@@ -341,10 +342,21 @@ final class RuntimeSourceRenderer {
                         return responseNormalizer.normalize(
                                 operation,
                                 response.status(),
-                                response.contentType(),
+                                parseContentType(response.contentType()),
                                 response.body(),
                                 secretNames,
                                 secretValues);
+                    }
+
+                    private MediaType parseContentType(String contentType) {
+                        if (contentType == null) {
+                            return null;
+                        }
+                        try {
+                            return MediaType.parseMediaType(contentType);
+                        } catch (InvalidMediaTypeException failure) {
+                            return null;
+                        }
                     }
 
                     private Object bind(
@@ -429,6 +441,10 @@ final class RuntimeSourceRenderer {
                             Throwable failure,
                             List<String> secretNames,
                             List<String> secretValues) {
+                        Error error = findCause(failure, Error.class);
+                        if (error != null) {
+                            throw error;
+                        }
                         ResponseTooLargeException tooLarge = findCause(
                                 failure, ResponseTooLargeException.class);
                         if (tooLarge != null) {
@@ -482,15 +498,10 @@ final class RuntimeSourceRenderer {
                                     secretNames,
                                     secretValues);
                         }
-                        if (failure instanceof Error error) {
-                            throw error;
+                        if (failure instanceof RuntimeException runtimeFailure) {
+                            throw runtimeFailure;
                         }
-                        return providerError(
-                                operation,
-                                ProviderErrorCategory.UPSTREAM_PROTOCOL,
-                                null,
-                                secretNames,
-                                secretValues);
+                        throw new IllegalStateException("Generated upstream execution failed");
                     }
 
                     private OperationOutcome providerError(
@@ -578,7 +589,7 @@ final class RuntimeSourceRenderer {
                         requestExecutor.shutdownNow();
                     }
 
-                    private record RawResponse(int status, MediaType contentType, byte[] body) {}
+                    private record RawResponse(int status, String contentType, byte[] body) {}
 
                     private static final class ResponseTooLargeException extends RuntimeException {
                         private final int status;

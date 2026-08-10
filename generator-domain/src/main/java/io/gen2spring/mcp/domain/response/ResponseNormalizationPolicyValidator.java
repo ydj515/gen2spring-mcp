@@ -39,23 +39,21 @@ public class ResponseNormalizationPolicyValidator {
         if (value == null) {
             return null;
         }
-        if (value.length() > MAX_POINTER_LENGTH || (!value.isEmpty() && !value.startsWith("/"))) {
+        if (value.isEmpty() || value.length() > MAX_POINTER_LENGTH || !value.startsWith("/")) {
             throw invalid();
         }
 
         List<String> tokens = new ArrayList<>();
-        if (!value.isEmpty()) {
-            String[] encodedTokens = value.substring(1).split("/", -1);
-            if (encodedTokens.length > MAX_POINTER_TOKENS) {
+        String[] encodedTokens = value.substring(1).split("/", -1);
+        if (encodedTokens.length > MAX_POINTER_TOKENS) {
+            throw invalid();
+        }
+        for (String encodedToken : encodedTokens) {
+            String token = decodeToken(encodedToken);
+            if (token.equals("-") || containsControl(token)) {
                 throw invalid();
             }
-            for (String encodedToken : encodedTokens) {
-                String token = decodeToken(encodedToken);
-                if (token.equals("-") || containsControl(token)) {
-                    throw invalid();
-                }
-                tokens.add(token);
-            }
+            tokens.add(token);
         }
         return new Pointer(name, List.copyOf(tokens), scalar);
     }

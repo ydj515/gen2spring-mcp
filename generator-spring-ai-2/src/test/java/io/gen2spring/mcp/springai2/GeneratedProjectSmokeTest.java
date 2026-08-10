@@ -89,9 +89,10 @@ class GeneratedProjectSmokeTest {
         String tools = new String(files.get(toolPath), java.nio.charset.StandardCharsets.UTF_8)
                 .replace(
                         "return executor.execute(WeatherOperations.INTERNAL_FAILURE, input.toArguments());",
-                        "throw new IllegalStateException(\"private-internal-marker configured-secret-marker "
-                                + "raw-private-body-marker\", "
-                                + "new IllegalArgumentException(\"private-cause-marker\"));")
+                        "return executor.execute(new com.example.weather.runtime.OperationDefinition("
+                                + "\"internalFailure\", \"GET\", \"/missing/{private-internal-marker}\", "
+                                + "java.util.List.of(), java.util.List.of(), false, false, null), "
+                                + "input.toArguments());")
                 .replace(
                         "return executor.execute(WeatherOperations.FATAL_FAILURE, input.toArguments());",
                         "throw com.example.weather.application.FatalFailureProbe.ERROR;");
@@ -119,6 +120,23 @@ class GeneratedProjectSmokeTest {
                 responseNormalizerContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertProjectBuilds(tempDir.resolve("response-normalizer"), filesWithNormalizerTest);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedExponentSuccessValueRemainsBoundedAndCompiles() throws Exception {
+        ResponseNormalizationPolicy exponent = new ResponseNormalizationPolicy(
+                null, "/code", List.of(new BigDecimal("1e1000000")), null, null);
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(List.of(
+                        JavaSourceRendererTest.weatherTool(exponent))))
+                .files();
+        String metadataPath = "src/main/java/com/example/weather/generated/metadata/WeatherOperations.java";
+        String metadata = new String(files.get(metadataPath), java.nio.charset.StandardCharsets.UTF_8);
+
+        assertTrue(metadata.length() < 20_000, "expanded metadata length=" + metadata.length());
+        assertTrue(metadata.contains("new BigDecimal(\"1E+1000000\")"), metadata);
+        assertProjectBuilds(tempDir.resolve("bounded-exponent"), files);
     }
 
     @Test
@@ -496,6 +514,20 @@ class GeneratedProjectSmokeTest {
                     }
 
                     @Test
+                    void normalizesEmptyBodyWhenThePolicyHasNoPointers() throws Exception {
+                        ResponseNormalizationPolicy emptyPolicy = policy(
+                                null, null, List.of(), null, null);
+                        NormalizedSuccess success = assertInstanceOf(NormalizedSuccess.class,
+                                normalizer.normalize(operation("emptyPolicy", emptyPolicy), 204, null,
+                                        new byte[0], List.of(), List.of()));
+
+                        assertEquals(jsonNode("{'data':null}"), success.payload());
+                        assertCategory("UPSTREAM_PROTOCOL", normalizer.normalize(
+                                operation("pointerPolicy", policy("/data", null, List.of(), null, null)),
+                                204, null, new byte[0], List.of(), List.of()));
+                    }
+
+                    @Test
                     void evaluatesEscapedObjectAndArrayPointerTokens() throws Exception {
                         assertEquals(jsonNode("{'id':1}"), successData(
                                 policy("/a~1b", null, List.of(), null, null),
@@ -814,11 +846,11 @@ class GeneratedProjectSmokeTest {
                         assertTrue(diagnostic.contains("tool=weather_internal_failure"), diagnostic);
                         assertTrue(diagnostic.contains(
                                 "exception=org.springframework.ai.tool.execution.ToolExecutionException"), diagnostic);
-                        assertTrue(diagnostic.contains("cause=java.lang.IllegalStateException"), diagnostic);
-                        assertNoPrivateFailureDetail(diagnostic);
+                        assertTrue(diagnostic.contains("cause=java.lang.IllegalArgumentException"), diagnostic);
+                        assertNoPrivateValues(diagnostic);
                         assertFalse(diagnostic.contains("arguments="), diagnostic);
                         assertFalse(diagnostic.contains("ToolExecutionException:"), diagnostic);
-                        assertNoPrivateFailureDetail(captured);
+                        assertNoPrivateValues(captured);
                     }
 
                     @Test
@@ -850,12 +882,16 @@ class GeneratedProjectSmokeTest {
                     }
 
                     private void assertNoPrivateFailureDetail(String value) {
+                        assertNoPrivateValues(value);
+                        assertFalse(value.contains("IllegalArgumentException"), value);
+                    }
+
+                    private void assertNoPrivateValues(String value) {
                         assertFalse(value.contains("private-internal-marker"), value);
                         assertFalse(value.contains("private-cause-marker"), value);
                         assertFalse(value.contains("raw-private-body-marker"), value);
                         assertFalse(value.contains("raw-body-marker"), value);
                         assertFalse(value.contains("configured-secret-marker"), value);
-                        assertFalse(value.contains("IllegalArgumentException"), value);
                         assertFalse(value.contains("at com.example"), value);
                         assertFalse(value.contains("\\tat "), value);
                     }
@@ -958,6 +994,7 @@ class GeneratedProjectSmokeTest {
                 import static org.junit.jupiter.api.Assertions.assertEquals;
                 import static org.junit.jupiter.api.Assertions.assertFalse;
                 import static org.junit.jupiter.api.Assertions.assertNull;
+                import static org.junit.jupiter.api.Assertions.assertSame;
                 import static org.junit.jupiter.api.Assertions.assertThrows;
                 import static org.junit.jupiter.api.Assertions.assertTrue;
                 import static org.junit.jupiter.api.Assertions.fail;
@@ -1029,6 +1066,13 @@ class GeneratedProjectSmokeTest {
                                 "{'value':'" + "x".repeat(2048) + "'}"));
                         server.createContext("/status-oversize", exchange -> json(exchange, 500,
                                 "{'value':'" + PRIVATE_BODY_MARKER.repeat(128) + "'}"));
+                        server.createContext("/malformed-type-400", exchange -> malformedType(
+                                exchange, 400, "{'code':'30','message':'" + PRIVATE_BODY_MARKER + "'}"));
+                        server.createContext("/malformed-type-500", exchange -> malformedType(
+                                exchange, 500, "{'code':'50','message':'" + PRIVATE_BODY_MARKER + "'}"));
+                        server.createContext("/malformed-type-200", exchange -> malformedType(
+                                exchange, 200, "{'code':'00','message':'ok','data':{}}"));
+                        server.createContext("/empty", GeneratedExecutorFailureContractTest::noContent);
                         server.createContext("/read-timeout", exchange -> {
                             sleep(Duration.ofMillis(500));
                             json(exchange, 200, "{'code':'00','message':'ok','data':{}}");
@@ -1066,6 +1110,19 @@ class GeneratedProjectSmokeTest {
                             assertError(call(executor, "/oversize"), "UPSTREAM_PROTOCOL", false, 200);
                             assertError(call(executor, "/status-oversize"),
                                     "UPSTREAM_SERVER", true, 500);
+                            assertNullProviderMetadata(call(executor, "/malformed-type-400"),
+                                    "UPSTREAM_CLIENT", false, 400);
+                            assertNullProviderMetadata(call(executor, "/malformed-type-500"),
+                                    "UPSTREAM_SERVER", true, 500);
+                            assertError(call(executor, "/malformed-type-200"),
+                                    "UPSTREAM_PROTOCOL", false, 200);
+                            JsonNode empty = executor.execute(
+                                    operation("/empty", new ResponseNormalizationPolicy(
+                                            null, null, List.of(), null, null)), Map.of());
+                            assertEquals(1, empty.size(), empty.toString());
+                            assertTrue(empty.get("data").isNull(), empty.toString());
+                            assertError(call(executor, operation("/empty")),
+                                    "UPSTREAM_PROTOCOL", false, 204);
                             assertEquals(true, executor.execute(operation("/suffix-json"), Map.of())
                                     .at("/data/accepted").booleanValue());
                         } finally {
@@ -1150,7 +1207,7 @@ class GeneratedProjectSmokeTest {
                     }
 
                     @Test
-                    void mapsUnexpectedWorkerFailuresWithoutExposingTheirMessages() {
+                    void propagatesUnexpectedWorkerFailuresForAdapterRedaction() {
                         OpenApiOperationExecutor executor = executor(baseUrl, 512, 1000, 1000, 1, 1);
                         OperationDefinition invalid = new OperationDefinition(
                                 OPERATION_ID,
@@ -1162,11 +1219,54 @@ class GeneratedProjectSmokeTest {
                                 false,
                                 null);
                         try {
-                            ProviderErrorException failure = assertThrows(
-                                    ProviderErrorException.class,
+                            IllegalArgumentException failure = assertThrows(
+                                    IllegalArgumentException.class,
                                     () -> executor.execute(invalid, Map.of()));
 
-                            assertError(failure, "UPSTREAM_PROTOCOL", false, null);
+                            assertTrue(failure.getMessage().contains(PRIVATE_BODY_MARKER), failure.getMessage());
+                            for (RuntimeException expected : List.of(
+                                    new NullPointerException("private-null-marker"),
+                                    new RuntimeException("private-runtime-marker"))) {
+                                Object argument = new Object() {
+                                    @Override
+                                    public String toString() {
+                                        throw expected;
+                                    }
+                                };
+
+                                RuntimeException actual = assertThrows(RuntimeException.class,
+                                        () -> executor.execute(
+                                                queryOperation("/runtime"), Map.of("value", argument)));
+
+                                assertSame(expected, actual);
+                            }
+                        } finally {
+                            executor.shutdown();
+                        }
+                    }
+
+                    @Test
+                    void rethrowsErrorsBeforeClassifyingTheirCauseChains() {
+                        OpenApiOperationExecutor executor = executor(baseUrl, 512, 1000, 1000, 1, 1);
+                        Error ioError = new java.io.IOError(new IOException("private-io-marker"));
+                        Error resourceError = new AssertionError(new org.springframework.web.client.ResourceAccessException(
+                                "private-resource-marker", new IOException("private-resource-cause")));
+                        Error timeoutError = new AssertionError(
+                                new java.net.SocketTimeoutException("private-timeout-marker"));
+                        try {
+                            for (Error expected : List.of(ioError, resourceError, timeoutError)) {
+                                Object argument = new Object() {
+                                    @Override
+                                    public String toString() {
+                                        throw expected;
+                                    }
+                                };
+
+                                Error actual = assertThrows(Error.class, () -> executor.execute(
+                                        queryOperation("/error"), Map.of("value", argument)));
+
+                                assertSame(expected, actual);
+                            }
                         } finally {
                             executor.shutdown();
                         }
@@ -1247,8 +1347,13 @@ class GeneratedProjectSmokeTest {
 
                     private static ProviderErrorException call(
                             OpenApiOperationExecutor executor, String path) {
+                        return call(executor, operation(path));
+                    }
+
+                    private static ProviderErrorException call(
+                            OpenApiOperationExecutor executor, OperationDefinition operation) {
                         return assertThrows(ProviderErrorException.class,
-                                () -> executor.execute(operation(path), Map.of()));
+                                () -> executor.execute(operation, Map.of()));
                     }
 
                     private static void assertError(
@@ -1276,7 +1381,25 @@ class GeneratedProjectSmokeTest {
                         }
                     }
 
+                    private static void assertNullProviderMetadata(
+                            ProviderErrorException failure,
+                            String category,
+                            boolean retryable,
+                            Integer status) {
+                        assertError(failure, category, retryable, status);
+                        JsonNode error = failure.error().payload().get("error");
+                        assertTrue(error.get("providerCode").isNull(), error.toString());
+                        assertTrue(error.get("providerMessage").isNull(), error.toString());
+                    }
+
                     private static OperationDefinition operation(String path) {
+                        return operation(path, new ResponseNormalizationPolicy(
+                                "/data", "/code", List.of(StringNode.valueOf("00")),
+                                "/message", null));
+                    }
+
+                    private static OperationDefinition operation(
+                            String path, ResponseNormalizationPolicy normalization) {
                         return new OperationDefinition(
                                 OPERATION_ID,
                                 "GET",
@@ -1300,9 +1423,19 @@ class GeneratedProjectSmokeTest {
                                                 true)),
                                 false,
                                 false,
-                                new ResponseNormalizationPolicy(
-                                        "/data", "/code", List.of(StringNode.valueOf("00")),
-                                        "/message", null));
+                                normalization);
+                    }
+
+                    private static OperationDefinition queryOperation(String path) {
+                        return new OperationDefinition(
+                                OPERATION_ID,
+                                "GET",
+                                path,
+                                List.of(new ParameterBinding("value", ParameterLocation.QUERY, "value")),
+                                List.of(),
+                                false,
+                                false,
+                                null);
                     }
 
                     private static OpenApiOperationExecutor executor(
@@ -1336,6 +1469,17 @@ class GeneratedProjectSmokeTest {
 
                     private static void text(HttpExchange exchange, int status, String body) throws IOException {
                         respond(exchange, status, "text/plain", body);
+                    }
+
+                    private static void malformedType(
+                            HttpExchange exchange, int status, String body) throws IOException {
+                        respond(exchange, status, "application/json; charset=\\\"", body);
+                    }
+
+                    private static void noContent(HttpExchange exchange) throws IOException {
+                        try (exchange) {
+                            exchange.sendResponseHeaders(204, -1);
+                        }
                     }
 
                     private static void respond(

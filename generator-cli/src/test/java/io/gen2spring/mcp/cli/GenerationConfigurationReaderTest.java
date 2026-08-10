@@ -76,6 +76,25 @@ class GenerationConfigurationReaderTest {
                                 + "    parameters:\n"))));
     }
 
+    @Test
+    void distinguishesAbsentPointersFromExplicitEmptyPointerStrings() throws IOException {
+        assertThrows(CliConfigurationException.class,
+                () -> reader.read(write("empty-pointer.yaml", validConfiguration().replace(
+                        "    parameters:\n", "    responseNormalization: {dataPath: \"\"}\n"
+                                + "    parameters:\n"))));
+
+        GenerationRequest absent = reader.read(write("absent-pointer.yaml", validConfiguration().replace(
+                "    parameters:\n", "    responseNormalization: {}\n    parameters:\n")));
+        GenerationRequest emptyProperty = reader.read(write(
+                "empty-property-pointer.yaml", validConfiguration().replace(
+                        "    parameters:\n", "    responseNormalization: {dataPath: /}\n"
+                                + "    parameters:\n")));
+
+        assertEquals(new ResponseNormalizationPolicy(null, null, List.of(), null, null),
+                absent.operations().getFirst().responseNormalization());
+        assertEquals("/", emptyProperty.operations().getFirst().responseNormalization().dataPointer());
+    }
+
     @ParameterizedTest
     @MethodSource("invalidValidationConfigurations")
     void rejectsInvalidRepresentativeToolCallValidation(String yaml) throws Exception {

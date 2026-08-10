@@ -32,6 +32,7 @@ class ResponseNormalizationPolicyValidatorTest {
 
     static Stream<ResponseNormalizationPolicy> invalidPolicies() {
         return Stream.of(
+                policy("", null, List.of(), null, null),
                 policy("relative", null, List.of(), null, null),
                 policy("/bad~2escape", null, List.of(), null, null),
                 policy("/items/-", null, List.of(), null, null),
@@ -57,6 +58,15 @@ class ResponseNormalizationPolicyValidatorTest {
         var policy = policy("/items/01", null, List.of(), null, null);
 
         assertSame(policy, new ResponseNormalizationPolicyValidator().requireValid(policy));
+    }
+
+    @Test
+    void acceptsAbsentPointersAndTheExplicitEmptyPropertyToken() {
+        var absent = policy(null, null, List.of(), null, null);
+        var emptyProperty = policy("/", null, List.of(), null, null);
+
+        assertSame(absent, new ResponseNormalizationPolicyValidator().requireValid(absent));
+        assertSame(emptyProperty, new ResponseNormalizationPolicyValidator().requireValid(emptyProperty));
     }
 
     private static ResponseNormalizationPolicy policy(

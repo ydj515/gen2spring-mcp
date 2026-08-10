@@ -168,6 +168,13 @@ final class ResponseRuntimeRenderer {
                             if (policy == null) {
                                 return new NormalizedSuccess(NullNode.getInstance());
                             }
+                            if (policy.dataPointer() == null
+                                    && policy.successCodePointer() == null
+                                    && policy.errorMessagePointer() == null
+                                    && policy.totalCountPointer() == null) {
+                                return new NormalizedSuccess(successEnvelope(
+                                        NullNode.getInstance(), null, null, null, policy));
+                            }
                             return error(operation, ProviderErrorCategory.UPSTREAM_PROTOCOL, status,
                                     null, null, secretNames, secretValues);
                         }

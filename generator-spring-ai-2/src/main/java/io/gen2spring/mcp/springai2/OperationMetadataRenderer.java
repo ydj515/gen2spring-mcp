@@ -93,7 +93,7 @@ final class OperationMetadataRenderer {
             source.append(bool ? "BooleanNode.TRUE" : "BooleanNode.FALSE");
         } else if (value instanceof Number number) {
             source.append("JsonNodeFactory.instance.numberNode(new BigDecimal(")
-                    .append(JavaStringLiteral.quote(new java.math.BigDecimal(number.toString()).toPlainString()))
+                    .append(JavaStringLiteral.quote(new java.math.BigDecimal(number.toString()).toString()))
                     .append("))");
         } else {
             throw JavaSourceRenderer.invalid("Response success values must be JSON scalars");
