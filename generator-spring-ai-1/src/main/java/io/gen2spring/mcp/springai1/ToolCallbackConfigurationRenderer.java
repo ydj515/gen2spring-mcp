@@ -29,7 +29,7 @@ final class ToolCallbackConfigurationRenderer {
                 "org.slf4j.Logger",
                 "org.slf4j.LoggerFactory",
                 "com.fasterxml.jackson.core.JsonProcessingException",
-                "com.fasterxml.jackson.databind.json.JsonMapper"));
+                "com.fasterxml.jackson.databind.ObjectMapper"));
         for (McpToolDefinition tool : tools) {
             for (McpInputDefinition input : InputRecordRenderer.inputs(tool)) {
                 String type = JavaSourceRenderer.javaType(
@@ -60,7 +60,7 @@ final class ToolCallbackConfigurationRenderer {
                 .append("    }\n\n")
                 .append("    @Bean\n")
                 .append("    public List<McpServerFeatures.SyncToolSpecification> generatedToolSpecifications(\n")
-                .append("            JsonMapper jsonMapper) {\n")
+                .append("            ObjectMapper objectMapper) {\n")
                 .append("        return List.of(\n");
         for (int index = 0; index < tools.size(); index++) {
             McpToolDefinition tool = tools.get(index);
@@ -83,20 +83,20 @@ final class ToolCallbackConfigurationRenderer {
             }
             source.append("))\n")
                     .append("                        .toolObject(tools)\n")
-                    .append("                        .build(), jsonMapper)")
+                    .append("                        .build(), objectMapper)")
                     .append(index + 1 == tools.size() ? "\n" : ",\n");
         }
         return source.append("        );\n")
                 .append("    }\n\n")
                 .append("    private static McpServerFeatures.SyncToolSpecification specification(\n")
                 .append("            MethodToolCallback callback,\n")
-                .append("            JsonMapper jsonMapper) {\n")
+                .append("            ObjectMapper objectMapper) {\n")
                 .append("        McpSchema.Tool tool = McpToolUtils.toSyncToolSpecification(callback).tool();\n")
                 .append("        return McpServerFeatures.SyncToolSpecification.builder()\n")
                 .append("                .tool(tool)\n")
                 .append("                .callHandler((exchange, request) -> {\n")
                 .append("                    try {\n")
-                .append("                        String input = jsonMapper.writeValueAsString(request.arguments());\n")
+                .append("                        String input = objectMapper.writeValueAsString(request.arguments());\n")
                 .append("                        String output = callback.call(input);\n")
                 .append("                        return McpSchema.CallToolResult.builder()\n")
                 .append("                                .content(List.of(new McpSchema.TextContent(output)))\n")
@@ -105,7 +105,7 @@ final class ToolCallbackConfigurationRenderer {
                 .append("                    } catch (ToolExecutionException failure) {\n")
                 .append("                        if (failure.getCause() instanceof ProviderErrorException providerFailure) {\n")
                 .append("                            try {\n")
-                .append("                                String output = jsonMapper.writeValueAsString(\n")
+                .append("                                String output = objectMapper.writeValueAsString(\n")
                 .append("                                        providerFailure.error().payload());\n")
                 .append("                                return McpSchema.CallToolResult.builder()\n")
                 .append("                                        .content(List.of(new McpSchema.TextContent(output)))\n")

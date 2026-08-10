@@ -245,6 +245,46 @@ class JavaSourceRendererTest {
     }
 
     @Test
+    void rendersAnExactIndependentToolSchemaAndMethodMapping() {
+        ApiSchema text = schema(SchemaType.STRING, null, null, null, null, null, null, List.of());
+        ApiSchema integer = schema(
+                SchemaType.INTEGER, "int32", BigDecimal.ONE, BigDecimal.TEN,
+                null, null, null, List.of());
+        McpToolDefinition tool = weatherTool(
+                List.of(
+                        new McpInputDefinition("limit", "limit", "Maximum results", false, integer),
+                        new McpInputDefinition("city", "city", "Forecast city", true, text)),
+                List.of(
+                        new ParameterBinding("limit", ParameterLocation.QUERY, "limit"),
+                        new ParameterBinding("city", ParameterLocation.QUERY, "city")));
+
+        String callbacks = utf8(renderer.render(context(List.of(tool))).get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+        assertTrue(callbacks.contains(".name(\"kma_weather_get_forecast\")"), callbacks);
+        assertTrue(callbacks.contains(
+                ".description(\"Get the public weather forecast for a grid location.\")"), callbacks);
+        assertTrue(callbacks.contains(
+                ".inputSchema(\"{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\",\\\"description\\\":\\\"Forecast city\\\"},\\\"limit\\\":{\\\"type\\\":\\\"integer\\\",\\\"format\\\":\\\"int32\\\",\\\"minimum\\\":1,\\\"maximum\\\":10,\\\"description\\\":\\\"Maximum results\\\"}},\\\"required\\\":[\\\"city\\\"]}\")"),
+                callbacks);
+        assertTrue(callbacks.contains(
+                ".toolMethod(toolMethod(\"getForecast\", Integer.class, String.class))"), callbacks);
+        assertTrue(callbacks.contains(".toolObject(tools)"), callbacks);
+    }
+
+    @Test
+    void injectsTheBootManagedObjectMapperIntoCallbackConfiguration() {
+        String callbacks = utf8(renderer.render(contextWithWeatherTool()).get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+
+        assertTrue(callbacks.contains("import com.fasterxml.jackson.databind.ObjectMapper;"), callbacks);
+        assertTrue(callbacks.contains("ObjectMapper objectMapper)"), callbacks);
+        assertTrue(callbacks.contains(".build(), objectMapper)"), callbacks);
+        assertTrue(callbacks.contains("objectMapper.writeValueAsString(request.arguments())"), callbacks);
+        assertFalse(callbacks.contains("import com.fasterxml.jackson.databind.json.JsonMapper;"), callbacks);
+        assertFalse(callbacks.contains("JsonMapper jsonMapper"), callbacks);
+    }
+
+    @Test
     void rendersSafeDiagnosticsForUnexpectedFailuresAndRethrowsFatalErrors() {
         String callbacks = utf8(renderer.render(contextWithWeatherTool()).get(
                 "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
