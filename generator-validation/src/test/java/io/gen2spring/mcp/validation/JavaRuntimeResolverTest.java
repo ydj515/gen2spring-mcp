@@ -176,6 +176,52 @@ class JavaRuntimeResolverTest {
         assertTrue(Duration.ofNanos(System.nanoTime() - started).compareTo(Duration.ofSeconds(3)) < 0);
     }
 
+    @Test
+    void defaultProbeKillsObservedDescendantThatKeepsMergedOutputOpenAfterParentExit() throws Exception {
+        var probe = new JavaRuntimeResolver.DefaultRuntimeProbe(Duration.ofSeconds(2), 32 * 1024);
+        Path childPid = tempDir.resolve("inherited-output-child.pid");
+        Path java = executable(tempDir.resolve("inherited-output-java"),
+                "#!/bin/sh\n"
+                        + "sleep 30 &\n"
+                        + "child=$!\n"
+                        + "printf '%s' \"$child\" > '" + shellSingleQuoted(childPid) + "'\n"
+                        + "printf 'java.specification.version = 17\\n' >&2\n"
+                        + "sleep 1\n");
+
+        long pid = -1;
+        try {
+            long started = System.nanoTime();
+            assertProbeFailure(() -> probe.feature(java));
+            assertTrue(Duration.ofNanos(System.nanoTime() - started).compareTo(Duration.ofSeconds(5)) < 0);
+            pid = readPid(childPid);
+            assertTrue(waitUntilDead(pid));
+        } finally {
+            destroyIfAlive(pid);
+        }
+    }
+
+    @Test
+    void defaultProbeRejectsAndKillsLiveObservedDescendantAfterCleanParentExit() throws Exception {
+        var probe = new JavaRuntimeResolver.DefaultRuntimeProbe(Duration.ofSeconds(2), 32 * 1024);
+        Path childPid = tempDir.resolve("closed-output-child.pid");
+        Path java = executable(tempDir.resolve("closed-output-java"),
+                "#!/bin/sh\n"
+                        + "sleep 30 >/dev/null 2>&1 &\n"
+                        + "child=$!\n"
+                        + "printf '%s' \"$child\" > '" + shellSingleQuoted(childPid) + "'\n"
+                        + "printf 'java.specification.version = 17\\n' >&2\n"
+                        + "sleep 1\n");
+
+        long pid = -1;
+        try {
+            assertProbeFailure(() -> probe.feature(java));
+            pid = readPid(childPid);
+            assertTrue(waitUntilDead(pid));
+        } finally {
+            destroyIfAlive(pid);
+        }
+    }
+
     private JavaRuntimeResolver resolverFor(Path home, JavaRuntimeResolver.RuntimeProbe probe) throws IOException {
         return new JavaRuntimeResolver(
                 Map.of("GEN2SPRING_JAVA_17_HOME", home.toString()), runtimeHome("unused-current"), probe);
@@ -210,6 +256,36 @@ class JavaRuntimeResolverTest {
         IOException failure = assertThrows(IOException.class, action::run);
         assertEquals("Target Java runtime probe failed safely", failure.getMessage());
         assertFalse(failure.toString().contains("raw-secret-probe-output"));
+    }
+
+    private long readPid(Path path) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while ((!Files.exists(path) || Files.size(path) == 0) && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        return Long.parseLong(Files.readString(path));
+    }
+
+    private boolean waitUntilDead(long pid) throws Exception {
+        ProcessHandle handle = ProcessHandle.of(pid).orElse(null);
+        if (handle == null) {
+            return true;
+        }
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (handle.isAlive() && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        return !handle.isAlive();
+    }
+
+    private void destroyIfAlive(long pid) {
+        if (pid > 0) {
+            ProcessHandle.of(pid).filter(ProcessHandle::isAlive).ifPresent(ProcessHandle::destroyForcibly);
+        }
+    }
+
+    private String shellSingleQuoted(Path path) {
+        return path.toString().replace("'", "'\"'\"'");
     }
 
     @FunctionalInterface

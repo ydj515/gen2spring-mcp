@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -198,47 +199,84 @@ final class JavaRuntimeResolver {
                 throw probeFailure();
             }
 
-            ExecutorService executor = Executors.newThreadPerTaskExecutor(
-                    Thread.ofVirtual().name("java-runtime-probe-", 0).factory());
-            Future<List<String>> versions = executor.submit(
-                    () -> collectSpecificationVersions(process.getInputStream(), maxRetainedBytes));
-            boolean exited = false;
+            ProcessHandle parent = process.toHandle();
+            Map<Long, ProcessHandle> observed = new LinkedHashMap<>();
+            trackTree(parent, observed);
+            ExecutorService executor = null;
+            Future<List<String>> versions = null;
             try {
-                exited = process.waitFor(timeout.toNanos(), NANOSECONDS);
+                executor = Executors.newThreadPerTaskExecutor(
+                        Thread.ofVirtual().name("java-runtime-probe-", 0).factory());
+                versions = executor.submit(
+                        () -> collectSpecificationVersions(process.getInputStream(), maxRetainedBytes));
+                boolean exited = awaitParentExit(process, timeout, parent, observed);
                 if (!exited) {
-                    terminate(process);
-                    awaitVersions(versions);
                     throw probeFailure();
                 }
-                List<String> observed = awaitVersions(versions);
-                if (process.exitValue() != 0 || observed.size() != 1) {
+                if (hasLiveDescendant(parent, observed)) {
                     throw probeFailure();
                 }
-                return parseFeature(observed.getFirst());
+                List<String> observedVersions = awaitVersions(versions);
+                if (hasLiveDescendant(parent, observed)
+                        || process.exitValue() != 0
+                        || observedVersions.size() != 1) {
+                    throw probeFailure();
+                }
+                return parseFeature(observedVersions.getFirst());
             } catch (InterruptedException exception) {
-                terminate(process);
-                try {
-                    awaitVersions(versions);
-                } catch (IOException ignored) {
-                    // The externally visible failure remains the original interruption.
-                } catch (InterruptedException repeatedInterruption) {
-                    Thread.currentThread().interrupt();
-                }
+                terminate(parent, observed);
+                drainAfterTermination(versions);
                 throw exception;
             } catch (IOException | RuntimeException exception) {
-                if (!exited || process.isAlive()) {
-                    terminate(process);
-                }
+                terminate(parent, observed);
+                drainAfterTermination(versions);
                 throw probeFailure();
             } finally {
-                versions.cancel(true);
-                executor.shutdownNow();
+                terminate(parent, observed);
+                if (versions != null) {
+                    versions.cancel(true);
+                }
+                if (executor != null) {
+                    executor.shutdownNow();
+                }
                 try {
                     process.getInputStream().close();
                 } catch (IOException ignored) {
                     // Probe output is never surfaced; failure remains fixed and value-free.
                 }
             }
+        }
+
+        private static boolean awaitParentExit(
+                Process process,
+                Duration timeout,
+                ProcessHandle parent,
+                Map<Long, ProcessHandle> observed) throws InterruptedException {
+            long deadline = deadline(timeout);
+            while (process.isAlive()) {
+                trackTree(parent, observed);
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) {
+                    return false;
+                }
+                process.waitFor(Math.min(Duration.ofMillis(10).toNanos(), remaining), NANOSECONDS);
+            }
+            trackTree(parent, observed);
+            return true;
+        }
+
+        private static void trackTree(ProcessHandle parent, Map<Long, ProcessHandle> observed) {
+            observed.putIfAbsent(parent.pid(), parent);
+            if (parent.isAlive()) {
+                parent.descendants().forEach(handle -> observed.putIfAbsent(handle.pid(), handle));
+            }
+        }
+
+        private static boolean hasLiveDescendant(
+                ProcessHandle parent,
+                Map<Long, ProcessHandle> observed) {
+            return observed.values().stream()
+                    .anyMatch(handle -> !handle.equals(parent) && handle.isAlive());
         }
 
         private static List<String> collectSpecificationVersions(InputStream input, int maxLineBytes)
@@ -292,6 +330,35 @@ final class JavaRuntimeResolver {
             }
         }
 
+        private static void drainAfterTermination(Future<List<String>> versions) {
+            if (versions == null) {
+                return;
+            }
+            boolean interrupted = Thread.interrupted();
+            long deadline = deadline(COLLECTOR_TIMEOUT);
+            try {
+                while (!versions.isDone()) {
+                    long remaining = deadline - System.nanoTime();
+                    if (remaining <= 0) {
+                        return;
+                    }
+                    try {
+                        versions.get(remaining, NANOSECONDS);
+                        return;
+                    } catch (InterruptedException exception) {
+                        interrupted = true;
+                    } catch (ExecutionException | TimeoutException
+                            | java.util.concurrent.CancellationException exception) {
+                        return;
+                    }
+                }
+            } finally {
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
         private static int parseFeature(String version) throws IOException {
             try {
                 String[] parts = version.split("\\.");
@@ -308,9 +375,15 @@ final class JavaRuntimeResolver {
             }
         }
 
-        private static void terminate(Process process) {
-            List<ProcessHandle> tree = new ArrayList<>(process.descendants().toList());
-            tree.add(process.toHandle());
+        private static void terminate(ProcessHandle parent, Map<Long, ProcessHandle> observed) {
+            trackTree(parent, observed);
+            List<ProcessHandle> known = new ArrayList<>(observed.values());
+            for (ProcessHandle handle : known) {
+                if (handle.isAlive()) {
+                    handle.descendants().forEach(descendant -> observed.putIfAbsent(descendant.pid(), descendant));
+                }
+            }
+            List<ProcessHandle> tree = new ArrayList<>(observed.values());
             tree.reversed().stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroy);
             waitForExit(tree, Duration.ofMillis(200));
             tree.reversed().stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
@@ -333,6 +406,12 @@ final class JavaRuntimeResolver {
                     Thread.currentThread().interrupt();
                 }
             }
+        }
+
+        private static long deadline(Duration timeout) {
+            long now = System.nanoTime();
+            long nanos = timeout.toNanos();
+            return Long.MAX_VALUE - now < nanos ? Long.MAX_VALUE : now + nanos;
         }
 
         private static IOException probeFailure() {
