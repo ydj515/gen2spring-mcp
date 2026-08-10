@@ -700,6 +700,7 @@ git commit -m "feat(runtime): generate response normalization contract"
 - Modify: `generator-spring-ai-2/src/main/java/io/gen2spring/mcp/springai2/ResponseRuntimeRenderer.java`
 - Modify: `generator-spring-ai-2/src/test/java/io/gen2spring/mcp/springai2/GeneratedProjectSmokeTest.java`
 - Modify: `generator-spring-ai-2/src/test/java/io/gen2spring/mcp/springai2/JavaSourceRendererTest.java`
+- Modify: `generator-spring-ai-2/src/test/java/io/gen2spring/mcp/springai2/Task5ReviewRegressionTest.java`
 
 **Interfaces:**
 - Consumes: generated `ResponseNormalizer` and outcome types from Task 3.
@@ -831,13 +832,16 @@ mise exec -- ./gradlew :generator-spring-ai-2:test --no-daemon --non-interactive
 
 Expected: `BUILD SUCCESSFUL` with response, transport, concurrency, timeout, and redaction cases passing.
 
+If the pre-existing `Task5ReviewRegressionTest` still requires the removed literal `UPSTREAM_REQUEST_SATURATED`, remove only that stale source-text assertion. The generated-project saturation behavior test from Step 1 is the replacement; do not retain an unused compatibility constant in production.
+
 - [ ] **Step 9: Commit Task 4**
 
 ```bash
 git add generator-spring-ai-2/src/main/java/io/gen2spring/mcp/springai2/RuntimeSourceRenderer.java \
   generator-spring-ai-2/src/main/java/io/gen2spring/mcp/springai2/ResponseRuntimeRenderer.java \
   generator-spring-ai-2/src/test/java/io/gen2spring/mcp/springai2/GeneratedProjectSmokeTest.java \
-  generator-spring-ai-2/src/test/java/io/gen2spring/mcp/springai2/JavaSourceRendererTest.java
+  generator-spring-ai-2/src/test/java/io/gen2spring/mcp/springai2/JavaSourceRendererTest.java \
+  generator-spring-ai-2/src/test/java/io/gen2spring/mcp/springai2/Task5ReviewRegressionTest.java
 git commit -m "feat(runtime): map provider failures safely"
 ```
 
