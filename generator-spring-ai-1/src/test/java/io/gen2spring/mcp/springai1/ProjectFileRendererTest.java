@@ -212,6 +212,19 @@ class ProjectFileRendererTest {
         assertTrue(readme.contains("- Container image: `" + image + "`"), profile.id());
         assertTrue(readme.contains("Requirements: Java " + javaVersion), profile.id());
         assertTrue(readme.contains("Streamable HTTP MCP endpoint is `http://localhost:8080/mcp`"), profile.id());
+        assertTrue(readme.contains("## Observability"), profile.id());
+        assertTrue(readme.contains("`gen2spring.runtime.mcp.tool.call`"), profile.id());
+        assertTrue(readme.contains("`gen2spring.runtime.provider.request`"), profile.id());
+        assertTrue(readme.contains("`gen2spring.runtime.provider.response.bytes`"), profile.id());
+        assertTrue(readme.contains("`gen2spring.runtime.provider.executor.active`"), profile.id());
+        assertTrue(readme.contains("`gen2spring.runtime.provider.executor.queued`"), profile.id());
+        assertTrue(readme.contains("`target.profile`, `outcome`, `error.category`, and `http.status.class`"),
+                profile.id());
+        assertTrue(readme.contains("MANAGEMENT_SERVER_ADDRESS=127.0.0.1"), profile.id());
+        assertTrue(readme.contains("MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED=true"), profile.id());
+        assertTrue(readme.contains("MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED=true"), profile.id());
+        assertTrue(readme.contains("MANAGEMENT_OTLP_TRACING_ENDPOINT"), profile.id());
+        assertTrue(readme.contains("active OpenTelemetry trace ID"), profile.id());
         assertTrue(readme.contains("- Java " + javaVersion), profile.id());
         assertTrue(readme.contains("- Spring Boot 3.5.16"), profile.id());
         assertTrue(readme.contains("- Spring AI 1.1.8"), profile.id());

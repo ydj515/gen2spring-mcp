@@ -195,6 +195,72 @@ secret 값은 Tool input schema, 생성 source, manifest, validation report, ZIP
 실패한다. 응답 본문은 최대 1 MiB까지만 읽는다. 이 값은 생성된 `application.yml`의
 `provider` 설정에서 조정할 수 있으며 timeout은 1~300,000ms 범위의 양수여야 한다.
 
+## Runtime metrics와 OpenTelemetry
+
+네 profile은 runtime `0.3.0`에서 같은 canonical telemetry 계약을 사용한다. MCP Tool 전체와
+provider 요청에는 각각 `gen2spring.runtime.mcp.tool.call`,
+`gen2spring.runtime.provider.request` observation/span과 Timer를 기록한다. 추가 meter는 다음과 같다.
+
+- `gen2spring.runtime.provider.response.bytes`: bounded provider response byte DistributionSummary
+- `gen2spring.runtime.provider.executor.active`: 실행 중인 provider task Gauge
+- `gen2spring.runtime.provider.executor.queued`: 대기 중인 provider task Gauge
+
+전체 canonical metric에서 허용하는 tag key는 `target.profile`, `outcome`, `error.category`,
+`http.status.class`뿐이며, 각 meter는 설계된 부분집합만 사용한다. `target.profile`은 위 표의 네
+canonical profile ID 중 하나이고, 나머지 값은 다음 allow-list로 제한한다.
+
+- `outcome`: `success`, `expected_error`, `internal_error`, `fatal`
+- `error.category`: `none`, `provider_business`, `upstream_client`, `upstream_server`,
+  `upstream_timeout`, `upstream_unavailable`, `upstream_protocol`, `local_resource`,
+  `argument_conversion`, `result_conversion`, `tool_execution`, `unexpected_runtime`, `fatal`
+- `http.status.class`: `2xx`, `4xx`, `5xx`, `other`, `none`
+
+Tool name과 operation ID는 span attribute에만 기록하고 metric tag에는 넣지 않는다. secret,
+provider URL·query, Tool argument, raw request/response, exception message와 stack trace도 telemetry에
+기록하지 않는다. provider span은 Tool span의 child이며 upstream에는 현재 span에서 만든 W3C
+`traceparent` 하나만 전송한다. 사용자 명세의 `traceparent`, `tracestate`, `baggage`, B3 계열
+header는 operation 생성 단계에서 거부한다.
+
+기본 설정은 health endpoint만 노출하고 Prometheus와 OTLP export를 비활성화한다. loopback 전용
+Prometheus scrape를 명시적으로 켜려면 다음처럼 별도 management port를 사용한다. remote scrape가
+필요하면 인증된 trusted network 안에서만 노출한다.
+
+```bash
+MANAGEMENT_SERVER_ADDRESS=127.0.0.1 \
+MANAGEMENT_SERVER_PORT=9464 \
+MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,prometheus \
+MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED=true \
+./gradlew bootRun
+```
+
+Prometheus endpoint는 `/actuator/prometheus`이며 dot 이름을 underscore 이름으로 노출한다. Timer와
+DistributionSummary에는 `_count`, `_sum`, `_max` 계열이 함께 생긴다. OTLP는 신뢰하는 collector의
+endpoint와 credential을 먼저 설정한 뒤 Boot family에 맞는 exporter를 명시적으로 켠다.
+
+Spring Boot 3.5 / Spring AI 1.1:
+
+```bash
+MANAGEMENT_OTLP_METRICS_EXPORT_URL="$OTLP_METRICS_URL" \
+MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=true \
+MANAGEMENT_OTLP_TRACING_ENDPOINT="$OTLP_TRACES_URL" \
+MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED=true \
+./gradlew bootRun
+```
+
+Spring Boot 4.1 / Spring AI 2.0:
+
+```bash
+MANAGEMENT_OTLP_METRICS_EXPORT_URL="$OTLP_METRICS_URL" \
+MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=true \
+MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT="$OTLP_TRACES_URL" \
+MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED=true \
+./gradlew bootRun
+```
+
+provider error envelope는 active OpenTelemetry span의 trace ID를 재사용한다. 유효한 active span이
+없을 때만 local random 16-byte 값의 32자리 lowercase hex를 fallback으로 사용한다. sampling은
+`MANAGEMENT_TRACING_SAMPLING_PROBABILITY`로 조정하며 기본값은 `0.1`이다.
+
 ## 응답 정규화와 오류 계약
 
 `responseNormalization`이 없는 operation의 성공 응답은 provider JSON을 그대로 반환하며,
@@ -236,8 +302,8 @@ JSON-RPC transport 오류가 아니라 `isError=true`인 MCP Tool 결과 하나�
 ```
 
 알 수 없는 `providerCode`, `providerMessage`, `httpStatus`는 JSON `null`이다. `traceId`는
-16-byte local random value의 32자리 lowercase hex이며, observability 슬라이스 전까지
-OpenTelemetry trace ID를 재사용하지 않는다.
+active OpenTelemetry span의 유효한 trace ID를 우선 사용하고, span이 없으면 16-byte local random
+value의 32자리 lowercase hex를 사용한다.
 
 | category | retryable |
 | --- | --- |
@@ -250,7 +316,7 @@ OpenTelemetry trace ID를 재사용하지 않는다.
 | `LOCAL_RESOURCE` | `false` |
 
 응답 처리는 JSON body만 지원한다. 이 슬라이스는 retry와 pagination을 자동 실행하지 않고,
-typed output DTO를 생성하지 않으며, OpenTelemetry active span의 trace ID를 재사용하지 않는다.
+typed output DTO를 생성하지 않는다.
 
 ## 검증과 종료 코드
 
@@ -336,7 +402,7 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
   (예: `full-detail`)을 일관되게 사용한다.
 - remote `$ref`, URL import, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator,
   recursive schema는 지원하지 않는다.
-- typed output DTO, retry 실행, pagination 실행, metrics와 OpenTelemetry tracing은 후속 P1 범위다.
+- typed output DTO, retry 실행, pagination 실행은 후속 P1 범위다.
 - Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다.
 - Generator API와 UI operation editor, Windows validation host 지원은 후속 P1 범위다.
 - P0의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.

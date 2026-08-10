@@ -261,6 +261,19 @@ class ProjectFileRendererTest {
             assertTrue(readme.contains("./gradlew bootRun"), profile.id());
             assertTrue(readme.contains("KMA_SERVICE_KEY"), profile.id());
             assertTrue(readme.contains("http://localhost:8080/mcp"), profile.id());
+            assertTrue(readme.contains("## Observability"), profile.id());
+            assertTrue(readme.contains("`gen2spring.runtime.mcp.tool.call`"), profile.id());
+            assertTrue(readme.contains("`gen2spring.runtime.provider.request`"), profile.id());
+            assertTrue(readme.contains("`gen2spring.runtime.provider.response.bytes`"), profile.id());
+            assertTrue(readme.contains("`gen2spring.runtime.provider.executor.active`"), profile.id());
+            assertTrue(readme.contains("`gen2spring.runtime.provider.executor.queued`"), profile.id());
+            assertTrue(readme.contains(
+                    "`target.profile`, `outcome`, `error.category`, and `http.status.class`"), profile.id());
+            assertTrue(readme.contains("MANAGEMENT_SERVER_ADDRESS=127.0.0.1"), profile.id());
+            assertTrue(readme.contains("MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED=true"), profile.id());
+            assertTrue(readme.contains("MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED=true"), profile.id());
+            assertTrue(readme.contains("MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT"), profile.id());
+            assertTrue(readme.contains("active OpenTelemetry trace ID"), profile.id());
             assertTrue(readme.contains("mcpServers"), profile.id());
             assertTrue(readme.contains("weather_get_forecast"), profile.id());
             assertTrue(readme.contains("./gradlew test"), profile.id());
@@ -283,7 +296,6 @@ class ProjectFileRendererTest {
                     "Provider responses remain bounded to 1 MiB. Retry and pagination are not executed automatically."));
             assertFalse(readme.contains("Known P0 limits"), profile.id());
             assertFalse(readme.contains("Spring AI 1.x"), profile.id());
-            assertFalse(readme.contains("OpenTelemetry"), profile.id());
             assertTrue(readme.contains("-e PROVIDER_BASE_URL=https://api.example.test -e KMA_SERVICE_KEY"));
             assertTrue(new String(files.get("Dockerfile"), UTF_8).contains("USER 10001:10001"), profile.id());
             assertTrue(files.containsKey(".dockerignore"), profile.id());

@@ -200,6 +200,7 @@ public final class ProjectFileRenderer {
         String tools = renderedTools(context.tools());
         String dockerEnvironment = dockerEnvironment(context.tools());
         String responseHandling = renderedResponseHandling(context.tools());
+        String observability = renderedObservability();
         var target = profile.target();
         return """
                 # %s
@@ -216,6 +217,8 @@ public final class ProjectFileRenderer {
                 ```
 
                 The Streamable HTTP MCP endpoint is `http://localhost:8080/mcp`.
+
+                %s
 
                 ## Provider configuration
 
@@ -270,10 +273,50 @@ public final class ProjectFileRenderer {
 
                 %s
                 """.formatted(
-                coordinates.artifactId(), target.javaVersion(), secrets, coordinates.artifactId(), tools,
+                coordinates.artifactId(), target.javaVersion(), observability, secrets, coordinates.artifactId(), tools,
                 coordinates.artifactId(), dockerEnvironment, coordinates.artifactId(), profile.id(), profile.templateVersion(),
                 profile.generatorModule(), profile.runtimeVersion(), profile.gradleVersion(), profile.containerImage(),
                 target.javaVersion(), target.springBootVersion(), target.springAiVersion(), responseHandling);
+    }
+
+    private String renderedObservability() {
+        return """
+                ## Observability
+
+                The runtime records the `gen2spring.runtime.mcp.tool.call` and
+                `gen2spring.runtime.provider.request` observations. It also records
+                `gen2spring.runtime.provider.response.bytes` and the
+                `gen2spring.runtime.provider.executor.active` and
+                `gen2spring.runtime.provider.executor.queued` gauges. Metrics use only the finite
+                `target.profile`, `outcome`, `error.category`, and `http.status.class` tag keys, and each
+                meter uses its documented subset.
+                Tool names and operation IDs are trace attributes, never metric tags.
+
+                Only the health endpoint is exposed and OTLP export is disabled by default. To opt in to a
+                loopback Prometheus endpoint on a separate port:
+
+                ```bash
+                MANAGEMENT_SERVER_ADDRESS=127.0.0.1 \\
+                MANAGEMENT_SERVER_PORT=9464 \\
+                MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,prometheus \\
+                MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED=true \\
+                ./gradlew bootRun
+                ```
+
+                To opt in to OTLP metrics and traces, configure trusted collector endpoints and credentials,
+                then enable the Boot 4 exporters explicitly:
+
+                ```bash
+                MANAGEMENT_OTLP_METRICS_EXPORT_URL="$OTLP_METRICS_URL" \\
+                MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=true \\
+                MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT="$OTLP_TRACES_URL" \\
+                MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED=true \\
+                ./gradlew bootRun
+                ```
+
+                Provider error envelopes reuse the active OpenTelemetry trace ID. If no valid span is active,
+                they use a locally generated 32-character lowercase hexadecimal trace ID.
+                """;
     }
 
     public String gitignore() {
