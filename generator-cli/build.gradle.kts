@@ -1,6 +1,8 @@
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.plugins.jvm.JvmTestSuite
 
+val java17Home = providers.environmentVariable("GEN2SPRING_JAVA_17_HOME")
+
 plugins {
     application
 }
@@ -49,6 +51,9 @@ testing {
                         "openapiMcp.executable",
                         layout.buildDirectory.file("install/openapi-mcp/bin/openapi-mcp").get().asFile.absolutePath,
                     )
+                    if (java17Home.isPresent) {
+                        environment("GEN2SPRING_JAVA_17_HOME", java17Home.get())
+                    }
                     systemProperty("java.io.tmpdir", temporaryDir.absolutePath)
                 }
             }

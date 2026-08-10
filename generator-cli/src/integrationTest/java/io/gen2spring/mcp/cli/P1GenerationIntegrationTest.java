@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -34,10 +35,25 @@ import org.junit.jupiter.api.io.TempDir;
 
 class P1GenerationIntegrationTest {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final String JAVA_17_HOME = "GEN2SPRING_JAVA_17_HOME";
     private static final String TOOL_NAME = "kma_weather_get_forecast";
     private static final String TOOL_DESCRIPTION = "Get the public weather forecast for a grid location.";
     private static final String REPRESENTATIVE_STATION_ID = "STN01";
+    private static final ProfileCase JAVA_17 = new ProfileCase(
+            "spring-ai-2.0-java17-mvc-streamable",
+            17,
+            "config/weather-generation-java17.yaml",
+            "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
+                    + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
+    private static final ProfileCase JAVA_21 = new ProfileCase(
+            "spring-ai-2.0-java21-mvc-streamable",
+            21,
+            "config/weather-generation.yaml",
+            "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
+                    + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
+    private static final List<ProfileCase> PROFILE_CASES = List.of(JAVA_17, JAVA_21);
     private static final Set<String> REQUIRED_OUTPUTS = Set.of(
+            ".dockerignore",
             ".gitignore",
             "Dockerfile",
             "GENERATION_MANIFEST.json",
@@ -71,29 +87,43 @@ class P1GenerationIntegrationTest {
             "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
             "src/main/java/com/example/weather/runtime/SecretBinding.java",
             "src/main/resources/application.yml",
+            "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
             "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java");
 
     @TempDir
     Path tempDir;
 
     @Test
-    void installedCliGeneratesCallsAndPackagesTheSelectedToolDeterministically() throws Exception {
+    void installedCliValidatesTheJavaProfileMatrixDeterministically() throws Exception {
         Path specification = resource("openapi/weather-api.yaml");
-        Path configuration = resource("config/weather-generation.yaml");
+        Path java17Home = requiredJava17Home();
+        assertFixturesDifferOnlyByProfile();
+        Map<String, GenerationResult> firstByProfile = new LinkedHashMap<>();
 
-        GenerationResult first = generate(specification, configuration, tempDir.resolve("weather-mcp-server"));
-        assertReleaseContract(first, specification);
+        for (ProfileCase profile : PROFILE_CASES) {
+            Path configuration = resource(profile.configurationResource());
+            String outputName = "weather-mcp-server-java" + profile.javaFeature();
+            GenerationResult first = generate(specification, configuration, tempDir.resolve(outputName));
+            assertReleaseContract(first, specification, profile);
 
-        GenerationResult second = generate(
-                specification, configuration, tempDir.resolve("weather-mcp-server-second"));
-        assertReleaseContract(second, specification);
-        assertEquals(first.sourceChecksum(), second.sourceChecksum());
-        assertEquals(first.manifest(), second.manifest());
-        assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
-        assertSensitiveValuesAbsent(first, REPRESENTATIVE_STATION_ID,
-                "mcp-validation-secret-1", "mcp-validation-secret-2");
-        assertSensitiveValuesAbsent(second, REPRESENTATIVE_STATION_ID,
-                "mcp-validation-secret-1", "mcp-validation-secret-2");
+            GenerationResult second = generate(
+                    specification, configuration, tempDir.resolve(outputName + "-second"));
+            assertReleaseContract(second, specification, profile);
+            assertEquals(first.sourceChecksum(), second.sourceChecksum(), profile.id());
+            assertEquals(first.manifest(), second.manifest(), profile.id());
+            assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
+            assertSensitiveValuesAbsent(first, REPRESENTATIVE_STATION_ID,
+                    "mcp-validation-secret-1", "mcp-validation-secret-2", java17Home.toString());
+            assertSensitiveValuesAbsent(second, REPRESENTATIVE_STATION_ID,
+                    "mcp-validation-secret-1", "mcp-validation-secret-2", java17Home.toString());
+            assertOperationalDetailsAbsent(first);
+            assertOperationalDetailsAbsent(second);
+            firstByProfile.put(profile.id(), first);
+        }
+
+        assertNotEquals(
+                firstByProfile.get(JAVA_17.id()).sourceChecksum(),
+                firstByProfile.get(JAVA_21.id()).sourceChecksum());
     }
 
     @Test
@@ -144,13 +174,17 @@ class P1GenerationIntegrationTest {
     private InstalledCliResult runInstalledCli(Path specification, Path configuration, Path output) throws Exception {
         Path executable = Path.of(System.getProperty("openapiMcp.executable"));
         assertTrue(Files.isExecutable(executable));
-        Process process = new ProcessBuilder(
+        ProcessBuilder processBuilder = new ProcessBuilder(
                 executable.toString(),
                 "generate",
                 "--spec", specification.toString(),
                 "--config", configuration.toString(),
-                "--output", output.toString())
-                .start();
+                "--output", output.toString());
+        String java17Home = System.getenv(JAVA_17_HOME);
+        if (java17Home != null && !java17Home.isBlank()) {
+            processBuilder.environment().put(JAVA_17_HOME, java17Home);
+        }
+        Process process = processBuilder.start();
         boolean finished = process.waitFor(Duration.ofMinutes(5).toMillis(), TimeUnit.MILLISECONDS);
         if (!finished) {
             process.destroyForcibly();
@@ -163,7 +197,10 @@ class P1GenerationIntegrationTest {
                 new String(process.getErrorStream().readAllBytes(), UTF_8));
     }
 
-    private void assertReleaseContract(GenerationResult result, Path specification) throws Exception {
+    private void assertReleaseContract(
+            GenerationResult result,
+            Path specification,
+            ProfileCase profile) throws Exception {
         assertTrue(Files.isDirectory(result.projectRoot()));
         assertTrue(Files.isRegularFile(result.archive()));
         assertTrue(Files.isExecutable(result.projectRoot().resolve("gradlew")));
@@ -184,13 +221,14 @@ class P1GenerationIntegrationTest {
 
         JsonNode manifest = result.manifest();
         assertEquals("0.1.0", manifest.path("generatorVersion").asText());
-        assertEquals("spring-ai-2-v1", manifest.path("templateVersion").asText());
-        assertEquals("0.1.0", manifest.path("runtimeVersion").asText());
-        assertEquals("spring-ai-2.0-java21-mvc-streamable", manifest.path("targetProfileId").asText());
+        assertEquals("spring-ai-2-v2", manifest.path("templateVersion").asText());
+        assertEquals("0.2.0", manifest.path("runtimeVersion").asText());
+        assertEquals(profile.id(), manifest.path("targetProfileId").asText());
         assertEquals("4.1.0", manifest.path("springBootVersion").asText());
         assertEquals("2.0.0", manifest.path("springAiVersion").asText());
-        assertEquals(21, manifest.path("javaVersion").asInt());
+        assertEquals(profile.javaFeature(), manifest.path("javaVersion").asInt());
         assertEquals("9.6.1", manifest.path("gradleVersion").asText());
+        assertEquals(profile.containerImage(), manifest.path("containerImage").asText());
         assertEquals(sha256(Files.readAllBytes(specification)),
                 manifest.path("originalSpecificationChecksum").asText());
         assertEquals(result.sourceChecksum(), manifest.path("sourceChecksum").asText());
@@ -217,16 +255,50 @@ class P1GenerationIntegrationTest {
         assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"),
                 report.path("stages").findValuesAsText("status"));
         assertEquals("SUCCESS", stage(report, "MCP_TOOL_CALL").path("status").textValue());
+        assertEquals("MCP initialize contract matched", stage(report, "MCP_INITIALIZE").path("summary").textValue());
+        assertEquals("MCP Tool metadata matched the generated contract",
+                stage(report, "MCP_TOOLS_LIST").path("summary").textValue());
+        assertEquals("Representative MCP Tool call matched the mock upstream contract",
+                stage(report, "MCP_TOOL_CALL").path("summary").textValue());
         assertEquals(List.of(TOOL_NAME), report.path("tools").findValuesAsText("name"));
         assertEquals(List.of(TOOL_DESCRIPTION), report.path("tools").findValuesAsText("description"));
         assertTrue(report.path("tools").get(0).path("inputSchemaPresent").asBoolean());
 
         String generatedReadme = Files.readString(result.projectRoot().resolve("README.md"), UTF_8);
+        assertTrue(generatedReadme.contains("Requirements: Java " + profile.javaFeature() + "."));
+        assertTrue(generatedReadme.contains("- Compatibility profile: `" + profile.id() + "`"));
+        assertTrue(generatedReadme.contains("- Template: `spring-ai-2-v2`"));
+        assertTrue(generatedReadme.contains("- Runtime version: `0.2.0`"));
+        assertTrue(generatedReadme.contains("- Gradle 9.6.1"));
+        assertTrue(generatedReadme.contains("- Container image: `" + profile.containerImage() + "`"));
+        assertTrue(generatedReadme.contains("- Java " + profile.javaFeature()));
         assertTrue(generatedReadme.contains("## Response handling"));
         assertTrue(generatedReadme.contains("`getForecast`"));
         assertTrue(generatedReadme.contains("`successValues`: `[\"00\"]`"));
         assertFalse(generatedReadme.contains("Known P0 limits"));
         assertFalse(generatedReadme.contains("\"response\": {"));
+
+        String build = Files.readString(result.projectRoot().resolve("build.gradle.kts"), UTF_8);
+        assertTrue(build.contains("languageVersion = JavaLanguageVersion.of(" + profile.javaFeature() + ")"));
+        assertEquals("""
+                FROM %s
+                WORKDIR /app
+                COPY build/libs/weather-mcp-server.jar /app/app.jar
+                USER 10001:10001
+                ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+                """.formatted(profile.containerImage()),
+                Files.readString(result.projectRoot().resolve("Dockerfile"), UTF_8));
+        assertEquals("""
+                **
+                !Dockerfile
+                !build/
+                !build/libs/
+                !build/libs/weather-mcp-server.jar
+                """, Files.readString(result.projectRoot().resolve(".dockerignore"), UTF_8));
+        String runtimeTest = Files.readString(result.projectRoot().resolve(
+                "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java"), UTF_8);
+        assertTrue(runtimeTest.contains(
+                "assertEquals(" + profile.javaFeature() + ", Runtime.version().feature());"));
 
         String applicationYaml = Files.readString(
                 result.projectRoot().resolve("src/main/resources/application.yml"), UTF_8);
@@ -275,6 +347,54 @@ class P1GenerationIntegrationTest {
                     assertFalse((path + new String(bytes, UTF_8)).contains(sensitiveValue),
                             path + ": " + sensitiveValue));
         }
+    }
+
+    private void assertOperationalDetailsAbsent(GenerationResult result) throws IOException {
+        String userName = System.getProperty("user.name", "");
+        assertArtifactValuesAbsent(result, userName);
+        assertSensitiveValuesAbsent(result,
+                System.getProperty("java.home", ""),
+                "BUILD SUCCESSFUL",
+                "> Task :",
+                "java.specification.version =",
+                "Tomcat started on port",
+                "-Dorg.gradle.java.installations.paths=",
+                "classes test bootJar",
+                "--no-daemon");
+    }
+
+    private void assertArtifactValuesAbsent(GenerationResult result, String... sensitiveValues) throws IOException {
+        for (String sensitiveValue : sensitiveValues) {
+            if (sensitiveValue == null || sensitiveValue.isBlank()) {
+                continue;
+            }
+            assertFalse(result.manifest().toString().contains(sensitiveValue), sensitiveValue);
+            assertFalse(result.report().toString().contains(sensitiveValue), sensitiveValue);
+            try (var paths = Files.walk(result.projectRoot())) {
+                for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                    assertFalse(new String(Files.readAllBytes(path), UTF_8).contains(sensitiveValue),
+                            result.projectRoot().relativize(path) + ": " + sensitiveValue);
+                }
+            }
+            result.archiveEntries().forEach((path, bytes) ->
+                    assertFalse((path + new String(bytes, UTF_8)).contains(sensitiveValue),
+                            path + ": " + sensitiveValue));
+        }
+    }
+
+    private void assertFixturesDifferOnlyByProfile() throws Exception {
+        String java21 = Files.readString(resource(JAVA_21.configurationResource()), UTF_8);
+        String java17 = Files.readString(resource(JAVA_17.configurationResource()), UTF_8);
+        assertEquals(java21.replace(JAVA_21.id(), JAVA_17.id()), java17);
+    }
+
+    private Path requiredJava17Home() {
+        String configured = System.getenv(JAVA_17_HOME);
+        assertNotNull(configured, JAVA_17_HOME + " must be forwarded to the integration test");
+        assertFalse(configured.isBlank(), JAVA_17_HOME + " must not be blank");
+        Path home = Path.of(configured).toAbsolutePath().normalize();
+        assertTrue(Files.isRegularFile(home.resolve("bin/java")), JAVA_17_HOME);
+        return home;
     }
 
     private void assertCanonicalArchiveEntriesEqual(
@@ -431,4 +551,10 @@ class P1GenerationIntegrationTest {
             String stderr) {}
 
     private record InstalledCliResult(int exitCode, String stdout, String stderr) {}
+
+    private record ProfileCase(
+            String id,
+            int javaFeature,
+            String configurationResource,
+            String containerImage) {}
 }
