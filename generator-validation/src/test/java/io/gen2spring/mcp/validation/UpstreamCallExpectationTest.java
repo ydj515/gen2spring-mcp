@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
@@ -208,6 +209,50 @@ class UpstreamCallExpectationTest {
                 Map.of());
 
         assertThrows(IllegalArgumentException.class, () -> UpstreamCallExpectation.from(call));
+    }
+
+    @Test
+    void carriesTheConfiguredResponseWithoutChangingTheDerivedRequest() {
+        ExpectedToolCall legacy = call(
+                GET, "/items", List.of(), false, false, List.of(), Map.of());
+        ExpectedToolCall configured = new ExpectedToolCall(
+                legacy.tool(),
+                legacy.arguments(),
+                new ExpectedUpstreamResponse(
+                        429, "application/problem+json", Map.of("code", "LIMIT")),
+                Map.of("error", Map.of("category", "UPSTREAM_CLIENT")));
+
+        UpstreamCallExpectation expectation = UpstreamCallExpectation.from(configured);
+
+        assertEquals("GET", expectation.method());
+        assertEquals("/items", expectation.rawPath());
+        assertEquals(Map.of(), expectation.query());
+        assertEquals(429, expectation.responseStatus());
+        assertEquals("application/problem+json", expectation.responseContentType());
+        assertEquals(Map.of("code", "LIMIT"), expectation.responseBody());
+    }
+
+    @Test
+    void rejectsInvalidResponseStatusAndContentTypeWithoutEchoingValues() {
+        for (ExpectedUpstreamResponse response : List.of(
+                new ExpectedUpstreamResponse(99, "application/json", Map.of()),
+                new ExpectedUpstreamResponse(600, "application/json", Map.of()),
+                new ExpectedUpstreamResponse(200, null, Map.of()),
+                new ExpectedUpstreamResponse(200, "not-a-media-type", Map.of()),
+                new ExpectedUpstreamResponse(200, "application/json;", Map.of()),
+                new ExpectedUpstreamResponse(200, "application/json\r\nprivate", Map.of()))) {
+            ExpectedToolCall legacy = call(
+                    GET, "/items", List.of(), false, false, List.of(), Map.of());
+            ExpectedToolCall configured = new ExpectedToolCall(
+                    legacy.tool(), legacy.arguments(), response, Map.of());
+
+            var failure = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> UpstreamCallExpectation.from(configured));
+
+            assertEquals("Expected Tool call response fixture is invalid", failure.getMessage());
+            org.junit.jupiter.api.Assertions.assertFalse(failure.getMessage().contains("private"));
+        }
     }
 
     private ExpectedToolCall call(

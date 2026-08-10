@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MockUpstreamServer implements AutoCloseable {
     private static final int MAX_REQUEST_BYTES = 1024 * 1024;
+    private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
     private static final byte[] MISMATCH_RESPONSE = "{\"error\":\"request_mismatch\"}"
             .getBytes(StandardCharsets.UTF_8);
     private static final Set<String> TRANSPORT_HEADERS = Set.of(
@@ -56,6 +57,7 @@ public final class MockUpstreamServer implements AutoCloseable {
     private final URI baseUri;
     private final ObjectMapper mapper;
     private final JsonNode expectedBody;
+    private final byte[] configuredResponse;
     private final Object observationMonitor = new Object();
     private final AtomicBoolean closed = new AtomicBoolean();
     private long observedRequests;
@@ -83,6 +85,7 @@ public final class MockUpstreamServer implements AutoCloseable {
         this.expectedBody = expectation.body() == null
                 ? null
                 : canonicalJson(mapper.valueToTree(expectation.body()));
+        this.configuredResponse = configuredResponse(expectation.responseBody());
     }
 
     public static MockUpstreamServer start(UpstreamCallExpectation expectation) throws IOException {
@@ -97,7 +100,14 @@ public final class MockUpstreamServer implements AutoCloseable {
         HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         ExecutorService executor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("mock-upstream-", 0).factory());
-        MockUpstreamServer mock = new MockUpstreamServer(server, executor, expectation, responseWriter);
+        MockUpstreamServer mock;
+        try {
+            mock = new MockUpstreamServer(server, executor, expectation, responseWriter);
+        } catch (RuntimeException failure) {
+            server.stop(0);
+            executor.shutdownNow();
+            throw failure;
+        }
         server.createContext("/", mock::handle);
         server.setExecutor(executor);
         try {
@@ -169,8 +179,8 @@ public final class MockUpstreamServer implements AutoCloseable {
                     throw new RequestMismatch(413, "Mock upstream request exceeded the size limit");
                 }
                 verifyRequest(exchange, body);
-                byte[] response = successResponse();
-                respond(exchange, 200, response);
+                exchange.getResponseHeaders().set("Content-Type", expectation.responseContentType());
+                respond(exchange, expectation.responseStatus(), configuredResponse);
                 exchange.close();
                 completePrimaryRequest(null);
             } catch (RequestMismatch mismatch) {
@@ -359,11 +369,17 @@ public final class MockUpstreamServer implements AutoCloseable {
         return node.deepCopy();
     }
 
-    private byte[] successResponse() throws JsonProcessingException {
-        ObjectNode response = mapper.createObjectNode();
-        response.put("validated", true);
-        response.put("operationId", expectation.operationId());
-        return mapper.writeValueAsBytes(response);
+    private byte[] configuredResponse(Object responseBody) {
+        byte[] response;
+        try {
+            response = mapper.writeValueAsBytes(responseBody);
+        } catch (JsonProcessingException failure) {
+            throw new IllegalArgumentException("Mock upstream response fixture is invalid");
+        }
+        if (response.length > MAX_RESPONSE_BYTES) {
+            throw new IllegalArgumentException("Mock upstream response fixture exceeded the size limit");
+        }
+        return response;
     }
 
     private void respond(HttpExchange exchange, int status, byte[] body) throws IOException {
@@ -371,7 +387,9 @@ public final class MockUpstreamServer implements AutoCloseable {
     }
 
     private static void writeResponse(HttpExchange exchange, int status, byte[] body) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        if (exchange.getResponseHeaders().getFirst("Content-Type") == null) {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+        }
         exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
     }

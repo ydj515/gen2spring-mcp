@@ -49,16 +49,31 @@ public final class GenerationContracts {
             if (description == null || inputSchema == null) {
                 throw new IllegalArgumentException("Expected Tool metadata is incomplete");
             }
-            inputSchema = immutableMap(inputSchema);
+            inputSchema = immutableMap(inputSchema, false);
         }
     }
 
-    public record ExpectedToolCall(McpToolDefinition tool, Map<String, Object> arguments) {
+    public record ExpectedUpstreamResponse(int status, String contentType, Object body) {
+        public ExpectedUpstreamResponse {
+            body = immutableJsonValue(body, true);
+        }
+    }
+
+    public record ExpectedToolCall(
+            McpToolDefinition tool,
+            Map<String, Object> arguments,
+            ExpectedUpstreamResponse upstreamResponse,
+            Object expectedResult) {
         public ExpectedToolCall {
-            if (tool == null || arguments == null) {
+            if (tool == null || arguments == null || upstreamResponse == null) {
                 throw new IllegalArgumentException("Expected Tool call is incomplete");
             }
-            arguments = immutableMap(arguments);
+            arguments = immutableMap(arguments, false);
+            expectedResult = immutableJsonValue(expectedResult, true);
+        }
+
+        public ExpectedToolCall(McpToolDefinition tool, Map<String, Object> arguments) {
+            this(tool, arguments, legacyResponse(tool), legacyResult(tool));
         }
     }
     public enum ValidationStatus { VALIDATED, UNVERIFIED }
@@ -85,27 +100,56 @@ public final class GenerationContracts {
             ValidationStatus validationStatus,
             String sourceChecksum) {}
 
-    private static Map<String, Object> immutableMap(Map<?, ?> source) {
+    private static ExpectedUpstreamResponse legacyResponse(McpToolDefinition tool) {
+        return new ExpectedUpstreamResponse(200, "application/json", legacyResult(tool));
+    }
+
+    private static Map<String, Object> legacyResult(McpToolDefinition tool) {
+        if (tool == null || tool.operationId() == null || tool.operationId().isBlank()) {
+            throw new IllegalArgumentException("Expected Tool call is incomplete");
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("validated", true);
+        result.put("operationId", tool.operationId());
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static Map<String, Object> immutableMap(Map<?, ?> source, boolean allowNull) {
         Map<String, Object> copy = new LinkedHashMap<>();
         source.forEach((key, value) -> {
             if (!(key instanceof String name) || name.isBlank()) {
                 throw new IllegalArgumentException("Schema object keys must be non-blank strings");
             }
-            copy.put(name, immutableJsonValue(value));
+            copy.put(name, immutableJsonValue(value, allowNull));
         });
         return Collections.unmodifiableMap(copy);
     }
 
-    private static Object immutableJsonValue(Object value) {
+    private static Object immutableJsonValue(Object value, boolean allowNull) {
+        if (value == null) {
+            if (allowNull) {
+                return null;
+            }
+            throw new IllegalArgumentException("Schema values must use JSON-compatible immutable types");
+        }
         if (value instanceof Map<?, ?> map) {
-            return immutableMap(map);
+            return immutableMap(map, allowNull);
         }
         if (value instanceof List<?> list) {
             List<Object> copy = new ArrayList<>(list.size());
-            list.forEach(item -> copy.add(immutableJsonValue(item)));
+            list.forEach(item -> copy.add(immutableJsonValue(item, allowNull)));
             return Collections.unmodifiableList(copy);
         }
-        if (value instanceof String || value instanceof Number || value instanceof Boolean) {
+        if (value instanceof String || value instanceof Boolean
+                || value instanceof Byte || value instanceof Short
+                || value instanceof Integer || value instanceof Long
+                || value instanceof java.math.BigInteger || value instanceof java.math.BigDecimal) {
+            return value;
+        }
+        if (value instanceof Float number && Float.isFinite(number)) {
+            return value;
+        }
+        if (value instanceof Double number && Double.isFinite(number)) {
             return value;
         }
         throw new IllegalArgumentException("Schema values must use JSON-compatible immutable types");

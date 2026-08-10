@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.validation;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.validation.McpStreamableHttpClient.McpStage;
 import io.gen2spring.mcp.validation.support.McpTestServer;
@@ -63,6 +65,43 @@ class McpStreamableHttpClientTest {
                     mapper.convertValue(server.request(3).path("params").path("arguments"), Map.class));
             assertEquals(server.sessionId(), server.requestHeader(3, "Mcp-Session-Id"));
             assertTrue(result.toolsCallDurationMillis() >= 0);
+        }
+    }
+
+    @Test
+    void validatesTheExpectedResultInsteadOfTheLegacyHardCodedPayload() throws Exception {
+        ExpectedToolCall call = expectedCall(Map.of(
+                "data", List.of(Map.of("id", 1)),
+                "provider", Map.of("code", "00")));
+
+        try (var server = McpTestServer.startWithToolResult(call.expectedResult(), false)) {
+            assertDoesNotThrow(() -> client.validate(server.uri(), EXPECTED, call));
+        }
+    }
+
+    @Test
+    void treatsEquivalentJsonNumbersAsEqualInExpectedToolResults() throws Exception {
+        ExpectedToolCall call = expectedCall(Map.of("data", Map.of("value", new BigDecimal("9E+1"))));
+
+        try (var server = McpTestServer.startWithToolResult(
+                Map.of("data", Map.of("value", 90)), false)) {
+            assertDoesNotThrow(() -> client.validate(server.uri(), EXPECTED, call));
+        }
+    }
+
+    @Test
+    void rejectsAnActualExpectedResultMismatchAtTheToolCallStageWithoutLeakingValues() throws Exception {
+        ExpectedToolCall call = expectedCall(Map.of(
+                "data", Map.of("marker", "private-expected-marker")));
+
+        try (var server = McpTestServer.startWithToolResult(
+                Map.of("data", Map.of("marker", "different-private-marker")), false)) {
+            var failure = assertThrows(McpStreamableHttpClient.McpValidationException.class,
+                    () -> client.validate(server.uri(), EXPECTED, call));
+
+            assertEquals(McpStage.TOOL_CALL, failure.stage());
+            assertEquals("MCP Tool result does not match the mock upstream contract", failure.getMessage());
+            assertFalse(failure.getMessage().contains("private"));
         }
     }
 
@@ -338,6 +377,14 @@ class McpStreamableHttpClientTest {
                                         "type", "number",
                                         "minimum", minimum)),
                                 "required", List.of("latitude"))));
+    }
+
+    private static ExpectedToolCall expectedCall(Object expectedResult) {
+        return new ExpectedToolCall(
+                EXPECTED_CALL.tool(),
+                EXPECTED_CALL.arguments(),
+                new ExpectedUpstreamResponse(200, "application/json", Map.of()),
+                expectedResult);
     }
 
     private static final class RecordingSubscription implements Flow.Subscription {

@@ -45,6 +45,36 @@ class MockUpstreamServerTest {
     }
 
     @Test
+    void returnsTheConfiguredStatusContentTypeAndBodyAfterOneExactRequest() throws Exception {
+        UpstreamCallExpectation expectation = expectation(
+                429, "application/problem+json", Map.of("code", "LIMIT"));
+        try (var server = MockUpstreamServer.start(expectation)) {
+            HttpResponse<String> response = send(server, "POST", query("first", "second"),
+                    "X-Token", "validator", expectedBody());
+
+            assertEquals(429, response.statusCode());
+            assertEquals("application/problem+json",
+                    response.headers().firstValue("Content-Type").orElseThrow());
+            assertEquals(mapper.valueToTree(Map.of("code", "LIMIT")), mapper.readTree(response.body()));
+            server.sealAndAwaitVerified(WAIT);
+        }
+    }
+
+    @Test
+    void rejectsConfiguredResponsesLargerThanOneMebibyteWithoutLeakingTheBody() {
+        UpstreamCallExpectation expectation = expectation(
+                200,
+                "application/json",
+                Map.of("private", SENSITIVE_OBSERVED_VALUE + "x".repeat(1024 * 1024)));
+
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> MockUpstreamServer.start(expectation));
+
+        assertEquals("Mock upstream response fixture exceeded the size limit", failure.getMessage());
+        assertFalse(failure.getMessage().contains(SENSITIVE_OBSERVED_VALUE));
+    }
+
+    @Test
     void acceptsCaseInsensitiveRelevantHeadersAndCanonicalJsonNumbersAndFieldOrder() throws Exception {
         try (var server = MockUpstreamServer.start(expectation())) {
             HttpResponse<String> response = send(server, "POST", query("first", "second"),
@@ -353,6 +383,21 @@ class MockUpstreamServerTest {
                 Map.of("x-token", tokenValues),
                 body,
                 Map.of("ITEM_KEY", "mcp-validation-secret-1"));
+    }
+
+    private UpstreamCallExpectation expectation(int status, String contentType, Object responseBody) {
+        UpstreamCallExpectation request = expectation();
+        return new UpstreamCallExpectation(
+                request.operationId(),
+                request.method(),
+                request.rawPath(),
+                request.query(),
+                request.headers(),
+                request.body(),
+                request.environmentOverrides(),
+                status,
+                contentType,
+                responseBody);
     }
 
     private String query(String... values) {

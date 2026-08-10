@@ -339,9 +339,7 @@ public final class McpStreamableHttpClient {
         if (actual == null) {
             throw failure(McpStage.TOOL_CALL, "MCP Tool text content is not valid JSON", null);
         }
-        JsonNode expected = objectMapper.createObjectNode()
-                .put("validated", true)
-                .put("operationId", expectedCall.tool().operationId());
+        JsonNode expected = objectMapper.valueToTree(expectedCall.expectedResult());
         if (!canonicalJson(actual).equals(canonicalJson(expected))) {
             throw failure(McpStage.TOOL_CALL, "MCP Tool result does not match the mock upstream contract", null);
         }

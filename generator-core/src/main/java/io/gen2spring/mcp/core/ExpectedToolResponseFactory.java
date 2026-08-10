@@ -1,0 +1,256 @@
+package io.gen2spring.mcp.core;
+
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+public final class ExpectedToolResponseFactory {
+    private static final String SAFE_MESSAGE = "Expected response fixture cannot be derived";
+    private static final String CONTENT_TYPE = "application/json";
+    private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+    private static final int SERIALIZED_NULL_WITH_SEPARATOR_BYTES = 5;
+    private static final int MAX_SPARSE_ARRAY_INDEX =
+            (MAX_RESPONSE_BYTES - 1) / SERIALIZED_NULL_WITH_SEPARATOR_BYTES;
+
+    public ExpectedToolResponse create(McpToolDefinition tool) {
+        Objects.requireNonNull(tool, SAFE_MESSAGE);
+        if (tool.operationId() == null || tool.operationId().isBlank()) {
+            throw invalid();
+        }
+        Map<String, Object> marker = marker(tool.operationId());
+        ResponseNormalizationPolicy policy = tool.execution() == null
+                ? null
+                : tool.execution().responseNormalization();
+        if (policy == null) {
+            ExpectedUpstreamResponse upstream = new ExpectedUpstreamResponse(200, CONTENT_TYPE, marker);
+            return new ExpectedToolResponse(upstream, upstream.body());
+        }
+
+        Object root = policy.dataPointer() == null
+                ? mutableCopy(marker)
+                : insert(null, policy.dataPointer(), mutableCopy(marker));
+        if (policy.successCodePointer() != null) {
+            if (policy.successValues().isEmpty()) {
+                throw invalid();
+            }
+            root = insert(root, policy.successCodePointer(), policy.successValues().getFirst());
+        }
+        if (policy.errorMessagePointer() != null) {
+            root = insert(root, policy.errorMessagePointer(), "NORMAL_SERVICE");
+        }
+        if (policy.totalCountPointer() != null) {
+            root = insert(root, policy.totalCountPointer(), 1);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("data", policy.dataPointer() == null ? root : at(root, policy.dataPointer()));
+        if (policy.totalCountPointer() != null) {
+            result.put("page", Map.of("totalCount", at(root, policy.totalCountPointer())));
+        }
+        if (policy.successCodePointer() != null || policy.errorMessagePointer() != null) {
+            Map<String, Object> provider = new LinkedHashMap<>();
+            if (policy.successCodePointer() != null) {
+                provider.put("code", at(root, policy.successCodePointer()));
+            }
+            if (policy.errorMessagePointer() != null) {
+                provider.put("message", at(root, policy.errorMessagePointer()));
+            }
+            result.put("provider", provider);
+        }
+
+        ExpectedUpstreamResponse upstream = new ExpectedUpstreamResponse(200, CONTENT_TYPE, root);
+        return new ExpectedToolResponse(upstream, immutableJson(result));
+    }
+
+    private Object insert(Object root, String pointer, Object value) {
+        List<String> tokens = tokens(pointer);
+        if (tokens.isEmpty()) {
+            return value;
+        }
+        Object actualRoot = root;
+        if (actualRoot == null) {
+            actualRoot = container(tokens.getFirst());
+        }
+        Object current = actualRoot;
+        for (int index = 0; index < tokens.size(); index++) {
+            String token = tokens.get(index);
+            boolean leaf = index == tokens.size() - 1;
+            if (current instanceof Map<?, ?> rawMap) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> map = (Map<String, Object>) rawMap;
+                if (leaf) {
+                    map.put(token, value);
+                    continue;
+                }
+                Object child = map.get(token);
+                if (child == null) {
+                    child = container(tokens.get(index + 1));
+                    map.put(token, child);
+                }
+                current = child;
+                continue;
+            }
+            if (current instanceof List<?> rawList) {
+                @SuppressWarnings("unchecked")
+                List<Object> list = (List<Object>) rawList;
+                int arrayIndex = arrayIndex(token);
+                grow(list, arrayIndex);
+                if (leaf) {
+                    list.set(arrayIndex, value);
+                    continue;
+                }
+                Object child = list.get(arrayIndex);
+                if (child == null) {
+                    child = container(tokens.get(index + 1));
+                    list.set(arrayIndex, child);
+                }
+                current = child;
+                continue;
+            }
+            throw invalid();
+        }
+        return actualRoot;
+    }
+
+    private Object at(Object root, String pointer) {
+        Object current = root;
+        for (String token : tokens(pointer)) {
+            if (current instanceof Map<?, ?> map) {
+                if (!map.containsKey(token)) {
+                    throw invalid();
+                }
+                current = map.get(token);
+            } else if (current instanceof List<?> list) {
+                int index = arrayIndex(token);
+                if (index >= list.size()) {
+                    throw invalid();
+                }
+                current = list.get(index);
+            } else {
+                throw invalid();
+            }
+        }
+        return current;
+    }
+
+    private List<String> tokens(String pointer) {
+        if (pointer == null || pointer.isEmpty()) {
+            return List.of();
+        }
+        if (!pointer.startsWith("/")) {
+            throw invalid();
+        }
+        List<String> result = new ArrayList<>();
+        for (String encoded : pointer.substring(1).split("/", -1)) {
+            StringBuilder token = new StringBuilder(encoded.length());
+            for (int index = 0; index < encoded.length(); index++) {
+                char character = encoded.charAt(index);
+                if (character != '~') {
+                    token.append(character);
+                    continue;
+                }
+                if (++index == encoded.length()) {
+                    throw invalid();
+                }
+                char escape = encoded.charAt(index);
+                if (escape == '0') {
+                    token.append('~');
+                } else if (escape == '1') {
+                    token.append('/');
+                } else {
+                    throw invalid();
+                }
+            }
+            result.add(token.toString());
+        }
+        return List.copyOf(result);
+    }
+
+    private Object container(String token) {
+        return numericIndex(token) ? new ArrayList<>() : new LinkedHashMap<String, Object>();
+    }
+
+    private boolean numericIndex(String token) {
+        if (token.isEmpty() || token.length() > 1 && token.charAt(0) == '0') {
+            return false;
+        }
+        for (int index = 0; index < token.length(); index++) {
+            if (token.charAt(index) < '0' || token.charAt(index) > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private int arrayIndex(String token) {
+        if (!numericIndex(token)) {
+            throw invalid();
+        }
+        try {
+            int index = Integer.parseInt(token);
+            if (index > MAX_SPARSE_ARRAY_INDEX) {
+                throw invalid();
+            }
+            return index;
+        } catch (NumberFormatException failure) {
+            throw invalid();
+        }
+    }
+
+    private void grow(List<Object> list, int index) {
+        while (list.size() <= index) {
+            list.add(null);
+        }
+    }
+
+    private Map<String, Object> marker(String operationId) {
+        Map<String, Object> marker = new LinkedHashMap<>();
+        marker.put("validated", true);
+        marker.put("operationId", operationId);
+        return marker;
+    }
+
+    private Object mutableCopy(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            map.forEach((key, item) -> copy.put((String) key, mutableCopy(item)));
+            return copy;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> copy = new ArrayList<>(list.size());
+            list.forEach(item -> copy.add(mutableCopy(item)));
+            return copy;
+        }
+        return value;
+    }
+
+    private Object immutableJson(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            map.forEach((key, item) -> copy.put((String) key, immutableJson(item)));
+            return Collections.unmodifiableMap(copy);
+        }
+        if (value instanceof List<?> list) {
+            List<Object> copy = new ArrayList<>(list.size());
+            list.forEach(item -> copy.add(immutableJson(item)));
+            return Collections.unmodifiableList(copy);
+        }
+        return value;
+    }
+
+    private IllegalArgumentException invalid() {
+        return new IllegalArgumentException(SAFE_MESSAGE);
+    }
+
+    public record ExpectedToolResponse(ExpectedUpstreamResponse upstreamResponse, Object expectedResult) {
+        public ExpectedToolResponse {
+            Objects.requireNonNull(upstreamResponse, SAFE_MESSAGE);
+        }
+    }
+}
