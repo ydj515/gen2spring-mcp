@@ -583,7 +583,7 @@ private void appendSuccessValue(StringBuilder source, Object value) {
         source.append(bool ? "BooleanNode.TRUE" : "BooleanNode.FALSE");
     } else if (value instanceof Number number) {
         source.append("JsonNodeFactory.instance.numberNode(new BigDecimal(")
-                .append(JavaStringLiteral.quote(new BigDecimal(number.toString()).toPlainString()))
+                .append(JavaStringLiteral.quote(new BigDecimal(number.toString()).toString()))
                 .append("))");
     } else {
         throw JavaSourceRenderer.invalid("Response success values must be JSON scalars");
@@ -592,6 +592,8 @@ private void appendSuccessValue(StringBuilder source, Object value) {
 ```
 
 Use `JavaStringLiteral.quote` for every pointer. Use `null` for absent pointers/policy, `List.of()` for no success values, and a concrete Jackson 3 expression such as `List.of(StringNode.valueOf("00"), BooleanNode.TRUE)` for configured values.
+Use `BigDecimal.toString()`, never `toPlainString()`, so exponent-form configuration values remain bounded
+when rendered as generated Java source instead of expanding into potentially millions of digits.
 
 - [ ] **Step 5: Write generated normalizer contract tests before its implementation**
 
@@ -763,6 +765,16 @@ public JsonNode execute(OperationDefinition operation, Map<String, Object> argum
 ```
 
 Use `UPSTREAM_TIMEOUT` for total timeout and `ResourceAccessException` whose cause chain contains `SocketTimeoutException` or `HttpTimeoutException`. Use `UPSTREAM_UNAVAILABLE` for other `ResourceAccessException` and I/O/connect/DNS failures, `LOCAL_RESOURCE` for queue rejection and interruption, and `UPSTREAM_PROTOCOL` for oversize response. Restore the thread interrupt flag before returning `LOCAL_RESOURCE`. Never pass the caught exception message into `ResponseNormalizer`.
+
+Classify only the expected failure types above. Check and rethrow any `Error` before inspecting its cause
+chain, even when it wraps `IOException`; propagate unmatched `RuntimeException` to the MCP adapter so it
+becomes a fixed-message JSON-RPC internal error rather than a provider Tool error. Read HTTP status before
+parsing `Content-Type`; if a non-2xx response has a malformed media type, preserve its status category and
+return null provider metadata. A malformed media type on 2xx remains `UPSTREAM_PROTOCOL`.
+
+For an empty 2xx body, a non-null policy with no configured pointers is valid and returns
+`{"data":null}`. Empty 2xx remains `UPSTREAM_PROTOCOL` only when the policy configures a pointer that
+cannot be evaluated.
 
 When resolving each secret binding, add the property name, target name, and actual nonblank value to the sanitizer lists before issuing the request. Do not retain these lists outside the current execution.
 

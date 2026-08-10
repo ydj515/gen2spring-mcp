@@ -141,6 +141,8 @@ public record ResponseNormalizationPolicy(
 - success value는 null이 아닌 JSON string, number, boolean만 허용한다.
 - string success value는 128자 이하이고 control character를 포함할 수 없다.
 - number 비교는 JSON 숫자 동치성을 적용하되 string과 number는 서로 같지 않다.
+- exponent-form number는 generated source에서도 exponent 표기를 유지해 source size를 입력 크기에
+  비례하도록 제한한다. Plain decimal 확장으로 자릿수를 증폭하지 않는다.
 - `dataPath`가 없으면 전체 parsed body를 `data`로 사용한다.
 - `totalCountPath`가 있으면 값은 0 이상 `Long.MAX_VALUE` 이하의 integral JSON number여야 한다.
 - success code는 원본 JSON scalar 타입을 유지한다.
