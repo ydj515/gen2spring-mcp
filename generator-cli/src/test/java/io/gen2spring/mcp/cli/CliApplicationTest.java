@@ -76,7 +76,8 @@ class CliApplicationTest {
         Path output = safeTemp.resolve("legacy-java17-output");
         boolean[] executorCalled = {false};
         var application = new CliApplication(
-                new CommandLine(), new GenerationConfigurationReader(), unusedAnalyzer(), (spec, request, target) -> {
+                new CommandLine(), new GenerationConfigurationReader(CompatibilityProfileRegistry.defaults()),
+                unusedAnalyzer(), (spec, request, target) -> {
                     executorCalled[0] = true;
                     return new GenerationOutcome(target.toAbsolutePath().normalize(), null, UNVERIFIED, "checksum");
                 },

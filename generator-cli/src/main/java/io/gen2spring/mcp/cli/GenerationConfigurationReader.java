@@ -15,7 +15,6 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel;
-import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
@@ -81,7 +80,7 @@ public final class GenerationConfigurationReader {
     private final CompatibilityProfileRegistry profiles;
 
     public GenerationConfigurationReader() {
-        this(legacyProfiles());
+        this(CompatibilityProfileRegistry.defaults());
     }
 
     public GenerationConfigurationReader(CompatibilityProfileRegistry profiles) {
@@ -89,7 +88,7 @@ public final class GenerationConfigurationReader {
     }
 
     GenerationConfigurationReader(LocalPathBoundary pathBoundary) {
-        this(legacyProfiles(), pathBoundary);
+        this(CompatibilityProfileRegistry.defaults(), pathBoundary);
     }
 
     GenerationConfigurationReader(
@@ -110,8 +109,8 @@ public final class GenerationConfigurationReader {
         this.profiles = java.util.Objects.requireNonNull(profiles, "profiles");
     }
 
-    private static CompatibilityProfileRegistry legacyProfiles() {
-        return CompatibilityProfileRegistry.of(List.of(CompatibilityProfile.p0()));
+    GenerationConfigurationReader withProfiles(CompatibilityProfileRegistry profiles) {
+        return new GenerationConfigurationReader(profiles, pathBoundary);
     }
 
     public GenerationRequest read(Path configuration) {

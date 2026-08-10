@@ -52,10 +52,9 @@ public final class CliApplication {
             ObjectMapper json) {
         this(
                 commandLine,
-                configurationReader,
                 analyzer,
                 generationExecutor,
-                CompatibilityProfileRegistry.of(List.of(Objects.requireNonNull(profile, "profile"))),
+                LegacyProfileBinding.bind(configurationReader, profile),
                 json,
                 PublicationHook.NONE);
     }
@@ -70,10 +69,26 @@ public final class CliApplication {
             PublicationHook publicationHook) {
         this(
                 commandLine,
-                configurationReader,
                 analyzer,
                 generationExecutor,
-                CompatibilityProfileRegistry.of(List.of(Objects.requireNonNull(profile, "profile"))),
+                LegacyProfileBinding.bind(configurationReader, profile),
+                json,
+                publicationHook);
+    }
+
+    private CliApplication(
+            CommandLine commandLine,
+            SpecificationAnalyzer analyzer,
+            GenerationExecutor generationExecutor,
+            LegacyProfileBinding binding,
+            ObjectMapper json,
+            PublicationHook publicationHook) {
+        this(
+                commandLine,
+                binding.configurationReader(),
+                analyzer,
+                generationExecutor,
+                binding.profiles(),
                 json,
                 publicationHook);
     }
@@ -105,6 +120,20 @@ public final class CliApplication {
                 .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
         this.pathBoundary = new LocalPathBoundary();
         this.publicationHook = Objects.requireNonNull(publicationHook, "publicationHook");
+    }
+
+    private record LegacyProfileBinding(
+            GenerationConfigurationReader configurationReader,
+            CompatibilityProfileRegistry profiles) {
+        private static LegacyProfileBinding bind(
+                GenerationConfigurationReader configurationReader,
+                CompatibilityProfile profile) {
+            GenerationConfigurationReader reader =
+                    Objects.requireNonNull(configurationReader, "configurationReader");
+            CompatibilityProfileRegistry profiles = CompatibilityProfileRegistry.of(
+                    List.of(Objects.requireNonNull(profile, "profile")));
+            return new LegacyProfileBinding(reader.withProfiles(profiles), profiles);
+        }
     }
 
     public int run(String[] arguments, PrintWriter stdout, PrintWriter stderr) {
