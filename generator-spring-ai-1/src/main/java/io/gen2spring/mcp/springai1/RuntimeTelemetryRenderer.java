@@ -28,11 +28,15 @@ final class RuntimeTelemetryRenderer {
                 import io.micrometer.core.instrument.DistributionSummary;
                 import io.micrometer.core.instrument.Gauge;
                 import io.micrometer.core.instrument.MeterRegistry;
+                import io.micrometer.core.instrument.Timer;
                 import io.micrometer.observation.Observation;
                 import io.micrometer.observation.ObservationRegistry;
                 import io.micrometer.tracing.Span;
                 import io.micrometer.tracing.TraceContext;
                 import io.micrometer.tracing.Tracer;
+                import io.micrometer.tracing.handler.DefaultTracingObservationHandler;
+                import io.micrometer.tracing.handler.TracingObservationHandler;
+                import io.opentelemetry.api.trace.StatusCode;
                 import java.security.SecureRandom;
                 import java.util.HexFormat;
                 import java.util.Set;
@@ -72,6 +76,9 @@ final class RuntimeTelemetryRenderer {
                             "spring-ai-2.0-java21-mvc-streamable");
                     private static final String INVALID_IDENTITY_MESSAGE =
                             "Generated telemetry identity is invalid";
+                    private static final String BRIDGE_UNAVAILABLE_MESSAGE =
+                            "Generated telemetry bridge is unavailable";
+                    private static final java.lang.reflect.Method OTEL_SPAN_METHOD = otelSpanMethod();
 
                     private final ObservationRegistry observationRegistry;
                     private final MeterRegistry meterRegistry;
@@ -92,9 +99,12 @@ final class RuntimeTelemetryRenderer {
                             MeterRegistry meterRegistry,
                             Tracer tracer,
                             SecureRandom secureRandom) {
-                        this.observationRegistry = java.util.Objects.requireNonNull(observationRegistry);
                         this.meterRegistry = java.util.Objects.requireNonNull(meterRegistry);
                         this.tracer = java.util.Objects.requireNonNull(tracer);
+                        java.util.Objects.requireNonNull(observationRegistry);
+                        this.observationRegistry = ObservationRegistry.create();
+                        this.observationRegistry.observationConfig()
+                                .observationHandler(new DefaultTracingObservationHandler(this.tracer));
                         this.secureRandom = java.util.Objects.requireNonNull(secureRandom);
                         requireTargetProfile(TARGET_PROFILE_ID);
                         OPERATION_IDS.forEach(RuntimeTelemetry::requireOperationId);
@@ -109,7 +119,7 @@ final class RuntimeTelemetryRenderer {
                                 .highCardinalityKeyValue(TOOL_NAME_ATTRIBUTE, toolName)
                                 .highCardinalityKeyValue(OPERATION_ID_ATTRIBUTE, operationId)
                                 .start();
-                        return new Call(observation, false);
+                        return new Call(observation, false, TOOL_CALL_NAME);
                     }
 
                     public Call startProviderCall(String operationId, String httpMethod) {
@@ -121,7 +131,7 @@ final class RuntimeTelemetryRenderer {
                                 .highCardinalityKeyValue(OPERATION_ID_ATTRIBUTE, operationId)
                                 .highCardinalityKeyValue(HTTP_METHOD_ATTRIBUTE, method)
                                 .start();
-                        return new Call(observation, true);
+                        return new Call(observation, true, PROVIDER_REQUEST_NAME);
                     }
 
                     public void registerExecutor(ThreadPoolExecutor executor) {
@@ -235,11 +245,15 @@ final class RuntimeTelemetryRenderer {
                     public final class Call {
                         private final Observation observation;
                         private final boolean provider;
+                        private final String timerName;
+                        private final Timer.Sample timerSample;
                         private final AtomicBoolean completed = new AtomicBoolean();
 
-                        private Call(Observation observation, boolean provider) {
+                        private Call(Observation observation, boolean provider, String timerName) {
                             this.observation = observation;
                             this.provider = provider;
+                            this.timerName = timerName;
+                            this.timerSample = Timer.start(meterRegistry);
                         }
 
                         public Observation.Scope openScope() {
@@ -264,9 +278,17 @@ final class RuntimeTelemetryRenderer {
                                 observation.lowCardinalityKeyValue(HTTP_STATUS_CLASS_TAG, status.value());
                             }
                             if (outcome != Outcome.SUCCESS) {
-                                observation.error(new TelemetrySignal(errorCategory.value()));
+                                markErrorStatus(observation, errorCategory.value());
                             }
                             observation.stop();
+                            Timer.Builder timer = Timer.builder(timerName)
+                                    .tag(TARGET_PROFILE_TAG, TARGET_PROFILE_ID)
+                                    .tag(OUTCOME_TAG, outcome.value())
+                                    .tag(ERROR_CATEGORY_TAG, errorCategory.value());
+                            if (provider) {
+                                timer.tag(HTTP_STATUS_CLASS_TAG, status.value());
+                            }
+                            timerSample.stop(timer.register(meterRegistry));
                             return true;
                         }
 
@@ -353,9 +375,25 @@ final class RuntimeTelemetryRenderer {
                                 && !"0000000000000000".equals(value);
                     }
 
-                    private static final class TelemetrySignal extends RuntimeException {
-                        private TelemetrySignal(String category) {
-                            super(category, null, false, false);
+                    private static void markErrorStatus(Observation observation, String category) {
+                        TracingObservationHandler.TracingContext context = observation.getContext()
+                                .get(TracingObservationHandler.TracingContext.class);
+                        if (context != null && context.getSpan() != null && !context.getSpan().isNoop()) {
+                            try {
+                                ((io.opentelemetry.api.trace.Span) OTEL_SPAN_METHOD.invoke(null, context.getSpan()))
+                                        .setStatus(StatusCode.ERROR, category);
+                            } catch (ReflectiveOperationException failure) {
+                                throw new IllegalStateException(BRIDGE_UNAVAILABLE_MESSAGE);
+                            }
+                        }
+                    }
+
+                    private static java.lang.reflect.Method otelSpanMethod() {
+                        try {
+                            return Class.forName("io.micrometer.tracing.otel.bridge.OtelSpan")
+                                    .getMethod("toOtel", Span.class);
+                        } catch (ReflectiveOperationException failure) {
+                            throw new IllegalStateException(BRIDGE_UNAVAILABLE_MESSAGE);
                         }
                     }
                 }

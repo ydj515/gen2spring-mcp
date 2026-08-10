@@ -42,6 +42,23 @@ class GeneratedSecretSafetyTest {
         }
     }
 
+    @Test
+    void emitsErrorTelemetryWithoutExceptionEventsOrSensitiveInputs() {
+        for (CompatibilityProfile profile : profiles()) {
+            var files = new JavaSourceRenderer(profile).render(JavaSourceRendererTest.contextWithWeatherTool(profile));
+            String telemetry = utf8(files.get(
+                    "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java"));
+
+            assertTrue(telemetry.contains(".setStatus(StatusCode.ERROR, category)"), profile.id());
+            assertFalse(telemetry.contains("observation.error("), profile.id());
+            assertFalse(telemetry.contains("recordException("), profile.id());
+            assertFalse(telemetry.contains("exception.message"), profile.id());
+            assertFalse(telemetry.contains("exception.stacktrace"), profile.id());
+            assertFalse(telemetry.contains("serviceKey"), profile.id());
+            assertFalse(telemetry.contains("provider.base-url"), profile.id());
+        }
+    }
+
     private List<CompatibilityProfile> profiles() {
         var profiles = io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry.defaults();
         return List.of(

@@ -526,6 +526,27 @@ class GeneratedRuntimeRegressionTest {
                             assertNotNull(bytes);
                             assertNotNull(active);
                             assertNotNull(queued);
+                            assertEquals(java.util.Set.of(
+                                    "gen2spring.runtime.mcp.tool.call",
+                                    "gen2spring.runtime.provider.request",
+                                    "gen2spring.runtime.provider.response.bytes",
+                                    "gen2spring.runtime.provider.executor.active",
+                                    "gen2spring.runtime.provider.executor.queued"),
+                                    meters.getMeters().stream()
+                                            .map(meter -> meter.getId().getName())
+                                            .filter(name -> name.startsWith("gen2spring.runtime."))
+                                            .collect(java.util.stream.Collectors.toSet()));
+                            assertEquals(java.util.Set.of("target.profile", "outcome", "error.category"),
+                                    toolTimer.getId().getTags().stream()
+                                            .map(io.micrometer.core.instrument.Tag::getKey)
+                                            .collect(java.util.stream.Collectors.toSet()));
+                            assertEquals(java.util.Set.of(
+                                    "target.profile", "outcome", "error.category", "http.status.class"),
+                                    providerTimer.getId().getTags().stream()
+                                            .map(io.micrometer.core.instrument.Tag::getKey)
+                                            .collect(java.util.stream.Collectors.toSet()));
+                            assertNull(meters.find("gen2spring.runtime.mcp.tool.call.active").meter());
+                            assertNull(meters.find("gen2spring.runtime.provider.request.active").meter());
                             assertEquals(1L, toolTimer.count());
                             assertEquals(1L, providerTimer.count());
                             assertEquals(1L, bytes.count());

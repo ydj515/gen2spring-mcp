@@ -34,9 +34,10 @@ class GeneratedProjectSmokeTest {
     @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedWeatherProjectResolvesCompilesAndStartsItsContext() throws Exception {
-        var files = new SpringAi2ProjectGenerator()
+        var generated = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.contextWithWeatherTool())
                 .files();
+        Map<String, byte[]> files = withObservabilityContextTest(generated, profile(21));
         assertProjectBuilds(tempDir.resolve("weather"), files);
     }
 
@@ -44,9 +45,10 @@ class GeneratedProjectSmokeTest {
     @Timeout(value = 5, unit = MINUTES)
     void generatedJava17ProjectCompilesAndRunsOnTheConfiguredTargetRuntime() throws Exception {
         CompatibilityProfile profile = profile(17);
-        var files = new SpringAi2ProjectGenerator()
+        var generated = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.contextWithWeatherTool(profile))
                 .files();
+        Map<String, byte[]> files = withObservabilityContextTest(generated, profile);
 
         assertProjectBuilds(
                 tempDir.resolve("weather-java17"),
@@ -459,14 +461,363 @@ class GeneratedProjectSmokeTest {
         ManagedTestProcess.Result result = ManagedTestProcess.run(
                 process, Duration.ofMinutes(4), Duration.ofSeconds(10));
         String buildOutput = result.output();
-        assertEquals(0, result.exitCode(), buildOutput);
+        assertEquals(0, result.exitCode(), buildDiagnostics(project, buildOutput));
         assertTrue(buildOutput.contains("BUILD SUCCESSFUL"), buildOutput);
+    }
+
+    private String buildDiagnostics(Path project, String output) throws Exception {
+        Path results = project.resolve("build/test-results/test");
+        if (!Files.isDirectory(results)) {
+            return output;
+        }
+        StringBuilder diagnostics = new StringBuilder(output);
+        try (var files = Files.list(results)) {
+            for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".xml"))
+                    .sorted().toList()) {
+                diagnostics.append('\n').append(Files.readString(file));
+            }
+        }
+        return diagnostics.toString();
     }
 
     private CompatibilityProfile profile(int javaVersion) {
         return io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry.defaults()
                 .find("spring-ai-2.0-java" + javaVersion + "-mvc-streamable")
                 .orElseThrow();
+    }
+
+    private Map<String, byte[]> withObservabilityContextTest(
+            Map<String, byte[]> generated, CompatibilityProfile profile) {
+        Map<String, byte[]> files = new java.util.LinkedHashMap<>(generated);
+        files.put(
+                "src/test/java/com/example/weather/application/GeneratedObservabilityContextTest.java",
+                observabilityContextTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        files.put(
+                "src/test/java/com/example/weather/application/GeneratedObservabilityRuntimeTest.java",
+                observabilityRuntimeTest(profile.id()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        addTelemetryTestDependency(files);
+        return files;
+    }
+
+    private void addTelemetryTestDependency(Map<String, byte[]> files) {
+        String build = new String(files.get("build.gradle.kts"), java.nio.charset.StandardCharsets.UTF_8);
+        String anchor = "    testImplementation(\"org.springframework.boot:spring-boot-starter-test\")";
+        assertTrue(build.contains(anchor), build);
+        files.put("build.gradle.kts", build.replace(
+                anchor,
+                anchor + "\n    testImplementation(\"io.opentelemetry:opentelemetry-sdk-testing\")")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private String observabilityContextTest() {
+        return """
+                package com.example.weather.application;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertNotNull;
+                import static org.junit.jupiter.api.Assertions.assertNull;
+
+                import io.micrometer.core.instrument.MeterRegistry;
+                import io.micrometer.observation.ObservationRegistry;
+                import io.micrometer.tracing.Tracer;
+                import java.util.List;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.boot.actuate.endpoint.web.WebEndpointsSupplier;
+                import org.springframework.boot.test.context.SpringBootTest;
+                import org.springframework.context.ApplicationContext;
+                import org.springframework.core.env.Environment;
+
+                @SpringBootTest
+                class GeneratedObservabilityContextTest {
+                    @Autowired ObservationRegistry observationRegistry;
+                    @Autowired MeterRegistry meterRegistry;
+                    @Autowired Tracer tracer;
+                    @Autowired ApplicationContext applicationContext;
+                    @Autowired WebEndpointsSupplier webEndpointsSupplier;
+                    @Autowired Environment environment;
+
+                    @Test
+                    void providesLocalTelemetryWithoutDefaultExportersOrExtraEndpoints() throws Exception {
+                        assertNotNull(observationRegistry);
+                        assertNotNull(meterRegistry);
+                        assertNotNull(tracer);
+                        assertNull(environment.getProperty("management.metrics.tags.target.profile"));
+                        assertEquals("false", environment.getProperty("management.otlp.metrics.export.enabled"));
+                        assertEquals("false", environment.getProperty("management.tracing.export.otlp.enabled"));
+                        assertEquals(List.of("health"), webEndpointsSupplier.getEndpoints().stream()
+                                .map(endpoint -> endpoint.getEndpointId().toString())
+                                .sorted()
+                                .toList());
+                        assertEquals(0, applicationContext.getBeanNamesForType(Class.forName(
+                                "io.micrometer.registry.otlp.OtlpMeterRegistry")).length);
+                        assertEquals(0, applicationContext.getBeanNamesForType(Class.forName(
+                                "io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter")).length);
+                    }
+                }
+                """;
+    }
+
+    private String observabilityRuntimeTest(String profileId) {
+        return """
+                package com.example.weather.application;
+
+                import static java.nio.charset.StandardCharsets.UTF_8;
+                import static java.util.concurrent.TimeUnit.SECONDS;
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
+                import static org.junit.jupiter.api.Assertions.assertTrue;
+
+                import com.sun.net.httpserver.HttpServer;
+                import io.micrometer.core.instrument.MeterRegistry;
+                import io.opentelemetry.api.common.AttributeKey;
+                import io.opentelemetry.api.trace.SpanKind;
+                import io.opentelemetry.api.trace.StatusCode;
+                import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
+                import io.opentelemetry.sdk.trace.SdkTracerProvider;
+                import io.opentelemetry.sdk.trace.data.SpanData;
+                import java.io.IOException;
+                import java.net.InetSocketAddress;
+                import java.net.URI;
+                import java.net.http.HttpClient;
+                import java.net.http.HttpRequest;
+                import java.net.http.HttpResponse;
+                import java.time.Duration;
+                import java.util.List;
+                import java.util.Set;
+                import java.util.TreeSet;
+                import java.util.concurrent.atomic.AtomicInteger;
+                import java.util.concurrent.atomic.AtomicReference;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.boot.test.context.SpringBootTest;
+                import org.springframework.boot.test.context.TestConfiguration;
+                import org.springframework.boot.test.web.server.LocalServerPort;
+                import org.springframework.context.annotation.Bean;
+                import org.springframework.context.annotation.Import;
+                import org.springframework.test.context.DynamicPropertyRegistry;
+                import org.springframework.test.context.DynamicPropertySource;
+                import tools.jackson.databind.JsonNode;
+                import tools.jackson.databind.json.JsonMapper;
+
+                @SpringBootTest(
+                        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+                        properties = {
+                                "management.endpoints.web.exposure.include=health,prometheus",
+                                "management.prometheus.metrics.export.enabled=true",
+                                "management.tracing.sampling.probability=1.0",
+                                "provider.response-max-bytes=1024",
+                                "provider.connect-timeout-millis=1000",
+                                "provider.read-timeout-millis=1000",
+                                "provider.total-timeout-millis=1000",
+                                "provider.secrets.service-key=configured-secret-marker"
+                        })
+                @Import(GeneratedObservabilityRuntimeTest.TraceConfiguration.class)
+                class GeneratedObservabilityRuntimeTest {
+                    private static final String PROFILE = "%s";
+                    private static final String PRIVATE_BODY = "raw-private-body-marker";
+                    private static final AtomicInteger PROVIDER_CALLS = new AtomicInteger();
+                    private static final AtomicReference<List<String>> TRACEPARENT = new AtomicReference<>();
+                    private static HttpServer provider;
+
+                    @LocalServerPort int port;
+                    @Autowired MeterRegistry meterRegistry;
+                    @Autowired InMemorySpanExporter spanExporter;
+                    @Autowired SdkTracerProvider tracerProvider;
+
+                    private final HttpClient client = HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(2))
+                            .build();
+                    private final JsonMapper jsonMapper = JsonMapper.builder().build();
+
+                    @DynamicPropertySource
+                    static void provider(DynamicPropertyRegistry registry) {
+                        try {
+                            provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                            provider.createContext("/forecast", exchange -> {
+                                PROVIDER_CALLS.incrementAndGet();
+                                TRACEPARENT.set(List.copyOf(exchange.getRequestHeaders()
+                                        .getOrDefault("traceparent", List.of())));
+                                byte[] body = ("{\\\"detail\\\":\\\"" + PRIVATE_BODY + "\\\"}").getBytes(UTF_8);
+                                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                                exchange.sendResponseHeaders(500, body.length);
+                                try (var output = exchange.getResponseBody()) {
+                                    output.write(body);
+                                }
+                            });
+                            provider.start();
+                        } catch (IOException failure) {
+                            throw new IllegalStateException("Test provider failed to start", failure);
+                        }
+                        registry.add("provider.base-url",
+                                () -> "http://127.0.0.1:" + provider.getAddress().getPort());
+                    }
+
+                    @AfterAll
+                    static void stopProvider() {
+                        if (provider != null) {
+                            provider.stop(0);
+                        }
+                    }
+
+                    @Test
+                    void exportsCanonicalSafeMetricsAndSpansForOneLiveMcpCall() throws Exception {
+                        URI endpoint = URI.create("http://127.0.0.1:" + port + "/mcp");
+                        HttpResponse<String> initialize = post(endpoint,
+                                "{'jsonrpc':'2.0','id':1,'method':'initialize','params':"
+                                        + "{'protocolVersion':'2025-03-26','capabilities':{},"
+                                        + "'clientInfo':{'name':'telemetry-test','version':'1.0'}}}", null);
+                        String sessionId = initialize.headers().firstValue("Mcp-Session-Id").orElseThrow();
+                        post(endpoint, "{'jsonrpc':'2.0','method':'notifications/initialized'}", sessionId);
+                        JsonNode call = response(post(endpoint,
+                                "{'jsonrpc':'2.0','id':2,'method':'tools/call','params':"
+                                        + "{'name':'kma_weather_get_forecast','arguments':{'nx':60,'ny':127}}}",
+                                sessionId));
+
+                        JsonNode result = call.path("result");
+                        assertTrue(result.path("isError").booleanValue(), call.toString());
+                        JsonNode envelope = jsonMapper.readTree(result.path("content").get(0).path("text").stringValue());
+                        assertEquals("UPSTREAM_SERVER", envelope.at("/error/category").stringValue());
+                        assertEquals(500, envelope.at("/error/httpStatus").intValue());
+                        assertEquals("getForecast", envelope.at("/error/operationId").stringValue());
+                        String traceId = envelope.at("/error/traceId").stringValue();
+                        assertTrue(traceId.matches("[0-9a-f]{32}"), traceId);
+                        assertFalse(call.toString().contains(PRIVATE_BODY), call.toString());
+                        assertEquals(1, PROVIDER_CALLS.get());
+
+                        var flush = tracerProvider.forceFlush();
+                        flush.join(5, SECONDS);
+                        assertTrue(flush.isSuccess());
+                        List<SpanData> spans = spanExporter.getFinishedSpanItems().stream()
+                                .filter(span -> span.getName().startsWith("gen2spring.runtime."))
+                                .toList();
+                        assertEquals(2, spans.size(), spans.toString());
+                        SpanData tool = span(spans, "gen2spring.runtime.mcp.tool.call");
+                        SpanData request = span(spans, "gen2spring.runtime.provider.request");
+                        assertEquals(SpanKind.INTERNAL, tool.getKind());
+                        assertEquals(SpanKind.INTERNAL, request.getKind());
+                        assertEquals(StatusCode.ERROR, tool.getStatus().getStatusCode());
+                        assertEquals(StatusCode.ERROR, request.getStatus().getStatusCode());
+                        assertEquals(tool.getTraceId(), request.getTraceId());
+                        assertEquals(tool.getSpanId(), request.getParentSpanId());
+                        assertEquals(request.getTraceId(), traceId);
+                        assertEquals(List.of("00-" + traceId + "-" + request.getSpanId() + "-01"),
+                                TRACEPARENT.get());
+                        assertExactAttributes(tool, Set.of(
+                                "target.profile", "outcome", "error.category",
+                                "gen2spring.tool.name", "gen2spring.operation.id"));
+                        assertExactAttributes(request, Set.of(
+                                "target.profile", "outcome", "error.category",
+                                "http.status.class", "gen2spring.operation.id",
+                                "http.request.method", "http.response.status_code"));
+                        assertEquals(PROFILE, attribute(tool, "target.profile"));
+                        assertEquals("expected_error", attribute(tool, "outcome"));
+                        assertEquals("upstream_server", attribute(tool, "error.category"));
+                        assertEquals("kma_weather_get_forecast", attribute(tool, "gen2spring.tool.name"));
+                        assertEquals("getForecast", attribute(request, "gen2spring.operation.id"));
+                        assertEquals("GET", attribute(request, "http.request.method"));
+                        assertEquals("500", attribute(request, "http.response.status_code"));
+
+                        Set<String> meterNames = new TreeSet<>();
+                        meterRegistry.getMeters().stream()
+                                .map(meter -> meter.getId().getName())
+                                .filter(name -> name.startsWith("gen2spring.runtime."))
+                                .forEach(meterNames::add);
+                        assertEquals(Set.of(
+                                "gen2spring.runtime.mcp.tool.call",
+                                "gen2spring.runtime.provider.request",
+                                "gen2spring.runtime.provider.response.bytes",
+                                "gen2spring.runtime.provider.executor.active",
+                                "gen2spring.runtime.provider.executor.queued"), meterNames);
+                        String scrape = get(URI.create("http://127.0.0.1:" + port + "/actuator/prometheus"));
+                        assertTrue(scrape.contains("gen2spring_runtime_mcp_tool_call_seconds_count"), scrape);
+                        assertTrue(scrape.contains("gen2spring_runtime_provider_request_seconds_count"), scrape);
+                        assertTrue(scrape.contains("gen2spring_runtime_provider_response_bytes_count"), scrape);
+                        assertTrue(scrape.contains("gen2spring_runtime_provider_executor_active"), scrape);
+                        assertTrue(scrape.contains("gen2spring_runtime_provider_executor_queued"), scrape);
+
+                        String telemetry = spans + "\\n" + customMetricLines(scrape);
+                        assertFalse(telemetry.contains("configured-secret-marker"), telemetry);
+                        assertFalse(telemetry.contains(PRIVATE_BODY), telemetry);
+                        assertFalse(telemetry.contains("api.example.test"), telemetry);
+                        assertFalse(telemetry.contains("127.0.0.1"), telemetry);
+                        assertFalse(telemetry.contains("serviceKey"), telemetry);
+                        assertFalse(telemetry.contains("nx"), telemetry);
+                        assertFalse(telemetry.contains("ny"), telemetry);
+                        assertFalse(telemetry.contains("Exception"), telemetry);
+                        assertFalse(telemetry.contains("\tat "), telemetry);
+                    }
+
+                    private SpanData span(List<SpanData> spans, String name) {
+                        return spans.stream().filter(value -> name.equals(value.getName())).findFirst().orElseThrow();
+                    }
+
+                    private void assertExactAttributes(SpanData span, Set<String> expected) {
+                        Set<String> keys = span.getAttributes().asMap().keySet().stream()
+                                .map(AttributeKey::getKey)
+                                .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+                        assertEquals(expected, keys, span.toString());
+                    }
+
+                    private String attribute(SpanData span, String name) {
+                        for (var entry : span.getAttributes().asMap().entrySet()) {
+                            if (name.equals(entry.getKey().getKey())) {
+                                return String.valueOf(entry.getValue());
+                            }
+                        }
+                        return null;
+                    }
+
+                    private String customMetricLines(String scrape) {
+                        return scrape.lines()
+                                .filter(line -> line.contains("gen2spring_runtime_"))
+                                .collect(java.util.stream.Collectors.joining("\\n"));
+                    }
+
+                    private String get(URI endpoint) throws Exception {
+                        HttpResponse<String> response = client.send(HttpRequest.newBuilder(endpoint)
+                                .timeout(Duration.ofSeconds(5)).GET().build(),
+                                HttpResponse.BodyHandlers.ofString(UTF_8));
+                        assertEquals(200, response.statusCode(), response.body());
+                        return response.body();
+                    }
+
+                    private HttpResponse<String> post(URI endpoint, String body, String sessionId) throws Exception {
+                        HttpRequest.Builder request = HttpRequest.newBuilder(endpoint)
+                                .timeout(Duration.ofSeconds(5))
+                                .header("Content-Type", "application/json")
+                                .header("Accept", "application/json, text/event-stream")
+                                .POST(HttpRequest.BodyPublishers.ofString(body.replace('\\'', '"')));
+                        if (sessionId != null) {
+                            request.header("Mcp-Session-Id", sessionId);
+                        }
+                        HttpResponse<String> response = client.send(
+                                request.build(), HttpResponse.BodyHandlers.ofString(UTF_8));
+                        assertTrue(response.statusCode() >= 200 && response.statusCode() < 300,
+                                response.statusCode() + " " + response.body());
+                        return response;
+                    }
+
+                    private JsonNode response(HttpResponse<String> response) throws Exception {
+                        String body = response.body();
+                        String data = body.lines()
+                                .filter(line -> line.startsWith("data:"))
+                                .map(line -> line.substring("data:".length()).stripLeading())
+                                .findFirst()
+                                .orElse(body);
+                        return jsonMapper.readTree(data);
+                    }
+
+                    @TestConfiguration(proxyBeanMethods = false)
+                    static class TraceConfiguration {
+                        @Bean
+                        InMemorySpanExporter inMemorySpanExporter() {
+                            return InMemorySpanExporter.create();
+                        }
+                    }
+                }
+                """.formatted(profileId);
     }
 
     private Path requiredJavaHome(String environmentVariable) {
@@ -560,6 +911,27 @@ class GeneratedProjectSmokeTest {
                             assertNotNull(bytes);
                             assertNotNull(active);
                             assertNotNull(queued);
+                            assertEquals(java.util.Set.of(
+                                    "gen2spring.runtime.mcp.tool.call",
+                                    "gen2spring.runtime.provider.request",
+                                    "gen2spring.runtime.provider.response.bytes",
+                                    "gen2spring.runtime.provider.executor.active",
+                                    "gen2spring.runtime.provider.executor.queued"),
+                                    meters.getMeters().stream()
+                                            .map(meter -> meter.getId().getName())
+                                            .filter(name -> name.startsWith("gen2spring.runtime."))
+                                            .collect(java.util.stream.Collectors.toSet()));
+                            assertEquals(java.util.Set.of("target.profile", "outcome", "error.category"),
+                                    toolTimer.getId().getTags().stream()
+                                            .map(io.micrometer.core.instrument.Tag::getKey)
+                                            .collect(java.util.stream.Collectors.toSet()));
+                            assertEquals(java.util.Set.of(
+                                    "target.profile", "outcome", "error.category", "http.status.class"),
+                                    providerTimer.getId().getTags().stream()
+                                            .map(io.micrometer.core.instrument.Tag::getKey)
+                                            .collect(java.util.stream.Collectors.toSet()));
+                            assertNull(meters.find("gen2spring.runtime.mcp.tool.call.active").meter());
+                            assertNull(meters.find("gen2spring.runtime.provider.request.active").meter());
                             assertEquals(1L, toolTimer.count());
                             assertEquals(1L, providerTimer.count());
                             assertEquals(1L, bytes.count());
