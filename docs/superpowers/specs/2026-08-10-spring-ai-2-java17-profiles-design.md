@@ -85,6 +85,7 @@ Registry API는 다음과 같다.
 ```java
 public final class CompatibilityProfileRegistry {
     public static CompatibilityProfileRegistry defaults();
+    public static CompatibilityProfileRegistry of(List<CompatibilityProfile> profiles);
     public List<CompatibilityProfile> profiles();
     public Optional<CompatibilityProfile> find(String id);
 }
