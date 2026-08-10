@@ -12,6 +12,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
@@ -287,7 +288,11 @@ public final class ProjectFileRenderer {
                 && "GRADLE_KOTLIN".equals(target.buildTool())
                 && "MVC".equals(target.webStack())
                 && "SYNC".equals(target.programmingModel())
-                && "STREAMABLE_HTTP".equals(target.transport());
+                && "STREAMABLE_HTTP".equals(target.transport())
+                && CompatibilityProfileRegistry.defaults()
+                        .find(candidate.id())
+                        .filter(candidate::equals)
+                        .isPresent();
     }
 
     private ProjectCoordinates requireCoordinates(ProjectCoordinates coordinates) {

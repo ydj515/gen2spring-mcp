@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.springai2;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -87,6 +88,35 @@ class ProjectFileRendererTest {
         for (CompatibilityProfile profile : unsupported) {
             assertThrows(GeneratorException.class, () -> new ProjectFileRenderer(profile), profile.toString());
         }
+    }
+
+    @Test
+    void rejectsNoncanonicalContainerImagesBeforeGeneratingFiles() {
+        CompatibilityProfile supported = profile(17);
+        List<CompatibilityProfile> noncanonical = List.of(
+                new CompatibilityProfile(
+                        supported.id(), supported.target(), supported.generatorModule(), supported.templateVersion(),
+                        supported.runtimeVersion(), supported.gradleVersion(),
+                        JAVA_17_IMAGE + "\nRUN echo injected"),
+                new CompatibilityProfile(
+                        supported.id(), supported.target(), supported.generatorModule(), supported.templateVersion(),
+                        supported.runtimeVersion(), supported.gradleVersion(), "eclipse-temurin:17-jre"));
+
+        noncanonical.forEach(this::assertGenerationRejectedAsNoncanonical);
+    }
+
+    @Test
+    void rejectsDriftedTemplateAndRuntimeMetadataBeforeGeneratingFiles() {
+        CompatibilityProfile supported = profile(17);
+        List<CompatibilityProfile> noncanonical = List.of(
+                new CompatibilityProfile(
+                        supported.id(), supported.target(), supported.generatorModule(), "spring-ai-2-v3",
+                        supported.runtimeVersion(), supported.gradleVersion(), supported.containerImage()),
+                new CompatibilityProfile(
+                        supported.id(), supported.target(), supported.generatorModule(), supported.templateVersion(),
+                        "0.3.0", supported.gradleVersion(), supported.containerImage()));
+
+        noncanonical.forEach(this::assertGenerationRejectedAsNoncanonical);
     }
 
     @Test
@@ -354,6 +384,17 @@ class ProjectFileRendererTest {
         return new CompatibilityProfile(
                 source.id(), target, generatorModule, source.templateVersion(), source.runtimeVersion(),
                 source.gradleVersion(), source.containerImage());
+    }
+
+    private void assertGenerationRejectedAsNoncanonical(CompatibilityProfile profile) {
+        GeneratorException exception = assertThrows(
+                GeneratorException.class,
+                () -> new SpringAi2ProjectGenerator().generate(contextWithSecrets(
+                        profile, List.of(tool("service-key", "KMA_SERVICE_KEY")))));
+
+        assertEquals(SOURCE_GENERATION_FAILED, exception.code());
+        assertEquals("The compatibility profile is not supported by the Spring AI 2 renderer",
+                exception.safeMessage());
     }
 
     private McpToolDefinition tool(String propertyName, String environmentVariable) {
