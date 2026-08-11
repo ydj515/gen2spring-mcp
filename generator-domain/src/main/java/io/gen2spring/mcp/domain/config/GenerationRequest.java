@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.domain.config;
 
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import java.util.ArrayList;
@@ -41,7 +42,8 @@ public record GenerationRequest(
             Map<String, ParameterOverride> parameters,
             ResponseNormalizationPolicy responseNormalization,
             OutputSelection output,
-            RetryPolicy retry) {
+            RetryPolicy retry,
+            PaginationPolicy pagination) {
         public OperationSelection {
             Objects.requireNonNull(output, "output");
         }
@@ -54,7 +56,19 @@ public record GenerationRequest(
                 Map<String, ParameterOverride> parameters,
                 ResponseNormalizationPolicy responseNormalization,
                 OutputSelection output) {
-            this(operationId, enabled, toolName, toolDescription, parameters, responseNormalization, output, null);
+            this(operationId, enabled, toolName, toolDescription, parameters, responseNormalization, output, null, null);
+        }
+
+        public OperationSelection(
+                String operationId,
+                boolean enabled,
+                String toolName,
+                String toolDescription,
+                Map<String, ParameterOverride> parameters,
+                ResponseNormalizationPolicy responseNormalization,
+                OutputSelection output,
+                RetryPolicy retry) {
+            this(operationId, enabled, toolName, toolDescription, parameters, responseNormalization, output, retry, null);
         }
 
         public OperationSelection(

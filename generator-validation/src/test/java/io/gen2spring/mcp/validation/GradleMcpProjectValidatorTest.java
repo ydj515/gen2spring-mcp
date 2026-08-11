@@ -17,11 +17,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
@@ -346,6 +350,24 @@ class GradleMcpProjectValidatorTest {
 
         assertEquals(VALIDATED, report.status());
         assertEquals(new GenerationProgress("MCP_TOOL_CALL", ProgressStatus.SUCCESS), progress.getLast());
+    }
+
+    @Test
+    void passesTheCompleteOrderedInteractionSequenceToTheMockFactory() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
+        AtomicReference<List<UpstreamCallExpectation>> captured = new AtomicReference<>();
+        GradleMcpProjectValidator.MockUpstreamFactory factory = expectations -> {
+            captured.set(expectations);
+            throw new IOException("intentional mock start failure");
+        };
+
+        var report = validator(factory).validate(request(root, EXPECTED, paginatedExpectedToolCall()));
+
+        assertEquals(UNVERIFIED, report.status());
+        assertEquals(2, captured.get().size());
+        assertEquals(List.of("first"), captured.get().get(0).query().get("cursor"));
+        assertEquals(List.of("second"), captured.get().get(1).query().get("cursor"));
     }
 
     @Test
@@ -987,6 +1009,33 @@ class GradleMcpProjectValidatorTest {
                 McpToolDefinition.OutputKind.GENERIC_JSON), Map.of("nx", nx));
     }
 
+    private ExpectedToolCall paginatedExpectedToolCall() {
+        ExpectedToolCall base = expectedToolCall();
+        HttpExecutionDefinition execution = base.tool().execution();
+        var tool = new McpToolDefinition(
+                base.tool().operationId(), base.tool().name(), base.tool().description(), base.tool().inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
+                        false, false, null, null,
+                        new PaginationPolicy("cursor", "first", "/items", "/next", 2, 10)),
+                base.tool().secretBindings(), base.tool().output());
+        return new ExpectedToolCall(
+                tool,
+                base.arguments(),
+                List.of(
+                        new ExpectedUpstreamInteraction(
+                                Map.of("cursor", "first"),
+                                ExpectedUpstreamOutcome.RESPONSE,
+                                new ExpectedUpstreamResponse(
+                                        200, "application/json", Map.of("items", List.of(1), "next", "second"))),
+                        new ExpectedUpstreamInteraction(
+                                Map.of("cursor", "second"),
+                                ExpectedUpstreamOutcome.RESPONSE,
+                                new ExpectedUpstreamResponse(
+                                        200, "application/json", Map.of("items", List.of(2))))),
+                Map.of("items", List.of(1, 2)));
+    }
+
     private Path runnableProject(String behavior) throws IOException {
         Path root = project("#!/bin/sh\nexit 0\n");
         writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
@@ -1146,9 +1195,9 @@ class GradleMcpProjectValidatorTest {
         }
 
         @Override
-        public GradleMcpProjectValidator.RunningMockUpstream start(UpstreamCallExpectation expectation)
+        public GradleMcpProjectValidator.RunningMockUpstream start(List<UpstreamCallExpectation> expectations)
                 throws IOException {
-            MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+            MockUpstreamServer delegate = MockUpstreamServer.start(expectations);
             return new GradleMcpProjectValidator.RunningMockUpstream() {
                 @Override
                 public URI baseUri() {

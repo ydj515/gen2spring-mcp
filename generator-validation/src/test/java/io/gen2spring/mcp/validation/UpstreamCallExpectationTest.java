@@ -13,7 +13,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
@@ -28,6 +31,62 @@ import org.junit.jupiter.api.Test;
 
 class UpstreamCallExpectationTest {
     private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+
+    @Test
+    void derivesOrderedPaginationAndRetryInteractionsWithInternalQueryValues() {
+        ExpectedToolCall legacy = call(
+                GET,
+                "/items",
+                List.of(binding("city", QUERY, "city")),
+                false,
+                false,
+                List.of(),
+                Map.of("city", "seoul"));
+        HttpExecutionDefinition execution = legacy.tool().execution();
+        var tool = new McpToolDefinition(
+                legacy.tool().operationId(),
+                legacy.tool().name(),
+                legacy.tool().description(),
+                legacy.tool().inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
+                        false, false, null, null,
+                        new PaginationPolicy("cursor", "first", "/items", "/next", 2, 10)),
+                legacy.tool().secretBindings(),
+                legacy.tool().output());
+        var call = new ExpectedToolCall(
+                tool,
+                legacy.arguments(),
+                List.of(
+                        new ExpectedUpstreamInteraction(
+                                Map.of("cursor", "first"),
+                                ExpectedUpstreamOutcome.RESPONSE,
+                                new ExpectedUpstreamResponse(503, "application/json", Map.of())),
+                        new ExpectedUpstreamInteraction(
+                                Map.of("cursor", "first"),
+                                ExpectedUpstreamOutcome.RESPONSE,
+                                new ExpectedUpstreamResponse(
+                                        200, "application/json", Map.of("items", List.of(1), "next", "second"))),
+                        new ExpectedUpstreamInteraction(
+                                Map.of("cursor", "second"),
+                                ExpectedUpstreamOutcome.RESPONSE,
+                                new ExpectedUpstreamResponse(
+                                        200, "application/json", linkedArguments("items", List.of(2), "next", null)))),
+                linkedArguments("items", List.of(1, 2), "next", null));
+
+        List<UpstreamCallExpectation> expectations = UpstreamCallExpectation.allFrom(call);
+
+        assertEquals(3, expectations.size());
+        assertEquals(Map.of("city", List.of("seoul"), "cursor", List.of("first")),
+                expectations.get(0).query());
+        assertEquals(503, expectations.get(0).responseStatus());
+        assertEquals(Map.of("city", List.of("seoul"), "cursor", List.of("first")),
+                expectations.get(1).query());
+        assertEquals(Map.of("city", List.of("seoul"), "cursor", List.of("second")),
+                expectations.get(2).query());
+        assertEquals(ExpectedUpstreamOutcome.RESPONSE, expectations.get(2).outcome());
+        assertThrows(UnsupportedOperationException.class, () -> expectations.add(expectations.getFirst()));
+    }
 
     @Test
     void derivesTheExactWeatherWireContractFromSourceArgumentsAndWireTargets() {

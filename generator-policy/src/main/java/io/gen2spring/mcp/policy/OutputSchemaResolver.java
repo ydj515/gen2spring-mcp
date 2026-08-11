@@ -6,6 +6,7 @@ import static io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind.TYPED_D
 
 import io.gen2spring.mcp.domain.config.GenerationRequest.OutputSelection;
 import io.gen2spring.mcp.domain.error.GeneratorException;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
@@ -87,6 +88,19 @@ public final class OutputSchemaResolver {
                     TYPED_DTO, providerSchema, object(resultProperties, required));
         } catch (IllegalArgumentException failure) {
             throw unsupported();
+        }
+    }
+
+    void requirePaginationSchema(ApiSchema providerSchema, PaginationPolicy pagination) {
+        if (providerSchema == null || pagination == null || !providerSchema.supported()) {
+            throw new IllegalArgumentException("Pagination schema is unsupported");
+        }
+        ApiSchema items = at(providerSchema, pagination.itemsPointer());
+        ApiSchema next = at(providerSchema, pagination.nextValuePointer());
+        if (items.type() != SchemaType.ARRAY || items.items() == null || !items.items().supported()
+                || !next.nullable()
+                || next.type() != SchemaType.STRING && next.type() != SchemaType.INTEGER) {
+            throw new IllegalArgumentException("Pagination schema is unsupported");
         }
     }
 

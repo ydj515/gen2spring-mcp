@@ -1,6 +1,10 @@
 package io.gen2spring.mcp.core;
 
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import java.util.ArrayList;
@@ -27,6 +31,11 @@ public final class ExpectedToolResponseFactory {
         ResponseNormalizationPolicy policy = tool.execution() == null
                 ? null
                 : tool.execution().responseNormalization();
+        PaginationPolicy pagination = tool.execution() == null
+                ? null : tool.execution().paginationPolicy();
+        if (pagination != null) {
+            return pagination(tool, policy, pagination);
+        }
         if (policy == null) {
             ExpectedUpstreamResponse upstream = new ExpectedUpstreamResponse(200, CONTENT_TYPE, marker);
             return new ExpectedToolResponse(upstream, upstream.body());
@@ -66,6 +75,97 @@ public final class ExpectedToolResponseFactory {
 
         ExpectedUpstreamResponse upstream = new ExpectedUpstreamResponse(200, CONTENT_TYPE, root);
         return new ExpectedToolResponse(upstream, immutableJson(result));
+    }
+
+    private ExpectedToolResponse pagination(
+            McpToolDefinition tool, ResponseNormalizationPolicy normalization, PaginationPolicy pagination) {
+        ApiSchema providerSchema = tool.output() == null ? null : tool.output().providerSchema();
+        if (providerSchema == null) {
+            throw invalid();
+        }
+        SchemaFixtureFactory fixtures = new SchemaFixtureFactory();
+        Object firstRoot = mutableCopy(fixtures.create(providerSchema, 0));
+        Object secondRoot = mutableCopy(fixtures.create(providerSchema, 1));
+        ApiSchema itemsSchema = schemaAt(providerSchema, pagination.itemsPointer());
+        ApiSchema nextSchema = schemaAt(providerSchema, pagination.nextValuePointer());
+        Object firstItem = fixtures.create(itemsSchema.items(), 0);
+        Object secondItem = fixtures.create(itemsSchema.items(), 1);
+        Object nextValue = fixtures.create(nextSchema, 1);
+        firstRoot = insert(firstRoot, pagination.itemsPointer(), List.of(firstItem));
+        firstRoot = insert(firstRoot, pagination.nextValuePointer(), nextValue);
+        secondRoot = insert(secondRoot, pagination.itemsPointer(), List.of(secondItem));
+        secondRoot = insert(secondRoot, pagination.nextValuePointer(), null);
+        firstRoot = normalizationFields(firstRoot, normalization, 2);
+        secondRoot = normalizationFields(secondRoot, normalization, 2);
+
+        Object aggregate = mutableCopy(firstRoot);
+        aggregate = insert(aggregate, pagination.itemsPointer(), List.of(firstItem, secondItem));
+        aggregate = insert(aggregate, pagination.nextValuePointer(), null);
+        Object expectedResult = normalization == null
+                ? immutableJson(aggregate) : normalizedResult(aggregate, normalization);
+        List<ExpectedUpstreamInteraction> interactions = List.of(
+                interaction(pagination.requestParameter(), pagination.initialValue(), firstRoot),
+                interaction(pagination.requestParameter(), nextValue, secondRoot));
+        return new ExpectedToolResponse(interactions, expectedResult);
+    }
+
+    private ExpectedUpstreamInteraction interaction(String parameter, Object value, Object responseBody) {
+        Map<String, Object> internal = value == null ? Map.of() : Map.of(parameter, value);
+        return new ExpectedUpstreamInteraction(internal, ExpectedUpstreamOutcome.RESPONSE,
+                new ExpectedUpstreamResponse(200, CONTENT_TYPE, responseBody));
+    }
+
+    private Object normalizationFields(Object root, ResponseNormalizationPolicy policy, int totalCount) {
+        if (policy == null) {
+            return root;
+        }
+        Object result = root;
+        if (policy.successCodePointer() != null) {
+            result = insert(result, policy.successCodePointer(), policy.successValues().getFirst());
+        }
+        if (policy.errorMessagePointer() != null) {
+            result = insert(result, policy.errorMessagePointer(), "NORMAL_SERVICE");
+        }
+        if (policy.totalCountPointer() != null) {
+            result = insert(result, policy.totalCountPointer(), totalCount);
+        }
+        return result;
+    }
+
+    private Object normalizedResult(Object root, ResponseNormalizationPolicy policy) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("data", policy.dataPointer() == null ? root : at(root, policy.dataPointer()));
+        if (policy.totalCountPointer() != null) {
+            result.put("page", Map.of("totalCount", at(root, policy.totalCountPointer())));
+        }
+        if (policy.successCodePointer() != null || policy.errorMessagePointer() != null) {
+            Map<String, Object> provider = new LinkedHashMap<>();
+            if (policy.successCodePointer() != null) {
+                provider.put("code", at(root, policy.successCodePointer()));
+            }
+            if (policy.errorMessagePointer() != null) {
+                provider.put("message", at(root, policy.errorMessagePointer()));
+            }
+            result.put("provider", provider);
+        }
+        return immutableJson(result);
+    }
+
+    private ApiSchema schemaAt(ApiSchema root, String pointer) {
+        ApiSchema current = root;
+        for (String token : tokens(pointer)) {
+            if (current.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.OBJECT) {
+                current = current.properties() == null ? null : current.properties().get(token);
+            } else if (current.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.ARRAY) {
+                current = current.items();
+            } else {
+                current = null;
+            }
+            if (current == null) {
+                throw invalid();
+            }
+        }
+        return current;
     }
 
     private Object insert(Object root, String pointer, Object value) {
@@ -248,9 +348,22 @@ public final class ExpectedToolResponseFactory {
         return new IllegalArgumentException(SAFE_MESSAGE);
     }
 
-    public record ExpectedToolResponse(ExpectedUpstreamResponse upstreamResponse, Object expectedResult) {
+    public record ExpectedToolResponse(
+            List<ExpectedUpstreamInteraction> upstreamInteractions, Object expectedResult) {
         public ExpectedToolResponse {
-            Objects.requireNonNull(upstreamResponse, SAFE_MESSAGE);
+            if (upstreamInteractions == null || upstreamInteractions.isEmpty()) {
+                throw new IllegalArgumentException(SAFE_MESSAGE);
+            }
+            upstreamInteractions = List.copyOf(upstreamInteractions);
+        }
+
+        public ExpectedToolResponse(ExpectedUpstreamResponse response, Object expectedResult) {
+            this(List.of(new ExpectedUpstreamInteraction(
+                    Map.of(), ExpectedUpstreamOutcome.RESPONSE, response)), expectedResult);
+        }
+
+        public ExpectedUpstreamResponse upstreamResponse() {
+            return upstreamInteractions.getFirst().response();
         }
     }
 }

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind;
 import java.math.BigDecimal;
@@ -134,6 +135,44 @@ class GenerationConfigurationParserTest {
         }
     }
 
+    @Test
+    void parsesStrictPaginationPoliciesAndLeavesOmittedPaginationDisabled() {
+        var omitted = parser.parseYaml(validYaml().getBytes(UTF_8));
+        var stringValue = parser.parseYaml(withYamlPagination("first").getBytes(UTF_8));
+        var integerValue = parser.parseYaml(withYamlPagination("9223372036854775808").getBytes(UTF_8));
+
+        assertEquals(null, omitted.operations().getFirst().pagination());
+        assertEquals(new PaginationPolicy(
+                        "cursor", "first", "/response/body/items", "/response/body/nextCursor", 10, 1_000),
+                stringValue.operations().getFirst().pagination());
+        assertEquals(new BigInteger("9223372036854775808"),
+                integerValue.operations().getFirst().pagination().initialValue());
+    }
+
+    @Test
+    void rejectsMalformedPaginationWithoutLeakingRejectedValues() {
+        String rejected = "private-pagination-marker";
+        List<String> invalid = List.of(
+                withYamlPagination("null"),
+                withYamlPagination("true"),
+                withYamlPagination("1.5"),
+                withYamlPagination("[]"),
+                withYamlPagination("{}"),
+                withYamlPagination("first").replace("itemsPath: /response/body/items", "itemsPath: items"),
+                withYamlPagination("first").replace("maxPages: 10", "maxPages: 1"),
+                withYamlPagination("first").replace("maxItems: 1000", "maxItems: 2001"),
+                withYamlPagination("first") + "      unknown: " + rejected + "\n");
+
+        for (int index = 0; index < invalid.size(); index++) {
+            String yaml = invalid.get(index);
+            GenerationConfigurationException failure = assertThrows(
+                    GenerationConfigurationException.class,
+                    () -> parser.parseYaml(yaml.getBytes(UTF_8)), "case " + index);
+            assertEquals("Generation configuration is invalid", failure.getMessage());
+            assertFalse(failure.getMessage().contains(rejected));
+        }
+    }
+
     private void assertInvalidJson(String json) {
         GenerationConfigurationException exception = assertThrows(
                 GenerationConfigurationException.class,
@@ -172,6 +211,17 @@ class GenerationConfigurationParserTest {
 
     private static String withYamlRetry(String policy) {
         return validYaml().replace("    parameters: {}", "    parameters: {}\n    retry:\n      " + policy.strip());
+    }
+
+    private static String withYamlPagination(String initialValue) {
+        return validYaml().replace("    parameters: {}", "    parameters: {}\n"
+                + "    pagination:\n"
+                + "      requestParameter: cursor\n"
+                + "      initialValue: " + initialValue + "\n"
+                + "      itemsPath: /response/body/items\n"
+                + "      nextValuePath: /response/body/nextCursor\n"
+                + "      maxPages: 10\n"
+                + "      maxItems: 1000");
     }
 
     private static String validJson() {

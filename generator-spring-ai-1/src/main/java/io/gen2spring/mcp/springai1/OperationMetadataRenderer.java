@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.springai1;
 
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
@@ -12,6 +13,7 @@ final class OperationMetadataRenderer {
     String render(String packageName, String domainClass, List<McpToolDefinition> tools) {
         boolean normalized = tools.stream().anyMatch(tool -> tool.execution().responseNormalization() != null);
         boolean retried = tools.stream().anyMatch(tool -> tool.execution().retryPolicy() != null);
+        boolean paginated = tools.stream().anyMatch(tool -> tool.execution().paginationPolicy() != null);
         StringBuilder source = new StringBuilder("package ").append(packageName).append(".generated.metadata;\n\n")
                 .append("import ").append(packageName).append(".runtime.OperationDefinition;\n")
                 .append("import ").append(packageName).append(".runtime.ParameterBinding;\n")
@@ -24,19 +26,24 @@ final class OperationMetadataRenderer {
                     .append("import com.fasterxml.jackson.databind.node.JsonNodeFactory;\n")
                     .append("import com.fasterxml.jackson.databind.node.TextNode;\n");
         }
-        if (retried) {
+        if (retried || paginated) {
             source.append("import ").append(packageName).append(".runtime.RetryPolicy;\n");
+        }
+        if (paginated) {
+            source.append("import ").append(packageName).append(".runtime.PaginationPolicy;\n")
+                    .append("import java.math.BigInteger;\n");
         }
         source.append("import java.util.List;\n\n")
                 .append("public final class ").append(domainClass).append("Operations {\n")
                 .append("    private ").append(domainClass).append("Operations() {}\n");
         for (McpToolDefinition tool : tools) {
-            appendOperation(source, tool, retried);
+            appendOperation(source, tool, retried || paginated, paginated);
         }
         return source.append("}\n").toString();
     }
 
-    private void appendOperation(StringBuilder source, McpToolDefinition tool, boolean retried) {
+    private void appendOperation(
+            StringBuilder source, McpToolDefinition tool, boolean retried, boolean paginated) {
         source.append("\n    public static final OperationDefinition ")
                 .append(JavaSourceRenderer.constantName(tool.operationId())).append(" = new OperationDefinition(\n")
                 .append("            ").append(JavaStringLiteral.quote(tool.operationId())).append(",\n")
@@ -54,7 +61,33 @@ final class OperationMetadataRenderer {
             source.append(",\n            ");
             appendRetryPolicy(source, tool.execution().retryPolicy());
         }
+        if (paginated) {
+            source.append(",\n            ");
+            appendPaginationPolicy(source, tool.execution().paginationPolicy());
+        }
         source.append(");\n");
+    }
+
+    private void appendPaginationPolicy(StringBuilder source, PaginationPolicy policy) {
+        if (policy == null) {
+            source.append("null");
+            return;
+        }
+        source.append("new PaginationPolicy(")
+                .append(JavaStringLiteral.quote(policy.requestParameter())).append(", ");
+        if (policy.initialValue() == null) {
+            source.append("null");
+        } else if (policy.initialValue() instanceof String text) {
+            source.append(JavaStringLiteral.quote(text));
+        } else if (policy.initialValue() instanceof java.math.BigInteger integer) {
+            source.append("new BigInteger(").append(JavaStringLiteral.quote(integer.toString())).append(")");
+        } else {
+            throw JavaSourceRenderer.invalid("Pagination initial value must be a string or integer");
+        }
+        source.append(", ").append(JavaStringLiteral.quote(policy.itemsPointer()))
+                .append(", ").append(JavaStringLiteral.quote(policy.nextValuePointer()))
+                .append(", ").append(policy.maxPages())
+                .append(", ").append(policy.maxItems()).append(')');
     }
 
     private void appendRetryPolicy(StringBuilder source, RetryPolicy policy) {

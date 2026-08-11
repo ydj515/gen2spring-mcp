@@ -13,6 +13,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OutputSelection;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
@@ -74,11 +75,13 @@ public final class GenerationConfigurationParser {
     private static final Set<String> TOOL_CALL_FIELDS = Set.of("operationId", "arguments");
     private static final Set<String> OPERATION_FIELDS = Set.of(
             "operationId", "enabled", "toolName", "toolDescription", "parameters", "responseNormalization", "output",
-            "retry");
+            "retry", "pagination");
     private static final Set<String> OUTPUT_FIELDS = Set.of("mode");
     private static final Set<String> RETRY_FIELDS = Set.of(
             "statusCodes", "networkErrors", "maxRetries", "initialBackoffMillis", "maxBackoffMillis",
             "respectRetryAfter");
+    private static final Set<String> PAGINATION_FIELDS = Set.of(
+            "requestParameter", "initialValue", "itemsPath", "nextValuePath", "maxPages", "maxItems");
     private static final Set<String> PARAMETER_FIELDS = Set.of("source", "environmentVariable");
     private static final Set<String> RESPONSE_NORMALIZATION_FIELDS = Set.of(
             "dataPath", "successCodePath", "successValues", "errorMessagePath", "totalCountPath");
@@ -202,7 +205,8 @@ public final class GenerationConfigurationParser {
             jsonValueMode = parent.jsonValueMode()
                     || (parent.mapping() && ("arguments".equals(parent.pendingKey())
                     || "successValues".equals(parent.pendingKey())
-                    || "statusCodes".equals(parent.pendingKey())));
+                    || "statusCodes".equals(parent.pendingKey())
+                    || "initialValue".equals(parent.pendingKey())));
             parent.completeValue();
         }
         containers.push(new YamlContainer(mapping, jsonValueMode));
@@ -227,12 +231,21 @@ public final class GenerationConfigurationParser {
         boolean isJsonValue = container != null && container.jsonValueMode();
         boolean supportedJsonScalar = Tag.STR.equals(tag) || Tag.INT.equals(tag)
                 || Tag.FLOAT.equals(tag) || Tag.BOOL.equals(tag);
+        if ("initialValue".equals(field)) {
+            if (!Tag.STR.equals(tag) && !Tag.INT.equals(tag)) {
+                throw invalid("Generation configuration scalar types must match the schema");
+            }
+            container.completeValue();
+            return;
+        }
         Tag expected;
         if ("enabled".equals(field) || "networkErrors".equals(field) || "respectRetryAfter".equals(field)) {
             expected = Tag.BOOL;
         } else if ("maxRetries".equals(field)
                 || "initialBackoffMillis".equals(field)
-                || "maxBackoffMillis".equals(field)) {
+                || "maxBackoffMillis".equals(field)
+                || "maxPages".equals(field)
+                || "maxItems".equals(field)) {
             expected = Tag.INT;
         } else {
             expected = Tag.STR;
@@ -347,6 +360,24 @@ public final class GenerationConfigurationParser {
                 requireInteger(retry, "initialBackoffMillis", "Operation retry initial backoff");
                 requireInteger(retry, "maxBackoffMillis", "Operation retry max backoff");
                 optionalBoolean(retry, "respectRetryAfter", "Operation retry Retry-After policy");
+            }
+            if (operation.has("pagination")) {
+                JsonNode pagination = operation.get("pagination");
+                requireObject(pagination, "Operation pagination");
+                requireFields(pagination, PAGINATION_FIELDS,
+                        Set.of("requestParameter", "itemsPath", "nextValuePath", "maxPages", "maxItems"),
+                        "Operation pagination");
+                requireString(pagination, "requestParameter", "Operation pagination request parameter");
+                requireString(pagination, "itemsPath", "Operation pagination items path");
+                requireString(pagination, "nextValuePath", "Operation pagination next value path");
+                requireInteger(pagination, "maxPages", "Operation pagination max pages");
+                requireInteger(pagination, "maxItems", "Operation pagination max items");
+                if (pagination.has("initialValue")) {
+                    JsonNode initialValue = pagination.get("initialValue");
+                    if (initialValue == null || !initialValue.isTextual() && !initialValue.isIntegralNumber()) {
+                        throw invalid("Operation pagination initial value must be a string or integer");
+                    }
+                }
             }
             if (operation.has("responseNormalization")) {
                 JsonNode normalization = operation.get("responseNormalization");
@@ -549,7 +580,7 @@ public final class GenerationConfigurationParser {
             String description = optionalDescription(raw.toolDescription());
             operations.add(new OperationSelection(operationId, raw.enabled(), toolName, description,
                     parameters(raw.parameters()), responseNormalization(raw.responseNormalization()),
-                    output(raw.output()), retry(raw.retry())));
+                    output(raw.output()), retry(raw.retry()), pagination(raw.pagination())));
         }
         if (!enabled) {
             throw invalid("At least one operation must be enabled");
@@ -615,6 +646,19 @@ public final class GenerationConfigurationParser {
             return new RetryPolicy(
                     raw.statusCodes(), Boolean.TRUE.equals(raw.networkErrors()), raw.maxRetries(),
                     raw.initialBackoffMillis(), raw.maxBackoffMillis(), Boolean.TRUE.equals(raw.respectRetryAfter()));
+        } catch (IllegalArgumentException failure) {
+            throw invalid("Generation configuration is invalid");
+        }
+    }
+
+    private PaginationPolicy pagination(RawPagination raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return new PaginationPolicy(
+                    raw.requestParameter(), raw.initialValue() == null ? null : scalarValue(raw.initialValue()),
+                    raw.itemsPath(), raw.nextValuePath(), raw.maxPages(), raw.maxItems());
         } catch (IllegalArgumentException failure) {
             throw invalid("Generation configuration is invalid");
         }
@@ -707,7 +751,8 @@ public final class GenerationConfigurationParser {
             Map<String, RawParameterOverride> parameters,
             RawResponseNormalization responseNormalization,
             RawOutput output,
-            RawRetry retry) {}
+            RawRetry retry,
+            RawPagination pagination) {}
 
     private record RawOutput(RawOutputMode mode) {}
 
@@ -720,6 +765,14 @@ public final class GenerationConfigurationParser {
             Long initialBackoffMillis,
             Long maxBackoffMillis,
             Boolean respectRetryAfter) {}
+
+    private record RawPagination(
+            String requestParameter,
+            JsonNode initialValue,
+            String itemsPath,
+            String nextValuePath,
+            Integer maxPages,
+            Integer maxItems) {}
 
     private record RawResponseNormalization(
             String dataPath,

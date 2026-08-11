@@ -10,6 +10,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiParameter;
@@ -140,12 +141,16 @@ public final class ToolModelFactory {
         validateOverrideKeys(operation, document, overrides);
         validateRequestBody(operation);
         ResponseNormalizationPolicy normalization = responsePolicy(selection);
+        RetryPolicy retryPolicy = retryPolicy(selection, operation);
+        PaginationPolicy paginationPolicy = paginationPolicy(selection, operation, document, overrides);
         OutputDefinition output = outputSchemaResolver.resolve(
                 selection.output(), operation.successResponse(), normalization);
-        RetryPolicy retryPolicy = retryPolicy(selection, operation);
         Map<String, ResolvedApiKeySecret> apiKeySecrets = resolveApiKeySecrets(operation, document, overrides);
         Set<String> secretTargets = new HashSet<>();
         for (ApiParameter parameter : operation.parameters()) {
+            if (paginationPolicy != null && parameter.name().equals(paginationPolicy.requestParameter())) {
+                continue;
+            }
             rejectRuntimeOwnedOrRestrictedHeader(parameter.location(), parameter.name());
             OpenApiDocument.ApiSecurityScheme apiKeyScheme = matchingApiKeyScheme(document, operation, parameter);
             ParameterOverride override = overrideFor(overrides, parameter.name(), apiKeyScheme);
@@ -215,7 +220,8 @@ public final class ToolModelFactory {
                                 && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT,
                         operation.requestBodyRequired(),
                         normalization,
-                        retryPolicy),
+                        retryPolicy,
+                        paginationPolicy),
                 List.copyOf(secretBindings),
                 output);
     }
@@ -231,6 +237,84 @@ public final class ToolModelFactory {
                     "Retry policy is unsupported for this operation");
         }
         return selection.retry();
+    }
+
+    private PaginationPolicy paginationPolicy(
+            OperationSelection selection,
+            ApiOperation operation,
+            OpenApiDocument document,
+            Map<String, ParameterOverride> overrides) {
+        PaginationPolicy policy = selection.pagination();
+        if (policy == null) {
+            return null;
+        }
+        if (operation.method() != OpenApiDocument.HttpMethod.GET || overrides.containsKey(policy.requestParameter())) {
+            throw paginationUnsupported();
+        }
+        ApiParameter parameter = operation.parameters().stream()
+                .filter(candidate -> candidate.name().equals(policy.requestParameter()))
+                .findFirst()
+                .orElseThrow(this::paginationUnsupported);
+        if (parameter.location() != OpenApiDocument.ParameterLocation.QUERY
+                || parameter.schema() == null || !parameter.schema().supported()
+                || parameter.schema().type() != OpenApiDocument.SchemaType.STRING
+                && parameter.schema().type() != OpenApiDocument.SchemaType.INTEGER
+                || parameter.required() && policy.initialValue() == null
+                || matchingApiKeyScheme(document, operation, parameter) != null
+                || !validPaginationValue(parameter.schema(), policy.initialValue())) {
+            throw paginationUnsupported();
+        }
+        try {
+            outputSchemaResolver.requirePaginationSchema(operation.successResponse(), policy);
+        } catch (IllegalArgumentException failure) {
+            throw paginationUnsupported();
+        }
+        return policy;
+    }
+
+    private boolean validPaginationValue(OpenApiDocument.ApiSchema schema, Object value) {
+        if (value == null) {
+            return true;
+        }
+        if (schema.type() == OpenApiDocument.SchemaType.STRING && value instanceof String string) {
+            if ((schema.enumValues() != null && !schema.enumValues().isEmpty()
+                    && !schema.enumValues().contains(string))
+                    || schema.minLength() != null && string.length() < schema.minLength()
+                    || schema.maxLength() != null && string.length() > schema.maxLength()) {
+                return false;
+            }
+            try {
+                return schema.pattern() == null
+                        || java.util.regex.Pattern.compile(schema.pattern()).matcher(string).matches();
+            } catch (java.util.regex.PatternSyntaxException failure) {
+                return false;
+            }
+        }
+        if (schema.type() == OpenApiDocument.SchemaType.INTEGER && value instanceof java.math.BigInteger integer) {
+            java.math.BigDecimal decimal = new java.math.BigDecimal(integer);
+            if (schema.minimum() != null && decimal.compareTo(schema.minimum()) < 0
+                    || schema.maximum() != null && decimal.compareTo(schema.maximum()) > 0) {
+                return false;
+            }
+            if ("int32".equals(schema.format())
+                    && (integer.compareTo(java.math.BigInteger.valueOf(Integer.MIN_VALUE)) < 0
+                    || integer.compareTo(java.math.BigInteger.valueOf(Integer.MAX_VALUE)) > 0)) {
+                return false;
+            }
+            if ("int64".equals(schema.format())
+                    && (integer.compareTo(java.math.BigInteger.valueOf(Long.MIN_VALUE)) < 0
+                    || integer.compareTo(java.math.BigInteger.valueOf(Long.MAX_VALUE)) > 0)) {
+                return false;
+            }
+            return schema.enumValues() == null || schema.enumValues().isEmpty()
+                    || schema.enumValues().contains(integer.toString());
+        }
+        return false;
+    }
+
+    private GeneratorException paginationUnsupported() {
+        return GeneratorException.user(
+                OPERATION_UNSUPPORTED, "tool-policy", "Pagination policy is unsupported for this operation");
     }
 
     private OpenApiDocument.ApiSecurityScheme matchingApiKeyScheme(

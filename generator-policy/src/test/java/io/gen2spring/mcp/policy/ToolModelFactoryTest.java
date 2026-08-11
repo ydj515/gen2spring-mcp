@@ -16,6 +16,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.OutputSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiParameter;
@@ -109,6 +110,88 @@ class ToolModelFactoryTest {
         assertEquals("Retry policy is unsupported for this operation", failure.safeMessage());
         assertFalse(failure.safeMessage().contains(privateOperationId));
         assertFalse(failure.safeMessage().contains("598"));
+    }
+
+    @Test
+    void internalizesAValidatedPaginationQueryParameter() {
+        PaginationPolicy pagination = pagination("first");
+        ApiOperation operation = paginatedOperation(
+                HttpMethod.GET, new ApiParameter("cursor", ParameterLocation.QUERY, false, "Cursor", textSchema()),
+                paginatedResponse(textSchema(), nullableTextSchema()));
+        OperationSelection selection = new OperationSelection(
+                "getForecast", true, null, null, Map.of(), null,
+                new OutputSelection(OutputKind.TYPED_DTO), null, pagination);
+
+        var tool = factory.create(document(List.of(operation)), request(List.of(selection))).getFirst();
+
+        assertSame(pagination, tool.execution().paginationPolicy());
+        assertFalse(tool.inputs().stream().anyMatch(input -> input.jsonName().equals("cursor")));
+        assertFalse(tool.execution().bindings().stream().anyMatch(binding -> binding.targetName().equals("cursor")));
+        assertEquals(OutputKind.TYPED_DTO, tool.outputKind());
+    }
+
+    @Test
+    void rejectsUnsupportedPaginationOperationParameterAndSchemaShapes() {
+        List<ApiOperation> invalidOperations = List.of(
+                paginatedOperation(HttpMethod.POST,
+                        new ApiParameter("cursor", ParameterLocation.QUERY, false, null, textSchema()),
+                        paginatedResponse(textSchema(), nullableTextSchema())),
+                paginatedOperation(HttpMethod.GET,
+                        new ApiParameter("cursor", ParameterLocation.HEADER, false, null, textSchema()),
+                        paginatedResponse(textSchema(), nullableTextSchema())),
+                paginatedOperation(HttpMethod.GET,
+                        new ApiParameter("cursor", ParameterLocation.QUERY, false, null, schema()),
+                        paginatedResponse(textSchema(), nullableTextSchema())),
+                paginatedOperation(HttpMethod.GET,
+                        new ApiParameter("cursor", ParameterLocation.QUERY, false, null, textSchema()),
+                        paginatedResponse(textSchema(), textSchema())),
+                paginatedOperation(HttpMethod.GET,
+                        new ApiParameter("cursor", ParameterLocation.QUERY, false, null, textSchema()),
+                        paginatedResponse(null, nullableTextSchema())));
+
+        for (ApiOperation operation : invalidOperations) {
+            assertPaginationUnsupported(operation, pagination("first"), Map.of());
+        }
+        assertPaginationUnsupported(
+                paginatedOperation(HttpMethod.GET,
+                        new ApiParameter("cursor", ParameterLocation.QUERY, true, null, textSchema()),
+                        paginatedResponse(textSchema(), nullableTextSchema())),
+                pagination(null), Map.of());
+
+        ApiSchema invalidPattern = new ApiSchema(
+                SchemaType.STRING, null, false, List.of(), null, null,
+                null, null, "[", null, Map.of(), List.of(), null, true, List.of());
+        assertPaginationUnsupported(
+                paginatedOperation(HttpMethod.GET,
+                        new ApiParameter("cursor", ParameterLocation.QUERY, false, null, invalidPattern),
+                        paginatedResponse(textSchema(), nullableTextSchema())),
+                pagination("first"), Map.of());
+    }
+
+    @Test
+    void rejectsPaginationParameterOverridesAndApiKeyTargets() {
+        ApiOperation operation = paginatedOperation(
+                HttpMethod.GET, new ApiParameter("cursor", ParameterLocation.QUERY, false, null, textSchema()),
+                paginatedResponse(textSchema(), nullableTextSchema()));
+        assertPaginationUnsupported(operation, pagination("first"),
+                Map.of("cursor", new ParameterOverride(SERVER_SECRET, "PRIVATE_CURSOR")));
+        assertPaginationUnsupported(operation, pagination("first"),
+                Map.of("cursor", new ParameterOverride(USER_INPUT, null)));
+
+        ApiOperation secured = new ApiOperation(
+                "getForecast", HttpMethod.GET, "/forecast", "Get forecast", null,
+                operation.parameters(), null, false, List.of("cursorAuth"), true, List.of(), operation.successResponse());
+        OpenApiDocument securedDocument = new OpenApiDocument(
+                "3.0.3", "checksum", "yaml", URI.create("https://api.weather.example.com"), List.of(secured),
+                Map.of("cursorAuth", new ApiSecurityScheme(
+                        "cursorAuth", "apiKey", ParameterLocation.QUERY, "cursor")), List.of());
+        OperationSelection selection = new OperationSelection(
+                "getForecast", true, null, null, Map.of(), null,
+                new OutputSelection(OutputKind.GENERIC_JSON), null, pagination("first"));
+
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> factory.create(securedDocument, request(List.of(selection))));
+        assertEquals("Pagination policy is unsupported for this operation", failure.safeMessage());
     }
 
     @Test
@@ -642,6 +725,54 @@ class ToolModelFactoryTest {
         return new ApiSchema(
                 SchemaType.STRING, null, false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
+    }
+
+    private ApiSchema nullableTextSchema() {
+        ApiSchema text = textSchema();
+        return new ApiSchema(
+                text.type(), text.format(), true, text.enumValues(), text.minimum(), text.maximum(),
+                text.minLength(), text.maxLength(), text.pattern(), text.defaultValue(), text.properties(),
+                text.requiredProperties(), text.items(), text.supported(), text.warnings());
+    }
+
+    private ApiSchema arraySchema(ApiSchema items) {
+        if (items == null) {
+            return textSchema();
+        }
+        return new ApiSchema(
+                SchemaType.ARRAY, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), items, true, List.of());
+    }
+
+    private ApiSchema paginatedResponse(ApiSchema items, ApiSchema next) {
+        return objectSchema(Map.of(
+                "response", objectSchema(Map.of(
+                        "body", objectSchema(Map.of(
+                                "items", arraySchema(items),
+                                "nextCursor", next), List.of("items"))), List.of("body"))), List.of("response"));
+    }
+
+    private ApiOperation paginatedOperation(HttpMethod method, ApiParameter cursor, ApiSchema response) {
+        return new ApiOperation(
+                "getForecast", method, "/forecast", "Get forecast", null,
+                List.of(cursor), null, false, List.of(), true, List.of(), response);
+    }
+
+    private PaginationPolicy pagination(Object initialValue) {
+        return new PaginationPolicy(
+                "cursor", initialValue, "/response/body/items", "/response/body/nextCursor", 10, 1_000);
+    }
+
+    private void assertPaginationUnsupported(
+            ApiOperation operation, PaginationPolicy pagination, Map<String, ParameterOverride> overrides) {
+        OperationSelection selection = new OperationSelection(
+                "getForecast", true, null, null, overrides, null,
+                new OutputSelection(OutputKind.GENERIC_JSON), null, pagination);
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> factory.create(document(List.of(operation)), request(List.of(selection))));
+        assertEquals(OPERATION_UNSUPPORTED, failure.code());
+        assertEquals("tool-policy", failure.stage());
+        assertEquals("Pagination policy is unsupported for this operation", failure.safeMessage());
     }
 
     private GenerationRequest request(List<OperationSelection> selections) {

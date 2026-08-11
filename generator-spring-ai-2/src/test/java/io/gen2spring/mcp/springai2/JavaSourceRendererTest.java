@@ -12,6 +12,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
@@ -132,6 +133,43 @@ class JavaSourceRendererTest {
         assertTrue(retrySource.contains("interface RetrySleeper"), retrySource);
         assertTrue(executor.contains("sleepBeforeRetry"), executor);
         assertTrue(executor.contains("policy.respectRetryAfter()"), executor);
+    }
+
+    @Test
+    void rendersPaginationMetadataAndAccumulatorWithoutAVisibleCursorBinding() {
+        McpToolDefinition base = weatherTool();
+        ApiSchema text = textSchema();
+        ApiSchema nullableText = new ApiSchema(
+                SchemaType.STRING, null, true, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema response = objectSchema(Map.of(
+                "items", new ApiSchema(
+                        SchemaType.ARRAY, null, false, List.of(), null, null, null, null, null,
+                        null, Map.of(), List.of(), text, true, List.of()),
+                "next", nullableText), List.of("items"));
+        PaginationPolicy pagination = new PaginationPolicy("cursor", "first", "/items", "/next", 4, 100);
+        McpToolDefinition paginated = new McpToolDefinition(
+                base.operationId(), base.name(), base.description(), base.inputs(),
+                new HttpExecutionDefinition(
+                        base.execution().method(), base.execution().baseUrl(), base.execution().path(),
+                        base.execution().bindings(), false, false, null, null, pagination),
+                base.secretBindings(), new OutputDefinition(
+                        McpToolDefinition.OutputKind.GENERIC_JSON, response, null));
+
+        var files = renderer.render(context(List.of(paginated)));
+        String metadata = utf8(files.get(
+                "src/main/java/com/example/weather/generated/metadata/WeatherOperations.java"));
+        String operation = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/OperationDefinition.java"));
+        String executor = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java"));
+
+        assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/PaginationPolicy.java"));
+        assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/PageAccumulator.java"));
+        assertTrue(metadata.contains("new PaginationPolicy(\"cursor\", \"first\", \"/items\", \"/next\", 4, 100)"));
+        assertTrue(operation.contains("PaginationPolicy paginationPolicy"), operation);
+        assertTrue(executor.contains("awaitPaginated"), executor);
+        assertFalse(metadata.contains("ParameterLocation.QUERY, \"cursor\""), metadata);
     }
 
     @Test

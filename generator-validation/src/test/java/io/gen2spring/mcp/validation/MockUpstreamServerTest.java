@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -30,6 +31,38 @@ class MockUpstreamServerTest {
             .connectTimeout(Duration.ofSeconds(2))
             .build();
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @Test
+    void verifiesOrderedResponsesAndRejectsOutOfOrderRequests() throws Exception {
+        UpstreamCallExpectation first = orderedExpectation(
+                "first", 503, Map.of("retry", true), ExpectedUpstreamOutcome.RESPONSE);
+        UpstreamCallExpectation second = orderedExpectation(
+                "second", 200, Map.of("items", List.of(1)), ExpectedUpstreamOutcome.RESPONSE);
+        try (var server = MockUpstreamServer.start(List.of(first, second))) {
+            assertEquals(503, sendOrdered(server, "first").statusCode());
+            assertEquals(200, sendOrdered(server, "second").statusCode());
+            server.sealAndAwaitVerified(WAIT);
+        }
+
+        try (var server = MockUpstreamServer.start(List.of(first, second))) {
+            assertEquals(400, sendOrdered(server, "second").statusCode());
+            assertThrows(MockUpstreamServer.VerificationException.class,
+                    () -> server.sealAndAwaitVerified(WAIT));
+        }
+    }
+
+    @Test
+    void disconnectsWithATruncatedBodyAndThenContinuesTheOrderedSequence() throws Exception {
+        UpstreamCallExpectation disconnect = orderedExpectation(
+                "first", 200, Map.of(), ExpectedUpstreamOutcome.DISCONNECT);
+        UpstreamCallExpectation response = orderedExpectation(
+                "first", 200, Map.of("items", List.of(1)), ExpectedUpstreamOutcome.RESPONSE);
+        try (var server = MockUpstreamServer.start(List.of(disconnect, response))) {
+            assertThrows(IOException.class, () -> sendOrdered(server, "first"));
+            assertEquals(200, sendOrdered(server, "first").statusCode());
+            server.sealAndAwaitVerified(WAIT);
+        }
+    }
 
     @Test
     void acceptsTheExactRequestAndReturnsOnlyTheFixedValidationResult() throws Exception {
@@ -388,6 +421,34 @@ class MockUpstreamServerTest {
 
     private UpstreamCallExpectation expectation() {
         return expectation(List.of("validator"));
+    }
+
+    private UpstreamCallExpectation orderedExpectation(
+            String cursor,
+            int responseStatus,
+            Object responseBody,
+            ExpectedUpstreamOutcome outcome) {
+        return new UpstreamCallExpectation(
+                "listItems",
+                "GET",
+                "/items",
+                Map.of("cursor", List.of(cursor)),
+                Map.of(),
+                null,
+                Map.of(),
+                responseStatus,
+                "application/json",
+                responseBody,
+                outcome);
+    }
+
+    private HttpResponse<String> sendOrdered(MockUpstreamServer server, String cursor) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(server.baseUri().resolve("/items?cursor=" + cursor))
+                .header("traceparent", TRACEPARENT)
+                .timeout(WAIT)
+                .GET()
+                .build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private UpstreamCallExpectation expectation(List<String> tokenValues) {

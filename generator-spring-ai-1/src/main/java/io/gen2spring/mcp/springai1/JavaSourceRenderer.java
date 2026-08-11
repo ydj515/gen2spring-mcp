@@ -75,6 +75,8 @@ public final class JavaSourceRenderer {
                 .anyMatch(tool -> tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO);
         boolean hasRetryPolicies = tools.stream()
                 .anyMatch(tool -> tool.execution().retryPolicy() != null);
+        boolean hasPaginationPolicies = tools.stream()
+                .anyMatch(tool -> tool.execution().paginationPolicy() != null);
         Map<String, String> sources = new LinkedHashMap<>();
         putAll(sources, inputRenderer.render(packageName, packagePath, tools));
         for (McpToolDefinition tool : tools) {
@@ -91,7 +93,7 @@ public final class JavaSourceRenderer {
                 metadataRenderer.render(packageName, domainClass, tools));
         putAll(sources, runtimeRenderer.render(
                 packageName, packagePath, domainClass, tools.getFirst().operationId(),
-                hasTypedOutputs, hasRetryPolicies));
+                hasTypedOutputs, hasRetryPolicies || hasPaginationPolicies, hasPaginationPolicies));
         putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
         put(sources, "src/main/java/" + packagePath + "/runtime/RuntimeTelemetry.java",
                 runtimeTelemetryRenderer.render(packageName, tools));

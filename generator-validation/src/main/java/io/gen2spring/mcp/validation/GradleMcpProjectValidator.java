@@ -283,8 +283,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         Throwable primaryFailure = null;
         ValidationPhase phase = ValidationPhase.MOCK_START;
         try {
-            UpstreamCallExpectation expectation = UpstreamCallExpectation.from(request.expectedToolCall());
-            RunningMockUpstream upstream = mockUpstreamFactory.start(expectation);
+            List<UpstreamCallExpectation> expectations = UpstreamCallExpectation.allFrom(request.expectedToolCall());
+            RunningMockUpstream upstream = mockUpstreamFactory.start(expectations);
             progress.start("APPLICATION_CONTEXT");
             Throwable upstreamFailure = null;
             try {
@@ -972,7 +972,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     @FunctionalInterface
     interface MockUpstreamFactory {
-        RunningMockUpstream start(UpstreamCallExpectation expectation) throws IOException;
+        RunningMockUpstream start(List<UpstreamCallExpectation> expectations) throws IOException;
     }
 
     interface RunningMockUpstream extends AutoCloseable {
@@ -993,8 +993,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         void afterClose() throws IOException;
     }
 
-    private static RunningMockUpstream startMockUpstream(UpstreamCallExpectation expectation) throws IOException {
-        MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+    private static RunningMockUpstream startMockUpstream(List<UpstreamCallExpectation> expectations) throws IOException {
+        MockUpstreamServer delegate = MockUpstreamServer.start(expectations);
         return new RunningMockUpstream() {
             @Override
             public URI baseUri() {
