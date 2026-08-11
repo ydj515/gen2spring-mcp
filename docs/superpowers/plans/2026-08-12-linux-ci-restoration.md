@@ -1,22 +1,22 @@
-# Linux CI Restoration Implementation Plan
+# Fast Cross-Platform CI Restoration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restore a fast Linux core validation job with Node.js 24-based immutable Action pins while leaving Windows disabled.
+**Goal:** Restore fast Linux and Windows core validation jobs with Node.js 24-based immutable Action pins.
 
-**Architecture:** Keep the existing single workflow and activate only its Linux job. Run core module contracts plus a full production compilation through the installed CLI and web classes, while leaving generated-project and end-to-end tests for a later manual or scheduled lane. Preserve the Windows definition as comments, but synchronize its Action pins with Linux so later restoration starts from supported dependencies.
+**Architecture:** Keep the existing single workflow and run the same bounded core gate on Linux and Windows. Run core module contracts plus a full production compilation through the installed CLI and web classes, while leaving generated-project and end-to-end tests for a later manual or scheduled lane.
 
 **Tech Stack:** GitHub Actions, Temurin 17/21, Gradle 9.6.1
 
 ## Global Constraints
 
-- Activate exactly one job: `linux`.
-- Keep the entire `windows` job commented.
+- Activate exactly two jobs: `linux` and `windows`.
 - Use `actions/checkout` commit `3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7.0.1`, Node.js 24).
 - Use `actions/setup-java` commit `b6effb05e454b25005698d916606bdc6ffcbf961` (`v5.7.0`, Node.js 24).
 - Preserve `contents: read`.
 - Limit failed-generation diagnostics to validation status and safe stage metadata.
 - Canonicalize Linux tool-cache JDK homes with `realpath` before passing them to validation.
+- Canonicalize Windows JDK homes with PowerShell `Resolve-Path` before passing them to validation.
 
 ---
 
@@ -67,7 +67,7 @@ git add .github/workflows/ci.yml docs/superpowers/specs/2026-08-12-linux-ci-rest
 git commit -m "ci: restore Linux validation"
 ```
 
-- [ ] **Step 5: Push, open a pull request, and verify GitHub Actions**
+- [x] **Step 5: Push, open a pull request, and verify GitHub Actions**
 
 ```bash
 git push -u origin feat/restore-linux-ci
@@ -133,7 +133,7 @@ Inspect the official `actions/runner-images` Ubuntu Java installation script and
 
 Use `realpath "$JAVA_HOME"` when writing each Linux `GEN2SPRING_JAVA_*_HOME` value to `GITHUB_ENV`. Keep Windows disabled and unchanged.
 
-- [ ] **Step 4: Verify Linux CI**
+- [x] **Step 4: Verify Linux CI**
 
 Push the change and require the PR's Linux job to complete successfully.
 
@@ -155,6 +155,28 @@ Confirm the full command spends most of its runtime in installed CLI, generated-
 
 Run domain, OpenAPI, policy, core, and application tests. Build `generator-cli:installDist` so both emitters and validation production sources compile, and compile `generator-web:classes`.
 
-- [ ] **Step 3: Verify locally and in the PR**
+- [x] **Step 3: Verify locally and in the PR**
 
 Run the exact workflow command locally, then push and require the Linux job to pass. Keep the full suite out of this required workflow until it is restored as a separate manual or scheduled lane.
+
+### Task 5: Activate the Windows Core Gate
+
+**Files:**
+- Modify: `.github/workflows/ci.yml`
+- Modify: `docs/superpowers/specs/2026-08-12-linux-ci-restoration-design.md`
+
+**Interfaces:**
+- Consumes: Temurin 17/21 homes on `windows-latest` and the same production/core source graph used by Linux.
+- Produces: A bounded Windows result without generated-project boot or end-to-end MCP execution.
+
+- [x] **Step 1: Add a failing workflow-structure check**
+
+Require active `linux` and `windows` jobs, a `Test Windows core` step, the core task list, and absence of `integrationTest`.
+
+- [x] **Step 2: Activate and canonicalize Windows**
+
+Uncomment the Windows job, retain the Node.js 24 Action pins, resolve each JDK home with `Resolve-Path`, and use `gradlew.bat` with the same fast task list as Linux.
+
+- [ ] **Step 3: Verify Windows CI**
+
+Push the change and require both Linux and Windows jobs to complete successfully.
