@@ -13,14 +13,19 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Files;
@@ -185,6 +190,27 @@ class ProjectFileRendererTest {
         assertEquals("A generation context for the renderer compatibility profile is required", failure.safeMessage());
     }
 
+    @Test
+    void documentsFinalOutputRetryAndPaginationPoliciesWithoutInitialCursorValues() {
+        String readme = new ProjectFileRenderer(profile(17))
+                .readme(context(profile(17), List.of(policyTool())));
+
+        assertTrue(readme.contains("`output.mode`: `TYPED`"));
+        assertTrue(readme.contains("`retry.statusCodes`: `[429,503]`"));
+        assertTrue(readme.contains("`retry.networkErrors`: `true`"));
+        assertTrue(readme.contains("`retry.maxRetries`: `2`"));
+        assertTrue(readme.contains("`retry.initialBackoffMillis`: `100`"));
+        assertTrue(readme.contains("`retry.maxBackoffMillis`: `1000`"));
+        assertTrue(readme.contains("`retry.respectRetryAfter`: `true`"));
+        assertTrue(readme.contains("`pagination.requestParameter`: `cursor`"));
+        assertTrue(readme.contains("`pagination.itemsPath`: `/items`"));
+        assertTrue(readme.contains("`pagination.nextValuePath`: `/next`"));
+        assertTrue(readme.contains("`pagination.maxPages`: `10`"));
+        assertTrue(readme.contains("`pagination.maxItems`: `1000`"));
+        assertTrue(readme.contains("Limit violations fail the Tool call without returning partial items."));
+        assertFalse(readme.contains("initial-private-cursor"));
+    }
+
     private void assertProjectContract(CompatibilityProfile profile, int javaVersion, String image) {
         ProjectFileRenderer renderer = new ProjectFileRenderer(profile);
         String build = renderer.buildGradle(coordinates());
@@ -307,6 +333,21 @@ class ProjectFileRendererTest {
                 List.of(new SecretBinding(
                         "KMA_SERVICE_KEY", "service-key", ParameterLocation.QUERY, "serviceKey", true)),
                 McpToolDefinition.OutputKind.GENERIC_JSON);
+    }
+
+    private McpToolDefinition policyTool() {
+        ApiSchema result = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, true, List.of());
+        return new McpToolDefinition(
+                "getForecast", "weather_get_forecast", "Get forecast", List.of(),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), "/forecast", List.of(),
+                        false, false, null,
+                        new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true),
+                        new PaginationPolicy(
+                                "cursor", "initial-private-cursor", "/items", "/next", 10, 1_000)),
+                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, result, result));
     }
 
     private Path repositoryRoot() {

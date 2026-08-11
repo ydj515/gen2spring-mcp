@@ -217,12 +217,10 @@ public final class GenerationPipeline {
         paths.add(GenerationManifestWriter.MANIFEST_FILE);
         paths.add(ValidationReportWriter.REPORT_FILE);
         paths.add(request.project().artifactId() + ".zip");
-        List<GenerationPreview.Tool> tools = plan.tools().stream().map(tool -> new GenerationPreview.Tool(
-                tool.operationId(),
-                tool.name(),
-                tool.description(),
-                plan.expectedTools().get(tool.name()).inputSchema(),
-                GenerationPreview.ResponseNormalization.from(tool.execution().responseNormalization()))).toList();
+        List<GenerationPreview.Tool> tools = plan.tools().stream()
+                .map(tool -> GenerationPreview.Tool.from(
+                        tool, plan.expectedTools().get(tool.name()).inputSchema()))
+                .toList();
         return new GenerationPreview(
                 plan.profile(),
                 tools,

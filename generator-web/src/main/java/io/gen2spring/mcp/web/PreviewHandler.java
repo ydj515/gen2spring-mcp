@@ -126,10 +126,30 @@ final class PreviewHandler {
         node.put("name", tool.name());
         node.put("description", tool.description());
         node.set("inputSchema", json.valueToTree(tool.inputSchema()));
+        ObjectNode output = node.putObject("output");
+        output.put("mode", tool.output().mode());
+        putOptional(output, "schemaChecksum", tool.output().schemaChecksum());
+        GenerationPreview.Retry retry = tool.retry();
+        if (retry != null) {
+            ObjectNode value = node.putObject("retry");
+            value.set("statusCodes", json.valueToTree(retry.statusCodes()));
+            value.put("networkErrors", retry.networkErrors());
+            value.put("maxRetries", retry.maxRetries());
+            value.put("initialBackoffMillis", retry.initialBackoffMillis());
+            value.put("maxBackoffMillis", retry.maxBackoffMillis());
+            value.put("respectRetryAfter", retry.respectRetryAfter());
+        }
+        GenerationPreview.Pagination pagination = tool.pagination();
+        if (pagination != null) {
+            ObjectNode value = node.putObject("pagination");
+            value.put("requestParameter", pagination.requestParameter());
+            value.put("itemsPath", pagination.itemsPath());
+            value.put("nextValuePath", pagination.nextValuePath());
+            value.put("maxPages", pagination.maxPages());
+            value.put("maxItems", pagination.maxItems());
+        }
         GenerationPreview.ResponseNormalization normalization = tool.responseNormalization();
-        if (normalization == null) {
-            node.putNull("responseNormalization");
-        } else {
+        if (normalization != null) {
             ObjectNode value = node.putObject("responseNormalization");
             putNullable(value, "dataPointer", normalization.dataPointer());
             putNullable(value, "successCodePointer", normalization.successCodePointer());
@@ -138,6 +158,12 @@ final class PreviewHandler {
             putNullable(value, "totalCountPointer", normalization.totalCountPointer());
         }
         return node;
+    }
+
+    private void putOptional(ObjectNode node, String name, String value) {
+        if (value != null) {
+            node.put(name, value);
+        }
     }
 
     private ArrayNode warnings(java.util.List<OpenApiDocument.AnalysisWarning> warnings) {

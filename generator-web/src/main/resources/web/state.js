@@ -41,6 +41,15 @@ export function analyzedOperations(operations) {
     enabled: operation.supported,
     toolName: safeToolName(operation.operationId),
     toolDescription: operation.summary || operation.description || `Call ${operation.operationId}`,
+    outputMode: 'GENERIC_JSON',
+    retry: {
+      enabled: false, statusCodes: [], statusCodesText: '', networkErrors: false,
+      maxRetries: 1, initialBackoffMillis: 100, maxBackoffMillis: 1000, respectRetryAfter: true
+    },
+    pagination: {
+      enabled: false, requestParameter: '', initialValue: null, initialValueText: '',
+      itemsPath: '/items', nextValuePath: '/next', maxPages: 10, maxItems: 1000
+    },
     parameters: operation.parameters.map(parameter => ({
       ...parameter, source: 'USER_INPUT', environmentVariable: ''
     })),

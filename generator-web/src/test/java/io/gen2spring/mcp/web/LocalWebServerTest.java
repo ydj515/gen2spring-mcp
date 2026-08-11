@@ -71,6 +71,7 @@ class LocalWebServerTest {
             assertEquals(201, upload.statusCode(), upload.body());
             JsonNode uploaded = JSON.readTree(upload.body());
             assertEquals("getForecast", uploaded.path("operations").get(0).path("operationId").textValue());
+            assertTrue(uploaded.path("operations").get(0).path("supported").booleanValue(), uploaded.toPrettyString());
             String specificationId = uploaded.path("id").textValue();
 
             HttpResponse<String> preview = send(
@@ -81,6 +82,15 @@ class LocalWebServerTest {
             assertEquals("weather_get_forecast", previewJson.path("tools").get(0).path("name").textValue());
             assertEquals("spring-ai-2.0-java21-mvc-streamable",
                     previewJson.path("profile").path("id").textValue());
+            JsonNode tool = previewJson.path("tools").get(0);
+            assertEquals("TYPED", tool.path("output").path("mode").textValue());
+            assertTrue(tool.path("output").path("schemaChecksum").textValue().matches("[0-9a-f]{64}"));
+            assertEquals(503, tool.path("retry").path("statusCodes").get(0).intValue());
+            assertEquals(1, tool.path("retry").path("maxRetries").intValue());
+            assertEquals("cursor", tool.path("pagination").path("requestParameter").textValue());
+            assertEquals("/items", tool.path("pagination").path("itemsPath").textValue());
+            assertFalse(tool.has("responseNormalization"));
+            assertFalse(preview.body().contains("initial-private-cursor"));
             assertFalse(preview.body().contains("representative-private-value"));
 
             HttpResponse<String> invalidPreview = send(
@@ -234,8 +244,27 @@ class LocalWebServerTest {
                           in: query
                           required: true
                           schema: {type: string}
+                        - name: cursor
+                          in: query
+                          required: false
+                          schema: {type: string}
                       responses:
-                        '200': {description: Success}
+                        '200':
+                          description: Success
+                          content:
+                            application/json:
+                              schema:
+                                type: object
+                                required: [items]
+                                properties:
+                                  items:
+                                    type: array
+                                    items:
+                                      type: object
+                                      required: [id]
+                                      properties:
+                                        id: {type: integer, format: int64}
+                                  next: {type: string, nullable: true}
                 """;
     }
 
@@ -250,7 +279,12 @@ class LocalWebServerTest {
                   "validation":{"toolCall":{"operationId":"getForecast",
                     "arguments":{"city":"representative-private-value"}}},
                   "operations":[{"operationId":"getForecast","enabled":true,
-                    "toolName":"weather_get_forecast","toolDescription":"Get forecast","parameters":{}}]
+                    "toolName":"weather_get_forecast","toolDescription":"Get forecast","parameters":{},
+                    "output":{"mode":"TYPED"},
+                    "retry":{"statusCodes":[503],"networkErrors":false,"maxRetries":1,
+                      "initialBackoffMillis":10,"maxBackoffMillis":20,"respectRetryAfter":true},
+                    "pagination":{"requestParameter":"cursor","initialValue":"initial-private-cursor",
+                      "itemsPath":"/items","nextValuePath":"/next","maxPages":2,"maxItems":10}}]
                 }
                 """;
     }

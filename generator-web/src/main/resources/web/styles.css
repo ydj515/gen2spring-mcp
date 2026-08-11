@@ -119,3 +119,10 @@ legend { font-weight: 750; }
   section, .error-summary { padding: 1rem; }
   .step-nav { padding-bottom: .5rem; }
 }
+
+@media (max-width: 400px) {
+  .site-header, nav, main { padding-inline: .65rem; }
+  section, .error-summary { padding: .8rem; }
+  .field-row, .button-row { align-items: stretch; }
+  .field-row > *, .button-row > *, .downloads button { width: 100%; }
+}

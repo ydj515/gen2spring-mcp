@@ -37,15 +37,24 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
 import io.gen2spring.mcp.policy.ToolModelFactory;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -254,6 +263,80 @@ class GenerationPipelineTest {
         assertEquals("/response/body/totalCount", normalization.path("totalCountPath").asText());
         JsonNode rawOperation = manifest.path("operationMappings").get(1);
         assertFalse(rawOperation.path("responseNormalization").isObject());
+    }
+
+    @Test
+    void writesDeterministicFinalToolPoliciesWithoutRuntimeCursorValues() throws IOException {
+        Path firstRoot = Files.createDirectory(safeTempDir.resolve("policy-manifest-first"));
+        Path secondRoot = Files.createDirectory(safeTempDir.resolve("policy-manifest-second"));
+        OpenApiDocument document = new OpenApiDocument(
+                "3.0.3", "a".repeat(64), "yaml", URI.create("https://weather.example.test"),
+                List.of(), Map.of(), List.of());
+        McpToolDefinition tool = policyManifestTool();
+        GenerationManifestWriter writer = new GenerationManifestWriter(objectMapper);
+
+        Path first = writer.write(firstRoot, CompatibilityProfile.p0(), document, "b".repeat(64), List.of(tool));
+        Path second = writer.write(secondRoot, CompatibilityProfile.p0(), document, "b".repeat(64), List.of(tool));
+
+        assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second));
+        JsonNode mapping = objectMapper.readTree(first.toFile()).path("operationMappings").get(0);
+        JsonNode expected = objectMapper.readTree("""
+                {
+                  "operationId": "getForecast",
+                  "toolName": "weather_get_forecast",
+                  "output": {
+                    "mode": "TYPED",
+                    "schemaChecksum": "%s"
+                  },
+                  "pagination": {
+                    "itemsPath": "/items",
+                    "maxItems": 1000,
+                    "maxPages": 10,
+                    "nextValuePath": "/next",
+                    "requestParameter": "cursor"
+                  },
+                  "retry": {
+                    "initialBackoffMillis": 100,
+                    "maxBackoffMillis": 1000,
+                    "maxRetries": 2,
+                    "networkErrors": true,
+                    "respectRetryAfter": true,
+                    "statusCodes": [429, 503]
+                  }
+                }
+                """.formatted(GenerationPreview.Tool.from(tool, Map.of(
+                        "type", "object", "properties", Map.of(), "required", List.of()))
+                        .output().schemaChecksum()));
+        assertEquals(expected, mapping);
+        assertFalse(Files.readString(first, UTF_8).contains("initial-private-cursor"));
+    }
+
+    private McpToolDefinition policyManifestTool() {
+        ApiSchema id = new ApiSchema(
+                SchemaType.INTEGER, "int64", false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema item = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, Map.of("id", id), List.of("id"), null, true, List.of());
+        ApiSchema items = new ApiSchema(
+                SchemaType.ARRAY, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), item, true, List.of());
+        ApiSchema next = new ApiSchema(
+                SchemaType.STRING, null, true, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema result = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, Map.of("next", next, "items", items),
+                List.of("items"), null, true, List.of());
+        return new McpToolDefinition(
+                "getForecast", "weather_get_forecast", "Get forecast", List.of(),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://weather.example.test"), "/forecast", List.of(),
+                        false, false, null,
+                        new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true),
+                        new PaginationPolicy(
+                                "cursor", "initial-private-cursor", "/items", "/next", 10, 1_000)),
+                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, result, result));
     }
 
     @Test

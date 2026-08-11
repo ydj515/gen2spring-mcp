@@ -50,7 +50,7 @@ class SpringAi1ToolEmitterTest {
     private static final String EXPECTED_SOURCE_DIGEST =
             "bc79685cc468fbba0e9be596f5b4b7eb1d19e9ed35cf159eeddd1a3b29f7f09d";
     private static final String EXPECTED_PROJECT_DIGEST =
-            "cf5bf9cfaefd86ed2104023e2a56a525c3d449d7e26d89e336e1564cdd9b19b6";
+            "e6311f351f029cb08976f68a4834255b6f32d4b074a11f20200f49233b517730";
 
     @Test
     void emitsTheCharacterizedSpringAi1ToolSources() {

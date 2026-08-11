@@ -194,7 +194,13 @@ function renderPreview(preview) {
     const description = document.createElement('p');
     description.textContent = tool.description;
     const schema = document.createElement('pre');
-    schema.textContent = JSON.stringify(tool.inputSchema, null, 2);
+    schema.textContent = JSON.stringify({
+      inputSchema: tool.inputSchema,
+      output: tool.output,
+      ...(tool.retry ? {retry: tool.retry} : {}),
+      ...(tool.pagination ? {pagination: tool.pagination} : {}),
+      ...(tool.responseNormalization ? {responseNormalization: tool.responseNormalization} : {})
+    }, null, 2);
     card.append(heading, description, schema);
     return card;
   }));

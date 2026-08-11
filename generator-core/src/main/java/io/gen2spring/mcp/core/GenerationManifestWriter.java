@@ -61,6 +61,29 @@ public final class GenerationManifestWriter {
             ObjectNode mapping = mappings.addObject();
             mapping.put("operationId", tool.operationId());
             mapping.put("toolName", tool.name());
+            GenerationPreview.Output output = GenerationPreview.Output.from(tool);
+            ObjectNode outputNode = mapping.putObject("output");
+            outputNode.put("mode", output.mode());
+            putOptional(outputNode, "schemaChecksum", output.schemaChecksum());
+            GenerationPreview.Pagination pagination = GenerationPreview.Pagination.from(tool);
+            if (pagination != null) {
+                ObjectNode paginationNode = mapping.putObject("pagination");
+                paginationNode.put("itemsPath", pagination.itemsPath());
+                paginationNode.put("maxItems", pagination.maxItems());
+                paginationNode.put("maxPages", pagination.maxPages());
+                paginationNode.put("nextValuePath", pagination.nextValuePath());
+                paginationNode.put("requestParameter", pagination.requestParameter());
+            }
+            GenerationPreview.Retry retry = GenerationPreview.Retry.from(tool);
+            if (retry != null) {
+                ObjectNode retryNode = mapping.putObject("retry");
+                retryNode.put("initialBackoffMillis", retry.initialBackoffMillis());
+                retryNode.put("maxBackoffMillis", retry.maxBackoffMillis());
+                retryNode.put("maxRetries", retry.maxRetries());
+                retryNode.put("networkErrors", retry.networkErrors());
+                retryNode.put("respectRetryAfter", retry.respectRetryAfter());
+                retryNode.set("statusCodes", objectMapper.valueToTree(retry.statusCodes()));
+            }
             ResponseNormalizationPolicy policy = tool.execution().responseNormalization();
             if (policy != null) {
                 ObjectNode normalization = mapping.putObject("responseNormalization");

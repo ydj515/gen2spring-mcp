@@ -271,6 +271,37 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
+    void preservesNullableSuccessResponsePropertiesForBoundedPagination() throws Exception {
+        Path specification = Files.createTempFile("nullable-response", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Page API, version: '1.0' }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: listWidgets
+                      responses:
+                        '200':
+                          description: Success
+                          content:
+                            application/json:
+                              schema:
+                                type: object
+                                properties:
+                                  items:
+                                    type: array
+                                    items: { type: string }
+                                  next: { type: string, nullable: true }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertTrue(operation.supported(), operation.warnings().toString());
+        assertTrue(operation.successResponse().supported());
+        assertTrue(operation.successResponse().properties().get("next").nullable());
+    }
+
+    @Test
     void omitsReadOnlyPropertiesAndTheirRequestRequirements() throws Exception {
         Path specification = Files.createTempFile("read-only-request", ".yaml");
         Files.writeString(specification, """

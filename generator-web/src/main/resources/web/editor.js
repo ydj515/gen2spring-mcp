@@ -4,7 +4,11 @@ const ids = names => Object.fromEntries(names.map(name => [name, document.queryS
 const elements = ids([
   'operation-filter', 'operation-list', 'operation-editor', 'operation-enabled', 'tool-name',
   'tool-description', 'parameter-editor', 'data-path', 'success-code-path', 'success-values',
-  'error-message-path', 'total-count-path', 'validation-operation'
+  'error-message-path', 'total-count-path', 'validation-operation', 'output-mode',
+  'retry-enabled', 'retry-status-codes', 'retry-network-errors', 'retry-max-retries',
+  'retry-initial-backoff', 'retry-max-backoff', 'retry-respect-retry-after',
+  'pagination-enabled', 'pagination-request-parameter', 'pagination-initial-value',
+  'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items'
 ]);
 
 export function initializeEditor(onDirty) {
@@ -12,11 +16,16 @@ export function initializeEditor(onDirty) {
   elements['operation-list'].addEventListener('click', event => {
     const button = event.target.closest('button[data-operation-id]');
     if (!button) return;
+    saveSelectedOperation();
     updateState({selectedOperationId: button.dataset.operationId});
     renderOperations();
   });
   for (const id of ['operation-enabled', 'tool-name', 'tool-description', 'data-path',
-    'success-code-path', 'success-values', 'error-message-path', 'total-count-path']) {
+    'success-code-path', 'success-values', 'error-message-path', 'total-count-path', 'output-mode',
+    'retry-enabled', 'retry-status-codes', 'retry-network-errors', 'retry-max-retries',
+    'retry-initial-backoff', 'retry-max-backoff', 'retry-respect-retry-after',
+    'pagination-enabled', 'pagination-request-parameter', 'pagination-initial-value',
+    'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items']) {
     elements[id].addEventListener('change', () => {
       saveSelectedOperation();
       if (id === 'operation-enabled') renderValidationOperations();
@@ -59,6 +68,23 @@ function renderSelectedOperation() {
   elements['operation-enabled'].checked = operation.enabled;
   elements['tool-name'].value = operation.toolName;
   elements['tool-description'].value = operation.toolDescription;
+  elements['output-mode'].value = operation.outputMode;
+  elements['retry-enabled'].checked = operation.retry.enabled;
+  elements['retry-status-codes'].value = operation.retry.statusCodesText;
+  elements['retry-network-errors'].checked = operation.retry.networkErrors;
+  elements['retry-max-retries'].value = operation.retry.maxRetries;
+  elements['retry-initial-backoff'].value = operation.retry.initialBackoffMillis;
+  elements['retry-max-backoff'].value = operation.retry.maxBackoffMillis;
+  elements['retry-respect-retry-after'].checked = operation.retry.respectRetryAfter;
+  elements['pagination-enabled'].checked = operation.pagination.enabled;
+  elements['pagination-request-parameter'].value = operation.pagination.requestParameter;
+  elements['pagination-initial-value'].value = operation.pagination.initialValueText;
+  elements['pagination-items-path'].value = operation.pagination.itemsPath;
+  elements['pagination-next-value-path'].value = operation.pagination.nextValuePath;
+  elements['pagination-max-pages'].value = operation.pagination.maxPages;
+  elements['pagination-max-items'].value = operation.pagination.maxItems;
+  setPolicyControls('retry', operation.retry.enabled);
+  setPolicyControls('pagination', operation.pagination.enabled);
   elements['data-path'].value = operation.responseNormalization.dataPath;
   elements['success-code-path'].value = operation.responseNormalization.successCodePath;
   elements['success-values'].value = operation.responseNormalization.successValuesText;
@@ -118,11 +144,44 @@ function saveSelectedOperation() {
   } catch {
     // Preserve the raw value so the final strict build can reject it.
   }
+  let statusCodes = selected.retry.statusCodes;
+  try {
+    statusCodes = normalizeRetryStatusCodes(elements['retry-status-codes'].value);
+  } catch {
+    // Preserve the prior parsed value while retaining the raw field for strict build validation.
+  }
+  let initialValue = selected.pagination.initialValue;
+  try {
+    initialValue = parsePaginationInitialValue(elements['pagination-initial-value'].value);
+  } catch {
+    // Preserve the prior parsed value while retaining the raw field for strict build validation.
+  }
   const replacement = {
     ...selected,
     enabled: elements['operation-enabled'].checked,
     toolName: elements['tool-name'].value.trim(),
     toolDescription: elements['tool-description'].value.trim(),
+    outputMode: elements['output-mode'].value,
+    retry: {
+      enabled: elements['retry-enabled'].checked,
+      statusCodes,
+      statusCodesText: elements['retry-status-codes'].value.trim(),
+      networkErrors: elements['retry-network-errors'].checked,
+      maxRetries: Number(elements['retry-max-retries'].value),
+      initialBackoffMillis: Number(elements['retry-initial-backoff'].value),
+      maxBackoffMillis: Number(elements['retry-max-backoff'].value),
+      respectRetryAfter: elements['retry-respect-retry-after'].checked
+    },
+    pagination: {
+      enabled: elements['pagination-enabled'].checked,
+      requestParameter: elements['pagination-request-parameter'].value.trim(),
+      initialValue,
+      initialValueText: elements['pagination-initial-value'].value.trim(),
+      itemsPath: elements['pagination-items-path'].value.trim(),
+      nextValuePath: elements['pagination-next-value-path'].value.trim(),
+      maxPages: Number(elements['pagination-max-pages'].value),
+      maxItems: Number(elements['pagination-max-items'].value)
+    },
     parameters,
     responseNormalization: {
       dataPath: elements['data-path'].value.trim(),
@@ -135,6 +194,14 @@ function saveSelectedOperation() {
   };
   updateState({operations: state.operations.map(operation =>
     operation.operationId === replacement.operationId ? replacement : operation)});
+  setPolicyControls('retry', replacement.retry.enabled);
+  setPolicyControls('pagination', replacement.pagination.enabled);
+}
+
+function setPolicyControls(prefix, enabled) {
+  document.querySelectorAll(`.policy-fields [id^="${prefix}-"]`).forEach(control => {
+    control.disabled = !enabled;
+  });
 }
 
 function renderValidationOperations() {
@@ -207,11 +274,82 @@ function operationConfiguration(operation) {
   delete policy.successValuesText;
   const responseNormalization = Object.fromEntries(Object.entries(policy).filter(([, value]) =>
     Array.isArray(value) ? value.length > 0 : value !== ''));
+  if (!['GENERIC_JSON', 'TYPED'].includes(operation.outputMode)) {
+    throw new Error('Output mode is unsupported.');
+  }
+  const retry = operation.retry.enabled ? retryConfiguration(operation.retry) : null;
+  const pagination = operation.pagination.enabled ? paginationConfiguration(operation.pagination) : null;
   return {
     operationId: operation.operationId, enabled: true, toolName: operation.toolName,
     toolDescription: operation.toolDescription, parameters,
-    ...(Object.keys(responseNormalization).length ? {responseNormalization} : {})
+    output: {mode: operation.outputMode},
+    ...(Object.keys(responseNormalization).length ? {responseNormalization} : {}),
+    ...(operation.retry.enabled ? {retry: retry} : {}),
+    ...(operation.pagination.enabled ? {pagination: pagination} : {})
   };
+}
+
+function retryConfiguration(retry) {
+  const statusCodes = normalizeRetryStatusCodes(retry.statusCodesText);
+  if (!retry.networkErrors && statusCodes.length === 0) {
+    throw new Error('Retry needs at least one HTTP status code or network errors enabled.');
+  }
+  const initialBackoffMillis = boundedInteger(retry.initialBackoffMillis, 1, 5000,
+    'Retry initial backoff is out of range.');
+  const maxBackoffMillis = boundedInteger(retry.maxBackoffMillis, initialBackoffMillis, 10000,
+    'Retry maximum backoff is out of range.');
+  return {
+    statusCodes, networkErrors: retry.networkErrors,
+    maxRetries: boundedInteger(retry.maxRetries, 1, 3, 'Retry count is out of range.'),
+    initialBackoffMillis, maxBackoffMillis, respectRetryAfter: retry.respectRetryAfter
+  };
+}
+
+function paginationConfiguration(paginationState) {
+  const pagination = {
+    requestParameter: paginationState.requestParameter,
+    initialValue: parsePaginationInitialValue(paginationState.initialValueText),
+    itemsPath: paginationState.itemsPath,
+    nextValuePath: paginationState.nextValuePath,
+    maxPages: boundedInteger(paginationState.maxPages, 2, 20, 'Pagination page limit is out of range.'),
+    maxItems: boundedInteger(paginationState.maxItems, 1, 2000, 'Pagination item limit is out of range.')
+  };
+  if (!pagination.requestParameter || !pagination.itemsPath || !pagination.nextValuePath) {
+    throw new Error('Pagination parameter and JSON Pointers are required.');
+  }
+  if (pagination.initialValue === undefined) delete pagination.initialValue;
+  return pagination;
+}
+
+function normalizeRetryStatusCodes(source) {
+  const tokens = source.split(',').map(token => token.trim()).filter(Boolean);
+  if (tokens.length > 16 || tokens.some(token => !/^\d{3}$/.test(token))) {
+    throw new Error('Retry status codes must be unique HTTP error integers.');
+  }
+  const values = [...new Set(tokens.map(Number))].sort((left, right) => left - right);
+  if (values.some(value => value < 400 || value > 599)) {
+    throw new Error('Retry status codes must be unique HTTP error integers.');
+  }
+  return values;
+}
+
+function parsePaginationInitialValue(source) {
+  if (!source.trim()) return undefined;
+  let value;
+  try {
+    value = parseSafeJson(source);
+  } catch (failure) {
+    if (failure?.message === UNSAFE_INTEGER_MESSAGE) throw failure;
+    throw new Error('Pagination initial value must be one JSON string or integer.');
+  }
+  if (typeof value === 'string' && value.length > 0 && value.length <= 2048) return value;
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return value;
+  throw new Error('Pagination initial value must be one JSON string or integer.');
+}
+
+function boundedInteger(value, minimum, maximum, message) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new Error(message);
+  return value;
 }
 
 const UNSAFE_INTEGER_MESSAGE = 'JSON integers must stay within the JavaScript safe integer range.';

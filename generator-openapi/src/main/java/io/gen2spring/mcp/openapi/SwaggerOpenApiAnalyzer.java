@@ -211,7 +211,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 missingSchema = true;
                 continue;
             }
-            schemas.add(schemaNormalizer.normalize(mediaType.getSchema(), componentSchemas));
+            schemas.add(schemaNormalizer.normalizeResponse(mediaType.getSchema(), componentSchemas));
         }
         if (missingSchema) {
             warnings.add("Success response schemas must be supported and structurally identical");
