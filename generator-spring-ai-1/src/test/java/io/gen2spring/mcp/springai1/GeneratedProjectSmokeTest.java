@@ -109,7 +109,8 @@ class GeneratedProjectSmokeTest {
 
         Path javaHome = requiredJavaHome(javaVersion);
         List<String> command = new ArrayList<>(List.of(
-                "./gradlew", "compileJava", "test", "--no-daemon", "--non-interactive"));
+                gradleWrapper(project).toString(),
+                "compileJava", "test", "--no-daemon", "--non-interactive"));
         command.add("-Dorg.gradle.java.installations.auto-detect=false");
         command.add("-Dorg.gradle.java.installations.auto-download=false");
         command.add("-Dorg.gradle.java.installations.paths=" + javaHome);
@@ -280,7 +281,9 @@ class GeneratedProjectSmokeTest {
             Files.createDirectories(target.getParent());
             Files.write(target, entry.getValue());
         }
-        assertTrue(project.resolve("gradlew").toFile().setExecutable(true));
+        if (!isWindows()) {
+            assertTrue(project.resolve("gradlew").toFile().setExecutable(true));
+        }
     }
 
     private CompatibilityProfile profile(int javaVersion) {
@@ -297,8 +300,20 @@ class GeneratedProjectSmokeTest {
         }
         assertTrue(configured != null && !configured.isBlank(), environmentVariable + " must be configured");
         Path javaHome = Path.of(configured).toAbsolutePath().normalize();
-        assertTrue(Files.isRegularFile(javaHome.resolve("bin/java")), environmentVariable);
+        assertTrue(Files.isRegularFile(javaExecutable(javaHome)), environmentVariable);
         return javaHome;
+    }
+
+    private Path gradleWrapper(Path project) {
+        return project.resolve(isWindows() ? "gradlew.bat" : "gradlew");
+    }
+
+    private Path javaExecutable(Path javaHome) {
+        return javaHome.resolve(isWindows() ? "bin/java.exe" : "bin/java");
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).startsWith("windows");
     }
 
     private String exactSpecificationRegistrationTest() {

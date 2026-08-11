@@ -27,11 +27,14 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -139,12 +142,12 @@ class CliApplicationTest {
         Path specification = Files.writeString(safeTemp.resolve("private-staging.yaml"), simpleSpecification());
         Path output = safeTemp.resolve("private-staging.json");
         AtomicReference<Path> stagingPath = new AtomicReference<>();
-        AtomicReference<Set<PosixFilePermission>> permissions = new AtomicReference<>();
+        AtomicReference<Boolean> ownerOnlyAccess = new AtomicReference<>();
         var hook = new CliApplication.PublicationHook() {
             @Override
             public void afterStagingIdentityRecorded(Path staging) throws java.io.IOException {
                 stagingPath.set(staging);
-                permissions.set(Files.getPosixFilePermissions(staging.getParent()));
+                ownerOnlyAccess.set(hasOwnerOnlyAccess(staging.getParent()));
             }
         };
 
@@ -153,10 +156,25 @@ class CliApplicationTest {
 
         assertEquals(0, result.exitCode(), result.stderr());
         assertNotEquals(safeTemp, stagingPath.get().getParent());
-        assertEquals(PosixFilePermissions.fromString("rwx------"), permissions.get());
+        assertEquals(Boolean.TRUE, ownerOnlyAccess.get());
         assertFalse(Files.exists(stagingPath.get()));
         assertFalse(Files.exists(stagingPath.get().getParent()));
         assertTrue(Files.isRegularFile(output));
+    }
+
+    private boolean hasOwnerOnlyAccess(Path path) throws java.io.IOException {
+        PosixFileAttributeView posix = Files.getFileAttributeView(path, PosixFileAttributeView.class);
+        if (posix != null) {
+            return PosixFilePermissions.fromString("rwx------").equals(posix.readAttributes().permissions());
+        }
+        AclFileAttributeView acl = Files.getFileAttributeView(path, AclFileAttributeView.class);
+        if (acl == null || acl.getAcl().size() != 1) {
+            return false;
+        }
+        var entry = acl.getAcl().get(0);
+        return entry.type() == AclEntryType.ALLOW
+                && entry.principal().equals(Files.getOwner(path))
+                && entry.permissions().equals(EnumSet.allOf(AclEntryPermission.class));
     }
 
     @Test

@@ -491,7 +491,7 @@ class P1GenerationIntegrationTest {
         Path targetJavaHome = profile.javaFeature() == 17
                 ? targetJavaHomes.java17Home()
                 : targetJavaHomes.java21Home();
-        Path targetJava = targetJavaHome.resolve("bin/java");
+        Path targetJava = javaExecutable(targetJavaHome);
         assertTrue(Files.isRegularFile(targetJava), "target Java executable is unavailable");
         buildBootJar(result.projectRoot(), targetJavaHome);
 
@@ -751,7 +751,7 @@ class P1GenerationIntegrationTest {
         assertNotNull(configured, JAVA_17_HOME + " must be forwarded to the integration test");
         assertFalse(configured.isBlank(), JAVA_17_HOME + " must not be blank");
         Path home = Path.of(configured).toAbsolutePath().normalize();
-        assertTrue(Files.isRegularFile(home.resolve("bin/java")), JAVA_17_HOME);
+        assertTrue(Files.isRegularFile(javaExecutable(home)), JAVA_17_HOME);
         return home;
     }
 
@@ -766,8 +766,12 @@ class P1GenerationIntegrationTest {
         } else {
             java21Home = Path.of(configuredJava21Home).toAbsolutePath().normalize();
         }
-        assertTrue(Files.isRegularFile(java21Home.resolve("bin/java")), JAVA_21_HOME);
+        assertTrue(Files.isRegularFile(javaExecutable(java21Home)), JAVA_21_HOME);
         return new TargetJavaHomes(java17Home, java21Home);
+    }
+
+    private Path javaExecutable(Path javaHome) {
+        return javaHome.resolve(isWindows() ? "bin/java.exe" : "bin/java");
     }
 
     private void assertCanonicalArchiveEntriesEqual(
