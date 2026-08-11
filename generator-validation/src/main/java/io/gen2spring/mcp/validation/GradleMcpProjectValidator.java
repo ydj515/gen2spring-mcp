@@ -348,7 +348,11 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             mcpFailure = exception;
             primaryFailure = exception;
         } catch (ApplicationStageException exception) {
-            applicationFailure = exception.safeSummary();
+            if (phase == ValidationPhase.APPLICATION_INTEGRITY) {
+                toolCallFailure = exception;
+            } else {
+                applicationFailure = exception.safeSummary();
+            }
             primaryFailure = exception;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -820,6 +824,20 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 throw invalidTransition();
             }
             observedMcpStages.add(stage);
+            switch (stage) {
+                case INITIALIZE -> {
+                    succeed("APPLICATION_CONTEXT");
+                    start("MCP_INITIALIZE");
+                }
+                case TOOLS_LIST -> {
+                    succeed("MCP_INITIALIZE");
+                    start("MCP_TOOLS_LIST");
+                }
+                case TOOL_CALL -> {
+                    succeed("MCP_TOOLS_LIST");
+                    start("MCP_TOOL_CALL");
+                }
+            }
         }
 
         private ValidationReport complete(ValidationReport report) {

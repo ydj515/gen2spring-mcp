@@ -19,6 +19,7 @@ export function initializeEditor(onDirty) {
     'success-code-path', 'success-values', 'error-message-path', 'total-count-path']) {
     elements[id].addEventListener('change', () => {
       saveSelectedOperation();
+      if (id === 'operation-enabled') renderValidationOperations();
       onDirty();
     });
   }
@@ -78,7 +79,7 @@ function parameterRow(parameter) {
   const source = document.createElement('select');
   source.dataset.parameterName = parameter.name;
   source.dataset.parameterField = 'source';
-  for (const value of ['USER_INPUT', 'SERVER_SECRET', 'SERVER_DEFAULT']) {
+  for (const value of ['USER_INPUT', 'SERVER_SECRET']) {
     const option = document.createElement('option');
     option.value = value;
     option.textContent = value;
@@ -112,7 +113,7 @@ function saveSelectedOperation() {
   });
   let successValues = selected.responseNormalization.successValues;
   try {
-    successValues = JSON.parse(elements['success-values'].value);
+    successValues = parseSafeJson(elements['success-values'].value);
     if (!Array.isArray(successValues)) throw new Error('array');
   } catch {
     // Preserve the raw value so the final strict build can reject it.
@@ -172,9 +173,10 @@ export function buildConfiguration() {
   }
   let argumentsValue;
   try {
-    argumentsValue = JSON.parse(value('validation-arguments'));
+    argumentsValue = parseSafeJson(value('validation-arguments'));
     if (!argumentsValue || Array.isArray(argumentsValue) || typeof argumentsValue !== 'object') throw new Error('object');
-  } catch {
+  } catch (failure) {
+    if (failure?.message === UNSAFE_INTEGER_MESSAGE) throw failure;
     throw new Error('Representative arguments must be one valid JSON object.');
   }
   const validationOperation = value('validation-operation');
@@ -196,9 +198,10 @@ function operationConfiguration(operation) {
   }]));
   const policy = {...operation.responseNormalization};
   try {
-    policy.successValues = JSON.parse(policy.successValuesText);
+    policy.successValues = parseSafeJson(policy.successValuesText);
     if (!Array.isArray(policy.successValues)) throw new Error('array');
-  } catch {
+  } catch (failure) {
+    if (failure?.message === UNSAFE_INTEGER_MESSAGE) throw failure;
     throw new Error('Success values must be one valid JSON array.');
   }
   delete policy.successValuesText;
@@ -209,4 +212,23 @@ function operationConfiguration(operation) {
     toolDescription: operation.toolDescription, parameters,
     ...(Object.keys(responseNormalization).length ? {responseNormalization} : {})
   };
+}
+
+const UNSAFE_INTEGER_MESSAGE = 'JSON integers must stay within the JavaScript safe integer range.';
+
+function parseSafeJson(source) {
+  const parsed = JSON.parse(source);
+  requireSafeIntegers(parsed);
+  return parsed;
+}
+
+function requireSafeIntegers(value) {
+  if (typeof value === 'number' && Number.isInteger(value) && !Number.isSafeInteger(value)) {
+    throw new Error(UNSAFE_INTEGER_MESSAGE);
+  }
+  if (Array.isArray(value)) {
+    value.forEach(requireSafeIntegers);
+  } else if (value && typeof value === 'object') {
+    Object.values(value).forEach(requireSafeIntegers);
+  }
 }

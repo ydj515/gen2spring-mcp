@@ -12,8 +12,9 @@ class StaticAssetContractTest {
     void exposesTheAccessibleFiveStepLocalEditorWithoutExternalInputs() throws Exception {
         String index = resource("/web/index.html");
         String styles = resource("/web/styles.css");
-        String scripts = resource("/web/app.js") + resource("/web/api.js")
-                + resource("/web/state.js") + resource("/web/editor.js");
+        String app = resource("/web/app.js");
+        String editor = resource("/web/editor.js");
+        String scripts = app + resource("/web/api.js") + resource("/web/state.js") + editor;
         String all = index + styles + scripts;
 
         assertTrue(index.contains("<h2>1. Specification</h2>"));
@@ -39,6 +40,15 @@ class StaticAssetContractTest {
         assertTrue(scripts.contains("2000"));
         assertTrue(scripts.contains("Success values must be one valid JSON array."));
         assertTrue(scripts.contains("Every server secret needs an environment variable name."));
+        assertTrue(editor.contains("['USER_INPUT', 'SERVER_SECRET']"));
+        assertTrue(editor.contains("if (id === 'operation-enabled') renderValidationOperations();"));
+        assertTrue(editor.contains("Number.isSafeInteger"));
+        assertTrue(editor.contains("parseSafeJson(value('validation-arguments'))"));
+        assertTrue(editor.contains("parseSafeJson(policy.successValuesText)"));
+        assertTrue(app.contains("resumeRetainedJob();"));
+        assertTrue(app.contains("await pollJob(jobId);"));
+        assertTrue(app.contains("else ui['delete-job-button'].disabled = false;"));
+        assertTrue(index.contains("id=\"tool-description\" maxlength=\"1024\""));
 
         assertFalse(index.contains("type=\"url\""));
         assertFalse(index.matches("(?s).*<(?:script|style)[^>]*>\\s*[^<]+.*"));
@@ -47,6 +57,8 @@ class StaticAssetContractTest {
         assertFalse(all.contains("serviceWorker"));
         assertFalse(scripts.contains("innerHTML"));
         assertFalse(scripts.contains("Authorization"));
+        assertFalse(editor.contains("SERVER_DEFAULT"));
+        assertFalse(index.contains("id=\"tool-description\" maxlength=\"2048\""));
     }
 
     private String resource(String path) throws IOException {

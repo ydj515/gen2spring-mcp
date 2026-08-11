@@ -190,7 +190,8 @@ final class ResponseRuntimeRenderer {
                                     && policy.errorMessagePointer() == null
                                     && policy.totalCountPointer() == null) {
                                 return new NormalizedSuccess(successEnvelope(
-                                        NullNode.getInstance(), null, null, null, policy));
+                                        NullNode.getInstance(), null, null, null, policy,
+                                        secretNames, secretValues));
                             }
                             return error(operation, ProviderErrorCategory.UPSTREAM_PROTOCOL, status,
                                     null, null, secretNames, secretValues);
@@ -230,7 +231,8 @@ final class ResponseRuntimeRenderer {
                                 totalCount = count;
                             }
                             return new NormalizedSuccess(successEnvelope(
-                                    data, totalCount, providerCode, providerMessage, policy));
+                                    data, totalCount, providerCode, providerMessage, policy,
+                                    secretNames, secretValues));
                         } catch (IOException | ProtocolMismatch failure) {
                             return error(operation, ProviderErrorCategory.UPSTREAM_PROTOCOL, status,
                                     providerCode, providerMessage, secretNames, secretValues);
@@ -362,7 +364,9 @@ final class ResponseRuntimeRenderer {
                             JsonNode totalCount,
                             JsonNode providerCode,
                             String providerMessage,
-                            ResponseNormalizationPolicy policy) {
+                            ResponseNormalizationPolicy policy,
+                            List<String> secretNames,
+                            List<String> secretValues) {
                         ObjectNode result = JsonNodeFactory.instance.objectNode();
                         result.set("data", data);
                         if (policy.totalCountPointer() != null) {
@@ -376,7 +380,12 @@ final class ResponseRuntimeRenderer {
                                 provider.set("code", providerCode);
                             }
                             if (policy.errorMessagePointer() != null) {
-                                provider.put("message", providerMessage);
+                                String safeMessage = sanitize(providerMessage, secretNames, secretValues);
+                                if (safeMessage == null) {
+                                    provider.putNull("message");
+                                } else {
+                                    provider.put("message", safeMessage);
+                                }
                             }
                             result.set("provider", provider);
                         }

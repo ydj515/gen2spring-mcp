@@ -55,8 +55,6 @@ final class SpecificationStore implements AutoCloseable {
                 || name.contains("/") || name.contains("\\") || name.contains("..")) {
             throw new InvalidSpecificationNameException();
         }
-        evictForCapacity();
-
         byte[] bytes = bodyReader.read(input);
         String identifier = identifier();
         Path path = root.resolve(identifier + suffix(name)).normalize();
@@ -75,6 +73,7 @@ final class SpecificationStore implements AutoCloseable {
             SpecificationAnalyzer.AnalysisResult analysis = analyzer.analyze(path, MAX_SPECIFICATION_BYTES);
             StoredSpecification stored = new StoredSpecification(
                     identifier, path, attributes.fileKey(), attributes.size(), analysis);
+            evictForCapacity();
             specifications.put(identifier, new StoredEntry(stored, ++accessSequence));
             published = true;
             return stored;

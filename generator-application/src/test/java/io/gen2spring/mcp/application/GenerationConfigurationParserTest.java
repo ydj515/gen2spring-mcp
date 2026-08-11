@@ -51,6 +51,18 @@ class GenerationConfigurationParserTest {
         assertFalse(exception.getMessage().contains(rejected));
     }
 
+    @Test
+    void rejectsToolDescriptionsThatGeneratedSourcesCannotRepresent() {
+        String oversized = "x".repeat(1_025);
+
+        GenerationConfigurationException exception = assertThrows(
+                GenerationConfigurationException.class,
+                () -> parser.parseJson(validJson().replace(
+                        "Get the public weather forecast.", oversized).getBytes(UTF_8)));
+
+        assertEquals("Tool description is invalid", exception.getMessage());
+    }
+
     private void assertInvalidJson(String json) {
         GenerationConfigurationException exception = assertThrows(
                 GenerationConfigurationException.class,

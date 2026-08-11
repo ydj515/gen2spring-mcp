@@ -64,6 +64,23 @@ class SpecificationStoreTest {
         }
     }
 
+    @Test
+    void preservesRetainedSpecificationsWhenAReplacementIsRejected() {
+        try (SpecificationStore store = new SpecificationStore(tempDir, new SwaggerOpenApiAnalyzer())) {
+            List<String> ids = new ArrayList<>();
+            for (int index = 0; index < 8; index++) {
+                ids.add(store.store("weather.yaml", new ByteArrayInputStream(
+                        specification().getBytes(UTF_8))).id());
+            }
+
+            assertThrows(RuntimeException.class, () -> store.store(
+                    "invalid.yaml", new ByteArrayInputStream("openapi: [".getBytes(UTF_8))));
+
+            assertEquals(ids.getFirst(), store.require(ids.getFirst()).id());
+            assertEquals(8, ids.stream().filter(id -> store.require(id) != null).count());
+        }
+    }
+
     private String specification() {
         return """
                 openapi: 3.0.3

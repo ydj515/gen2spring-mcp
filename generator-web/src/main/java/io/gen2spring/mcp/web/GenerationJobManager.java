@@ -113,10 +113,10 @@ final class GenerationJobManager implements AutoCloseable {
         Objects.requireNonNull(specification, "specification");
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(completionHook, "completionHook");
-        evictForCapacity();
         if (jobs.values().stream().filter(job -> !job.terminal()).count() >= 2) {
             throw new GenerationCapacityException();
         }
+        MutableJob eviction = evictionCandidate();
         String id = identifier();
         MutableJob job = new MutableJob(id, specification.toAbsolutePath().normalize(), request,
                 root.resolve(id), clock.instant(), completionHook);
@@ -127,6 +127,10 @@ final class GenerationJobManager implements AutoCloseable {
             jobs.remove(id);
             job.completeHook();
             throw new GenerationCapacityException();
+        }
+        if (eviction != null) {
+            jobs.remove(eviction.id);
+            deleteJob(eviction);
         }
         synchronized (job) {
             return job.snapshot();
@@ -378,15 +382,14 @@ final class GenerationJobManager implements AutoCloseable {
         return job;
     }
 
-    private void evictForCapacity() {
-        while (jobs.size() >= MAX_RETAINED_JOBS) {
-            MutableJob oldest = jobs.values().stream()
-                    .filter(MutableJob::terminal)
-                    .min(Comparator.comparing(job -> job.lastAccess))
-                    .orElseThrow(GenerationCapacityException::new);
-            jobs.remove(oldest.id);
-            deleteJob(oldest);
+    private MutableJob evictionCandidate() {
+        if (jobs.size() < MAX_RETAINED_JOBS) {
+            return null;
         }
+        return jobs.values().stream()
+                .filter(MutableJob::terminal)
+                .min(Comparator.comparing(job -> job.lastAccess))
+                .orElseThrow(GenerationCapacityException::new);
     }
 
     private void deleteJob(MutableJob job) {

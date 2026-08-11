@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -68,6 +69,43 @@ class GenerationJobManagerTest {
             assertEquals("application/zip", jobs.artifact(first.id(), "archive").contentType());
             assertEquals(JobSnapshot.State.VALIDATED,
                     jobs.await(second.id(), Duration.ofSeconds(5)).state());
+        }
+    }
+
+    @Test
+    void rejectedActiveWorkDoesNotEvictRetainedArtifacts() throws Exception {
+        AtomicInteger executions = new AtomicInteger();
+        CountDownLatch running = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        GenerationExecutor executor = (specification, request, output, progress) -> {
+            if (executions.incrementAndGet() > 6) {
+                running.countDown();
+                assertTrue(release.await(5, TimeUnit.SECONDS));
+            }
+            return validatedOutput(output);
+        };
+
+        try (GenerationJobManager jobs = manager(executor)) {
+            List<String> retained = new java.util.ArrayList<>();
+            for (int index = 0; index < 6; index++) {
+                String id = jobs.submit(specification(), request()).id();
+                jobs.await(id, Duration.ofSeconds(5));
+                retained.add(id);
+            }
+            String active = jobs.submit(specification(), request()).id();
+            assertTrue(running.await(5, TimeUnit.SECONDS));
+            String queued = jobs.submit(specification(), request()).id();
+
+            assertThrows(GenerationJobManager.GenerationCapacityException.class,
+                    () -> jobs.submit(specification(), request()));
+
+            assertEquals(JobSnapshot.State.VALIDATED, jobs.snapshot(retained.getFirst()).state());
+            assertEquals("application/zip", jobs.artifact(retained.getFirst(), "archive").contentType());
+            release.countDown();
+            assertEquals(JobSnapshot.State.VALIDATED,
+                    jobs.await(active, Duration.ofSeconds(5)).state());
+            assertEquals(JobSnapshot.State.VALIDATED,
+                    jobs.await(queued, Duration.ofSeconds(5)).state());
         }
     }
 

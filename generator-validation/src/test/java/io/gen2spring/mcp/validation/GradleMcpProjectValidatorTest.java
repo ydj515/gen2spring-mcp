@@ -241,7 +241,7 @@ class GradleMcpProjectValidatorTest {
     }
 
     @Test
-    void rejectsAChildThatPublishesADelayedDuplicateStartupEndpointDuringTheMcpRoundTrip() throws Exception {
+    void reportsEndpointDriftDuringMcpAtTheActiveToolCallStage() throws Exception {
         Path root = project("#!/bin/sh\nexit 0\n");
         Files.writeString(root.resolve("test-behavior"), "duplicate-startup");
         writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
@@ -249,12 +249,13 @@ class GradleMcpProjectValidatorTest {
         var report = validator().validate(request(root, EXPECTED));
 
         assertEquals(UNVERIFIED, report.status(), report.toString());
-        assertEquals(FAILED, report.stages().get(1).status());
+        assertEquals(SUCCESS, report.stages().get(1).status());
+        assertEquals(FAILED, report.stages().get(4).status());
         assertTrue(waitUntilDead(readPid(root)));
     }
 
     @Test
-    void rejectsAChildWhoseStartupOutputOverflowsDuringTheMcpRoundTrip() throws Exception {
+    void reportsOutputOverflowDuringMcpAtTheActiveToolCallStage() throws Exception {
         Path root = project("#!/bin/sh\nexit 0\n");
         Files.writeString(root.resolve("test-behavior"), "overflow-output");
         writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
@@ -262,7 +263,8 @@ class GradleMcpProjectValidatorTest {
         var report = validator().validate(request(root, EXPECTED));
 
         assertEquals(UNVERIFIED, report.status(), report.toString());
-        assertEquals(FAILED, report.stages().get(1).status());
+        assertEquals(SUCCESS, report.stages().get(1).status());
+        assertEquals(FAILED, report.stages().get(4).status());
         assertTrue(waitUntilDead(readPid(root)));
     }
 
@@ -298,6 +300,52 @@ class GradleMcpProjectValidatorTest {
                         .toList());
         assertTrue(waitUntilDead(readPid(root)));
         assertTrue(waitUntilNoThreadWithPrefix("mock-upstream-"));
+    }
+
+    @Test
+    void publishesMcpProgressBeforeTheUpstreamVerificationGate() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
+        List<GenerationProgress> progress = new java.util.ArrayList<>();
+        GradleMcpProjectValidator.MockUpstreamFactory factory = expectation -> {
+            MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+            return new GradleMcpProjectValidator.RunningMockUpstream() {
+                @Override
+                public URI baseUri() {
+                    return delegate.baseUri();
+                }
+
+                @Override
+                public Map<String, String> environmentOverrides() {
+                    return delegate.environmentOverrides();
+                }
+
+                @Override
+                public void sealAndAwaitVerified(Duration timeout) {
+                    delegate.sealAndAwaitVerified(timeout);
+                    assertEquals(List.of(
+                            new GenerationProgress("COMPILE", ProgressStatus.RUNNING),
+                            new GenerationProgress("COMPILE", ProgressStatus.SUCCESS),
+                            new GenerationProgress("APPLICATION_CONTEXT", ProgressStatus.RUNNING),
+                            new GenerationProgress("APPLICATION_CONTEXT", ProgressStatus.SUCCESS),
+                            new GenerationProgress("MCP_INITIALIZE", ProgressStatus.RUNNING),
+                            new GenerationProgress("MCP_INITIALIZE", ProgressStatus.SUCCESS),
+                            new GenerationProgress("MCP_TOOLS_LIST", ProgressStatus.RUNNING),
+                            new GenerationProgress("MCP_TOOLS_LIST", ProgressStatus.SUCCESS),
+                            new GenerationProgress("MCP_TOOL_CALL", ProgressStatus.RUNNING)), progress);
+                }
+
+                @Override
+                public void close() throws IOException {
+                    delegate.close();
+                }
+            };
+        };
+
+        var report = validator(factory).validate(request(root, EXPECTED), progress::add);
+
+        assertEquals(VALIDATED, report.status());
+        assertEquals(new GenerationProgress("MCP_TOOL_CALL", ProgressStatus.SUCCESS), progress.getLast());
     }
 
     @Test

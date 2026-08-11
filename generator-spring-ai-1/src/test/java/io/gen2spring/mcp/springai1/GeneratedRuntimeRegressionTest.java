@@ -611,6 +611,19 @@ class GeneratedRuntimeRegressionTest {
                     }
 
                     @Test
+                    void sanitizesProviderMessagesInSuccessfulEnvelopes() throws Exception {
+                        OperationOutcome outcome = normalizer.normalize(operation(), 200,
+                                MediaType.APPLICATION_JSON,
+                                json("{'response':{'header':{'code':'00',"
+                                        + "'message':'serviceKey secret-value'},"
+                                        + "'body':{'items':[],'totalCount':0}}}"),
+                                List.of("serviceKey"), List.of("secret-value"));
+
+                        assertEquals("*** ***", assertInstanceOf(NormalizedSuccess.class, outcome)
+                                .payload().at("/provider/message").textValue());
+                    }
+
+                    @Test
                     void failsClosedForBusinessAndProtocolFailures() {
                         ProviderError business = assertInstanceOf(ProviderError.class,
                                 normalizer.normalize(operation(), 200, MediaType.APPLICATION_JSON,

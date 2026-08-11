@@ -20,6 +20,7 @@ for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'd
 }
 
 loadProfiles();
+resumeRetainedJob();
 
 async function loadProfiles() {
   try {
@@ -36,6 +37,19 @@ async function loadProfiles() {
     describeProfile();
     ui['target-profile'].addEventListener('change', describeProfile);
   } catch (failure) {
+    showFailure(failure);
+  }
+}
+
+async function resumeRetainedJob() {
+  const jobId = getState().jobId;
+  if (!jobId) return;
+  ui['delete-job-button'].disabled = true;
+  try {
+    await pollJob(jobId);
+  } catch (failure) {
+    if (failure?.code === 'JOB_NOT_FOUND') updateState({jobId: null, job: null});
+    else ui['delete-job-button'].disabled = false;
     showFailure(failure);
   }
 }

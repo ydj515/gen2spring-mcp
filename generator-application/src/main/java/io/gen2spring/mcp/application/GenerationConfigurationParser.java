@@ -59,7 +59,7 @@ public final class GenerationConfigurationParser {
     private static final Pattern ENVIRONMENT_VARIABLE = Pattern.compile("[A-Z][A-Z0-9_]{0,127}");
     private static final Pattern JAVA_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final int MAX_OPERATIONS = 1_000;
-    private static final int MAX_DESCRIPTION_CHARACTERS = 2_048;
+    private static final int MAX_DESCRIPTION_CHARACTERS = 1_024;
     private static final int MAX_ARGUMENT_DEPTH = 16;
     private static final int MAX_ARGUMENT_MEMBERS = 256;
     private static final int MAX_ARGUMENT_ITEMS = 256;
