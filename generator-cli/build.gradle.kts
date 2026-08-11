@@ -9,6 +9,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":generator-application"))
     implementation(project(":generator-domain"))
     implementation(project(":generator-openapi"))
     implementation(project(":generator-policy"))

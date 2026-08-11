@@ -46,7 +46,7 @@
 - Produces: `GeneratorApplication.defaults()` returning the one canonical profiles/analyzer/pipeline/parser graph.
 - Preserves: `GenerationConfigurationReader.read(Path)` and `ApplicationFactory.create()`.
 
-- [ ] **Step 1: Write parser and composition RED tests**
+- [x] **Step 1: Write parser and composition RED tests**
 
 Create tests that prove YAML and JSON forms produce equal `GenerationRequest`, reject duplicate/unknown/non-finite/oversized input with one fixed exception, expose exactly four canonical profile objects, and resolve exactly the two generator modules.
 
@@ -66,7 +66,7 @@ assertEquals(List.of(
         application.profiles().profiles().stream().map(CompatibilityProfile::id).toList());
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 mise exec -- ./gradlew :generator-application:compileTestJava :generator-cli:compileTestJava \
@@ -75,7 +75,7 @@ mise exec -- ./gradlew :generator-application:compileTestJava :generator-cli:com
 
 Expected: compilation fails because the new module, parser, and shared application types are absent.
 
-- [ ] **Step 3: Extract the strict parser**
+- [x] **Step 3: Extract the strict parser**
 
 Implement this public boundary and move the existing YAML event, token type, field allow-list, regex, response-policy, argument-depth/member/item/string, and profile validation into it without weakening any limit.
 
@@ -97,9 +97,9 @@ public final class GenerationConfigurationParser {
 }
 ```
 
-`GenerationConfigurationException` always uses `Generation configuration is invalid` as its public message. Preserve precise causes only inside the process.
+`GenerationConfigurationException` uses `Generation configuration is invalid` for syntax, token, size, and binding failures. Preserve the existing fixed value-free semantic messages such as `Target profile is unavailable`; never include a rejected value. Preserve precise causes only inside the process.
 
-- [ ] **Step 4: Make the CLI reader a filesystem adapter**
+- [x] **Step 4: Make the CLI reader a filesystem adapter**
 
 Keep `LocalPathBoundary.regularFile(...).readBounded(...)` in CLI, then delegate bytes to `parseYaml`. Map `GenerationConfigurationException` to the existing `CliConfigurationException` without changing the CLI-safe message.
 
@@ -113,7 +113,7 @@ public GenerationRequest read(Path configuration) {
 }
 ```
 
-- [ ] **Step 5: Add the shared composition root**
+- [x] **Step 5: Add the shared composition root**
 
 ```java
 public record GeneratorApplication(
@@ -127,7 +127,7 @@ public record GeneratorApplication(
 
 Construct `CompatibilityProfileRegistry.defaults()` once, register only `generator-spring-ai-1` and `generator-spring-ai-2`, and pass the same registry to parser and pipeline. Refactor CLI `ApplicationFactory` to consume this record.
 
-- [ ] **Step 6: Run focused and regression GREEN**
+- [x] **Step 6: Run focused and regression GREEN**
 
 ```bash
 mise exec -- ./gradlew \
@@ -139,7 +139,7 @@ mise exec -- ./gradlew \
 
 Expected: all tests pass; installed CLI profile/config/generate behavior remains exact.
 
-- [ ] **Step 7: Review and commit**
+- [x] **Step 7: Review and commit**
 
 ```bash
 git diff --check
