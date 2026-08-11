@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.validation;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
@@ -27,12 +29,21 @@ public record UpstreamCallExpectation(
         Map<String, List<String>> query,
         Map<String, List<String>> headers,
         Object body,
-        Map<String, String> environmentOverrides) {
+        Map<String, String> environmentOverrides,
+        int responseStatus,
+        String responseContentType,
+        Object responseBody) {
     private static final Pattern PATH_VARIABLE = Pattern.compile("\\{([^{}]+)}");
     private static final String SECRET_PREFIX = "mcp-validation-secret-";
+    private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+    private static final ObjectMapper RESPONSE_MAPPER = new ObjectMapper();
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 
     public UpstreamCallExpectation {
+        if (responseStatus < 100 || responseStatus > 599 || !validContentType(responseContentType)) {
+            throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
+        }
+        requireBoundedResponse(responseBody);
         operationId = requireNonBlank(operationId, "Upstream expectation operation ID is missing");
         method = requireNonBlank(method, "Upstream expectation HTTP method is missing");
         rawPath = requireNonBlank(rawPath, "Upstream expectation path is missing");
@@ -40,6 +51,28 @@ public record UpstreamCallExpectation(
         headers = immutableStringLists(headers);
         body = immutableJson(body);
         environmentOverrides = immutableStrings(environmentOverrides);
+        responseBody = immutableResponseJson(responseBody);
+    }
+
+    public UpstreamCallExpectation(
+            String operationId,
+            String method,
+            String rawPath,
+            Map<String, List<String>> query,
+            Map<String, List<String>> headers,
+            Object body,
+            Map<String, String> environmentOverrides) {
+        this(
+                operationId,
+                method,
+                rawPath,
+                query,
+                headers,
+                body,
+                environmentOverrides,
+                200,
+                "application/json",
+                legacyResponse(operationId));
     }
 
     public static UpstreamCallExpectation from(ExpectedToolCall expectedCall) {
@@ -90,7 +123,10 @@ public record UpstreamCallExpectation(
                 derivation.query(),
                 derivation.headers(),
                 derivation.body(),
-                overrides);
+                overrides,
+                expectedCall.upstreamResponse().status(),
+                expectedCall.upstreamResponse().contentType(),
+                expectedCall.upstreamResponse().body());
     }
 
     private static List<SecretBinding> executionSecrets(List<SecretBinding> bindings) {
@@ -306,6 +342,117 @@ public record UpstreamCallExpectation(
             return List.copyOf(copy);
         }
         throw new IllegalArgumentException("Expected Tool call body value is unsupported");
+    }
+
+    private static Object immutableResponseJson(Object value) {
+        if (value == null || value instanceof String || value instanceof Boolean
+                || value instanceof Byte || value instanceof Short
+                || value instanceof Integer || value instanceof Long
+                || value instanceof java.math.BigInteger || value instanceof java.math.BigDecimal) {
+            return value;
+        }
+        if (value instanceof Float number && Float.isFinite(number)) {
+            return value;
+        }
+        if (value instanceof Double number && Double.isFinite(number)) {
+            return value;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            map.forEach((key, item) -> {
+                if (!(key instanceof String name)
+                        || name.chars().anyMatch(Character::isISOControl)) {
+                    throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
+                }
+                copy.put(name, immutableResponseJson(item));
+            });
+            return Collections.unmodifiableMap(copy);
+        }
+        if (value instanceof List<?> list) {
+            List<Object> copy = new ArrayList<>(list.size());
+            list.forEach(item -> copy.add(immutableResponseJson(item)));
+            return Collections.unmodifiableList(copy);
+        }
+        throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
+    }
+
+    private static void requireBoundedResponse(Object value) {
+        byte[] serialized;
+        try {
+            serialized = RESPONSE_MAPPER.writeValueAsBytes(value);
+        } catch (JsonProcessingException | IllegalArgumentException failure) {
+            throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
+        }
+        if (serialized.length > MAX_RESPONSE_BYTES) {
+            throw new IllegalArgumentException("Expected Tool call response fixture exceeded the size limit");
+        }
+    }
+
+    private static boolean validContentType(String value) {
+        if (value == null || value.isBlank() || value.length() > 256
+                || value.chars().anyMatch(Character::isISOControl)) {
+            return false;
+        }
+        String[] sections = value.split(";", -1);
+        String baseType = sections[0].trim();
+        int slash = baseType.indexOf('/');
+        if (!(slash > 0
+                && slash == baseType.lastIndexOf('/')
+                && slash < baseType.length() - 1
+                && mediaTypeToken(baseType.substring(0, slash))
+                && mediaTypeToken(baseType.substring(slash + 1)))) {
+            return false;
+        }
+        for (int index = 1; index < sections.length; index++) {
+            String parameter = sections[index].trim();
+            int equals = parameter.indexOf('=');
+            if (equals <= 0
+                    || equals == parameter.length() - 1
+                    || !mediaTypeToken(parameter.substring(0, equals))
+                    || !mediaTypeParameterValue(parameter.substring(equals + 1))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean mediaTypeToken(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (!(character >= 'a' && character <= 'z'
+                    || character >= 'A' && character <= 'Z'
+                    || character >= '0' && character <= '9'
+                    || "!#$%&'*+-.^_`|~".indexOf(character) >= 0)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean mediaTypeParameterValue(String value) {
+        if (mediaTypeToken(value)) {
+            return true;
+        }
+        if (value.length() < 2 || value.charAt(0) != '"' || value.charAt(value.length() - 1) != '"') {
+            return false;
+        }
+        for (int index = 1; index < value.length() - 1; index++) {
+            char character = value.charAt(index);
+            if (character == '"' || character == '\\' || Character.isISOControl(character)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Map<String, Object> legacyResponse(String operationId) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("validated", true);
+        response.put("operationId", operationId);
+        return response;
     }
 
     private static final class Derivation {

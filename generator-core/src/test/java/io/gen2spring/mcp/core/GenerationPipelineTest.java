@@ -2,6 +2,7 @@ package io.gen2spring.mcp.core;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.ARTIFACT_PACKAGE_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.COMPILE_FAILED;
+import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_COMBINATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_PROFILE_NOT_FOUND;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.FAILED;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SUCCESS;
@@ -9,11 +10,13 @@ import static io.gen2spring.mcp.domain.generation.GenerationContracts.Validation
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SERVER_SECRET;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,6 +30,8 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
@@ -34,7 +39,10 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
 import io.gen2spring.mcp.policy.ToolModelFactory;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -86,6 +94,10 @@ class GenerationPipelineTest {
                       required: true
                       schema:
                         type: string
+              /health:
+                get:
+                  operationId: getHealth
+                  summary: Get service health
             components:
               securitySchemes:
                 serviceKey:
@@ -105,6 +117,63 @@ class GenerationPipelineTest {
     void writeSpecification() throws IOException {
         safeTempDir = tempDir.toRealPath();
         specification = Files.writeString(safeTempDir.resolve("weather.yaml"), SPECIFICATION, UTF_8);
+    }
+
+    @Test
+    void publishesTheExactSuccessfulGenerationProgressSequence() {
+        List<GenerationProgress> progress = new java.util.ArrayList<>();
+        ValidationReport report = new ValidationReport(
+                VALIDATED,
+                List.of(
+                        new ValidationStageResult("COMPILE", SUCCESS, 1, 0, 0, "ok"),
+                        new ValidationStageResult("APPLICATION_CONTEXT", SUCCESS, 1, 0, 0, "ok"),
+                        new ValidationStageResult("MCP_INITIALIZE", SUCCESS, 1, 0, 0, "ok"),
+                        new ValidationStageResult("MCP_TOOLS_LIST", SUCCESS, 1, 0, 0, "ok"),
+                        new ValidationStageResult("MCP_TOOL_CALL", SUCCESS, 1, 0, 0, "ok")),
+                List.of());
+
+        pipelineWithValidator(request -> report).generate(
+                specification, weatherGenerationRequest(), safeTempDir.resolve("progress-success"), progress::add);
+
+        assertEquals(List.of(
+                event("ANALYZE", ProgressStatus.RUNNING), event("ANALYZE", ProgressStatus.SUCCESS),
+                event("GENERATE", ProgressStatus.RUNNING), event("GENERATE", ProgressStatus.SUCCESS),
+                event("COMPILE", ProgressStatus.RUNNING), event("COMPILE", ProgressStatus.SUCCESS),
+                event("APPLICATION_CONTEXT", ProgressStatus.RUNNING),
+                event("APPLICATION_CONTEXT", ProgressStatus.SUCCESS),
+                event("MCP_INITIALIZE", ProgressStatus.RUNNING),
+                event("MCP_INITIALIZE", ProgressStatus.SUCCESS),
+                event("MCP_TOOLS_LIST", ProgressStatus.RUNNING),
+                event("MCP_TOOLS_LIST", ProgressStatus.SUCCESS),
+                event("MCP_TOOL_CALL", ProgressStatus.RUNNING),
+                event("MCP_TOOL_CALL", ProgressStatus.SUCCESS),
+                event("PACKAGE", ProgressStatus.RUNNING), event("PACKAGE", ProgressStatus.SUCCESS)), progress);
+    }
+
+    @Test
+    void failsTheActiveGenerationStageAndSkipsEveryLaterStage() {
+        List<GenerationProgress> progress = new java.util.ArrayList<>();
+        ProjectGenerator failing = context -> {
+            throw new IllegalStateException("private-generation-marker");
+        };
+
+        assertThrows(GeneratorException.class, () -> pipelineWith(failing, request -> validatedReport()).generate(
+                specification, weatherGenerationRequest(), safeTempDir.resolve("progress-failure"), progress::add));
+
+        assertEquals(List.of(
+                event("ANALYZE", ProgressStatus.RUNNING), event("ANALYZE", ProgressStatus.SUCCESS),
+                event("GENERATE", ProgressStatus.RUNNING), event("GENERATE", ProgressStatus.FAILED),
+                event("COMPILE", ProgressStatus.SKIPPED),
+                event("APPLICATION_CONTEXT", ProgressStatus.SKIPPED),
+                event("MCP_INITIALIZE", ProgressStatus.SKIPPED),
+                event("MCP_TOOLS_LIST", ProgressStatus.SKIPPED),
+                event("MCP_TOOL_CALL", ProgressStatus.SKIPPED),
+                event("PACKAGE", ProgressStatus.SKIPPED)), progress);
+        assertFalse(progress.toString().contains("private-generation-marker"));
+    }
+
+    private GenerationProgress event(String stage, ProgressStatus status) {
+        return new GenerationProgress(stage, status);
     }
 
     @Test
@@ -142,13 +211,14 @@ class GenerationPipelineTest {
         assertTrue(Files.isRegularFile(outcome.archive()));
         JsonNode manifest = objectMapper.readTree(outcome.projectRoot().resolve("GENERATION_MANIFEST.json").toFile());
         assertEquals("0.1.0", manifest.path("generatorVersion").asText());
-        assertEquals("spring-ai-2-v1", manifest.path("templateVersion").asText());
-        assertEquals("0.1.0", manifest.path("runtimeVersion").asText());
+        assertEquals("spring-ai-2-v3", manifest.path("templateVersion").asText());
+        assertEquals("0.3.0", manifest.path("runtimeVersion").asText());
         assertEquals("spring-ai-2.0-java21-mvc-streamable", manifest.path("targetProfileId").asText());
         assertEquals("4.1.0", manifest.path("springBootVersion").asText());
         assertEquals("2.0.0", manifest.path("springAiVersion").asText());
         assertEquals(21, manifest.path("javaVersion").asInt());
         assertEquals("9.6.1", manifest.path("gradleVersion").asText());
+        assertEquals(CompatibilityProfile.p0().containerImage(), manifest.path("containerImage").asText());
         assertEquals(outcome.sourceChecksum(), manifest.path("sourceChecksum").asText());
         assertEquals(64, manifest.path("originalSpecificationChecksum").asText().length());
         assertEquals("getForecast", manifest.path("operationMappings").get(0).path("operationId").asText());
@@ -167,6 +237,23 @@ class GenerationPipelineTest {
             assertEquals(outcome.sourceChecksum(),
                     new SourceTreeChecksum().calculate(new GeneratedProjectFiles(archivedFiles)));
         }
+    }
+
+    @Test
+    void writesResponseNormalizationOnlyForOperationsThatDeclareIt() throws IOException {
+        var outcome = pipelineWithValidator(request -> new ValidationReport(UNVERIFIED, List.of(), List.of()))
+                .generate(specification, normalizationGenerationRequest(), safeTempDir.resolve("normalization"));
+
+        JsonNode manifest = objectMapper.readTree(outcome.projectRoot().resolve("GENERATION_MANIFEST.json").toFile());
+        JsonNode normalization = manifest.path("operationMappings").get(0).path("responseNormalization");
+        assertEquals("/response/body/items", normalization.path("dataPath").asText());
+        assertEquals("/response/header/code", normalization.path("successCodePath").asText());
+        assertEquals(List.of("00", 0, false),
+                objectMapper.convertValue(normalization.path("successValues"), List.class));
+        assertEquals("/response/header/message", normalization.path("errorMessagePath").asText());
+        assertEquals("/response/body/totalCount", normalization.path("totalCountPath").asText());
+        JsonNode rawOperation = manifest.path("operationMappings").get(1);
+        assertFalse(rawOperation.path("responseNormalization").isObject());
     }
 
     @Test
@@ -359,6 +446,116 @@ class GenerationPipelineTest {
     }
 
     @Test
+    void rejectsAnUnknownProfileBeforeSpecificationAnalysisWithoutFallback() {
+        AtomicBoolean analyzed = new AtomicBoolean();
+        SpecificationAnalyzer trackingAnalyzer = (path, maxBytes) -> {
+            analyzed.set(true);
+            throw new AssertionError("Specification analysis must not run");
+        };
+        GenerationPipeline pipeline = pipelineWithRegistries(
+                trackingAnalyzer,
+                CompatibilityProfileRegistry.defaults(),
+                ProjectGeneratorRegistry.of(Map.of("generator-spring-ai-2", minimalGenerator())),
+                request -> validatedReport());
+
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> pipeline.generate(
+                        specification,
+                        requestWithProfile("spring-ai-latest"),
+                        safeTempDir.resolve("unknown-profile")));
+
+        assertEquals(TARGET_PROFILE_NOT_FOUND, failure.code());
+        assertEquals("TARGET_VALIDATE", failure.stage());
+        assertEquals("The requested compatibility profile is unavailable", failure.safeMessage());
+        assertFalse(analyzed.get());
+        assertFalse(Files.exists(safeTempDir.resolve("unknown-profile")));
+    }
+
+    @Test
+    void rejectsAnOmittedSpringAi1EmitterBeforeSpecificationAnalysisOrSourceWrites() {
+        AtomicBoolean analyzed = new AtomicBoolean();
+        SpecificationAnalyzer trackingAnalyzer = (path, maxBytes) -> {
+            analyzed.set(true);
+            throw new AssertionError("Specification analysis must not run");
+        };
+        GenerationPipeline pipeline = pipelineWithRegistries(
+                trackingAnalyzer,
+                CompatibilityProfileRegistry.defaults(),
+                ProjectGeneratorRegistry.of(Map.of("generator-spring-ai-2", minimalGenerator())),
+                request -> validatedReport());
+
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> pipeline.generate(
+                        specification,
+                        requestWithProfile("spring-ai-1.1-java17-mvc-streamable"),
+                        safeTempDir.resolve("missing-emitter")));
+
+        assertEquals(TARGET_COMBINATION_UNSUPPORTED, failure.code());
+        assertEquals("TARGET_VALIDATE", failure.stage());
+        assertEquals("The requested compatibility profile is unsupported", failure.safeMessage());
+        assertFalse(analyzed.get());
+        assertFalse(Files.exists(safeTempDir.resolve("missing-emitter")));
+    }
+
+    @Test
+    void passesTheCanonicalSpringAi1Java17ProfileToGenerationAndValidation() {
+        CompatibilityProfileRegistry profiles = CompatibilityProfileRegistry.defaults();
+        CompatibilityProfile java17 = profiles.find("spring-ai-1.1-java17-mvc-streamable").orElseThrow();
+        AtomicReference<CompatibilityProfile> generatedProfile = new AtomicReference<>();
+        AtomicReference<ValidationRequest> validationRequest = new AtomicReference<>();
+        ProjectGenerator generator = context -> {
+            generatedProfile.set(context.profile());
+            return minimalGenerator().generate(context);
+        };
+        GeneratedProjectValidator validator = request -> {
+            validationRequest.set(request);
+            return new ValidationReport(UNVERIFIED, List.of(), List.of());
+        };
+        GenerationPipeline pipeline = pipelineWithRegistries(
+                new SwaggerOpenApiAnalyzer(),
+                profiles,
+                ProjectGeneratorRegistry.of(Map.of("generator-spring-ai-1", generator)),
+                validator);
+
+        pipeline.generate(
+                specification,
+                requestWithProfile(java17.id()),
+                safeTempDir.resolve("canonical-java17"));
+
+        assertSame(java17, generatedProfile.get());
+        assertSame(java17, validationRequest.get().profile());
+    }
+
+    @Test
+    void writesDeterministicManifestMetadataForEachResolvedProfile() throws IOException {
+        CompatibilityProfileRegistry profiles = CompatibilityProfileRegistry.defaults();
+        GenerationPipeline pipeline = pipelineWithRegistries(
+                new SwaggerOpenApiAnalyzer(),
+                profiles,
+                ProjectGeneratorRegistry.of(Map.of("generator-spring-ai-2", profileAwareMinimalGenerator())),
+                request -> new ValidationReport(UNVERIFIED, List.of(), List.of()));
+        CompatibilityProfile java17 = profiles.find("spring-ai-2.0-java17-mvc-streamable").orElseThrow();
+        CompatibilityProfile java21 = profiles.find("spring-ai-2.0-java21-mvc-streamable").orElseThrow();
+
+        var firstJava17 = pipeline.generate(
+                specification, requestWithProfile(java17.id()), safeTempDir.resolve("java17-first"));
+        var secondJava17 = pipeline.generate(
+                specification, requestWithProfile(java17.id()), safeTempDir.resolve("java17-second"));
+        var java21Outcome = pipeline.generate(
+                specification, requestWithProfile(java21.id()), safeTempDir.resolve("java21"));
+
+        byte[] firstManifest = Files.readAllBytes(
+                firstJava17.projectRoot().resolve(GenerationManifestWriter.MANIFEST_FILE));
+        byte[] secondManifest = Files.readAllBytes(
+                secondJava17.projectRoot().resolve(GenerationManifestWriter.MANIFEST_FILE));
+        assertArrayEquals(firstManifest, secondManifest);
+        assertEquals(firstJava17.sourceChecksum(), secondJava17.sourceChecksum());
+        assertNotEquals(firstJava17.sourceChecksum(), java21Outcome.sourceChecksum());
+        assertManifestProfile(firstJava17.projectRoot(), java17);
+        assertManifestProfile(java21Outcome.projectRoot(), java21);
+    }
+
+    @Test
     void masksBuiltInAndConfiguredSecretNamesInTheReportAndArchive() throws IOException {
         String accessToken = "first\\\"second";
         String parameterSecret = "first second with spaces";
@@ -547,11 +744,21 @@ class GenerationPipelineTest {
     }
 
     private GenerationPipeline pipelineWithValidator(GeneratedProjectValidator validator) {
-        ProjectGenerator generator = context -> new GeneratedProjectFiles(Map.of(
+        return pipelineWith(minimalGenerator(), validator);
+    }
+
+    private ProjectGenerator minimalGenerator() {
+        return context -> new GeneratedProjectFiles(Map.of(
                 "README.md", "# Weather MCP\n".getBytes(UTF_8),
                 "settings.gradle.kts", "rootProject.name = \"weather-mcp-server\"\n".getBytes(UTF_8),
                 "build.gradle.kts", "plugins { java }\n".getBytes(UTF_8)));
-        return pipelineWith(generator, validator);
+    }
+
+    private ProjectGenerator profileAwareMinimalGenerator() {
+        return context -> new GeneratedProjectFiles(Map.of(
+                "README.md", ("# " + context.profile().id() + "\n").getBytes(UTF_8),
+                "settings.gradle.kts", "rootProject.name = \"weather-mcp-server\"\n".getBytes(UTF_8),
+                "build.gradle.kts", "plugins { java }\n".getBytes(UTF_8)));
     }
 
     private GenerationPipeline pipelineWith(ProjectGenerator generator, GeneratedProjectValidator validator) {
@@ -566,6 +773,35 @@ class GenerationPipelineTest {
                 validator,
                 new ValidationReportWriter(objectMapper),
                 new DeterministicZipPackager());
+    }
+
+    private GenerationPipeline pipelineWithRegistries(
+            SpecificationAnalyzer analyzer,
+            CompatibilityProfileRegistry profiles,
+            ProjectGeneratorRegistry generators,
+            GeneratedProjectValidator validator) {
+        return new GenerationPipeline(
+                analyzer,
+                new ToolModelFactory(),
+                profiles,
+                generators,
+                new SafeProjectWriter(),
+                new SourceTreeChecksum(),
+                new GenerationManifestWriter(objectMapper),
+                validator,
+                new ValidationReportWriter(objectMapper),
+                new DeterministicZipPackager());
+    }
+
+    private void assertManifestProfile(Path projectRoot, CompatibilityProfile profile) throws IOException {
+        JsonNode manifest = objectMapper.readTree(
+                projectRoot.resolve(GenerationManifestWriter.MANIFEST_FILE).toFile());
+        assertEquals(profile.id(), manifest.path("targetProfileId").asText());
+        assertEquals(profile.target().javaVersion(), manifest.path("javaVersion").asInt());
+        assertEquals(profile.gradleVersion(), manifest.path("gradleVersion").asText());
+        assertEquals(profile.containerImage(), manifest.path("containerImage").asText());
+        assertEquals(profile.templateVersion(), manifest.path("templateVersion").asText());
+        assertEquals(profile.runtimeVersion(), manifest.path("runtimeVersion").asText());
     }
 
     private ValidationReport validatedReport() {
@@ -592,6 +828,30 @@ class GenerationPipelineTest {
                                 "serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY"),
                                 "tenantCredential", new ParameterOverride(
                                         SERVER_SECRET, "WEATHER_CREDENTIAL_42")))));
+    }
+
+    private GenerationRequest requestWithProfile(String profileId) {
+        GenerationRequest request = weatherGenerationRequest();
+        return new GenerationRequest(
+                request.project(), request.provider(), request.domain(), profileId, request.validationLevel(),
+                request.validation(), request.operations());
+    }
+
+    private GenerationRequest normalizationGenerationRequest() {
+        GenerationRequest request = weatherGenerationRequest();
+        return new GenerationRequest(
+                request.project(), request.provider(), request.domain(), request.targetProfileId(), request.validationLevel(),
+                request.validation(), List.of(
+                        new OperationSelection(
+                                "getForecast", true, TOOL_NAME, TOOL_DESCRIPTION,
+                                Map.of(
+                                        "serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY"),
+                                        "tenantCredential", new ParameterOverride(
+                                                SERVER_SECRET, "WEATHER_CREDENTIAL_42")),
+                                new ResponseNormalizationPolicy(
+                                        "/response/body/items", "/response/header/code", List.of("00", 0, false),
+                                        "/response/header/message", "/response/body/totalCount")),
+                        new OperationSelection("getHealth", true, null, null, Map.of())));
     }
 
     private GenerationRequest.ValidationConfiguration representativeToolCallValidation() {

@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.core;
 
+import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod.GET;
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.ARRAY;
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.INTEGER;
 import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.NUMBER;
@@ -14,15 +15,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
 import io.gen2spring.mcp.domain.error.GeneratorException;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.net.URI;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class ExpectedToolCallFactoryTest {
@@ -122,6 +130,100 @@ class ExpectedToolCallFactoryTest {
         assertFalse(expected.arguments().containsKey("days"));
         assertThrows(UnsupportedOperationException.class, () -> expected.arguments().put("days", BigInteger.ONE));
         assertTrue(expected.arguments().get("location") instanceof Map<?, ?>);
+    }
+
+    @Test
+    void defensivelyCopiesResponseFixturesAndAllowsNullOnlyOutsideArgumentsAndSchemas() {
+        Map<String, Object> responseItem = new LinkedHashMap<>();
+        responseItem.put("id", 1);
+        List<Object> responseItems = new ArrayList<>();
+        responseItems.add(responseItem);
+        Map<String, Object> responseBody = new LinkedHashMap<>();
+        responseBody.put("items", responseItems);
+        Map<String, Object> expectedError = new LinkedHashMap<>();
+        expectedError.put("providerMessage", null);
+        Map<String, Object> expectedResult = new LinkedHashMap<>();
+        expectedResult.put("error", expectedError);
+
+        ExpectedToolCall expected = new ExpectedToolCall(
+                weatherTool(),
+                validArguments(),
+                new ExpectedUpstreamResponse(200, "application/json", responseBody),
+                expectedResult);
+        responseItem.put("private", true);
+        responseItems.clear();
+        expectedError.put("providerMessage", "private");
+
+        assertEquals(Map.of("items", List.of(Map.of("id", 1))), expected.upstreamResponse().body());
+        assertEquals(Map.of("error", java.util.Collections.singletonMap("providerMessage", null)),
+                expected.expectedResult());
+        assertThrows(UnsupportedOperationException.class,
+                () -> ((Map<String, Object>) expected.upstreamResponse().body()).put("extra", true));
+        assertThrows(UnsupportedOperationException.class,
+                () -> ((Map<String, Object>) expected.expectedResult()).put("extra", true));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedToolCall(weatherTool(), java.util.Collections.singletonMap("value", null)));
+        assertEquals(java.util.Collections.singletonMap("value", null),
+                new ExpectedUpstreamResponse(
+                        200, "application/json", java.util.Collections.singletonMap("value", null)).body());
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedUpstreamResponse(200, "application/json", new AtomicInteger(1)));
+    }
+
+    @Test
+    void permitsBlankResponseKeysButKeepsArgumentsAndSchemasStrict() {
+        Map<String, Object> responseBody = new LinkedHashMap<>();
+        responseBody.put("", Map.of(" ", true));
+        Map<String, Object> expectedResult = new LinkedHashMap<>();
+        expectedResult.put(" ", Map.of("", true));
+
+        ExpectedToolCall expected = new ExpectedToolCall(
+                weatherTool(),
+                validArguments(),
+                new ExpectedUpstreamResponse(200, "application/json", responseBody),
+                expectedResult);
+
+        assertEquals(Map.of("", Map.of(" ", true)), expected.upstreamResponse().body());
+        assertEquals(Map.of(" ", Map.of("", true)), expected.expectedResult());
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedToolCall(weatherTool(), Map.of("", true)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedTool("description", Map.of(" ", true)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedUpstreamResponse(
+                        200, "application/json", Map.of("unsafe\nkey", true)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ExpectedToolCall(
+                        weatherTool(),
+                        validArguments(),
+                        new ExpectedUpstreamResponse(200, "application/json", Map.of()),
+                        Map.of("unsafe\u0000key", true)));
+    }
+
+    @Test
+    void compatibilityConstructorCreatesTheLegacyResponseAndExpectedResult() {
+        ExpectedToolCall expected = new ExpectedToolCall(weatherTool(), validArguments());
+        Map<String, Object> legacy = Map.of("validated", true, "operationId", "getForecast");
+
+        assertEquals(new ExpectedUpstreamResponse(200, "application/json", legacy), expected.upstreamResponse());
+        assertEquals(legacy, expected.expectedResult());
+    }
+
+    @Test
+    void attachesTheToolIrDerivedResponseFixtureAfterArgumentNormalization() {
+        ExpectedToolCall result = factory.create(
+                List.of(weatherToolWithNormalization()),
+                validation("getForecast", validArguments()));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> response = (Map<String, Object>) result.upstreamResponse().body();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) response.get("payload");
+        assertEquals(Map.of("validated", true, "operationId", "getForecast"), payload.get("data"));
+        assertEquals("00", payload.get("code"));
+        assertEquals(Map.of(
+                "data", Map.of("validated", true, "operationId", "getForecast"),
+                "provider", Map.of("code", "00")), result.expectedResult());
     }
 
     @Test
@@ -312,6 +414,30 @@ class ExpectedToolCallFactoryTest {
                 null,
                 List.of(),
                 McpToolDefinition.OutputKind.GENERIC_JSON);
+    }
+
+    private McpToolDefinition weatherToolWithNormalization() {
+        McpToolDefinition tool = weatherTool();
+        return new McpToolDefinition(
+                tool.operationId(),
+                tool.name(),
+                tool.description(),
+                tool.inputs(),
+                new HttpExecutionDefinition(
+                        GET,
+                        URI.create("https://api.example.test"),
+                        "/forecast",
+                        List.of(),
+                        false,
+                        false,
+                        new ResponseNormalizationPolicy(
+                                "/payload/data",
+                                "/payload/code",
+                                List.of("00"),
+                                null,
+                                null)),
+                tool.secretBindings(),
+                tool.outputKind());
     }
 
     private ApiSchema integerSchema(String format) {

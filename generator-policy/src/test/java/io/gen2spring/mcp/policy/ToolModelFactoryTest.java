@@ -6,6 +6,7 @@ import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SE
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.USER_INPUT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,6 +22,7 @@ import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSecurityScheme;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
 import java.net.URI;
 import java.util.List;
@@ -39,6 +41,31 @@ class ToolModelFactoryTest {
         assertEquals("KMA_SERVICE_KEY", tools.getFirst().secretBindings().getFirst().environmentVariable());
         assertEquals("serviceKey", tools.getFirst().secretBindings().getFirst().targetName());
         assertEquals("nx", tools.getFirst().execution().bindings().getFirst().sourceName());
+    }
+
+    @Test
+    void attachesValidatedResponsePolicyToHttpExecution() {
+        ResponseNormalizationPolicy policy = normalization();
+        GenerationRequest request = request(List.of(new OperationSelection(
+                "getForecast", true, null, null,
+                Map.of("serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY")), policy)));
+
+        var tool = factory.create(weatherDocument(), request).getFirst();
+
+        assertSame(policy, tool.execution().responseNormalization());
+    }
+
+    @Test
+    void rejectsInvalidProgrammaticResponsePolicyBeforeRendering() {
+        var invalid = new ResponseNormalizationPolicy("bad", null, List.of(), null, null);
+
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> factory.create(weatherDocument(), request(List.of(new OperationSelection(
+                        "getForecast", true, null, null,
+                        Map.of("serviceKey", new ParameterOverride(SERVER_SECRET, "KMA_SERVICE_KEY")), invalid)))));
+
+        assertEquals(OPERATION_UNSUPPORTED, failure.code());
+        assertFalse(failure.getMessage().contains("bad"));
     }
 
     @Test
@@ -184,6 +211,37 @@ class ToolModelFactoryTest {
     }
 
     @Test
+    void rejectsReservedPropagationHeaderTargetsFromSchemeOnlyApiKeysWithoutEchoingTheHeader() {
+        for (String header : List.of(
+                "TrAcEpArEnT", "TRACESTATE", "bAgGaGe", "B3", "X-B3-TraceId", "x-b3-custom")) {
+            var operation = new ApiOperation(
+                    "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
+                    List.of(), null, false, List.of("partnerKey"), true, List.of());
+            var document = new OpenApiDocument(
+                    "3.0.3",
+                    "checksum",
+                    "yaml",
+                    URI.create("https://api.example.test"),
+                    List.of(operation),
+                    Map.of("partnerKey", new ApiSecurityScheme(
+                            "partnerKey", "apiKey", ParameterLocation.HEADER, header)),
+                    List.of());
+            var request = request(List.of(selection(
+                    "getPartnerData",
+                    null,
+                    Map.of("partnerKey", new ParameterOverride(SERVER_SECRET, "PARTNER_KEY")))));
+
+            GeneratorException exception = assertThrows(
+                    GeneratorException.class, () -> factory.create(document, request), header);
+
+            assertEquals(OPERATION_UNSUPPORTED, exception.code(), header);
+            assertEquals("tool-policy", exception.stage(), header);
+            assertEquals("Operation uses a runtime-owned or restricted HTTP header", exception.safeMessage(), header);
+            assertFalse(exception.safeMessage().contains(header), header);
+        }
+    }
+
+    @Test
     void rejectsMissingAndConflictingOverridesForApplicableApiKeySchemes() {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
@@ -308,6 +366,28 @@ class ToolModelFactoryTest {
                             "getPartnerData", null, Map.of())))));
 
             assertEquals(OPERATION_UNSUPPORTED, exception.code(), header);
+        }
+    }
+
+    @Test
+    void rejectsReservedPropagationHeaderInputsWithoutEchoingTheHeader() {
+        for (String header : List.of(
+                "TrAcEpArEnT", "TRACESTATE", "bAgGaGe", "B3", "X-B3-TraceId", "x-b3-custom")) {
+            var operation = new ApiOperation(
+                    "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
+                    List.of(new ApiParameter(header, ParameterLocation.HEADER, false, header, schema())),
+                    null, false, List.of(), true, List.of());
+
+            GeneratorException exception = assertThrows(
+                    GeneratorException.class,
+                    () -> factory.create(document(List.of(operation)), request(List.of(selection(
+                            "getPartnerData", null, Map.of())))),
+                    header);
+
+            assertEquals(OPERATION_UNSUPPORTED, exception.code(), header);
+            assertEquals("tool-policy", exception.stage(), header);
+            assertEquals("Operation uses a runtime-owned or restricted HTTP header", exception.safeMessage(), header);
+            assertFalse(exception.safeMessage().contains(header), header);
         }
     }
 
@@ -520,6 +600,12 @@ class ToolModelFactoryTest {
 
     private OperationSelection selection(String operationId, String toolName, Map<String, ParameterOverride> parameters) {
         return new OperationSelection(operationId, true, toolName, null, parameters);
+    }
+
+    private ResponseNormalizationPolicy normalization() {
+        return new ResponseNormalizationPolicy(
+                "/response/body/items", "/response/header/code", List.of("00", 0, false),
+                "/response/header/message", "/response/body/totalCount");
     }
 
     private OpenApiDocument weatherDocument() {

@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public final class GenerationContracts {
     private GenerationContracts() {}
@@ -20,6 +21,40 @@ public final class GenerationContracts {
 
     public interface GeneratedProjectValidator {
         ValidationReport validate(ValidationRequest request);
+
+        default ValidationReport validate(
+                ValidationRequest request,
+                GenerationProgressListener listener) {
+            Objects.requireNonNull(listener, "listener");
+            return validate(request);
+        }
+    }
+
+    public enum ProgressStatus { PENDING, RUNNING, SUCCESS, FAILED, SKIPPED }
+
+    public record GenerationProgress(String stage, ProgressStatus status) {
+        public static final List<String> STAGES = List.of(
+                "ANALYZE",
+                "GENERATE",
+                "COMPILE",
+                "APPLICATION_CONTEXT",
+                "MCP_INITIALIZE",
+                "MCP_TOOLS_LIST",
+                "MCP_TOOL_CALL",
+                "PACKAGE");
+
+        public GenerationProgress {
+            if (!STAGES.contains(stage) || status == null) {
+                throw new IllegalArgumentException("Generation progress is invalid");
+            }
+        }
+    }
+
+    @FunctionalInterface
+    public interface GenerationProgressListener {
+        GenerationProgressListener NOOP = progress -> {};
+
+        void onProgress(GenerationProgress progress);
     }
 
     public record GenerationContext(
@@ -36,11 +71,21 @@ public final class GenerationContracts {
             String artifactId,
             GenerationRequest.ValidationLevel level,
             Map<String, ExpectedTool> expectedTools,
-            ExpectedToolCall expectedToolCall) {
+            ExpectedToolCall expectedToolCall,
+            CompatibilityProfile profile) {
         public ValidationRequest {
-            if (expectedToolCall == null) {
+            if (expectedToolCall == null || profile == null) {
                 throw new IllegalArgumentException("Validation request expected Tool call is incomplete");
             }
+        }
+
+        public ValidationRequest(
+                Path projectRoot,
+                String artifactId,
+                GenerationRequest.ValidationLevel level,
+                Map<String, ExpectedTool> expectedTools,
+                ExpectedToolCall expectedToolCall) {
+            this(projectRoot, artifactId, level, expectedTools, expectedToolCall, CompatibilityProfile.p0());
         }
     }
 
@@ -49,16 +94,31 @@ public final class GenerationContracts {
             if (description == null || inputSchema == null) {
                 throw new IllegalArgumentException("Expected Tool metadata is incomplete");
             }
-            inputSchema = immutableMap(inputSchema);
+            inputSchema = immutableMap(inputSchema, false, false);
         }
     }
 
-    public record ExpectedToolCall(McpToolDefinition tool, Map<String, Object> arguments) {
+    public record ExpectedUpstreamResponse(int status, String contentType, Object body) {
+        public ExpectedUpstreamResponse {
+            body = immutableJsonValue(body, true, true);
+        }
+    }
+
+    public record ExpectedToolCall(
+            McpToolDefinition tool,
+            Map<String, Object> arguments,
+            ExpectedUpstreamResponse upstreamResponse,
+            Object expectedResult) {
         public ExpectedToolCall {
-            if (tool == null || arguments == null) {
+            if (tool == null || arguments == null || upstreamResponse == null) {
                 throw new IllegalArgumentException("Expected Tool call is incomplete");
             }
-            arguments = immutableMap(arguments);
+            arguments = immutableMap(arguments, false, false);
+            expectedResult = immutableJsonValue(expectedResult, true, true);
+        }
+
+        public ExpectedToolCall(McpToolDefinition tool, Map<String, Object> arguments) {
+            this(tool, arguments, legacyResponse(tool), legacyResult(tool));
         }
     }
     public enum ValidationStatus { VALIDATED, UNVERIFIED }
@@ -85,27 +145,70 @@ public final class GenerationContracts {
             ValidationStatus validationStatus,
             String sourceChecksum) {}
 
-    private static Map<String, Object> immutableMap(Map<?, ?> source) {
+    private static ExpectedUpstreamResponse legacyResponse(McpToolDefinition tool) {
+        return new ExpectedUpstreamResponse(200, "application/json", legacyResult(tool));
+    }
+
+    private static Map<String, Object> legacyResult(McpToolDefinition tool) {
+        if (tool == null || tool.operationId() == null || tool.operationId().isBlank()) {
+            throw new IllegalArgumentException("Expected Tool call is incomplete");
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("validated", true);
+        result.put("operationId", tool.operationId());
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static Map<String, Object> immutableMap(
+            Map<?, ?> source,
+            boolean allowNull,
+            boolean allowBlankKeys) {
         Map<String, Object> copy = new LinkedHashMap<>();
         source.forEach((key, value) -> {
-            if (!(key instanceof String name) || name.isBlank()) {
-                throw new IllegalArgumentException("Schema object keys must be non-blank strings");
+            if (!(key instanceof String name) || invalidObjectKey(name, allowBlankKeys)) {
+                throw new IllegalArgumentException(allowBlankKeys
+                        ? "Response object keys must be safe JSON strings"
+                        : "Schema object keys must be non-blank strings");
             }
-            copy.put(name, immutableJsonValue(value));
+            copy.put(name, immutableJsonValue(value, allowNull, allowBlankKeys));
         });
         return Collections.unmodifiableMap(copy);
     }
 
-    private static Object immutableJsonValue(Object value) {
+    private static boolean invalidObjectKey(String name, boolean allowBlankKeys) {
+        return allowBlankKeys
+                ? name.chars().anyMatch(Character::isISOControl)
+                : name.isBlank();
+    }
+
+    private static Object immutableJsonValue(
+            Object value,
+            boolean allowNull,
+            boolean allowBlankKeys) {
+        if (value == null) {
+            if (allowNull) {
+                return null;
+            }
+            throw new IllegalArgumentException("Schema values must use JSON-compatible immutable types");
+        }
         if (value instanceof Map<?, ?> map) {
-            return immutableMap(map);
+            return immutableMap(map, allowNull, allowBlankKeys);
         }
         if (value instanceof List<?> list) {
             List<Object> copy = new ArrayList<>(list.size());
-            list.forEach(item -> copy.add(immutableJsonValue(item)));
+            list.forEach(item -> copy.add(immutableJsonValue(item, allowNull, allowBlankKeys)));
             return Collections.unmodifiableList(copy);
         }
-        if (value instanceof String || value instanceof Number || value instanceof Boolean) {
+        if (value instanceof String || value instanceof Boolean
+                || value instanceof Byte || value instanceof Short
+                || value instanceof Integer || value instanceof Long
+                || value instanceof java.math.BigInteger || value instanceof java.math.BigDecimal) {
+            return value;
+        }
+        if (value instanceof Float number && Float.isFinite(number)) {
+            return value;
+        }
+        if (value instanceof Double number && Double.isFinite(number)) {
             return value;
         }
         throw new IllegalArgumentException("Schema values must use JSON-compatible immutable types");

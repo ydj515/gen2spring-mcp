@@ -2,9 +2,14 @@ package io.gen2spring.mcp.cli;
 
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SERVER_SECRET;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -44,6 +49,104 @@ class GenerationConfigurationReaderTest {
         assertEquals(Map.of("latitude", new BigDecimal("37.5"), "longitude", new BigDecimal("127.0")),
                 call.arguments().get("location"));
         assertThrows(UnsupportedOperationException.class, () -> call.arguments().put("days", 4));
+    }
+
+    @Test
+    void readsEveryRegisteredTargetProfile() throws Exception {
+        Path ai2Java17 = copyResource("/config/weather-generation-java17.yaml", "generation-ai2-java17.yaml");
+        Path ai2Java21 = copyResource("/config/weather-generation.yaml", "generation-ai2-java21.yaml");
+        Path ai1Java17 = copyResource(
+                "/config/weather-generation-spring-ai1-java17.yaml", "generation-ai1-java17.yaml");
+        Path ai1Java21 = copyResource(
+                "/config/weather-generation-spring-ai1-java21.yaml", "generation-ai1-java21.yaml");
+
+        assertEquals("spring-ai-1.1-java17-mvc-streamable", reader.read(ai1Java17).targetProfileId());
+        assertEquals("spring-ai-1.1-java21-mvc-streamable", reader.read(ai1Java21).targetProfileId());
+        assertEquals("spring-ai-2.0-java17-mvc-streamable", reader.read(ai2Java17).targetProfileId());
+        assertEquals("spring-ai-2.0-java21-mvc-streamable", reader.read(ai2Java21).targetProfileId());
+        assertEquals(
+                Files.readString(ai2Java17).replace(
+                        "spring-ai-2.0-java17-mvc-streamable", "spring-ai-1.1-java17-mvc-streamable"),
+                Files.readString(ai1Java17));
+        assertEquals(
+                Files.readString(ai2Java21).replace(
+                        "spring-ai-2.0-java21-mvc-streamable", "spring-ai-1.1-java21-mvc-streamable"),
+                Files.readString(ai1Java21));
+    }
+
+    @Test
+    void usesTheInjectedProfileRegistryAndDoesNotEchoAnUnknownProfile() throws Exception {
+        var java21Only = CompatibilityProfileRegistry.of(List.of(CompatibilityProfile.p0()));
+        var restrictedReader = new GenerationConfigurationReader(java21Only);
+        Path java17 = copyResource("/config/weather-generation-java17.yaml", "restricted-java17.yaml");
+
+        CliConfigurationException exception = assertThrows(
+                CliConfigurationException.class,
+                () -> restrictedReader.read(java17));
+
+        assertEquals("Target profile is unavailable", exception.getMessage());
+        assertFalse(exception.getMessage().contains("spring-ai-2.0-java17-mvc-streamable"));
+    }
+
+    @Test
+    void rejectsAnUnknownProfileWithAFixedValueFreeFailure() throws Exception {
+        String unknownProfile = "spring-ai-secret-unknown";
+        Path configuration = write("unknown-profile.yaml", validConfiguration().replace(
+                "spring-ai-2.0-java21-mvc-streamable", unknownProfile));
+
+        CliConfigurationException exception = assertThrows(
+                CliConfigurationException.class,
+                () -> reader.read(configuration));
+
+        assertEquals("Target profile is unavailable", exception.getMessage());
+        assertFalse(exception.getMessage().contains(unknownProfile));
+    }
+
+    @Test
+    void readsTypedResponseNormalization() throws IOException {
+        GenerationRequest request = reader.read(write("normalization.yaml", validConfiguration().replace(
+                "    parameters:\n", "    responseNormalization:\n"
+                        + "      dataPath: /response/body/items/0\n"
+                        + "      successCodePath: /response/header/resultCode\n"
+                        + "      successValues: [\"00\", 0, false]\n"
+                        + "      errorMessagePath: /response/header/resultMsg\n"
+                        + "      totalCountPath: /response/body/totalCount\n"
+                        + "    parameters:\n")));
+
+        assertEquals(new ResponseNormalizationPolicy(
+                "/response/body/items/0", "/response/header/resultCode", List.of("00", BigInteger.ZERO, false),
+                "/response/header/resultMsg", "/response/body/totalCount"),
+                request.operations().getFirst().responseNormalization());
+    }
+
+    @Test
+    void rejectsUnknownNormalizationFieldsAndNonScalarSuccessValues() throws IOException {
+        assertThrows(CliConfigurationException.class,
+                () -> reader.read(write("unknown-normalization.yaml", validConfiguration().replace(
+                        "    parameters:\n", "    responseNormalization: {jsonPath: $.items}\n    parameters:\n"))));
+        assertThrows(CliConfigurationException.class,
+                () -> reader.read(write("nested-normalization.yaml", validConfiguration().replace(
+                        "    parameters:\n", "    responseNormalization: {successCodePath: /code, successValues: [[00]]}\n"
+                                + "    parameters:\n"))));
+    }
+
+    @Test
+    void distinguishesAbsentPointersFromExplicitEmptyPointerStrings() throws IOException {
+        assertThrows(CliConfigurationException.class,
+                () -> reader.read(write("empty-pointer.yaml", validConfiguration().replace(
+                        "    parameters:\n", "    responseNormalization: {dataPath: \"\"}\n"
+                                + "    parameters:\n"))));
+
+        GenerationRequest absent = reader.read(write("absent-pointer.yaml", validConfiguration().replace(
+                "    parameters:\n", "    responseNormalization: {}\n    parameters:\n")));
+        GenerationRequest emptyProperty = reader.read(write(
+                "empty-property-pointer.yaml", validConfiguration().replace(
+                        "    parameters:\n", "    responseNormalization: {dataPath: /}\n"
+                                + "    parameters:\n")));
+
+        assertEquals(new ResponseNormalizationPolicy(null, null, List.of(), null, null),
+                absent.operations().getFirst().responseNormalization());
+        assertEquals("/", emptyProperty.operations().getFirst().responseNormalization().dataPointer());
     }
 
     @ParameterizedTest

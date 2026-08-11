@@ -23,6 +23,8 @@ import org.junit.jupiter.api.Test;
 
 class MockUpstreamServerTest {
     private static final String SENSITIVE_OBSERVED_VALUE = "observed-private-value";
+    private static final String TRACEPARENT =
+            "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01";
     private static final Duration WAIT = Duration.ofSeconds(2);
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2))
@@ -42,6 +44,34 @@ class MockUpstreamServerTest {
             assertEquals(2, mapper.readTree(response.body()).size());
             server.sealAndAwaitVerified(WAIT);
         }
+    }
+
+    @Test
+    void returnsTheConfiguredStatusContentTypeAndBodyAfterOneExactRequest() throws Exception {
+        UpstreamCallExpectation expectation = expectation(
+                429, "application/problem+json", Map.of("code", "LIMIT"));
+        try (var server = MockUpstreamServer.start(expectation)) {
+            HttpResponse<String> response = send(server, "POST", query("first", "second"),
+                    "X-Token", "validator", expectedBody());
+
+            assertEquals(429, response.statusCode());
+            assertEquals("application/problem+json",
+                    response.headers().firstValue("Content-Type").orElseThrow());
+            assertEquals(mapper.valueToTree(Map.of("code", "LIMIT")), mapper.readTree(response.body()));
+            server.sealAndAwaitVerified(WAIT);
+        }
+    }
+
+    @Test
+    void rejectsConfiguredResponsesLargerThanOneMebibyteBeforeServerStartWithoutLeakingTheBody() {
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> expectation(
+                        200,
+                        "application/json",
+                        Map.of("private", SENSITIVE_OBSERVED_VALUE + "x".repeat(1024 * 1024))));
+
+        assertEquals("Expected Tool call response fixture exceeded the size limit", failure.getMessage());
+        assertFalse(failure.getMessage().contains(SENSITIVE_OBSERVED_VALUE));
     }
 
     @Test
@@ -122,6 +152,31 @@ class MockUpstreamServerTest {
                         "validator",
                         HttpRequest.BodyPublishers.ofString(expectedBody()))
                 .header("X-Unexpected", SENSITIVE_OBSERVED_VALUE)));
+    }
+
+    @Test
+    void rejectsMissingMalformedAndDuplicateTraceContextWithoutLeakingIt() throws Exception {
+        assertRejected("missing traceparent", server -> send(HttpRequest.newBuilder(
+                        server.baseUri().resolve(query("first", "second")))
+                .timeout(WAIT)
+                .header("X-Token", "validator")
+                .POST(HttpRequest.BodyPublishers.ofString(expectedBody()))));
+        assertRejected("malformed traceparent", server -> send(request(
+                        server,
+                        "POST",
+                        query("first", "second"),
+                        "X-Token",
+                        "validator",
+                        HttpRequest.BodyPublishers.ofString(expectedBody()))
+                .setHeader("traceparent", SENSITIVE_OBSERVED_VALUE)));
+        assertRejected("duplicate traceparent", server -> send(request(
+                        server,
+                        "POST",
+                        query("first", "second"),
+                        "X-Token",
+                        "validator",
+                        HttpRequest.BodyPublishers.ofString(expectedBody()))
+                .header("traceparent", "00-abcdefabcdefabcdefabcdefabcdefab-abcdefabcdefabcd-00")));
     }
 
     @Test
@@ -355,6 +410,21 @@ class MockUpstreamServerTest {
                 Map.of("ITEM_KEY", "mcp-validation-secret-1"));
     }
 
+    private UpstreamCallExpectation expectation(int status, String contentType, Object responseBody) {
+        UpstreamCallExpectation request = expectation();
+        return new UpstreamCallExpectation(
+                request.operationId(),
+                request.method(),
+                request.rawPath(),
+                request.query(),
+                request.headers(),
+                request.body(),
+                request.environmentOverrides(),
+                status,
+                contentType,
+                responseBody);
+    }
+
     private String query(String... values) {
         StringBuilder path = new StringBuilder("/items/one?");
         for (int index = 0; index < values.length; index++) {
@@ -400,6 +470,7 @@ class MockUpstreamServerTest {
             HttpRequest.BodyPublisher body) {
         HttpRequest.Builder request = HttpRequest.newBuilder(server.baseUri().resolve(pathAndQuery))
                 .timeout(WAIT)
+                .header("traceparent", TRACEPARENT)
                 .method(method, body);
         if (headerName != null) {
             request.header(headerName, headerValue);

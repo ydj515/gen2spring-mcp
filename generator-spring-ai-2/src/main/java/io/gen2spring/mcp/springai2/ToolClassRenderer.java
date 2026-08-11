@@ -11,9 +11,8 @@ final class ToolClassRenderer {
     String render(
             String packageName,
             String domainClass,
-            List<McpToolDefinition> tools,
-            boolean explicitToolSchema) {
-        Set<String> imports = imports(packageName, domainClass, tools, explicitToolSchema);
+            List<McpToolDefinition> tools) {
+        Set<String> imports = imports(packageName, domainClass, tools);
         StringBuilder source = new StringBuilder("package ").append(packageName).append(".generated.tool;\n\n");
         imports.forEach(value -> source.append("import ").append(value).append(";\n"));
         source.append("\n@Component\n@Validated\npublic class ").append(domainClass).append("McpTools {\n")
@@ -23,7 +22,7 @@ final class ToolClassRenderer {
                 .append("    }\n");
 
         for (McpToolDefinition tool : tools) {
-            appendMethod(source, domainClass, tool, explicitToolSchema);
+            appendMethod(source, domainClass, tool);
         }
         return source.append("}\n").toString();
     }
@@ -31,16 +30,10 @@ final class ToolClassRenderer {
     private void appendMethod(
             StringBuilder source,
             String domainClass,
-            McpToolDefinition tool,
-            boolean explicitToolSchema) {
+            McpToolDefinition tool) {
         List<McpInputDefinition> inputs = InputRecordRenderer.inputs(tool);
         String operationClass = JavaSourceRenderer.upperCamel(tool.operationId());
         source.append('\n');
-        if (!explicitToolSchema) {
-            source.append("    @McpTool(name = ").append(JavaStringLiteral.quote(tool.name()))
-                    .append(", description = ").append(JavaStringLiteral.quote(tool.description()))
-                    .append(", generateOutputSchema = true)\n");
-        }
         source.append("    public JsonNode ").append(JavaSourceRenderer.lowerCamel(tool.operationId())).append('(');
         if (!inputs.isEmpty()) {
             source.append('\n');
@@ -56,8 +49,8 @@ final class ToolClassRenderer {
                     ? input.jsonName() : input.description();
             source.append("@McpToolParam(description = ").append(JavaStringLiteral.quote(description))
                     .append(", required = ").append(input.required()).append(") ")
-                    .append(toolParameterType(input.schema(), operationClass + JavaSourceRenderer.upperCamel(input.name()),
-                            explicitToolSchema))
+                    .append(toolParameterType(
+                            input.schema(), operationClass + JavaSourceRenderer.upperCamel(input.name())))
                     .append(' ').append(JavaSourceRenderer.lowerCamel(input.name()))
                     .append(index + 1 == inputs.size() ? ") {\n" : ",\n");
         }
@@ -70,7 +63,7 @@ final class ToolClassRenderer {
                 source.append(", ");
             }
             McpInputDefinition input = inputs.get(index);
-            source.append(constructorArgument(input, operationClass, explicitToolSchema));
+            source.append(constructorArgument(input, operationClass));
         }
         source.append(");\n")
                 .append("        return executor.execute(").append(domainClass).append("Operations.")
@@ -81,12 +74,10 @@ final class ToolClassRenderer {
     private Set<String> imports(
             String packageName,
             String domainClass,
-            List<McpToolDefinition> tools,
-            boolean explicitToolSchema) {
+            List<McpToolDefinition> tools) {
         Set<String> imports = new TreeSet<>();
         imports.add(packageName + ".generated.metadata." + domainClass + "Operations");
         imports.add(packageName + ".runtime.OpenApiOperationExecutor");
-        imports.add("org.springframework.ai.mcp.annotation.McpTool");
         imports.add("org.springframework.ai.mcp.annotation.McpToolParam");
         imports.add("org.springframework.stereotype.Component");
         imports.add("org.springframework.validation.annotation.Validated");
@@ -146,16 +137,16 @@ final class ToolClassRenderer {
                 .replace("java.util.", "");
     }
 
-    private String toolParameterType(ApiSchema schema, String suggestedName, boolean explicitToolSchema) {
-        if (explicitToolSchema && schema.enumValues() != null && !schema.enumValues().isEmpty()) {
+    private String toolParameterType(ApiSchema schema, String suggestedName) {
+        if (schema.enumValues() != null && !schema.enumValues().isEmpty()) {
             return "String";
         }
         return shortType(schema, suggestedName);
     }
 
-    private String constructorArgument(McpInputDefinition input, String operationClass, boolean explicitToolSchema) {
+    private String constructorArgument(McpInputDefinition input, String operationClass) {
         String variable = JavaSourceRenderer.lowerCamel(input.name());
-        if (explicitToolSchema && input.schema().enumValues() != null && !input.schema().enumValues().isEmpty()) {
+        if (input.schema().enumValues() != null && !input.schema().enumValues().isEmpty()) {
             return JavaSourceRenderer.javaType(input.schema(), operationClass + JavaSourceRenderer.upperCamel(input.name()))
                     .replace("java.math.", "").replace("java.util.", "")
                     + ".fromWireValue(" + variable + ")";

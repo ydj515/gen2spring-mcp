@@ -16,6 +16,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class McpTestApplication {
+    private static final String TRACEPARENT =
+            "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01";
     private static final Pattern QUOTED_NX = Pattern.compile("\\\"nx\\\":\\\"([^\\\"]*)\\\"");
     private static final Pattern NUMBER_NX = Pattern.compile("\\\"nx\\\":(-?[0-9]+)");
 
@@ -108,6 +110,7 @@ public final class McpTestApplication {
             HttpRequest upstreamRequest = HttpRequest.newBuilder(
                             URI.create(requiredEnvironment("PROVIDER_BASE_URL") + path + "?" + query))
                     .timeout(Duration.ofSeconds(3))
+                    .header("traceparent", TRACEPARENT)
                     .GET()
                     .build();
             try {

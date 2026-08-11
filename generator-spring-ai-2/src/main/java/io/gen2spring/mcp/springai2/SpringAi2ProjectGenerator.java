@@ -11,22 +11,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class SpringAi2ProjectGenerator implements ProjectGenerator {
-    private final ProjectFileRenderer renderer;
-    private final JavaSourceRenderer javaSourceRenderer;
-
-    public SpringAi2ProjectGenerator() {
-        this(new ProjectFileRenderer(CompatibilityProfile.p0()), new JavaSourceRenderer());
-    }
-
-    SpringAi2ProjectGenerator(ProjectFileRenderer renderer, JavaSourceRenderer javaSourceRenderer) {
-        this.renderer = renderer;
-        this.javaSourceRenderer = javaSourceRenderer;
-    }
+    public SpringAi2ProjectGenerator() {}
 
     @Override
     public GeneratedProjectFiles generate(GenerationContext context) {
+        CompatibilityProfile profile = context == null ? null : context.profile();
+        var renderer = new ProjectFileRenderer(profile);
+        var javaSourceRenderer = new JavaSourceRenderer(profile);
         var coordinates = renderer.requireContext(context);
         Map<String, byte[]> files = new LinkedHashMap<>();
+        files.put(".dockerignore", utf8(renderer.dockerignore(coordinates)));
         files.put(".gitignore", utf8(renderer.gitignore()));
         files.put("Dockerfile", utf8(renderer.dockerfile(coordinates)));
         files.put("README.md", utf8(renderer.readme(context)));

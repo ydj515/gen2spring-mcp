@@ -3,7 +3,6 @@ package io.gen2spring.mcp.core;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_COMBINATION_UNSUPPORTED;
-import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_PROFILE_NOT_FOUND;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.FAILED;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.UNVERIFIED;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
@@ -15,13 +14,15 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectF
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgressListener;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
-import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
 import io.gen2spring.mcp.policy.ToolModelFactory;
@@ -38,17 +39,13 @@ public final class GenerationPipeline {
     public static final long DEFAULT_MAX_SPECIFICATION_BYTES = 10L * 1024 * 1024;
 
     private final SpecificationAnalyzer analyzer;
-    private final ToolModelFactory toolModelFactory;
-    private final CompatibilityProfile profile;
-    private final ProjectGenerator projectGenerator;
+    private final GenerationPlanner planner;
     private final SafeProjectWriter projectWriter;
     private final SourceTreeChecksum sourceTreeChecksum;
     private final GenerationManifestWriter manifestWriter;
     private final GeneratedProjectValidator validator;
     private final ValidationReportWriter reportWriter;
     private final DeterministicZipPackager zipPackager;
-    private final ExpectedToolSchemaFactory expectedToolSchemaFactory = new ExpectedToolSchemaFactory();
-    private final ExpectedToolCallFactory expectedToolCallFactory = new ExpectedToolCallFactory();
 
     public GenerationPipeline(
             SpecificationAnalyzer analyzer,
@@ -61,10 +58,53 @@ public final class GenerationPipeline {
             GeneratedProjectValidator validator,
             ValidationReportWriter reportWriter,
             DeterministicZipPackager zipPackager) {
+        this(
+                analyzer,
+                toolModelFactory,
+                CompatibilityProfileRegistry.of(List.of(Objects.requireNonNull(profile, "profile"))),
+                ProjectGeneratorRegistry.of(Map.of(
+                        profile.generatorModule(), Objects.requireNonNull(projectGenerator, "projectGenerator"))),
+                projectWriter,
+                sourceTreeChecksum,
+                manifestWriter,
+                validator,
+                reportWriter,
+                zipPackager);
+    }
+
+    public GenerationPipeline(
+            SpecificationAnalyzer analyzer,
+            ToolModelFactory toolModelFactory,
+            CompatibilityProfileRegistry profiles,
+            ProjectGeneratorRegistry projectGenerators,
+            SafeProjectWriter projectWriter,
+            SourceTreeChecksum sourceTreeChecksum,
+            GenerationManifestWriter manifestWriter,
+            GeneratedProjectValidator validator,
+            ValidationReportWriter reportWriter,
+            DeterministicZipPackager zipPackager) {
+        this(
+                analyzer,
+                new GenerationPlanner(toolModelFactory, profiles, projectGenerators),
+                projectWriter,
+                sourceTreeChecksum,
+                manifestWriter,
+                validator,
+                reportWriter,
+                zipPackager);
+    }
+
+    public GenerationPipeline(
+            SpecificationAnalyzer analyzer,
+            GenerationPlanner planner,
+            SafeProjectWriter projectWriter,
+            SourceTreeChecksum sourceTreeChecksum,
+            GenerationManifestWriter manifestWriter,
+            GeneratedProjectValidator validator,
+            ValidationReportWriter reportWriter,
+            DeterministicZipPackager zipPackager) {
         this.analyzer = Objects.requireNonNull(analyzer, "analyzer");
-        this.toolModelFactory = Objects.requireNonNull(toolModelFactory, "toolModelFactory");
-        this.profile = Objects.requireNonNull(profile, "profile");
-        this.projectGenerator = Objects.requireNonNull(projectGenerator, "projectGenerator");
+        this.planner = Objects.requireNonNull(planner, "planner");
         this.projectWriter = Objects.requireNonNull(projectWriter, "projectWriter");
         this.sourceTreeChecksum = Objects.requireNonNull(sourceTreeChecksum, "sourceTreeChecksum");
         this.manifestWriter = Objects.requireNonNull(manifestWriter, "manifestWriter");
@@ -74,33 +114,60 @@ public final class GenerationPipeline {
     }
 
     public GenerationOutcome generate(Path specification, GenerationRequest request, Path outputRoot) {
+        return generate(specification, request, outputRoot, GenerationProgressListener.NOOP);
+    }
+
+    public GenerationOutcome generate(
+            Path specification,
+            GenerationRequest request,
+            Path outputRoot,
+            GenerationProgressListener listener) {
+        ProgressTracker progress = new ProgressTracker(listener);
+        try {
+            return generate(specification, request, outputRoot, progress);
+        } catch (Error | RuntimeException failure) {
+            progress.failActiveAndSkipRemaining();
+            throw failure;
+        }
+    }
+
+    private GenerationOutcome generate(
+            Path specification,
+            GenerationRequest request,
+            Path outputRoot,
+            ProgressTracker progress) {
         Path requestedRoot = normalizedOutputRoot(outputRoot);
         Path requestedArchive = archivePath(requestedRoot);
         zipPackager.requireArchiveAvailable(requestedRoot, requestedArchive);
+        GenerationPlanner.ResolvedTarget target = planner.resolve(request);
+        progress.start("ANALYZE");
         var analysis = analyzer.analyze(specification, DEFAULT_MAX_SPECIFICATION_BYTES);
-        List<McpToolDefinition> tools = toolModelFactory.create(analysis.document(), request);
-        validateTarget(request);
-        ExpectedToolCall expectedCall = expectedToolCallFactory.create(tools, request.validation());
+        progress.succeed("ANALYZE");
+        progress.start("GENERATE");
+        GenerationPlanner.PlannedGeneration plan = planner.plan(analysis.document(), request, target);
+        List<McpToolDefinition> tools = plan.tools();
         List<String> sensitiveNames = sensitiveNames(request, tools);
 
         GenerationContext context = new GenerationContext(
-                analysis.document(), tools, request, profile, analysis.originalSpecification());
+                analysis.document(), tools, request, plan.profile(), analysis.originalSpecification());
         GeneratedProjectFiles generated = execute(
                 SOURCE_GENERATION_FAILED,
                 "SOURCE_GENERATE",
                 "Generated project sources could not be created",
-                () -> projectGenerator.generate(context));
+                () -> plan.projectGenerator().generate(context));
         GeneratedProjectFiles completeProject = includeOriginalSpecification(generated, context);
         Path projectRoot = projectWriter.write(requestedRoot, completeProject);
         SourceTreeChecksum.SourceSnapshot sourceSnapshot = sourceTreeChecksum.snapshot(projectRoot);
         String sourceChecksum = sourceSnapshot.checksum();
-        manifestWriter.write(projectRoot, profile, analysis.document(), sourceChecksum, tools);
+        manifestWriter.write(projectRoot, plan.profile(), analysis.document(), sourceChecksum, tools);
+        progress.succeed("GENERATE");
 
         ValidationReport report;
+        progress.start("COMPILE");
         try (ValidationWorkspace workspace = ValidationWorkspace.copyOf(projectRoot, projectWriter)) {
             report = validator.validate(new ValidationRequest(
                     workspace.root(), request.project().artifactId(), request.validationLevel(),
-                    expectedToolSchemaFactory.create(tools), expectedCall));
+                    plan.expectedTools(), plan.expectedToolCall(), plan.profile()), progress);
             if (report == null) {
                 throw GeneratorException.system(
                         INTERNAL_ERROR, "VALIDATION", "Generated project validation returned no report", null);
@@ -115,9 +182,11 @@ public final class GenerationPipeline {
             throw wrapped;
         }
 
+        progress.completeValidation(report);
         reportWriter.write(projectRoot, report, sensitiveNames);
         Path archive = null;
         if (report.status() == VALIDATED) {
+            progress.start("PACKAGE");
             archive = archivePath(projectRoot);
             try {
                 zipPackager.packageProject(projectRoot, archive, sourceSnapshot);
@@ -125,25 +194,41 @@ public final class GenerationPipeline {
                 replaceReportAfterPackagingFailure(projectRoot, exception, sensitiveNames);
                 throw exception;
             }
+            progress.succeed("PACKAGE");
+        } else {
+            progress.skip("PACKAGE");
         }
         return new GenerationOutcome(projectRoot, archive, report.status(), sourceChecksum);
     }
 
-    private void validateTarget(GenerationRequest request) {
-        if (request == null || request.targetProfileId() == null || !profile.id().equals(request.targetProfileId())) {
-            throw GeneratorException.user(
-                    TARGET_PROFILE_NOT_FOUND, "TARGET_VALIDATE", "The requested compatibility profile is unavailable");
-        }
-        if (!CompatibilityProfile.p0().equals(profile)) {
-            throw GeneratorException.user(
-                    TARGET_COMBINATION_UNSUPPORTED,
-                    "TARGET_VALIDATE",
-                    "The configured compatibility profile is not the pinned P0 target");
-        }
-        if (request.project() == null || request.validationLevel() == null) {
-            throw GeneratorException.user(
-                    TARGET_COMBINATION_UNSUPPORTED, "TARGET_VALIDATE", "Generation target configuration is incomplete");
-        }
+    public GenerationPreview preview(Path specification, GenerationRequest request) {
+        GenerationPlanner.ResolvedTarget target = planner.resolve(request);
+        var analysis = analyzer.analyze(specification, DEFAULT_MAX_SPECIFICATION_BYTES);
+        GenerationPlanner.PlannedGeneration plan = planner.plan(analysis.document(), request, target);
+        GenerationContext context = new GenerationContext(
+                analysis.document(), plan.tools(), request, plan.profile(), analysis.originalSpecification());
+        GeneratedProjectFiles generated = execute(
+                SOURCE_GENERATION_FAILED,
+                "SOURCE_GENERATE",
+                "Generated project sources could not be created",
+                () -> plan.projectGenerator().generate(context));
+        GeneratedProjectFiles completeProject = includeOriginalSpecification(generated, context);
+        TreeSet<String> paths = new TreeSet<>(completeProject.files().keySet());
+        paths.add(GenerationManifestWriter.MANIFEST_FILE);
+        paths.add(ValidationReportWriter.REPORT_FILE);
+        paths.add(request.project().artifactId() + ".zip");
+        List<GenerationPreview.Tool> tools = plan.tools().stream().map(tool -> new GenerationPreview.Tool(
+                tool.operationId(),
+                tool.name(),
+                tool.description(),
+                plan.expectedTools().get(tool.name()).inputSchema(),
+                GenerationPreview.ResponseNormalization.from(tool.execution().responseNormalization()))).toList();
+        return new GenerationPreview(
+                plan.profile(),
+                tools,
+                plan.secretEnvironmentVariables(),
+                analysis.document().warnings(),
+                List.copyOf(paths));
     }
 
     private GeneratedProjectFiles includeOriginalSpecification(
@@ -253,6 +338,124 @@ public final class GenerationPipeline {
             throw exception;
         } catch (RuntimeException exception) {
             throw GeneratorException.system(errorCode, stage, safeMessage, exception);
+        }
+    }
+
+    private static final class ProgressTracker implements GenerationProgressListener {
+        private static final List<String> VALIDATION_STAGES = List.of(
+                "COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL");
+
+        private final GenerationProgressListener listener;
+        private final Map<String, ProgressStatus> statuses = new LinkedHashMap<>();
+
+        private ProgressTracker(GenerationProgressListener listener) {
+            this.listener = Objects.requireNonNull(listener, "listener");
+            GenerationProgress.STAGES.forEach(stage -> statuses.put(stage, ProgressStatus.PENDING));
+        }
+
+        @Override
+        public synchronized void onProgress(GenerationProgress progress) {
+            Objects.requireNonNull(progress, "progress");
+            if (progress.status() == ProgressStatus.PENDING) {
+                throw invalidTransition();
+            }
+            if (progress.status() == ProgressStatus.RUNNING) {
+                start(progress.stage());
+                return;
+            }
+            finish(progress.stage(), progress.status());
+        }
+
+        private synchronized void start(String stage) {
+            ProgressStatus current = status(stage);
+            if (current == ProgressStatus.RUNNING) {
+                return;
+            }
+            if (current != ProgressStatus.PENDING) {
+                throw invalidTransition();
+            }
+            publish(stage, ProgressStatus.RUNNING);
+        }
+
+        private synchronized void succeed(String stage) {
+            finish(stage, ProgressStatus.SUCCESS);
+        }
+
+        private synchronized void skip(String stage) {
+            finish(stage, ProgressStatus.SKIPPED);
+        }
+
+        private synchronized void completeValidation(ValidationReport report) {
+            for (ValidationStageResult result : report.stages()) {
+                if (!VALIDATION_STAGES.contains(result.stage())) {
+                    continue;
+                }
+                ProgressStatus terminal = switch (result.status()) {
+                    case SUCCESS -> ProgressStatus.SUCCESS;
+                    case FAILED -> ProgressStatus.FAILED;
+                    case SKIPPED -> ProgressStatus.SKIPPED;
+                };
+                if (status(result.stage()) == ProgressStatus.PENDING && terminal != ProgressStatus.SKIPPED) {
+                    start(result.stage());
+                }
+                finish(result.stage(), terminal);
+            }
+            for (String stage : VALIDATION_STAGES) {
+                if (status(stage) == ProgressStatus.PENDING) {
+                    skip(stage);
+                } else if (status(stage) == ProgressStatus.RUNNING) {
+                    finish(stage, ProgressStatus.FAILED);
+                }
+            }
+        }
+
+        private synchronized void failActiveAndSkipRemaining() {
+            for (String stage : GenerationProgress.STAGES) {
+                if (status(stage) == ProgressStatus.RUNNING) {
+                    publish(stage, ProgressStatus.FAILED);
+                    break;
+                }
+            }
+            for (String stage : GenerationProgress.STAGES) {
+                if (status(stage) == ProgressStatus.PENDING) {
+                    publish(stage, ProgressStatus.SKIPPED);
+                }
+            }
+        }
+
+        private void finish(String stage, ProgressStatus terminal) {
+            if (terminal == ProgressStatus.PENDING || terminal == ProgressStatus.RUNNING) {
+                throw invalidTransition();
+            }
+            ProgressStatus current = status(stage);
+            if (current == terminal) {
+                return;
+            }
+            if (terminal == ProgressStatus.SKIPPED) {
+                if (current != ProgressStatus.PENDING) {
+                    throw invalidTransition();
+                }
+            } else if (current != ProgressStatus.RUNNING) {
+                throw invalidTransition();
+            }
+            publish(stage, terminal);
+        }
+
+        private ProgressStatus status(String stage) {
+            ProgressStatus status = statuses.get(stage);
+            if (status == null) {
+                throw invalidTransition();
+            }
+            return status;
+        }
+
+        private void publish(String stage, ProgressStatus status) {
+            statuses.put(stage, status);
+            listener.onProgress(new GenerationProgress(stage, status));
+        }
+
+        private IllegalStateException invalidTransition() {
+            return new IllegalStateException("Generation progress transition is invalid");
         }
     }
 }

@@ -11,10 +11,14 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgressListener;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -62,6 +66,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private final ApplicationLaunchHook applicationLaunchHook;
     private final MockUpstreamFactory mockUpstreamFactory;
     private final ApplicationCleanupHook applicationCleanupHook;
+    private final JavaRuntimeResolver javaRuntimeResolver;
 
     public GradleMcpProjectValidator() {
         this(new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
@@ -145,6 +150,24 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             ApplicationLaunchHook applicationLaunchHook,
             MockUpstreamFactory mockUpstreamFactory,
             ApplicationCleanupHook applicationCleanupHook) {
+        this(processRunner, portAllocator, mcpClient, buildTimeout, startupTimeout, pollInterval,
+                maxProcessOutputBytes, wrapperSnapshotHook, applicationLaunchHook, mockUpstreamFactory,
+                applicationCleanupHook, new JavaRuntimeResolver());
+    }
+
+    GradleMcpProjectValidator(
+            BoundedProcessRunner processRunner,
+            LoopbackPortAllocator portAllocator,
+            McpStreamableHttpClient mcpClient,
+            Duration buildTimeout,
+            Duration startupTimeout,
+            Duration pollInterval,
+            int maxProcessOutputBytes,
+            WrapperSnapshotHook wrapperSnapshotHook,
+            ApplicationLaunchHook applicationLaunchHook,
+            MockUpstreamFactory mockUpstreamFactory,
+            ApplicationCleanupHook applicationCleanupHook,
+            JavaRuntimeResolver javaRuntimeResolver) {
         this.processRunner = Objects.requireNonNull(processRunner, "processRunner");
         this.portAllocator = Objects.requireNonNull(portAllocator, "portAllocator");
         this.mcpClient = Objects.requireNonNull(mcpClient, "mcpClient");
@@ -155,6 +178,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         this.applicationLaunchHook = Objects.requireNonNull(applicationLaunchHook, "applicationLaunchHook");
         this.mockUpstreamFactory = Objects.requireNonNull(mockUpstreamFactory, "mockUpstreamFactory");
         this.applicationCleanupHook = Objects.requireNonNull(applicationCleanupHook, "applicationCleanupHook");
+        this.javaRuntimeResolver = Objects.requireNonNull(javaRuntimeResolver, "javaRuntimeResolver");
         if (maxProcessOutputBytes <= 0) {
             throw new IllegalArgumentException("maxProcessOutputBytes must be positive");
         }
@@ -163,10 +187,36 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     @Override
     public ValidationReport validate(ValidationRequest request) {
+        return validate(request, GenerationProgressListener.NOOP);
+    }
+
+    @Override
+    public ValidationReport validate(
+            ValidationRequest request,
+            GenerationProgressListener listener) {
+        ValidationProgress progress = new ValidationProgress(listener);
+        progress.start("COMPILE");
+        try {
+            return progress.complete(validate(request, progress));
+        } catch (Error | RuntimeException failure) {
+            progress.failActiveAndSkipRemaining();
+            throw failure;
+        }
+    }
+
+    private ValidationReport validate(
+            ValidationRequest request,
+            ValidationProgress progress) {
         ValidatedRequest validated = validateRequest(request);
         List<ValidationStageResult> stages = new ArrayList<>();
 
         long compileStarted = System.nanoTime();
+        try {
+            validated = validated.withRuntime(javaRuntimeResolver.resolve(validated.profile()));
+        } catch (JavaRuntimeResolver.JavaRuntimeException exception) {
+            stages.add(failed("COMPILE", compileStarted, exception.getMessage()));
+            return failedReport(stages, List.of());
+        }
         VerifiedGradleWrapper gradleWrapper;
         try {
             gradleWrapper = pinGradleWrapper(validated.root(), validated.root().resolve("gradlew"));
@@ -177,13 +227,22 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         BoundedProcessRunner.Result build;
         try (gradleWrapper) {
             wrapperSnapshotHook.beforeExecution(gradleWrapper.original(), gradleWrapper.snapshot());
+            validated.runtime().requireStable();
             Path executable = gradleWrapper.verifiedExecutable();
             build = processRunner.run(
-                    List.of(executable.toString(), "classes", "test", "bootJar", "--no-daemon", "--non-interactive"),
+                    List.of(
+                            executable.toString(),
+                            "-Dorg.gradle.java.installations.auto-detect=false",
+                            "-Dorg.gradle.java.installations.auto-download=false",
+                            "-Dorg.gradle.java.installations.paths=" + validated.runtime().home(),
+                            "classes", "test", "bootJar", "--no-daemon", "--non-interactive"),
                     validated.root(), buildTimeout, maxProcessOutputBytes);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             stages.add(failed("COMPILE", compileStarted, "build interrupted"));
+            return failedReport(stages, List.of());
+        } catch (JavaRuntimeResolver.JavaRuntimeException exception) {
+            stages.add(failed("COMPILE", compileStarted, exception.getMessage()));
             return failedReport(stages, List.of());
         } catch (IOException | RuntimeException exception) {
             stages.add(failed("COMPILE", compileStarted, "build process failed safely"));
@@ -194,6 +253,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             return failedReport(stages, List.of());
         }
         stages.add(stage("COMPILE", SUCCESS, compileStarted, 0, build.safeSummary()));
+        progress.succeed("COMPILE");
 
         long applicationStarted = System.nanoTime();
         Path jar;
@@ -203,14 +263,15 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             stages.add(failed("APPLICATION_CONTEXT", applicationStarted, exception.getMessage()));
             return failedReport(stages, List.of());
         }
-        return validateRunningApplication(validated, jar, stages, applicationStarted);
+        return validateRunningApplication(validated, jar, stages, applicationStarted, progress);
     }
 
     private ValidationReport validateRunningApplication(
             ValidatedRequest request,
             Path jar,
             List<ValidationStageResult> stages,
-            long applicationStarted) {
+            long applicationStarted,
+            ValidationProgress progress) {
         BoundedProcessRunner.RunningProcess application = null;
         BoundedProcessRunner.Result applicationResult = null;
         Readiness readiness = Readiness.START_FAILED;
@@ -224,15 +285,17 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         try {
             UpstreamCallExpectation expectation = UpstreamCallExpectation.from(request.expectedToolCall());
             RunningMockUpstream upstream = mockUpstreamFactory.start(expectation);
+            progress.start("APPLICATION_CONTEXT");
             Throwable upstreamFailure = null;
             try {
                 phase = ValidationPhase.APPLICATION_START;
                 Map<String, String> environment = new TreeMap<>(upstream.environmentOverrides());
                 environment.put("PROVIDER_BASE_URL", upstream.baseUri().toString());
                 List<String> command = List.of(
-                        javaExecutable(), "-jar", jar.toString(),
+                        request.runtime().executable().toString(), "-jar", jar.toString(),
                         "--server.address=127.0.0.1", "--server.port=0");
                 applicationLaunchHook.beforeLaunch(command);
+                request.runtime().requireStable();
                 application = processRunner.start(command, request.root(), maxProcessOutputBytes, environment);
                 phase = ValidationPhase.APPLICATION_READINESS;
                 ReadinessResult readinessResult = awaitReadiness(application);
@@ -247,7 +310,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
                 phase = ValidationPhase.MCP_VALIDATION;
                 mcpResult = mcpClient.validate(
-                        readinessResult.endpoint(), request.expectedTools(), request.expectedToolCall());
+                        readinessResult.endpoint(), request.expectedTools(), request.expectedToolCall(),
+                        progress::observeMcpStage);
                 phase = ValidationPhase.UPSTREAM_VERIFICATION;
                 upstream.sealAndAwaitVerified(startupTimeout);
                 phase = ValidationPhase.APPLICATION_INTEGRITY;
@@ -284,7 +348,11 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             mcpFailure = exception;
             primaryFailure = exception;
         } catch (ApplicationStageException exception) {
-            applicationFailure = exception.safeSummary();
+            if (phase == ValidationPhase.APPLICATION_INTEGRITY) {
+                toolCallFailure = exception;
+            } else {
+                applicationFailure = exception.safeSummary();
+            }
             primaryFailure = exception;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -707,7 +775,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             throw new IllegalArgumentException("Expected Tool call is not bound to expected Tool metadata");
         }
         return new ValidatedRequest(
-                root, request.artifactId(), Collections.unmodifiableMap(expected), expectedToolCall);
+                root, request.artifactId(), Collections.unmodifiableMap(expected), expectedToolCall,
+                request.profile(), null);
     }
 
     private ValidationReport failedReport(List<ValidationStageResult> attempted, List<ObservedTool> observed) {
@@ -718,6 +787,130 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                     "skipped after an earlier validation failure"));
         }
         return new ValidationReport(UNVERIFIED, List.copyOf(complete), List.copyOf(observed));
+    }
+
+    private static final class ValidationProgress {
+        private final GenerationProgressListener listener;
+        private final Map<String, ProgressStatus> statuses = new java.util.LinkedHashMap<>();
+        private final List<McpStreamableHttpClient.McpStage> observedMcpStages = new ArrayList<>();
+
+        private ValidationProgress(GenerationProgressListener listener) {
+            this.listener = Objects.requireNonNull(listener, "listener");
+            ORDERED_STAGES.forEach(stage -> statuses.put(stage, ProgressStatus.PENDING));
+        }
+
+        private void start(String stage) {
+            ProgressStatus current = status(stage);
+            if (current == ProgressStatus.RUNNING) {
+                return;
+            }
+            if (current != ProgressStatus.PENDING) {
+                throw invalidTransition();
+            }
+            publish(stage, ProgressStatus.RUNNING);
+        }
+
+        private void succeed(String stage) {
+            finish(stage, ProgressStatus.SUCCESS);
+        }
+
+        private void observeMcpStage(McpStreamableHttpClient.McpStage stage) {
+            List<McpStreamableHttpClient.McpStage> order = List.of(
+                    McpStreamableHttpClient.McpStage.INITIALIZE,
+                    McpStreamableHttpClient.McpStage.TOOLS_LIST,
+                    McpStreamableHttpClient.McpStage.TOOL_CALL);
+            int index = observedMcpStages.size();
+            if (index >= order.size() || order.get(index) != stage) {
+                throw invalidTransition();
+            }
+            observedMcpStages.add(stage);
+            switch (stage) {
+                case INITIALIZE -> {
+                    succeed("APPLICATION_CONTEXT");
+                    start("MCP_INITIALIZE");
+                }
+                case TOOLS_LIST -> {
+                    succeed("MCP_INITIALIZE");
+                    start("MCP_TOOLS_LIST");
+                }
+                case TOOL_CALL -> {
+                    succeed("MCP_TOOLS_LIST");
+                    start("MCP_TOOL_CALL");
+                }
+            }
+        }
+
+        private ValidationReport complete(ValidationReport report) {
+            Objects.requireNonNull(report, "report");
+            for (ValidationStageResult result : report.stages()) {
+                if (!ORDERED_STAGES.contains(result.stage())) {
+                    continue;
+                }
+                ProgressStatus terminal = switch (result.status()) {
+                    case SUCCESS -> ProgressStatus.SUCCESS;
+                    case FAILED -> ProgressStatus.FAILED;
+                    case SKIPPED -> ProgressStatus.SKIPPED;
+                };
+                if (status(result.stage()) == ProgressStatus.PENDING && terminal != ProgressStatus.SKIPPED) {
+                    start(result.stage());
+                }
+                finish(result.stage(), terminal);
+            }
+            for (String stage : ORDERED_STAGES) {
+                if (status(stage) == ProgressStatus.PENDING) {
+                    finish(stage, ProgressStatus.SKIPPED);
+                } else if (status(stage) == ProgressStatus.RUNNING) {
+                    finish(stage, ProgressStatus.FAILED);
+                }
+            }
+            return report;
+        }
+
+        private void failActiveAndSkipRemaining() {
+            for (String stage : ORDERED_STAGES) {
+                if (status(stage) == ProgressStatus.RUNNING) {
+                    publish(stage, ProgressStatus.FAILED);
+                    break;
+                }
+            }
+            for (String stage : ORDERED_STAGES) {
+                if (status(stage) == ProgressStatus.PENDING) {
+                    publish(stage, ProgressStatus.SKIPPED);
+                }
+            }
+        }
+
+        private void finish(String stage, ProgressStatus terminal) {
+            ProgressStatus current = status(stage);
+            if (current == terminal) {
+                return;
+            }
+            if (terminal == ProgressStatus.SKIPPED) {
+                if (current != ProgressStatus.PENDING) {
+                    throw invalidTransition();
+                }
+            } else if (current != ProgressStatus.RUNNING) {
+                throw invalidTransition();
+            }
+            publish(stage, terminal);
+        }
+
+        private ProgressStatus status(String stage) {
+            ProgressStatus status = statuses.get(stage);
+            if (status == null) {
+                throw invalidTransition();
+            }
+            return status;
+        }
+
+        private void publish(String stage, ProgressStatus status) {
+            statuses.put(stage, status);
+            listener.onProgress(new GenerationProgress(stage, status));
+        }
+
+        private IllegalStateException invalidTransition() {
+            return new IllegalStateException("Generation progress transition is invalid");
+        }
     }
 
     private static ValidationStageResult failed(String stage, long started, String summary) {
@@ -735,10 +928,6 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     private static String safeApplicationSuffix(BoundedProcessRunner.Result result) {
         return result == null ? "" : "; " + result.safeSummary();
-    }
-
-    private static String javaExecutable() {
-        return Path.of(System.getProperty("java.home"), "bin", "java").toString();
     }
 
     private static Duration positive(Duration value, String name) {
@@ -894,7 +1083,13 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             Path root,
             String artifactId,
             Map<String, ExpectedTool> expectedTools,
-            ExpectedToolCall expectedToolCall) {}
+            ExpectedToolCall expectedToolCall,
+            CompatibilityProfile profile,
+            JavaRuntimeResolver.ResolvedJavaRuntime runtime) {
+        private ValidatedRequest withRuntime(JavaRuntimeResolver.ResolvedJavaRuntime resolvedRuntime) {
+            return new ValidatedRequest(root, artifactId, expectedTools, expectedToolCall, profile, resolvedRuntime);
+        }
+    }
 
     private enum ValidationPhase {
         MOCK_START,

@@ -53,7 +53,12 @@ public final class ExpectedToolCallFactory {
                 throw invalid(name);
             }
         });
-        return new ExpectedToolCall(tool, normalizedArguments);
+        var response = new ExpectedToolResponseFactory().create(tool);
+        return new ExpectedToolCall(
+                tool,
+                normalizedArguments,
+                response.upstreamResponse(),
+                response.expectedResult());
     }
 
     private McpToolDefinition findTool(List<McpToolDefinition> tools, String operationId) {

@@ -13,6 +13,9 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiParameter;
+import io.gen2spring.mcp.domain.observability.RuntimeObservabilityContract;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
@@ -32,6 +35,8 @@ import java.util.Map;
 import java.util.Set;
 
 public final class ToolModelFactory {
+    private static final String RESTRICTED_HEADER_MESSAGE =
+            "Operation uses a runtime-owned or restricted HTTP header";
     private static final Set<String> RUNTIME_OWNED_OR_RESTRICTED_HEADERS = Set.of(
             "accept", "content-type", "connection", "content-length", "expect", "host", "upgrade");
     private final ToolNamingPolicy namingPolicy;
@@ -83,6 +88,18 @@ public final class ToolModelFactory {
             return List.of();
         }
         return request.operations().stream().filter(OperationSelection::enabled).toList();
+    }
+
+    private ResponseNormalizationPolicy responsePolicy(OperationSelection selection) {
+        if (selection.responseNormalization() == null) {
+            return null;
+        }
+        try {
+            return new ResponseNormalizationPolicyValidator().requireValid(selection.responseNormalization());
+        } catch (IllegalArgumentException failure) {
+            throw GeneratorException.user(OPERATION_UNSUPPORTED, "tool-policy",
+                    "Response normalization policy is invalid");
+        }
     }
 
     private McpToolDefinition createTool(
@@ -180,7 +197,8 @@ public final class ToolModelFactory {
                         operation.method(), document.baseUrl(), operation.path(), List.copyOf(bindings),
                         operation.requestBody() != null
                                 && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT,
-                        operation.requestBodyRequired()),
+                        operation.requestBodyRequired(),
+                        responsePolicy(selection)),
                 List.copyOf(secretBindings),
                 GENERIC_JSON);
     }
@@ -356,9 +374,9 @@ public final class ToolModelFactory {
     private void rejectRuntimeOwnedOrRestrictedHeader(OpenApiDocument.ParameterLocation location, String name) {
         if (location == OpenApiDocument.ParameterLocation.HEADER
                 && name != null
-                && RUNTIME_OWNED_OR_RESTRICTED_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
-            throw GeneratorException.user(OPERATION_UNSUPPORTED, "tool-policy",
-                    "Operation uses a runtime-owned or restricted HTTP header: " + name);
+                && (RUNTIME_OWNED_OR_RESTRICTED_HEADERS.contains(name.toLowerCase(Locale.ROOT))
+                        || RuntimeObservabilityContract.isReservedPropagationHeader(name))) {
+            throw GeneratorException.user(OPERATION_UNSUPPORTED, "tool-policy", RESTRICTED_HEADER_MESSAGE);
         }
     }
 

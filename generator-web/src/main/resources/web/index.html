@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="generator-api-token" content="__GEN2SPRING_TOKEN__">
+  <title>Gen2Spring MCP Operation Editor</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <p class="eyebrow">Local-only generator</p>
+    <h1>Gen2Spring MCP Operation Editor</h1>
+    <p>Turn a local OpenAPI file into a validated Spring MCP server without uploading it elsewhere.</p>
+  </header>
+  <nav aria-label="Editor steps">
+    <ol class="step-nav">
+      <li><a href="#specification-step">Specification</a></li>
+      <li><a href="#operations-step">Operations</a></li>
+      <li><a href="#project-step">Project</a></li>
+      <li><a href="#preview-step">Preview</a></li>
+      <li><a href="#generate-step">Generate</a></li>
+    </ol>
+  </nav>
+  <main>
+    <div id="error-summary" class="error-summary" role="alert" aria-live="assertive" tabindex="-1" hidden>
+      <h2>Check the highlighted step</h2>
+      <p id="error-message"></p>
+    </div>
+
+    <section id="specification-step">
+      <h2>1. Specification</h2>
+      <p>Select one local OpenAPI YAML or JSON file. URL import is not available.</p>
+      <div class="field-row">
+        <div class="field grow">
+          <label for="specification-file">OpenAPI file</label>
+          <input id="specification-file" type="file" accept=".yaml,.yml,.json">
+        </div>
+        <button id="upload-button" type="button">Analyze file</button>
+      </div>
+      <p id="upload-status" class="status" aria-live="polite">No specification analyzed.</p>
+      <dl id="analysis-summary" class="summary-grid"></dl>
+    </section>
+
+    <section id="operations-step">
+      <h2>2. Operations</h2>
+      <div class="field compact">
+        <label for="operation-filter">Filter operations</label>
+        <select id="operation-filter">
+          <option value="all">All operations</option>
+          <option value="supported">Supported only</option>
+          <option value="unsupported">Unsupported only</option>
+        </select>
+      </div>
+      <div class="operation-layout">
+        <div>
+          <h3>Analyzed operations</h3>
+          <ul id="operation-list" class="operation-list"></ul>
+        </div>
+        <fieldset id="operation-editor" disabled>
+          <legend>Selected operation</legend>
+          <label class="checkbox" for="operation-enabled">
+            <input id="operation-enabled" type="checkbox"> Generate this Tool
+          </label>
+          <div class="field">
+            <label for="tool-name">Tool name</label>
+            <input id="tool-name" type="text" maxlength="64" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="tool-description">Tool description</label>
+            <textarea id="tool-description" maxlength="1024" rows="3"></textarea>
+          </div>
+          <h3>Parameter sources</h3>
+          <div id="parameter-editor"></div>
+          <h3>Response normalization</h3>
+          <div class="field-grid">
+            <div class="field"><label for="data-path">Data JSON Pointer</label><input id="data-path" type="text"></div>
+            <div class="field"><label for="success-code-path">Success code JSON Pointer</label><input id="success-code-path" type="text"></div>
+            <div class="field"><label for="success-values">Success values JSON array</label><textarea id="success-values" rows="2">[]</textarea></div>
+            <div class="field"><label for="error-message-path">Error message JSON Pointer</label><input id="error-message-path" type="text"></div>
+            <div class="field"><label for="total-count-path">Total count JSON Pointer</label><input id="total-count-path" type="text"></div>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <section id="project-step">
+      <h2>3. Project and Target</h2>
+      <div class="field-grid">
+        <div class="field"><label for="group-id">Group ID</label><input id="group-id" value="com.example" required></div>
+        <div class="field"><label for="artifact-id">Artifact ID</label><input id="artifact-id" value="openapi-mcp-server" required></div>
+        <div class="field"><label for="package-name">Package name</label><input id="package-name" value="com.example.mcp" required></div>
+        <div class="field"><label for="provider-name">Provider</label><input id="provider-name" value="provider" required></div>
+        <div class="field"><label for="domain-name">Domain</label><input id="domain-name" value="api" required></div>
+        <div class="field"><label for="target-profile">Compatibility profile</label><select id="target-profile" required></select></div>
+      </div>
+      <p id="profile-description" class="status" aria-live="polite">Loading local profiles.</p>
+    </section>
+
+    <section id="preview-step">
+      <h2>4. Preview</h2>
+      <div class="field-grid">
+        <div class="field"><label for="validation-operation">Representative operation</label><select id="validation-operation"></select></div>
+        <div class="field"><label for="validation-arguments">Representative arguments JSON object</label><textarea id="validation-arguments" rows="4">{}</textarea></div>
+      </div>
+      <button id="preview-button" type="button">Validate configuration and preview</button>
+      <p id="preview-status" class="status" aria-live="polite">Preview is required before generation.</p>
+      <div id="preview-output" class="preview-output"></div>
+    </section>
+
+    <section id="generate-step">
+      <h2>5. Generate and Download</h2>
+      <div class="button-row">
+        <button id="generate-button" type="button" disabled>Generate project</button>
+        <button id="delete-job-button" class="secondary" type="button" disabled>Delete job</button>
+      </div>
+      <p id="job-status" class="status" aria-live="polite">No generation job started.</p>
+      <ol id="progress-list" class="progress-list"></ol>
+      <div id="downloads" class="downloads"></div>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

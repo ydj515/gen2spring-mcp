@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.domain.tool;
 
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import java.net.URI;
 import java.util.List;
 
@@ -28,13 +29,14 @@ public record McpToolDefinition(
             String path,
             List<ParameterBinding> bindings,
             boolean objectRequestBody,
-            boolean requestBodyRequired) {
+            boolean requestBodyRequired,
+            ResponseNormalizationPolicy responseNormalization) {
         public HttpExecutionDefinition(
                 OpenApiDocument.HttpMethod method,
                 URI baseUrl,
                 String path,
                 List<ParameterBinding> bindings) {
-            this(method, baseUrl, path, bindings, false, false);
+            this(method, baseUrl, path, bindings, false, false, null);
         }
 
         public HttpExecutionDefinition(
@@ -43,7 +45,17 @@ public record McpToolDefinition(
                 String path,
                 List<ParameterBinding> bindings,
                 boolean objectRequestBody) {
-            this(method, baseUrl, path, bindings, objectRequestBody, objectRequestBody);
+            this(method, baseUrl, path, bindings, objectRequestBody, objectRequestBody, null);
+        }
+
+        public HttpExecutionDefinition(
+                OpenApiDocument.HttpMethod method,
+                URI baseUrl,
+                String path,
+                List<ParameterBinding> bindings,
+                boolean objectRequestBody,
+                boolean requestBodyRequired) {
+            this(method, baseUrl, path, bindings, objectRequestBody, requestBodyRequired, null);
         }
     }
 

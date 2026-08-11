@@ -1,6 +1,8 @@
 package io.gen2spring.mcp.springai2;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -74,7 +76,6 @@ class Task5ReviewRegressionTest {
         assertTrue(runtime.contains("request.cancel(true)"));
         assertTrue(runtime.contains("new ThreadPoolExecutor("));
         assertTrue(runtime.contains("new ArrayBlockingQueue<>(maxQueuedRequests)"));
-        assertTrue(runtime.contains("UPSTREAM_REQUEST_SATURATED"));
         assertTrue(contextTest.contains("slowUpstreamBodyTimesOutAndCancelsTheRequest"));
     }
 
@@ -105,6 +106,47 @@ class Task5ReviewRegressionTest {
                 () -> sourceRenderer.render(JavaSourceRendererTest.context(List.of(tool))));
 
         assertTrue(exception.safeMessage().contains("Spring AI Tool schema"));
+    }
+
+    @Test
+    void keepsGeneratedRuntimeAndSecuritySourcesEqualAcrossJavaProfiles() {
+        CompatibilityProfile java17 = profile(17);
+        CompatibilityProfile java21 = profile(21);
+        var java17Files = new JavaSourceRenderer(java17)
+                .render(JavaSourceRendererTest.contextWithWeatherTool(java17));
+        var java21Files = new JavaSourceRenderer(java21)
+                .render(JavaSourceRendererTest.contextWithWeatherTool(java21));
+
+        assertTrue(java17Files.keySet().equals(java21Files.keySet()));
+        for (String path : java17Files.keySet()) {
+            if (path.endsWith("/GeneratedJavaRuntimeTest.java")) {
+                continue;
+            }
+            if (path.endsWith("/RuntimeTelemetry.java")) {
+                String java17Source = utf8(java17Files.get(path));
+                String java21Source = utf8(java21Files.get(path));
+                assertTrue(java17Source.contains("spring-ai-2.0-java17-mvc-streamable"));
+                assertTrue(java21Source.contains("spring-ai-2.0-java21-mvc-streamable"));
+                assertEquals(
+                        normalizeTelemetryProfile(java17Source),
+                        normalizeTelemetryProfile(java21Source),
+                        path);
+            } else {
+                assertArrayEquals(java17Files.get(path), java21Files.get(path), path);
+            }
+        }
+    }
+
+    private String normalizeTelemetryProfile(String source) {
+        return source
+                .replace("spring-ai-2.0-java17-mvc-streamable", "<spring-ai-2-java-profile>")
+                .replace("spring-ai-2.0-java21-mvc-streamable", "<spring-ai-2-java-profile>");
+    }
+
+    private CompatibilityProfile profile(int javaVersion) {
+        return io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java" + javaVersion + "-mvc-streamable")
+                .orElseThrow();
     }
 
     private String utf8(byte[] value) {

@@ -9,6 +9,7 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,17 +33,24 @@ public final class JavaSourceRenderer {
     private final ToolCallbackConfigurationRenderer toolCallbackConfigurationRenderer;
     private final OperationMetadataRenderer metadataRenderer;
     private final RuntimeSourceRenderer runtimeRenderer;
+    private final ResponseRuntimeRenderer responseRuntimeRenderer;
+    private final RuntimeTelemetryRenderer runtimeTelemetryRenderer;
     private final ExpectedToolSchemaFactory expectedToolSchemaFactory;
     private final ObjectMapper objectMapper;
 
     public JavaSourceRenderer() {
-        this.projectRenderer = new ProjectFileRenderer(
-                io.gen2spring.mcp.domain.profile.CompatibilityProfile.p0());
+        this(CompatibilityProfile.p0());
+    }
+
+    public JavaSourceRenderer(CompatibilityProfile profile) {
+        this.projectRenderer = new ProjectFileRenderer(profile);
         this.inputRenderer = new InputRecordRenderer();
         this.toolRenderer = new ToolClassRenderer();
         this.toolCallbackConfigurationRenderer = new ToolCallbackConfigurationRenderer();
         this.metadataRenderer = new OperationMetadataRenderer();
         this.runtimeRenderer = new RuntimeSourceRenderer();
+        this.responseRuntimeRenderer = new ResponseRuntimeRenderer();
+        this.runtimeTelemetryRenderer = new RuntimeTelemetryRenderer(profile);
         this.expectedToolSchemaFactory = new ExpectedToolSchemaFactory();
         this.objectMapper = new ObjectMapper();
     }
@@ -54,24 +62,43 @@ public final class JavaSourceRenderer {
         String domainClass = upperCamel(requireSourceName(context.request().domain(), "domain"));
         List<McpToolDefinition> tools = orderedTools(context.tools());
         validateTools(tools);
-        boolean explicitToolSchema = requiresExplicitToolSchema(tools);
-
         Map<String, String> sources = new LinkedHashMap<>();
         putAll(sources, inputRenderer.render(packageName, packagePath, tools));
         put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpTools.java",
-                toolRenderer.render(packageName, domainClass, tools, explicitToolSchema));
-        if (explicitToolSchema) {
-            put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpToolCallbacks.java",
-                    toolCallbackConfigurationRenderer.render(packageName, domainClass, tools, toolSchemas(tools)));
-        }
+                toolRenderer.render(packageName, domainClass, tools));
+        put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpToolCallbacks.java",
+                toolCallbackConfigurationRenderer.render(packageName, domainClass, tools, toolSchemas(tools)));
         put(sources, "src/main/java/" + packagePath + "/generated/metadata/" + domainClass + "Operations.java",
                 metadataRenderer.render(packageName, domainClass, tools));
-        putAll(sources, runtimeRenderer.render(packageName, packagePath, domainClass));
+        putAll(sources, runtimeRenderer.render(
+                packageName, packagePath, domainClass, tools.getFirst().operationId()));
+        putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
+        put(sources, "src/main/java/" + packagePath + "/runtime/RuntimeTelemetry.java",
+                runtimeTelemetryRenderer.render(packageName, tools));
+        put(sources, "src/test/java/" + packagePath + "/application/GeneratedJavaRuntimeTest.java",
+                runtimeFeatureTest(packageName, context.profile().target().javaVersion()));
 
         Map<String, byte[]> result = new LinkedHashMap<>();
         sources.entrySet().stream().sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> result.put(entry.getKey(), entry.getValue().getBytes(UTF_8)));
         return Collections.unmodifiableMap(result);
+    }
+
+    private String runtimeFeatureTest(String packageName, int javaVersion) {
+        return """
+                package %s.application;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import org.junit.jupiter.api.Test;
+
+                class GeneratedJavaRuntimeTest {
+                    @Test
+                    void usesTheConfiguredJavaRuntime() {
+                        assertEquals(%d, Runtime.version().feature());
+                    }
+                }
+                """.formatted(packageName, javaVersion);
     }
 
     static String upperCamel(String value) {
@@ -192,31 +219,6 @@ public final class JavaSourceRenderer {
 
     static GeneratorException invalid(String message) {
         return GeneratorException.user(SOURCE_GENERATION_FAILED, "spring-ai-2-render", message);
-    }
-
-    static boolean requiresExplicitToolSchema(List<McpToolDefinition> tools) {
-        return (tools == null ? List.<McpToolDefinition>of() : tools).stream()
-                .flatMap(tool -> InputRecordRenderer.inputs(tool).stream())
-                .anyMatch(input -> containsP0Constraint(input.schema()));
-    }
-
-    private static boolean containsP0Constraint(ApiSchema schema) {
-        if (schema == null) {
-            return false;
-        }
-        if (((schema.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.STRING
-                        || schema.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.NUMBER)
-                        && schema.format() != null && !schema.format().isBlank())
-                || schema.enumValues() != null && !schema.enumValues().isEmpty()
-                || schema.minimum() != null || schema.maximum() != null
-                || schema.minLength() != null || schema.maxLength() != null || schema.pattern() != null) {
-            return true;
-        }
-        if (schema.properties() != null && schema.properties().values().stream()
-                .anyMatch(JavaSourceRenderer::containsP0Constraint)) {
-            return true;
-        }
-        return schema.items() != null && containsP0Constraint(schema.items());
     }
 
     private Map<String, String> toolSchemas(List<McpToolDefinition> tools) {

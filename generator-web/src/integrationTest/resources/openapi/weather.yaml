@@ -1,0 +1,27 @@
+openapi: 3.0.3
+info:
+  title: Installed Editor Weather
+  version: 1.0.0
+servers:
+  - url: https://weather.example.test
+paths:
+  /forecast:
+    get:
+      operationId: getForecast
+      summary: Get forecast
+      parameters:
+        - name: city
+          in: query
+          required: true
+          description: Forecast city.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object

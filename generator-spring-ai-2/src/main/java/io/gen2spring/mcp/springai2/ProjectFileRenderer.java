@@ -3,6 +3,7 @@ package io.gen2spring.mcp.springai2;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
@@ -11,6 +12,8 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
 import java.io.IOException;
@@ -23,7 +26,6 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 public final class ProjectFileRenderer {
-    private static final CompatibilityProfile PINNED_PROFILE = CompatibilityProfile.p0();
     private static final Pattern ARTIFACT_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
     private static final Pattern SECRET_PROPERTY = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,127}");
     private static final Pattern ENVIRONMENT_VARIABLE = Pattern.compile("[A-Z][A-Z0-9_]{0,127}");
@@ -31,13 +33,14 @@ public final class ProjectFileRenderer {
             .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
             .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES)
             .build();
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final CompatibilityProfile profile;
 
     public ProjectFileRenderer(CompatibilityProfile profile) {
-        if (!PINNED_PROFILE.equals(profile)) {
+        if (!supports(profile)) {
             throw GeneratorException.user(SOURCE_GENERATION_FAILED, "spring-ai-2-render",
-                    "The Spring AI 2 renderer requires the pinned compatibility profile");
+                    "The compatibility profile is not supported by the Spring AI 2 renderer");
         }
         this.profile = profile;
     }
@@ -70,6 +73,10 @@ public final class ProjectFileRenderer {
                     implementation(\"org.springframework.ai:spring-ai-starter-mcp-server-webmvc\")
                     implementation(\"org.springframework.boot:spring-boot-restclient\")
                     implementation(\"org.springframework.boot:spring-boot-starter-validation\")
+                    implementation(\"org.springframework.boot:spring-boot-starter-actuator\")
+                    implementation(\"org.springframework.boot:spring-boot-starter-opentelemetry\")
+                    implementation(\"io.micrometer:micrometer-registry-prometheus\")
+                    implementation(\"io.micrometer:micrometer-registry-otlp\")
                     testImplementation(\"org.springframework.boot:spring-boot-starter-test\")
                 }
 
@@ -112,10 +119,14 @@ public final class ProjectFileRenderer {
         server.put("version", profile.runtimeVersion());
         server.put("type", "SYNC");
         server.put("protocol", "STREAMABLE");
-        server.put("annotation-scanner", Map.of("enabled", !JavaSourceRenderer.requiresExplicitToolSchema(context.tools())));
+        server.put("annotation-scanner", Map.of("enabled", false));
         server.put("streamable-http", Map.of("mcp-endpoint", "/mcp"));
-        spring.put("ai", Map.of("mcp", Map.of("server", server)));
+        Map<String, Object> ai = new LinkedHashMap<>();
+        ai.put("mcp", Map.of("server", server));
+        ai.put("tools", Map.of("observations", Map.of("include-content", false)));
+        spring.put("ai", ai);
         root.put("spring", spring);
+        root.put("management", managementConfiguration());
 
         Map<String, Object> provider = new LinkedHashMap<>();
         provider.put("base-url", "${PROVIDER_BASE_URL:https://api.example.test}");
@@ -138,13 +149,43 @@ public final class ProjectFileRenderer {
         }
     }
 
+    private Map<String, Object> managementConfiguration() {
+        Map<String, Object> tracing = new LinkedHashMap<>();
+        tracing.put("propagation", Map.of("type", "W3C"));
+        tracing.put("sampling", Map.of(
+                "probability", "${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:0.1}"));
+        tracing.put("export", Map.of("otlp", Map.of(
+                "enabled", "${MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED:false}")));
+
+        Map<String, Object> management = new LinkedHashMap<>();
+        management.put("endpoints", Map.of("web", Map.of("exposure", Map.of(
+                "include", "${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health}"))));
+        management.put("endpoint", Map.of("health", Map.of("show-details", "never")));
+        management.put("tracing", tracing);
+        management.put("otlp", Map.of("metrics", Map.of("export", Map.of(
+                "enabled", "${MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED:false}"))));
+        return management;
+    }
+
     public String dockerfile(ProjectCoordinates coordinates) {
         String artifactId = requireCoordinates(coordinates).artifactId();
         return """
-                FROM eclipse-temurin:21-jre
+                FROM %s
                 WORKDIR /app
                 COPY build/libs/%s.jar /app/app.jar
+                USER 10001:10001
                 ENTRYPOINT [\"java\", \"-jar\", \"/app/app.jar\"]
+                """.formatted(profile.containerImage(), artifactId);
+    }
+
+    public String dockerignore(ProjectCoordinates coordinates) {
+        String artifactId = requireCoordinates(coordinates).artifactId();
+        return """
+                **
+                !Dockerfile
+                !build/
+                !build/libs/
+                !build/libs/%s.jar
                 """.formatted(artifactId);
     }
 
@@ -158,6 +199,8 @@ public final class ProjectFileRenderer {
                         + environmentVariables.stream().map(value -> "- `" + value + "`").reduce("", (left, right) -> left + right + "\n");
         String tools = renderedTools(context.tools());
         String dockerEnvironment = dockerEnvironment(context.tools());
+        String responseHandling = renderedResponseHandling(context.tools());
+        String observability = renderedObservability();
         var target = profile.target();
         return """
                 # %s
@@ -174,6 +217,8 @@ public final class ProjectFileRenderer {
                 ```
 
                 The Streamable HTTP MCP endpoint is `http://localhost:8080/mcp`.
+
+                %s
 
                 ## Provider configuration
 
@@ -220,20 +265,58 @@ public final class ProjectFileRenderer {
                 - Template: `%s`
                 - Generator module: `%s`
                 - Runtime version: `%s`
+                - Gradle %s
+                - Container image: `%s`
                 - Java %d
                 - Spring Boot %s
                 - Spring AI %s
 
-                ## Known P0 limits
-
-                - Supports the generated P0 Spring MVC Streamable HTTP server only.
-                - Requires JSON request and successful response bodies when present; empty successful responses are supported.
-                - Does not generate OAuth flows, streaming provider responses, or non-JSON provider payload mappings.
+                %s
                 """.formatted(
-                coordinates.artifactId(), target.javaVersion(), secrets, coordinates.artifactId(), tools,
+                coordinates.artifactId(), target.javaVersion(), observability, secrets, coordinates.artifactId(), tools,
                 coordinates.artifactId(), dockerEnvironment, coordinates.artifactId(), profile.id(), profile.templateVersion(),
-                profile.generatorModule(), profile.runtimeVersion(), target.javaVersion(), target.springBootVersion(),
-                target.springAiVersion());
+                profile.generatorModule(), profile.runtimeVersion(), profile.gradleVersion(), profile.containerImage(),
+                target.javaVersion(), target.springBootVersion(), target.springAiVersion(), responseHandling);
+    }
+
+    private String renderedObservability() {
+        return """
+                ## Observability
+
+                The runtime records the `gen2spring.runtime.mcp.tool.call` and
+                `gen2spring.runtime.provider.request` observations. It also records
+                `gen2spring.runtime.provider.response.bytes` and the
+                `gen2spring.runtime.provider.executor.active` and
+                `gen2spring.runtime.provider.executor.queued` gauges. Metrics use only the finite
+                `target.profile`, `outcome`, `error.category`, and `http.status.class` tag keys, and each
+                meter uses its documented subset.
+                Tool names and operation IDs are trace attributes, never metric tags.
+
+                Only the health endpoint is exposed and OTLP export is disabled by default. To opt in to a
+                loopback Prometheus endpoint on a separate port:
+
+                ```bash
+                MANAGEMENT_SERVER_ADDRESS=127.0.0.1 \\
+                MANAGEMENT_SERVER_PORT=9464 \\
+                MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,prometheus \\
+                MANAGEMENT_PROMETHEUS_METRICS_EXPORT_ENABLED=true \\
+                ./gradlew bootRun
+                ```
+
+                To opt in to OTLP metrics and traces, configure trusted collector endpoints and credentials,
+                then enable the Boot 4 exporters explicitly:
+
+                ```bash
+                MANAGEMENT_OTLP_METRICS_EXPORT_URL="$OTLP_METRICS_URL" \\
+                MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=true \\
+                MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT="$OTLP_TRACES_URL" \\
+                MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED=true \\
+                ./gradlew bootRun
+                ```
+
+                Provider error envelopes reuse the active OpenTelemetry trace ID. If no valid span is active,
+                they use a locally generated 32-character lowercase hexadecimal trace ID.
+                """;
     }
 
     public String gitignore() {
@@ -254,11 +337,31 @@ public final class ProjectFileRenderer {
     }
 
     ProjectCoordinates requireContext(GenerationContext context) {
-        if (context == null || !PINNED_PROFILE.equals(context.profile()) || context.request() == null) {
+        if (context == null || !profile.equals(context.profile()) || context.request() == null) {
             throw GeneratorException.user(SOURCE_GENERATION_FAILED, "spring-ai-2-render",
-                    "A generation context for the pinned compatibility profile is required");
+                    "A generation context for the renderer compatibility profile is required");
         }
         return requireCoordinates(context.request().project());
+    }
+
+    private boolean supports(CompatibilityProfile candidate) {
+        if (candidate == null || candidate.target() == null) {
+            return false;
+        }
+        var target = candidate.target();
+        return "generator-spring-ai-2".equals(candidate.generatorModule())
+                && "9.6.1".equals(candidate.gradleVersion())
+                && (target.javaVersion() == 17 || target.javaVersion() == 21)
+                && "4.1.0".equals(target.springBootVersion())
+                && "2.0.0".equals(target.springAiVersion())
+                && "GRADLE_KOTLIN".equals(target.buildTool())
+                && "MVC".equals(target.webStack())
+                && "SYNC".equals(target.programmingModel())
+                && "STREAMABLE_HTTP".equals(target.transport())
+                && CompatibilityProfileRegistry.defaults()
+                        .find(candidate.id())
+                        .filter(candidate::equals)
+                        .isPresent();
     }
 
     private ProjectCoordinates requireCoordinates(ProjectCoordinates coordinates) {
@@ -318,6 +421,77 @@ public final class ProjectFileRenderer {
                 .map(tool -> "- `" + tool.name() + "`: " + markdownText(tool.description()))
                 .reduce("", (left, right) -> left + right + "\n")
                 .stripTrailing();
+    }
+
+    private String renderedResponseHandling(List<McpToolDefinition> tools) {
+        String contract = """
+                ## Response handling
+
+                - Operations without response normalization return the provider's successful JSON body unchanged.
+                - Configured operations return `data`, optional `page.totalCount`, and optional `provider` metadata.
+                - Expected provider, HTTP, timeout, availability, protocol, and local-capacity failures return one MCP Tool error JSON payload with a local trace ID.
+                - Provider responses remain bounded to 1 MiB. Retry and pagination are not executed automatically.
+                """.stripTrailing();
+        if (tools == null) {
+            return contract;
+        }
+        String policies = tools.stream()
+                .filter(java.util.Objects::nonNull)
+                .filter(tool -> tool.execution() != null && tool.execution().responseNormalization() != null)
+                .sorted(Comparator.comparing(McpToolDefinition::operationId))
+                .map(this::renderedResponsePolicy)
+                .reduce("", (left, right) -> left.isEmpty() ? right : left + "\n" + right);
+        if (policies.isEmpty()) {
+            return contract;
+        }
+        return contract + "\n\n### Configured response normalization\n\n" + policies;
+    }
+
+    private String renderedResponsePolicy(McpToolDefinition tool) {
+        ResponseNormalizationPolicy policy = tool.execution().responseNormalization();
+        StringBuilder rendered = new StringBuilder("- ")
+                .append(markdownCodeSpan(tool.operationId()))
+                .append("\n");
+        appendPolicyPointer(rendered, "dataPath", policy.dataPointer());
+        appendPolicyPointer(rendered, "successCodePath", policy.successCodePointer());
+        if (!policy.successValues().isEmpty()) {
+            try {
+                rendered.append("  - `successValues`: ")
+                        .append(markdownCodeSpan(JSON.writeValueAsString(policy.successValues())))
+                        .append("\n");
+            } catch (JsonProcessingException exception) {
+                throw GeneratorException.system(SOURCE_GENERATION_FAILED, "spring-ai-2-render",
+                        "Failed to render response normalization metadata", exception);
+            }
+        }
+        appendPolicyPointer(rendered, "errorMessagePath", policy.errorMessagePointer());
+        appendPolicyPointer(rendered, "totalCountPath", policy.totalCountPointer());
+        return rendered.toString().stripTrailing();
+    }
+
+    private void appendPolicyPointer(StringBuilder rendered, String name, String value) {
+        if (value != null) {
+            rendered.append("  - `").append(name).append("`: ")
+                    .append(markdownCodeSpan(value)).append("\n");
+        }
+    }
+
+    private String markdownCodeSpan(String value) {
+        int longestRun = 0;
+        int currentRun = 0;
+        for (int index = 0; index < value.length(); index++) {
+            if (value.charAt(index) == '`') {
+                currentRun++;
+                longestRun = Math.max(longestRun, currentRun);
+            } else {
+                currentRun = 0;
+            }
+        }
+        String delimiter = "`".repeat(longestRun + 1);
+        boolean needsPadding = value.startsWith("`") || value.endsWith("`")
+                || value.startsWith(" ") || value.endsWith(" ");
+        String content = needsPadding ? " " + value + " " : value;
+        return delimiter + content + delimiter;
     }
 
     private String markdownText(String value) {

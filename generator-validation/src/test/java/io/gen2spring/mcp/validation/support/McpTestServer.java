@@ -62,6 +62,9 @@ public final class McpTestServer implements AutoCloseable {
     private final HttpServer server;
     private final Scenario scenario;
     private final Runnable beforeToolsListResponse;
+    private final boolean customToolResult;
+    private final Object toolResult;
+    private final boolean toolResultIsError;
     private final AtomicBoolean initializedNotification = new AtomicBoolean();
     private final AtomicBoolean sessionHeaderOnInitializedNotification = new AtomicBoolean();
     private final AtomicBoolean sessionHeaderOnToolsList = new AtomicBoolean();
@@ -69,10 +72,19 @@ public final class McpTestServer implements AutoCloseable {
     private final List<java.util.Map<String, List<String>>> requestHeaders =
             Collections.synchronizedList(new ArrayList<>());
 
-    private McpTestServer(HttpServer server, Scenario scenario, Runnable beforeToolsListResponse) {
+    private McpTestServer(
+            HttpServer server,
+            Scenario scenario,
+            Runnable beforeToolsListResponse,
+            boolean customToolResult,
+            Object toolResult,
+            boolean toolResultIsError) {
         this.server = server;
         this.scenario = scenario;
         this.beforeToolsListResponse = beforeToolsListResponse;
+        this.customToolResult = customToolResult;
+        this.toolResult = toolResult;
+        this.toolResultIsError = toolResultIsError;
     }
 
     public static McpTestServer startWithJsonInitializeAndSseToolsList() throws IOException {
@@ -91,9 +103,29 @@ public final class McpTestServer implements AutoCloseable {
         return start(scenario, 0, beforeToolsListResponse);
     }
 
+    public static McpTestServer startWithToolResult(Object result, boolean isError) throws IOException {
+        return start(Scenario.SUCCESS, 0, () -> {}, true, result, isError);
+    }
+
     private static McpTestServer start(Scenario scenario, int port, Runnable beforeToolsListResponse) throws IOException {
+        return start(scenario, port, beforeToolsListResponse, false, null, false);
+    }
+
+    private static McpTestServer start(
+            Scenario scenario,
+            int port,
+            Runnable beforeToolsListResponse,
+            boolean customToolResult,
+            Object toolResult,
+            boolean toolResultIsError) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0);
-        var result = new McpTestServer(server, scenario, beforeToolsListResponse);
+        var result = new McpTestServer(
+                server,
+                scenario,
+                beforeToolsListResponse,
+                customToolResult,
+                toolResult,
+                toolResultIsError);
         server.createContext("/mcp", result::handle);
         server.start();
         return result;
@@ -248,7 +280,7 @@ public final class McpTestServer implements AutoCloseable {
     }
 
     private void toolsCall(HttpExchange exchange) throws IOException {
-        String response = switch (scenario) {
+        String response = customToolResult ? customToolsCallResult() : switch (scenario) {
             case TOOLS_CALL_ERROR -> "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-1,\"message\":\"private\"}}";
             case TOOLS_CALL_WRONG_ID -> "{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{}}";
             case TOOLS_CALL_OVERSIZED_ID -> "{\"jsonrpc\":\"2.0\",\"id\":18446744073709551617,\"result\":{}}";
@@ -268,6 +300,20 @@ public final class McpTestServer implements AutoCloseable {
             return;
         }
         send(exchange, 200, "application/json", response.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String customToolsCallResult() throws IOException {
+        var text = OBJECT_MAPPER.createObjectNode();
+        text.put("type", "text");
+        text.put("text", OBJECT_MAPPER.writeValueAsString(toolResult));
+        var result = OBJECT_MAPPER.createObjectNode();
+        result.putArray("content").add(text);
+        result.put("isError", toolResultIsError);
+        var response = OBJECT_MAPPER.createObjectNode();
+        response.put("jsonrpc", "2.0");
+        response.put("id", 3);
+        response.set("result", result);
+        return OBJECT_MAPPER.writeValueAsString(response);
     }
 
     private static String toolsCallResult(String result) {

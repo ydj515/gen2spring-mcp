@@ -17,6 +17,7 @@ import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
@@ -42,6 +43,13 @@ class JavaSourceRendererTest {
                 files.get("src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
         assertArrayEquals(golden("weather/GetForecastInput.java"),
                 files.get("src/main/java/com/example/weather/generated/model/GetForecastInput.java"));
+        String tool = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
+        assertTrue(tool.contains("public JsonNode getForecast("));
+        assertTrue(tool.contains("var input = new GetForecastInput(nx, ny);"));
+        assertTrue(tool.contains(
+                "return executor.execute(WeatherOperations.GET_FORECAST, input.toArguments());"));
+        assertFalse(tool.contains("OperationOutcome"));
     }
 
     @Test
@@ -55,10 +63,19 @@ class JavaSourceRendererTest {
                 "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java",
                 "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java",
                 "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java",
+                "src/main/java/com/example/weather/runtime/NormalizedSuccess.java",
                 "src/main/java/com/example/weather/runtime/OperationDefinition.java",
+                "src/main/java/com/example/weather/runtime/OperationOutcome.java",
                 "src/main/java/com/example/weather/runtime/ParameterBinding.java",
                 "src/main/java/com/example/weather/runtime/ParameterLocation.java",
+                "src/main/java/com/example/weather/runtime/ProviderError.java",
+                "src/main/java/com/example/weather/runtime/ProviderErrorCategory.java",
+                "src/main/java/com/example/weather/runtime/ProviderErrorException.java",
+                "src/main/java/com/example/weather/runtime/ResponseNormalizationPolicy.java",
+                "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
+                "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
                 "src/main/java/com/example/weather/runtime/SecretBinding.java",
+                "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java")),
                 new TreeSet<>(files.keySet()));
 
@@ -70,19 +87,113 @@ class JavaSourceRendererTest {
         String runtime = utf8(files.get(
                 "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java"));
         assertTrue(runtime.contains("readNBytes(responseMaxBytes + 1)"));
-        assertTrue(runtime.contains("UPSTREAM_RESPONSE_TOO_LARGE"));
-        assertTrue(runtime.contains("UPSTREAM_HTTP_ERROR"));
+        assertTrue(runtime.contains("new ResponseTooLargeException(status)"));
+        assertTrue(runtime.contains("responseNormalizer.normalize("));
+        assertTrue(runtime.contains("new ProviderErrorException"));
+        assertTrue(runtime.contains("ProviderErrorCategory.UPSTREAM_TIMEOUT"));
+        assertTrue(runtime.contains("ProviderErrorCategory.UPSTREAM_UNAVAILABLE"));
         assertTrue(runtime.contains("target.setAccept(List.of(MediaType.APPLICATION_JSON))"));
         assertTrue(runtime.contains("request.contentType(MediaType.APPLICATION_JSON)"));
         assertTrue(runtime.contains("jsonMapper.writeValueAsBytes(requestBody)"));
-        assertTrue(runtime.contains("UPSTREAM_REQUEST_BODY_SERIALIZATION_FAILED"));
         assertTrue(runtime.contains("tools.jackson.databind.JsonNode"));
         assertTrue(runtime.contains("tools.jackson.databind.json.JsonMapper"));
+
+        assertTelemetryExecutionContract(files, runtime);
 
         String contextTest = utf8(files.get(
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java"));
         assertTrue(contextTest.contains("webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT"));
         assertTrue(contextTest.contains("void contextLoads()"));
+        assertTrue(contextTest.contains(
+                "new OperationDefinition(\n                        \"getForecast\", \"GET\", \"/slow\""),
+                contextTest);
+    }
+
+    private void assertTelemetryExecutionContract(Map<String, byte[]> files, String runtime) {
+        String callbacks = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+        assertTrue(callbacks.contains("RuntimeTelemetry runtimeTelemetry"));
+        assertTrue(callbacks.contains("runtimeTelemetry.startToolCall(tool.name(), operationId)"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.Outcome.SUCCESS"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.ErrorCategory.ARGUMENT_CONVERSION"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.ErrorCategory.RESULT_CONVERSION"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.ErrorCategory.TOOL_EXECUTION"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.ErrorCategory.UNEXPECTED_RUNTIME"));
+        assertTrue(callbacks.contains("RuntimeTelemetry.Outcome.FATAL"));
+
+        assertTrue(runtime.contains("ContextExecutorService.wrap(rawRequestExecutor)"));
+        assertTrue(runtime.contains("builder.requestFactory(requestFactory)"));
+        assertTrue(runtime.contains(".observationRegistry(ObservationRegistry.NOOP)"));
+        assertTrue(runtime.contains("runtimeTelemetry.registerExecutor(rawRequestExecutor)"));
+        assertTrue(runtime.contains("runtimeTelemetry.startProviderCall(operation.operationId(), operation.method())"));
+        assertTrue(runtime.contains("new ProviderAttempt("));
+        assertTrue(runtime.contains("completeProviderCall(providerCall"));
+        assertTrue(runtime.contains("removePropagationHeaders(headers)"));
+        assertTrue(runtime.contains("runtimeTelemetry.currentTraceparent()"));
+        assertTrue(runtime.contains("headers.set(\"traceparent\", traceparent)"));
+        assertTrue(runtime.contains("headers.forEach((name, ignored) ->"));
+        assertTrue(runtime.contains("namesToRemove.forEach(headers::remove)"));
+
+        String response = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/ResponseNormalizer.java"));
+        assertTrue(response.contains("RuntimeTelemetry runtimeTelemetry"));
+        assertTrue(response.contains("runtimeTelemetry.currentTraceIdOrFallback()"));
+        assertTrue(response.contains("new ProviderError(envelope, category, status)"));
+    }
+
+    @Test
+    void emitsTheCanonicalRuntimeTelemetryContract() {
+        String telemetry = utf8(renderer.render(contextWithWeatherTool()).get(
+                "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java"));
+
+        for (String literal : List.of(
+                "gen2spring.runtime.mcp.tool.call",
+                "gen2spring.runtime.provider.request",
+                "gen2spring.runtime.provider.response.bytes",
+                "gen2spring.runtime.provider.executor.active",
+                "gen2spring.runtime.provider.executor.queued",
+                "target.profile", "outcome", "error.category", "http.status.class",
+                "gen2spring.tool.name", "gen2spring.operation.id",
+                "http.request.method", "http.response.status_code",
+                "success", "expected_error", "internal_error", "fatal",
+                "provider_business", "upstream_client", "upstream_server",
+                "upstream_timeout", "upstream_unavailable", "upstream_protocol",
+                "local_resource", "argument_conversion", "result_conversion",
+                "tool_execution", "unexpected_runtime",
+                "2xx", "4xx", "5xx", "other", "none",
+                "spring-ai-2.0-java21-mvc-streamable",
+                "Set.of(\"getForecast\")", "Set.of(\"kma_weather_get_forecast\")",
+                "[A-Za-z0-9][A-Za-z0-9_.-]{0,127}",
+                "[a-z][a-z0-9_]{0,63}",
+                "currentTraceIdOrFallback()", "currentTraceparent()",
+                "new SecureRandom()", "HexFormat.of().formatHex")) {
+            assertTrue(telemetry.contains(literal), literal);
+        }
+        assertFalse(telemetry.contains("tool.name\", targetProfileId"));
+        assertFalse(telemetry.contains("operation.id\", targetProfileId"));
+        assertFalse(telemetry.contains("Throwable failure"));
+        assertFalse(telemetry.contains("failure.getMessage()"));
+        assertFalse(telemetry.contains("application"));
+    }
+
+    @Test
+    void emitsTheTargetJavaRuntimeFeatureAssertionForBothSupportedProfiles() {
+        assertRuntimeFeature(profile(17), 17);
+        assertRuntimeFeature(profile(21), 21);
+    }
+
+    @Test
+    void emitsTypedNormalizationMetadataAndFocusedRuntimeSources() {
+        var files = renderer.render(context(List.of(weatherTool(normalization()))));
+
+        String metadata = utf8(files.get(
+                "src/main/java/com/example/weather/generated/metadata/WeatherOperations.java"));
+        assertTrue(metadata.contains("new ResponseNormalizationPolicy("));
+        assertTrue(metadata.contains("StringNode.valueOf(\"00\")"));
+        assertTrue(metadata.contains("JsonNodeFactory.instance.numberNode(new BigDecimal(\"1.50\"))"));
+        assertTrue(metadata.contains("BooleanNode.TRUE"));
+        assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/ResponseNormalizer.java"));
+        assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/ProviderErrorException.java"));
     }
 
     @Test
@@ -180,6 +291,43 @@ class JavaSourceRendererTest {
 
         assertTrue(files.containsKey(
                 "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+    }
+
+    @Test
+    void registersLowLevelSpecificationsForEveryTool() {
+        ApiSchema text = schema(SchemaType.STRING, null, null, null, null, null, null, List.of());
+        McpToolDefinition tool = weatherTool(
+                List.of(new McpInputDefinition("city", "city", "City", true, text)),
+                List.of(new ParameterBinding("city", ParameterLocation.QUERY, "city")));
+
+        var files = renderer.render(context(List.of(tool)));
+        String callbacks = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+        String tools = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
+
+        assertTrue(callbacks.contains("List<McpServerFeatures.SyncToolSpecification>"));
+        assertTrue(callbacks.contains("McpToolUtils.toSyncToolSpecification(callback).tool()"));
+        assertTrue(callbacks.contains("instanceof ProviderErrorException"));
+        assertFalse(callbacks.contains("ToolCallbackProvider"));
+        assertFalse(tools.contains("@McpTool("));
+    }
+
+    @Test
+    void rendersSafeDiagnosticsForUnexpectedFailuresAndRethrowsFatalErrors() {
+        String callbacks = utf8(renderer.render(contextWithWeatherTool()).get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+
+        assertTrue(callbacks.contains("LoggerFactory.getLogger(WeatherMcpToolCallbacks.class)"));
+        assertTrue(callbacks.contains(
+                "generated_tool_adapter_failure tool={} exception={} cause={}"));
+        assertTrue(callbacks.contains("failure.getClass().getName()"));
+        assertTrue(callbacks.contains("cause.getClass().getName()"));
+        assertTrue(callbacks.contains("failure.getCause() instanceof Error fatal"));
+        assertTrue(callbacks.contains("throw fatal;"));
+        assertFalse(callbacks.contains("logger.error(\"generated_tool_adapter_failure\", failure)"));
+        assertFalse(callbacks.contains("failure.getMessage()"));
+        assertFalse(callbacks.contains("failure.toString()"));
     }
 
     @Test
@@ -358,16 +506,42 @@ class JavaSourceRendererTest {
         return context(List.of(weatherTool()));
     }
 
+    static GenerationContext contextWithWeatherTool(CompatibilityProfile profile) {
+        return context(profile, List.of(weatherTool()));
+    }
+
     static GenerationContext context(List<McpToolDefinition> tools) {
+        return context(CompatibilityProfile.p0(), tools);
+    }
+
+    static GenerationContext context(CompatibilityProfile profile, List<McpToolDefinition> tools) {
         var coordinates = new GenerationRequest.ProjectCoordinates(
                 "com.example", "weather-mcp-server", "com.example.weather");
         var request = new GenerationRequest(
-                coordinates, "kma", "weather", CompatibilityProfile.p0().id(),
+                coordinates, "kma", "weather", profile.id(),
                 GenerationRequest.ValidationLevel.MCP_PROTOCOL,
                 new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
                         "getForecast", Map.of("nx", 60, "ny", 127))),
                 List.of());
-        return new GenerationContext(null, tools, request, CompatibilityProfile.p0(), new byte[0]);
+        return new GenerationContext(null, tools, request, profile, new byte[0]);
+    }
+
+    private void assertRuntimeFeature(CompatibilityProfile profile, int expectedFeature) {
+        var files = new JavaSourceRenderer(profile).render(contextWithWeatherTool(profile));
+        String path = "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java";
+
+        assertTrue(files.containsKey(path), profile.id());
+        String source = utf8(files.get(path));
+        assertTrue(source.contains("assertEquals(" + expectedFeature + ", Runtime.version().feature())"), source);
+        String telemetry = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java"));
+        assertTrue(telemetry.contains("TARGET_PROFILE_ID = \"" + profile.id() + "\""), telemetry);
+    }
+
+    private static CompatibilityProfile profile(int javaVersion) {
+        return io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java" + javaVersion + "-mvc-streamable")
+                .orElseThrow();
     }
 
     static McpToolDefinition weatherTool() {
@@ -380,6 +554,35 @@ class JavaSourceRendererTest {
                 List.of(
                         new ParameterBinding("nx", ParameterLocation.QUERY, "nx"),
                         new ParameterBinding("ny", ParameterLocation.QUERY, "ny")));
+    }
+
+    static McpToolDefinition weatherTool(ResponseNormalizationPolicy normalization) {
+        McpToolDefinition tool = weatherTool();
+        HttpExecutionDefinition execution = tool.execution();
+        return new McpToolDefinition(
+                tool.operationId(),
+                tool.name(),
+                tool.description(),
+                tool.inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(),
+                        execution.baseUrl(),
+                        execution.path(),
+                        execution.bindings(),
+                        execution.objectRequestBody(),
+                        execution.requestBodyRequired(),
+                        normalization),
+                tool.secretBindings(),
+                tool.outputKind());
+    }
+
+    static ResponseNormalizationPolicy normalization() {
+        return new ResponseNormalizationPolicy(
+                "/response/body/items",
+                "/response/header/code",
+                List.of("00", new BigDecimal("1.50"), true),
+                "/response/header/message",
+                "/response/body/totalCount");
     }
 
     static McpToolDefinition weatherTool(

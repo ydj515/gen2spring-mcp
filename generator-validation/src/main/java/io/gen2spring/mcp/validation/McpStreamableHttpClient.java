@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public final class McpStreamableHttpClient {
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(10);
@@ -92,8 +93,18 @@ public final class McpStreamableHttpClient {
             URI endpoint,
             Map<String, ExpectedTool> expectedTools,
             ExpectedToolCall expectedCall) {
+        return validate(endpoint, expectedTools, expectedCall, stage -> {});
+    }
+
+    Result validate(
+            URI endpoint,
+            Map<String, ExpectedTool> expectedTools,
+            ExpectedToolCall expectedCall,
+            Consumer<McpStage> stageStarted) {
         LoopbackPortAllocator.requireLoopback(endpoint);
         Map<String, ExpectedTool> expected = validatedExpectedTools(expectedTools);
+        Objects.requireNonNull(stageStarted, "stageStarted");
+        stageStarted.accept(McpStage.INITIALIZE);
         long initializeStarted = System.nanoTime();
         String sessionId;
         try {
@@ -113,6 +124,7 @@ public final class McpStreamableHttpClient {
         }
         long initializeDuration = elapsedMillis(initializeStarted);
 
+        stageStarted.accept(McpStage.TOOLS_LIST);
         long toolsStarted = System.nanoTime();
         List<ObservedTool> observed;
         try {
@@ -129,6 +141,7 @@ public final class McpStreamableHttpClient {
             return new Result(Collections.unmodifiableSet(names), List.copyOf(observed), initializeDuration, toolsDuration, 0);
         }
 
+        stageStarted.accept(McpStage.TOOL_CALL);
         long toolCallStarted = System.nanoTime();
         try {
             ObjectNode request = objectMapper.createObjectNode();
@@ -339,9 +352,7 @@ public final class McpStreamableHttpClient {
         if (actual == null) {
             throw failure(McpStage.TOOL_CALL, "MCP Tool text content is not valid JSON", null);
         }
-        JsonNode expected = objectMapper.createObjectNode()
-                .put("validated", true)
-                .put("operationId", expectedCall.tool().operationId());
+        JsonNode expected = objectMapper.valueToTree(expectedCall.expectedResult());
         if (!canonicalJson(actual).equals(canonicalJson(expected))) {
             throw failure(McpStage.TOOL_CALL, "MCP Tool result does not match the mock upstream contract", null);
         }
