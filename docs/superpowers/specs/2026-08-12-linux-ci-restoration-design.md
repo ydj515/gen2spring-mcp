@@ -21,9 +21,10 @@ Both selected Action releases declare the Node.js 24 runtime. Immutable commit p
 - Confirm the active and commented Action references use the approved immutable SHAs.
 - Run `git diff --check`.
 - Open a pull request and require the Linux GitHub Actions job to complete successfully before restoring Windows CI.
+- If installed generation fails, print only validation status and the stage name, status, warning count, error count, and safe summary before the temporary project is removed.
 
 ## Out of Scope
 
 - Enabling or modifying the Windows validation job behavior.
 - Changing the Gradle validation command or test coverage.
-- Fixing any Linux test failure that has not yet been reproduced on the restored workflow.
+- Changing generated runtime or validation behavior before a failing validation stage is identified.
