@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.domain.config;
 
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import java.util.ArrayList;
@@ -39,9 +40,21 @@ public record GenerationRequest(
             String toolDescription,
             Map<String, ParameterOverride> parameters,
             ResponseNormalizationPolicy responseNormalization,
-            OutputSelection output) {
+            OutputSelection output,
+            RetryPolicy retry) {
         public OperationSelection {
             Objects.requireNonNull(output, "output");
+        }
+
+        public OperationSelection(
+                String operationId,
+                boolean enabled,
+                String toolName,
+                String toolDescription,
+                Map<String, ParameterOverride> parameters,
+                ResponseNormalizationPolicy responseNormalization,
+                OutputSelection output) {
+            this(operationId, enabled, toolName, toolDescription, parameters, responseNormalization, output, null);
         }
 
         public OperationSelection(

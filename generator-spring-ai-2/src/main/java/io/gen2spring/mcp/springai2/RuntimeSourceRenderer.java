@@ -9,14 +9,20 @@ final class RuntimeSourceRenderer {
             String packagePath,
             String domainClass,
             String contextOperationId,
-            boolean hasTypedOutputs) {
+            boolean hasTypedOutputs,
+            boolean hasRetryPolicies) {
         Map<String, String> sources = new LinkedHashMap<>();
         String runtimePath = "src/main/java/" + packagePath + "/runtime/";
         sources.put(runtimePath + "ParameterLocation.java", parameterLocation(packageName));
         sources.put(runtimePath + "ParameterBinding.java", parameterBinding(packageName));
         sources.put(runtimePath + "SecretBinding.java", secretBinding(packageName));
-        sources.put(runtimePath + "OperationDefinition.java", operationDefinition(packageName));
-        sources.put(runtimePath + "OpenApiOperationExecutor.java", executor(packageName, hasTypedOutputs));
+        sources.put(runtimePath + "OperationDefinition.java", hasRetryPolicies
+                ? operationDefinitionWithRetry(packageName) : operationDefinition(packageName));
+        if (hasRetryPolicies) {
+            sources.put(runtimePath + "RetryPolicy.java", retryPolicy(packageName));
+        }
+        sources.put(runtimePath + "OpenApiOperationExecutor.java",
+                executor(packageName, hasTypedOutputs, hasRetryPolicies));
         sources.put("src/main/java/" + packagePath + "/application/" + domainClass + "McpApplication.java",
                 application(packageName, domainClass));
         sources.put("src/test/java/" + packagePath + "/application/" + domainClass + "McpApplicationTest.java",
@@ -132,7 +138,111 @@ final class RuntimeSourceRenderer {
                 """.formatted(packageName);
     }
 
-    private String executor(String packageName, boolean hasTypedOutputs) {
+    private String operationDefinitionWithRetry(String packageName) {
+        return """
+                package %s.runtime;
+
+                import java.util.List;
+                import java.util.Objects;
+
+                public record OperationDefinition(
+                        String operationId,
+                        String method,
+                        String path,
+                        List<ParameterBinding> parameterBindings,
+                        List<SecretBinding> secretBindings,
+                        boolean objectRequestBody,
+                        boolean requestBodyRequired,
+                        ResponseNormalizationPolicy responseNormalization,
+                        RetryPolicy retryPolicy) {
+                    public OperationDefinition(
+                            String operationId,
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings,
+                            boolean objectRequestBody,
+                            boolean requestBodyRequired,
+                            ResponseNormalizationPolicy responseNormalization) {
+                        this(operationId, method, path, parameterBindings, secretBindings,
+                                objectRequestBody, requestBodyRequired, responseNormalization, null);
+                    }
+
+                    public OperationDefinition(
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings) {
+                        this("unknown", method, path, parameterBindings, secretBindings, false, false, null, null);
+                    }
+
+                    public OperationDefinition(
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings,
+                            boolean objectRequestBody) {
+                        this("unknown", method, path, parameterBindings, secretBindings,
+                                objectRequestBody, objectRequestBody, null, null);
+                    }
+
+                    public OperationDefinition(
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings,
+                            boolean objectRequestBody,
+                            boolean requestBodyRequired) {
+                        this("unknown", method, path, parameterBindings, secretBindings,
+                                objectRequestBody, requestBodyRequired, null, null);
+                    }
+
+                    public OperationDefinition {
+                        Objects.requireNonNull(operationId, "operationId");
+                        Objects.requireNonNull(method, "method");
+                        Objects.requireNonNull(path, "path");
+                        parameterBindings = List.copyOf(parameterBindings);
+                        secretBindings = List.copyOf(secretBindings);
+                    }
+                }
+                """.formatted(packageName);
+    }
+
+    private String retryPolicy(String packageName) {
+        return """
+                package %s.runtime;
+
+                import java.util.List;
+
+                public record RetryPolicy(
+                        List<Integer> statusCodes,
+                        boolean networkErrors,
+                        int maxRetries,
+                        long initialBackoffMillis,
+                        long maxBackoffMillis,
+                        boolean respectRetryAfter) {
+                    public RetryPolicy {
+                        statusCodes = List.copyOf(statusCodes);
+                    }
+
+                    boolean retryableStatus(Integer status) {
+                        return status != null && statusCodes.contains(status);
+                    }
+                }
+
+                @FunctionalInterface
+                interface RetryClock {
+                    long nanoTime();
+                }
+
+                @FunctionalInterface
+                interface RetrySleeper {
+                    void sleep(long millis) throws InterruptedException;
+                }
+                """.formatted(packageName);
+    }
+
+    private String executor(String packageName, boolean hasTypedOutputs, boolean hasRetryPolicies) {
         String source = """
                 package %s.runtime;
 
@@ -761,7 +871,10 @@ final class RuntimeSourceRenderer {
                     private static final class RequestSerializationException extends RuntimeException {}
                 }
                 """.formatted(packageName);
-        return hasTypedOutputs ? source : source.replace(typedExecutorMethod(), "");
+        if (!hasTypedOutputs) {
+            source = source.replace(typedExecutorMethod(), "");
+        }
+        return hasRetryPolicies ? withRetryExecution(source) : source;
     }
 
     private String typedExecutorMethod() {
@@ -779,6 +892,310 @@ final class RuntimeSourceRenderer {
                     }
 
                 """;
+    }
+
+    private String withRetryExecution(String source) {
+        source = replaceRequired(source,
+                "    private final long totalTimeoutMillis;\n"
+                        + "    private final ThreadPoolExecutor rawRequestExecutor;",
+                "    private final long totalTimeoutMillis;\n"
+                        + "    private final RetryClock retryClock;\n"
+                        + "    private final RetrySleeper retrySleeper;\n"
+                        + "    private final ThreadPoolExecutor rawRequestExecutor;");
+        source = replaceRequired(source, """
+                    @Autowired
+                    public OpenApiOperationExecutor(
+                            RestClient.Builder builder,
+                            Environment environment,
+                            RuntimeTelemetry runtimeTelemetry) {
+                        this.environment = environment;
+                """, """
+                    @Autowired
+                    public OpenApiOperationExecutor(
+                            RestClient.Builder builder,
+                            Environment environment,
+                            RuntimeTelemetry runtimeTelemetry) {
+                        this(builder, environment, runtimeTelemetry, System::nanoTime, Thread::sleep);
+                    }
+
+                    OpenApiOperationExecutor(
+                            RestClient.Builder builder,
+                            Environment environment,
+                            RuntimeTelemetry runtimeTelemetry,
+                            RetryClock retryClock,
+                            RetrySleeper retrySleeper) {
+                        this.environment = environment;
+                        this.retryClock = java.util.Objects.requireNonNull(retryClock);
+                        this.retrySleeper = java.util.Objects.requireNonNull(retrySleeper);
+                """);
+        source = replaceSectionRequired(
+                source,
+                "    private OperationOutcome await(\n",
+                "    private ProviderAttempt executeSafely(\n",
+                retryAwaitMethods());
+        source = replaceRequired(source, """
+                            return new RawResponse(
+                                    status,
+                                    upstreamResponse.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE),
+                                    readBounded(upstreamResponse.getBody(), status));
+                """, """
+                            return new RawResponse(
+                                    status,
+                                    upstreamResponse.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE),
+                                    upstreamResponse.getHeaders().getFirst(HttpHeaders.RETRY_AFTER),
+                                    readBounded(upstreamResponse.getBody(), status));
+                """);
+        source = replaceRequired(source, """
+                                response.status(),
+                                response.body().length);
+                """, """
+                                response.status(),
+                                response.body().length,
+                                response.retryAfter());
+                """);
+        return replaceRequired(source, """
+                    private record RawResponse(int status, String contentType, byte[] body) {}
+
+                    private record ProviderAttempt(
+                            OperationOutcome outcome,
+                            Integer httpStatus,
+                            Integer responseBytes) {}
+                """, """
+                    private record RawResponse(
+                            int status,
+                            String contentType,
+                            String retryAfter,
+                            byte[] body) {}
+
+                    private record ProviderAttempt(
+                            OperationOutcome outcome,
+                            Integer httpStatus,
+                            Integer responseBytes,
+                            String retryAfter) {
+                        private ProviderAttempt(
+                                OperationOutcome outcome,
+                                Integer httpStatus,
+                                Integer responseBytes) {
+                            this(outcome, httpStatus, responseBytes, null);
+                        }
+                    }
+
+                    private record AttemptResult(ProviderAttempt attempt, boolean networkFailure) {}
+                """);
+    }
+
+    private String retryAwaitMethods() {
+        return """
+                    private OperationOutcome await(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        long deadlineNanos = retryClock.nanoTime()
+                                + TimeUnit.MILLISECONDS.toNanos(totalTimeoutMillis);
+                        int retryCount = 0;
+                        while (true) {
+                            AttemptResult result = awaitAttempt(
+                                    operation, arguments, secretNames, secretValues, deadlineNanos);
+                            ProviderAttempt attempt = result.attempt();
+                            RetryPolicy retryPolicy = operation.retryPolicy();
+                            boolean retryable = retryPolicy != null
+                                    && retryCount < retryPolicy.maxRetries()
+                                    && (retryPolicy.retryableStatus(attempt.httpStatus())
+                                    || retryPolicy.networkErrors() && result.networkFailure());
+                            if (!retryable) {
+                                return attempt.outcome();
+                            }
+                            OperationOutcome sleepFailure = sleepBeforeRetry(
+                                    operation, retryPolicy, attempt.retryAfter(), retryCount,
+                                    deadlineNanos, secretNames, secretValues);
+                            if (sleepFailure != null) {
+                                return sleepFailure;
+                            }
+                            retryCount++;
+                        }
+                    }
+
+                    private AttemptResult awaitAttempt(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues,
+                            long deadlineNanos) {
+                        long remainingNanos = deadlineNanos - retryClock.nanoTime();
+                        if (remainingNanos <= 0) {
+                            return new AttemptResult(new ProviderAttempt(providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues), null, null, null), false);
+                        }
+                        RuntimeTelemetry.Call providerCall = runtimeTelemetry.startProviderCall(
+                                operation.operationId(), operation.method());
+                        Future<ProviderAttempt> request;
+                        try (var ignored = providerCall.openScope()) {
+                            try {
+                                request = requestExecutor.submit(
+                                        () -> executeSafely(operation, arguments, secretNames, secretValues));
+                            } catch (RejectedExecutionException failure) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                        RuntimeTelemetry.ErrorCategory.LOCAL_RESOURCE,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                return new AttemptResult(new ProviderAttempt(providerError(
+                                        operation,
+                                        ProviderErrorCategory.LOCAL_RESOURCE,
+                                        null,
+                                        secretNames,
+                                        secretValues), null, null, null), false);
+                            }
+                        }
+                        try {
+                            ProviderAttempt attempt = request.get(remainingNanos, TimeUnit.NANOSECONDS);
+                            completeProviderCall(providerCall, attempt);
+                            return new AttemptResult(attempt, false);
+                        } catch (TimeoutException failure) {
+                            request.cancel(true);
+                            providerCall.complete(
+                                    RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                    RuntimeTelemetry.ErrorCategory.UPSTREAM_TIMEOUT,
+                                    RuntimeTelemetry.HttpStatusClass.NONE);
+                            return new AttemptResult(new ProviderAttempt(providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues), null, null, null), false);
+                        } catch (InterruptedException failure) {
+                            request.cancel(true);
+                            Thread.currentThread().interrupt();
+                            providerCall.complete(
+                                    RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                    RuntimeTelemetry.ErrorCategory.LOCAL_RESOURCE,
+                                    RuntimeTelemetry.HttpStatusClass.NONE);
+                            return new AttemptResult(new ProviderAttempt(providerError(
+                                    operation,
+                                    ProviderErrorCategory.LOCAL_RESOURCE,
+                                    null,
+                                    secretNames,
+                                    secretValues), null, null, null), false);
+                        } catch (ExecutionException failure) {
+                            Throwable cause = failure.getCause();
+                            boolean networkFailure = retryableNetworkFailure(cause);
+                            try {
+                                OperationOutcome outcome = mapFailure(
+                                        operation, cause, secretNames, secretValues);
+                                Integer status = outcome instanceof ProviderError providerError
+                                        ? providerError.httpStatus() : null;
+                                ProviderAttempt attempt = new ProviderAttempt(outcome, status, null, null);
+                                completeProviderCall(providerCall, attempt);
+                                return new AttemptResult(attempt, networkFailure);
+                            } catch (Error fatal) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.FATAL,
+                                        RuntimeTelemetry.ErrorCategory.FATAL,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                throw fatal;
+                            } catch (RuntimeException runtimeFailure) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.INTERNAL_ERROR,
+                                        RuntimeTelemetry.ErrorCategory.UNEXPECTED_RUNTIME,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                throw runtimeFailure;
+                            }
+                        }
+                    }
+
+                    private boolean retryableNetworkFailure(Throwable failure) {
+                        return findCause(failure, Error.class) == null
+                                && findCause(failure, ResponseTooLargeException.class) == null
+                                && (hasCause(failure, ResourceAccessException.class)
+                                || hasCause(failure, IOException.class));
+                    }
+
+                    private OperationOutcome sleepBeforeRetry(
+                            OperationDefinition operation,
+                            RetryPolicy retryPolicy,
+                            String retryAfter,
+                            int retryCount,
+                            long deadlineNanos,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        long delayMillis = retryDelayMillis(retryPolicy, retryAfter, retryCount);
+                        long remainingNanos = deadlineNanos - retryClock.nanoTime();
+                        if (remainingNanos <= TimeUnit.MILLISECONDS.toNanos(delayMillis)) {
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        try {
+                            retrySleeper.sleep(delayMillis);
+                        } catch (InterruptedException failure) {
+                            Thread.currentThread().interrupt();
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.LOCAL_RESOURCE,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        if (deadlineNanos - retryClock.nanoTime() <= 0) {
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        return null;
+                    }
+
+                    private long retryDelayMillis(RetryPolicy policy, String retryAfter, int retryCount) {
+                        long exponential = policy.initialBackoffMillis();
+                        for (int index = 0; index < retryCount; index++) {
+                            exponential = Math.min(policy.maxBackoffMillis(), exponential * 2);
+                        }
+                        long providerDelay = policy.respectRetryAfter() ? retryAfterMillis(retryAfter) : 0;
+                        return Math.min(policy.maxBackoffMillis(), Math.max(exponential, providerDelay));
+                    }
+
+                    private long retryAfterMillis(String value) {
+                        if (value == null || value.isEmpty()) {
+                            return 0;
+                        }
+                        for (int index = 0; index < value.length(); index++) {
+                            if (value.charAt(index) < '0' || value.charAt(index) > '9') {
+                                return 0;
+                            }
+                        }
+                        try {
+                            return Math.multiplyExact(Long.parseLong(value), 1_000L);
+                        } catch (ArithmeticException | NumberFormatException failure) {
+                            return 0;
+                        }
+                    }
+
+                """;
+    }
+
+    private String replaceSectionRequired(String source, String start, String end, String replacement) {
+        int startIndex = source.indexOf(start);
+        int endIndex = source.indexOf(end, startIndex);
+        if (startIndex < 0 || endIndex < 0) {
+            throw JavaSourceRenderer.invalid("Retry runtime template is inconsistent");
+        }
+        return source.substring(0, startIndex) + replacement + source.substring(endIndex);
+    }
+
+    private String replaceRequired(String source, String target, String replacement) {
+        if (!source.contains(target)) {
+            throw JavaSourceRenderer.invalid("Retry runtime template is inconsistent");
+        }
+        return source.replace(target, replacement);
     }
 
     private String application(String packageName, String domainClass) {

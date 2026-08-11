@@ -12,6 +12,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OutputSelection;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
@@ -72,8 +73,12 @@ public final class GenerationConfigurationParser {
     private static final Set<String> VALIDATION_FIELDS = Set.of("toolCall");
     private static final Set<String> TOOL_CALL_FIELDS = Set.of("operationId", "arguments");
     private static final Set<String> OPERATION_FIELDS = Set.of(
-            "operationId", "enabled", "toolName", "toolDescription", "parameters", "responseNormalization", "output");
+            "operationId", "enabled", "toolName", "toolDescription", "parameters", "responseNormalization", "output",
+            "retry");
     private static final Set<String> OUTPUT_FIELDS = Set.of("mode");
+    private static final Set<String> RETRY_FIELDS = Set.of(
+            "statusCodes", "networkErrors", "maxRetries", "initialBackoffMillis", "maxBackoffMillis",
+            "respectRetryAfter");
     private static final Set<String> PARAMETER_FIELDS = Set.of("source", "environmentVariable");
     private static final Set<String> RESPONSE_NORMALIZATION_FIELDS = Set.of(
             "dataPath", "successCodePath", "successValues", "errorMessagePath", "totalCountPath");
@@ -196,7 +201,8 @@ public final class GenerationConfigurationParser {
             }
             jsonValueMode = parent.jsonValueMode()
                     || (parent.mapping() && ("arguments".equals(parent.pendingKey())
-                    || "successValues".equals(parent.pendingKey())));
+                    || "successValues".equals(parent.pendingKey())
+                    || "statusCodes".equals(parent.pendingKey())));
             parent.completeValue();
         }
         containers.push(new YamlContainer(mapping, jsonValueMode));
@@ -221,7 +227,16 @@ public final class GenerationConfigurationParser {
         boolean isJsonValue = container != null && container.jsonValueMode();
         boolean supportedJsonScalar = Tag.STR.equals(tag) || Tag.INT.equals(tag)
                 || Tag.FLOAT.equals(tag) || Tag.BOOL.equals(tag);
-        Tag expected = "enabled".equals(field) ? Tag.BOOL : Tag.STR;
+        Tag expected;
+        if ("enabled".equals(field) || "networkErrors".equals(field) || "respectRetryAfter".equals(field)) {
+            expected = Tag.BOOL;
+        } else if ("maxRetries".equals(field)
+                || "initialBackoffMillis".equals(field)
+                || "maxBackoffMillis".equals(field)) {
+            expected = Tag.INT;
+        } else {
+            expected = Tag.STR;
+        }
         if (!(isJsonValue && supportedJsonScalar) && !expected.equals(tag)) {
             throw invalid("Generation configuration scalar types must match the schema");
         }
@@ -311,6 +326,28 @@ public final class GenerationConfigurationParser {
                 requireFields(output, OUTPUT_FIELDS, OUTPUT_FIELDS, "Operation output");
                 requireString(output, "mode", "Operation output mode");
             }
+            if (operation.has("retry")) {
+                JsonNode retry = operation.get("retry");
+                requireObject(retry, "Operation retry");
+                requireFields(retry, RETRY_FIELDS,
+                        Set.of("maxRetries", "initialBackoffMillis", "maxBackoffMillis"), "Operation retry");
+                if (retry.has("statusCodes")) {
+                    JsonNode statuses = retry.get("statusCodes");
+                    if (!statuses.isArray()) {
+                        throw invalid("Operation retry status codes must be integers");
+                    }
+                    for (JsonNode status : statuses) {
+                        if (!status.isIntegralNumber()) {
+                            throw invalid("Operation retry status codes must be integers");
+                        }
+                    }
+                }
+                optionalBoolean(retry, "networkErrors", "Operation retry network errors");
+                requireInteger(retry, "maxRetries", "Operation retry max retries");
+                requireInteger(retry, "initialBackoffMillis", "Operation retry initial backoff");
+                requireInteger(retry, "maxBackoffMillis", "Operation retry max backoff");
+                optionalBoolean(retry, "respectRetryAfter", "Operation retry Retry-After policy");
+            }
             if (operation.has("responseNormalization")) {
                 JsonNode normalization = operation.get("responseNormalization");
                 requireObject(normalization, "Response normalization");
@@ -381,6 +418,19 @@ public final class GenerationConfigurationParser {
         JsonNode value = object.get(field);
         if (value == null || !value.isBoolean()) {
             throw invalid(label + " must be a boolean");
+        }
+    }
+
+    private void optionalBoolean(JsonNode object, String field, String label) {
+        if (object.has(field)) {
+            requireBoolean(object, field, label);
+        }
+    }
+
+    private void requireInteger(JsonNode object, String field, String label) {
+        JsonNode value = object.get(field);
+        if (value == null || !value.isIntegralNumber()) {
+            throw invalid(label + " must be an integer");
         }
     }
 
@@ -499,7 +549,7 @@ public final class GenerationConfigurationParser {
             String description = optionalDescription(raw.toolDescription());
             operations.add(new OperationSelection(operationId, raw.enabled(), toolName, description,
                     parameters(raw.parameters()), responseNormalization(raw.responseNormalization()),
-                    output(raw.output())));
+                    output(raw.output()), retry(raw.retry())));
         }
         if (!enabled) {
             throw invalid("At least one operation must be enabled");
@@ -555,6 +605,19 @@ public final class GenerationConfigurationParser {
             case GENERIC_JSON -> OutputKind.GENERIC_JSON;
             case TYPED -> OutputKind.TYPED_DTO;
         });
+    }
+
+    private RetryPolicy retry(RawRetry raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return new RetryPolicy(
+                    raw.statusCodes(), Boolean.TRUE.equals(raw.networkErrors()), raw.maxRetries(),
+                    raw.initialBackoffMillis(), raw.maxBackoffMillis(), Boolean.TRUE.equals(raw.respectRetryAfter()));
+        } catch (IllegalArgumentException failure) {
+            throw invalid("Generation configuration is invalid");
+        }
     }
 
     private Object scalarValue(JsonNode value) {
@@ -643,11 +706,20 @@ public final class GenerationConfigurationParser {
             String toolDescription,
             Map<String, RawParameterOverride> parameters,
             RawResponseNormalization responseNormalization,
-            RawOutput output) {}
+            RawOutput output,
+            RawRetry retry) {}
 
     private record RawOutput(RawOutputMode mode) {}
 
     private enum RawOutputMode { GENERIC_JSON, TYPED }
+
+    private record RawRetry(
+            List<Integer> statusCodes,
+            Boolean networkErrors,
+            Integer maxRetries,
+            Long initialBackoffMillis,
+            Long maxBackoffMillis,
+            Boolean respectRetryAfter) {}
 
     private record RawResponseNormalization(
             String dataPath,

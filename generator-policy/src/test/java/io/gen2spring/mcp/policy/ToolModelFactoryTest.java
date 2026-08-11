@@ -15,6 +15,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OutputSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiParameter;
@@ -72,6 +73,42 @@ class ToolModelFactoryTest {
         assertEquals(OutputKind.TYPED_DTO, tool.outputKind());
         assertSame(response, tool.output().providerSchema());
         assertSame(response, tool.output().resultSchema());
+    }
+
+    @Test
+    void attachesAnExactRetryPolicyToGetExecutionOnly() {
+        RetryPolicy retry = new RetryPolicy(List.of(429, 503), true, 2, 100, 1_000, true);
+        ApiOperation get = new ApiOperation(
+                "getForecast", HttpMethod.GET, "/forecast", "Get forecast", null,
+                List.of(), null, false, List.of(), true, List.of());
+        OperationSelection selection = new OperationSelection(
+                "getForecast", true, null, null, Map.of(), null,
+                new OutputSelection(OutputKind.GENERIC_JSON), retry);
+
+        var tool = factory.create(document(List.of(get)), request(List.of(selection))).getFirst();
+
+        assertSame(retry, tool.execution().retryPolicy());
+    }
+
+    @Test
+    void rejectsRetryForMutationOperationsWithoutLeakingConfiguredValues() {
+        String privateOperationId = "privateRetryOperation";
+        RetryPolicy retry = new RetryPolicy(List.of(598), false, 1, 100, 1_000, false);
+        ApiOperation post = new ApiOperation(
+                privateOperationId, HttpMethod.POST, "/retry-private", "Post data", null,
+                List.of(), null, false, List.of(), true, List.of());
+        OperationSelection selection = new OperationSelection(
+                privateOperationId, true, null, null, Map.of(), null,
+                new OutputSelection(OutputKind.GENERIC_JSON), retry);
+
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> factory.create(document(List.of(post)), request(List.of(selection))));
+
+        assertEquals(OPERATION_UNSUPPORTED, failure.code());
+        assertEquals("tool-policy", failure.stage());
+        assertEquals("Retry policy is unsupported for this operation", failure.safeMessage());
+        assertFalse(failure.safeMessage().contains(privateOperationId));
+        assertFalse(failure.safeMessage().contains("598"));
     }
 
     @Test

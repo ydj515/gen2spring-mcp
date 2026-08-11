@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.springai2;
 
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
@@ -10,6 +11,7 @@ import java.util.List;
 final class OperationMetadataRenderer {
     String render(String packageName, String domainClass, List<McpToolDefinition> tools) {
         boolean normalized = tools.stream().anyMatch(tool -> tool.execution().responseNormalization() != null);
+        boolean retried = tools.stream().anyMatch(tool -> tool.execution().retryPolicy() != null);
         StringBuilder source = new StringBuilder("package ").append(packageName).append(".generated.metadata;\n\n")
                 .append("import ").append(packageName).append(".runtime.OperationDefinition;\n")
                 .append("import ").append(packageName).append(".runtime.ParameterBinding;\n")
@@ -22,16 +24,19 @@ final class OperationMetadataRenderer {
                     .append("import tools.jackson.databind.node.JsonNodeFactory;\n")
                     .append("import tools.jackson.databind.node.StringNode;\n");
         }
+        if (retried) {
+            source.append("import ").append(packageName).append(".runtime.RetryPolicy;\n");
+        }
         source.append("import java.util.List;\n\n")
                 .append("public final class ").append(domainClass).append("Operations {\n")
                 .append("    private ").append(domainClass).append("Operations() {}\n");
         for (McpToolDefinition tool : tools) {
-            appendOperation(source, tool);
+            appendOperation(source, tool, retried);
         }
         return source.append("}\n").toString();
     }
 
-    private void appendOperation(StringBuilder source, McpToolDefinition tool) {
+    private void appendOperation(StringBuilder source, McpToolDefinition tool, boolean retried) {
         source.append("\n    public static final OperationDefinition ")
                 .append(JavaSourceRenderer.constantName(tool.operationId())).append(" = new OperationDefinition(\n")
                 .append("            ").append(JavaStringLiteral.quote(tool.operationId())).append(",\n")
@@ -45,7 +50,30 @@ final class OperationMetadataRenderer {
                 .append(",\n            ").append(tool.execution().requestBodyRequired())
                 .append(",\n            ");
         appendResponseNormalization(source, tool.execution().responseNormalization());
+        if (retried) {
+            source.append(",\n            ");
+            appendRetryPolicy(source, tool.execution().retryPolicy());
+        }
         source.append(");\n");
+    }
+
+    private void appendRetryPolicy(StringBuilder source, RetryPolicy policy) {
+        if (policy == null) {
+            source.append("null");
+            return;
+        }
+        source.append("new RetryPolicy(List.of(");
+        for (int index = 0; index < policy.statusCodes().size(); index++) {
+            if (index > 0) {
+                source.append(", ");
+            }
+            source.append(policy.statusCodes().get(index));
+        }
+        source.append("), ").append(policy.networkErrors())
+                .append(", ").append(policy.maxRetries())
+                .append(", ").append(policy.initialBackoffMillis()).append('L')
+                .append(", ").append(policy.maxBackoffMillis()).append('L')
+                .append(", ").append(policy.respectRetryAfter()).append(')');
     }
 
     private void appendResponseNormalization(StringBuilder source, ResponseNormalizationPolicy policy) {

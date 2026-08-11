@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
@@ -100,6 +101,37 @@ class JavaSourceRendererTest {
                 GeneratorException.class, () -> renderer.render(context(List.of(tool))));
 
         assertEquals(io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED, failure.code());
+    }
+
+    @Test
+    void rendersRetryPolicyMetadataAndBoundedRuntimeSeams() {
+        McpToolDefinition base = weatherTool();
+        var execution = base.execution();
+        RetryPolicy retry = new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true);
+        McpToolDefinition retried = new McpToolDefinition(
+                base.operationId(), base.name(), base.description(), base.inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
+                        execution.objectRequestBody(), execution.requestBodyRequired(),
+                        execution.responseNormalization(), retry),
+                base.secretBindings(), base.output());
+
+        var files = renderer.render(context(List.of(retried)));
+        String metadata = utf8(files.get(
+                "src/main/java/com/example/weather/generated/metadata/WeatherOperations.java"));
+        String operation = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/OperationDefinition.java"));
+        String retrySource = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/RetryPolicy.java"));
+        String executor = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java"));
+
+        assertTrue(metadata.contains("new RetryPolicy(List.of(429, 503), true, 2, 100L, 1000L, true)"), metadata);
+        assertTrue(operation.contains("RetryPolicy retryPolicy"), operation);
+        assertTrue(retrySource.contains("interface RetryClock"), retrySource);
+        assertTrue(retrySource.contains("interface RetrySleeper"), retrySource);
+        assertTrue(executor.contains("sleepBeforeRetry"), executor);
+        assertTrue(executor.contains("policy.respectRetryAfter()"), executor);
     }
 
     @Test

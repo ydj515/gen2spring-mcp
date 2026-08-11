@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.domain.tool;
 
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import java.net.URI;
@@ -51,13 +52,25 @@ public record McpToolDefinition(
             List<ParameterBinding> bindings,
             boolean objectRequestBody,
             boolean requestBodyRequired,
-            ResponseNormalizationPolicy responseNormalization) {
+            ResponseNormalizationPolicy responseNormalization,
+            RetryPolicy retryPolicy) {
+        public HttpExecutionDefinition(
+                OpenApiDocument.HttpMethod method,
+                URI baseUrl,
+                String path,
+                List<ParameterBinding> bindings,
+                boolean objectRequestBody,
+                boolean requestBodyRequired,
+                ResponseNormalizationPolicy responseNormalization) {
+            this(method, baseUrl, path, bindings, objectRequestBody, requestBodyRequired, responseNormalization, null);
+        }
+
         public HttpExecutionDefinition(
                 OpenApiDocument.HttpMethod method,
                 URI baseUrl,
                 String path,
                 List<ParameterBinding> bindings) {
-            this(method, baseUrl, path, bindings, false, false, null);
+            this(method, baseUrl, path, bindings, false, false, null, null);
         }
 
         public HttpExecutionDefinition(
@@ -66,7 +79,7 @@ public record McpToolDefinition(
                 String path,
                 List<ParameterBinding> bindings,
                 boolean objectRequestBody) {
-            this(method, baseUrl, path, bindings, objectRequestBody, objectRequestBody, null);
+            this(method, baseUrl, path, bindings, objectRequestBody, objectRequestBody, null, null);
         }
 
         public HttpExecutionDefinition(
@@ -76,7 +89,7 @@ public record McpToolDefinition(
                 List<ParameterBinding> bindings,
                 boolean objectRequestBody,
                 boolean requestBodyRequired) {
-            this(method, baseUrl, path, bindings, objectRequestBody, requestBodyRequired, null);
+            this(method, baseUrl, path, bindings, objectRequestBody, requestBodyRequired, null, null);
         }
     }
 

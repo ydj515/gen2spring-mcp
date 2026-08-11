@@ -66,6 +66,8 @@ public final class JavaSourceRenderer {
         validateTools(tools);
         boolean hasTypedOutputs = tools.stream()
                 .anyMatch(tool -> tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO);
+        boolean hasRetryPolicies = tools.stream()
+                .anyMatch(tool -> tool.execution().retryPolicy() != null);
         Map<String, String> sources = new LinkedHashMap<>();
         putAll(sources, inputRenderer.render(packageName, packagePath, tools));
         for (McpToolDefinition tool : tools) {
@@ -81,7 +83,8 @@ public final class JavaSourceRenderer {
         put(sources, "src/main/java/" + packagePath + "/generated/metadata/" + domainClass + "Operations.java",
                 metadataRenderer.render(packageName, domainClass, tools));
         putAll(sources, runtimeRenderer.render(
-                packageName, packagePath, domainClass, tools.getFirst().operationId(), hasTypedOutputs));
+                packageName, packagePath, domainClass, tools.getFirst().operationId(),
+                hasTypedOutputs, hasRetryPolicies));
         putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
         put(sources, "src/main/java/" + packagePath + "/runtime/RuntimeTelemetry.java",
                 runtimeTelemetryRenderer.render(packageName, tools));

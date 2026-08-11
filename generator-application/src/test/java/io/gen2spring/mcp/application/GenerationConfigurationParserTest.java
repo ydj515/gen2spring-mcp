@@ -6,9 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class GenerationConfigurationParserTest {
@@ -92,6 +94,46 @@ class GenerationConfigurationParserTest {
         }
     }
 
+    @Test
+    void parsesStrictRetryPoliciesAndLeavesOmittedRetryDisabled() {
+        var omitted = parser.parseYaml(validYaml().getBytes(UTF_8));
+        var configured = parser.parseYaml(withYamlRetry("""
+                statusCodes: [503, 429]
+                      networkErrors: true
+                      maxRetries: 2
+                      initialBackoffMillis: 100
+                      maxBackoffMillis: 1000
+                      respectRetryAfter: true
+                """).getBytes(UTF_8));
+
+        assertEquals(null, omitted.operations().getFirst().retry());
+        assertEquals(new RetryPolicy(List.of(429, 503), true, 2, 100, 1_000, true),
+                configured.operations().getFirst().retry());
+    }
+
+    @Test
+    void rejectsMalformedRetryPoliciesWithoutLeakingRejectedValues() {
+        String rejected = "private-retry-marker";
+        List<String> invalidPolicies = java.util.List.of(
+                "statusCodes: []\n      networkErrors: false\n      maxRetries: 1\n      initialBackoffMillis: 1\n      maxBackoffMillis: 1",
+                "statusCodes: [429, 429]\n      maxRetries: 1\n      initialBackoffMillis: 1\n      maxBackoffMillis: 1",
+                "statusCodes: [399]\n      maxRetries: 1\n      initialBackoffMillis: 1\n      maxBackoffMillis: 1",
+                "statusCodes: [429]\n      maxRetries: 0\n      initialBackoffMillis: 1\n      maxBackoffMillis: 1",
+                "statusCodes: [429]\n      maxRetries: 4\n      initialBackoffMillis: 1\n      maxBackoffMillis: 1",
+                "statusCodes: [429]\n      maxRetries: 1\n      initialBackoffMillis: 100\n      maxBackoffMillis: 99",
+                "statusCodes: [429]\n      maxRetries: \"2\"\n      initialBackoffMillis: 1\n      maxBackoffMillis: 1",
+                "statusCodes: [429]\n      maxRetries: 1\n      initialBackoffMillis: 1\n      maxBackoffMillis: 1\n      respectRetryAfter: null",
+                "statusCodes: [429]\n      maxRetries: 1\n      initialBackoffMillis: 1\n      maxBackoffMillis: 1\n      unknown: " + rejected);
+        for (int index = 0; index < invalidPolicies.size(); index++) {
+            String policy = invalidPolicies.get(index);
+            GenerationConfigurationException failure = assertThrows(
+                    GenerationConfigurationException.class,
+                    () -> parser.parseYaml(withYamlRetry(policy).getBytes(UTF_8)), "case " + index);
+            assertEquals("Generation configuration is invalid", failure.getMessage());
+            assertFalse(failure.getMessage().contains(rejected));
+        }
+    }
+
     private void assertInvalidJson(String json) {
         GenerationConfigurationException exception = assertThrows(
                 GenerationConfigurationException.class,
@@ -126,6 +168,10 @@ class GenerationConfigurationParserTest {
 
     private static String withYamlOutput(String mode) {
         return validYaml().replace("    parameters: {}", "    parameters: {}\n    output:\n      mode: " + mode);
+    }
+
+    private static String withYamlRetry(String policy) {
+        return validYaml().replace("    parameters: {}", "    parameters: {}\n    retry:\n      " + policy.strip());
     }
 
     private static String validJson() {

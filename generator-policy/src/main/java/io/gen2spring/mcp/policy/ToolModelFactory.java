@@ -9,6 +9,7 @@ import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiParameter;
@@ -141,6 +142,7 @@ public final class ToolModelFactory {
         ResponseNormalizationPolicy normalization = responsePolicy(selection);
         OutputDefinition output = outputSchemaResolver.resolve(
                 selection.output(), operation.successResponse(), normalization);
+        RetryPolicy retryPolicy = retryPolicy(selection, operation);
         Map<String, ResolvedApiKeySecret> apiKeySecrets = resolveApiKeySecrets(operation, document, overrides);
         Set<String> secretTargets = new HashSet<>();
         for (ApiParameter parameter : operation.parameters()) {
@@ -212,9 +214,23 @@ public final class ToolModelFactory {
                         operation.requestBody() != null
                                 && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT,
                         operation.requestBodyRequired(),
-                        normalization),
+                        normalization,
+                        retryPolicy),
                 List.copyOf(secretBindings),
                 output);
+    }
+
+    private RetryPolicy retryPolicy(OperationSelection selection, ApiOperation operation) {
+        if (selection.retry() == null) {
+            return null;
+        }
+        if (operation.method() != OpenApiDocument.HttpMethod.GET) {
+            throw GeneratorException.user(
+                    OPERATION_UNSUPPORTED,
+                    "tool-policy",
+                    "Retry policy is unsupported for this operation");
+        }
+        return selection.retry();
     }
 
     private OpenApiDocument.ApiSecurityScheme matchingApiKeyScheme(
