@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.core.DeterministicZipPackager;
 import io.gen2spring.mcp.core.GenerationManifestWriter;
 import io.gen2spring.mcp.core.GenerationPipeline;
+import io.gen2spring.mcp.core.GenerationPlanner;
 import io.gen2spring.mcp.core.ProjectGeneratorRegistry;
 import io.gen2spring.mcp.core.SafeProjectWriter;
 import io.gen2spring.mcp.core.SourceTreeChecksum;
@@ -24,6 +25,7 @@ public record GeneratorApplication(
         SpecificationAnalyzer analyzer,
         GenerationConfigurationParser configurationParser,
         ProjectGeneratorRegistry projectGenerators,
+        GenerationPlanner planner,
         GenerationPipeline pipeline) {
 
     public GeneratorApplication {
@@ -31,6 +33,7 @@ public record GeneratorApplication(
         Objects.requireNonNull(analyzer, "analyzer");
         Objects.requireNonNull(configurationParser, "configurationParser");
         Objects.requireNonNull(projectGenerators, "projectGenerators");
+        Objects.requireNonNull(planner, "planner");
         Objects.requireNonNull(pipeline, "pipeline");
     }
 
@@ -41,11 +44,10 @@ public record GeneratorApplication(
                 "generator-spring-ai-1", new SpringAi1ProjectGenerator(),
                 "generator-spring-ai-2", new SpringAi2ProjectGenerator()));
         ObjectMapper json = new ObjectMapper();
+        GenerationPlanner planner = new GenerationPlanner(new ToolModelFactory(), profiles, projectGenerators);
         GenerationPipeline pipeline = new GenerationPipeline(
                 analyzer,
-                new ToolModelFactory(),
-                profiles,
-                projectGenerators,
+                planner,
                 new SafeProjectWriter(),
                 new SourceTreeChecksum(),
                 new GenerationManifestWriter(json),
@@ -57,6 +59,7 @@ public record GeneratorApplication(
                 analyzer,
                 new GenerationConfigurationParser(profiles),
                 projectGenerators,
+                planner,
                 pipeline);
     }
 

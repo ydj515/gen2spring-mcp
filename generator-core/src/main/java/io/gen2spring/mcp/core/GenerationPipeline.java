@@ -3,7 +3,6 @@ package io.gen2spring.mcp.core;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_COMBINATION_UNSUPPORTED;
-import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_PROFILE_NOT_FOUND;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.FAILED;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.UNVERIFIED;
 import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
@@ -15,12 +14,10 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectF
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
-import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
@@ -39,17 +36,13 @@ public final class GenerationPipeline {
     public static final long DEFAULT_MAX_SPECIFICATION_BYTES = 10L * 1024 * 1024;
 
     private final SpecificationAnalyzer analyzer;
-    private final ToolModelFactory toolModelFactory;
-    private final CompatibilityProfileRegistry profiles;
-    private final ProjectGeneratorRegistry projectGenerators;
+    private final GenerationPlanner planner;
     private final SafeProjectWriter projectWriter;
     private final SourceTreeChecksum sourceTreeChecksum;
     private final GenerationManifestWriter manifestWriter;
     private final GeneratedProjectValidator validator;
     private final ValidationReportWriter reportWriter;
     private final DeterministicZipPackager zipPackager;
-    private final ExpectedToolSchemaFactory expectedToolSchemaFactory = new ExpectedToolSchemaFactory();
-    private final ExpectedToolCallFactory expectedToolCallFactory = new ExpectedToolCallFactory();
 
     public GenerationPipeline(
             SpecificationAnalyzer analyzer,
@@ -87,10 +80,28 @@ public final class GenerationPipeline {
             GeneratedProjectValidator validator,
             ValidationReportWriter reportWriter,
             DeterministicZipPackager zipPackager) {
+        this(
+                analyzer,
+                new GenerationPlanner(toolModelFactory, profiles, projectGenerators),
+                projectWriter,
+                sourceTreeChecksum,
+                manifestWriter,
+                validator,
+                reportWriter,
+                zipPackager);
+    }
+
+    public GenerationPipeline(
+            SpecificationAnalyzer analyzer,
+            GenerationPlanner planner,
+            SafeProjectWriter projectWriter,
+            SourceTreeChecksum sourceTreeChecksum,
+            GenerationManifestWriter manifestWriter,
+            GeneratedProjectValidator validator,
+            ValidationReportWriter reportWriter,
+            DeterministicZipPackager zipPackager) {
         this.analyzer = Objects.requireNonNull(analyzer, "analyzer");
-        this.toolModelFactory = Objects.requireNonNull(toolModelFactory, "toolModelFactory");
-        this.profiles = Objects.requireNonNull(profiles, "profiles");
-        this.projectGenerators = Objects.requireNonNull(projectGenerators, "projectGenerators");
+        this.planner = Objects.requireNonNull(planner, "planner");
         this.projectWriter = Objects.requireNonNull(projectWriter, "projectWriter");
         this.sourceTreeChecksum = Objects.requireNonNull(sourceTreeChecksum, "sourceTreeChecksum");
         this.manifestWriter = Objects.requireNonNull(manifestWriter, "manifestWriter");
@@ -103,32 +114,30 @@ public final class GenerationPipeline {
         Path requestedRoot = normalizedOutputRoot(outputRoot);
         Path requestedArchive = archivePath(requestedRoot);
         zipPackager.requireArchiveAvailable(requestedRoot, requestedArchive);
-        CompatibilityProfile profile = resolveProfile(request);
-        ProjectGenerator projectGenerator = projectGenerators.require(profile);
-        validateTargetConfiguration(request);
+        GenerationPlanner.ResolvedTarget target = planner.resolve(request);
         var analysis = analyzer.analyze(specification, DEFAULT_MAX_SPECIFICATION_BYTES);
-        List<McpToolDefinition> tools = toolModelFactory.create(analysis.document(), request);
-        ExpectedToolCall expectedCall = expectedToolCallFactory.create(tools, request.validation());
+        GenerationPlanner.PlannedGeneration plan = planner.plan(analysis.document(), request, target);
+        List<McpToolDefinition> tools = plan.tools();
         List<String> sensitiveNames = sensitiveNames(request, tools);
 
         GenerationContext context = new GenerationContext(
-                analysis.document(), tools, request, profile, analysis.originalSpecification());
+                analysis.document(), tools, request, plan.profile(), analysis.originalSpecification());
         GeneratedProjectFiles generated = execute(
                 SOURCE_GENERATION_FAILED,
                 "SOURCE_GENERATE",
                 "Generated project sources could not be created",
-                () -> projectGenerator.generate(context));
+                () -> plan.projectGenerator().generate(context));
         GeneratedProjectFiles completeProject = includeOriginalSpecification(generated, context);
         Path projectRoot = projectWriter.write(requestedRoot, completeProject);
         SourceTreeChecksum.SourceSnapshot sourceSnapshot = sourceTreeChecksum.snapshot(projectRoot);
         String sourceChecksum = sourceSnapshot.checksum();
-        manifestWriter.write(projectRoot, profile, analysis.document(), sourceChecksum, tools);
+        manifestWriter.write(projectRoot, plan.profile(), analysis.document(), sourceChecksum, tools);
 
         ValidationReport report;
         try (ValidationWorkspace workspace = ValidationWorkspace.copyOf(projectRoot, projectWriter)) {
             report = validator.validate(new ValidationRequest(
                     workspace.root(), request.project().artifactId(), request.validationLevel(),
-                    expectedToolSchemaFactory.create(tools), expectedCall, profile));
+                    plan.expectedTools(), plan.expectedToolCall(), plan.profile()));
             if (report == null) {
                 throw GeneratorException.system(
                         INTERNAL_ERROR, "VALIDATION", "Generated project validation returned no report", null);
@@ -157,20 +166,34 @@ public final class GenerationPipeline {
         return new GenerationOutcome(projectRoot, archive, report.status(), sourceChecksum);
     }
 
-    private CompatibilityProfile resolveProfile(GenerationRequest request) {
-        if (request == null) {
-            throw GeneratorException.user(
-                    TARGET_PROFILE_NOT_FOUND, "TARGET_VALIDATE", "The requested compatibility profile is unavailable");
-        }
-        return profiles.find(request.targetProfileId()).orElseThrow(() -> GeneratorException.user(
-                TARGET_PROFILE_NOT_FOUND, "TARGET_VALIDATE", "The requested compatibility profile is unavailable"));
-    }
-
-    private void validateTargetConfiguration(GenerationRequest request) {
-        if (request.project() == null || request.validationLevel() == null) {
-            throw GeneratorException.user(
-                    TARGET_COMBINATION_UNSUPPORTED, "TARGET_VALIDATE", "Generation target configuration is incomplete");
-        }
+    public GenerationPreview preview(Path specification, GenerationRequest request) {
+        GenerationPlanner.ResolvedTarget target = planner.resolve(request);
+        var analysis = analyzer.analyze(specification, DEFAULT_MAX_SPECIFICATION_BYTES);
+        GenerationPlanner.PlannedGeneration plan = planner.plan(analysis.document(), request, target);
+        GenerationContext context = new GenerationContext(
+                analysis.document(), plan.tools(), request, plan.profile(), analysis.originalSpecification());
+        GeneratedProjectFiles generated = execute(
+                SOURCE_GENERATION_FAILED,
+                "SOURCE_GENERATE",
+                "Generated project sources could not be created",
+                () -> plan.projectGenerator().generate(context));
+        GeneratedProjectFiles completeProject = includeOriginalSpecification(generated, context);
+        TreeSet<String> paths = new TreeSet<>(completeProject.files().keySet());
+        paths.add(GenerationManifestWriter.MANIFEST_FILE);
+        paths.add(ValidationReportWriter.REPORT_FILE);
+        paths.add(request.project().artifactId() + ".zip");
+        List<GenerationPreview.Tool> tools = plan.tools().stream().map(tool -> new GenerationPreview.Tool(
+                tool.operationId(),
+                tool.name(),
+                tool.description(),
+                plan.expectedTools().get(tool.name()).inputSchema(),
+                GenerationPreview.ResponseNormalization.from(tool.execution().responseNormalization()))).toList();
+        return new GenerationPreview(
+                plan.profile(),
+                tools,
+                plan.secretEnvironmentVariables(),
+                analysis.document().warnings(),
+                List.copyOf(paths));
     }
 
     private GeneratedProjectFiles includeOriginalSpecification(

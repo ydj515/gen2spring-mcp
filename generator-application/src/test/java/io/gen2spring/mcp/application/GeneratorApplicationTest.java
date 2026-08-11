@@ -26,6 +26,7 @@ class GeneratorApplicationTest {
                 assertNotNull(application.projectGenerators().require(profile)));
         assertNotNull(application.analyzer());
         assertNotNull(application.configurationParser());
+        assertNotNull(application.planner());
         assertNotNull(application.pipeline());
     }
 }
