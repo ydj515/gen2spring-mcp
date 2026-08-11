@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import org.junit.jupiter.api.Test;
@@ -63,6 +64,34 @@ class GenerationConfigurationParserTest {
         assertEquals("Tool description is invalid", exception.getMessage());
     }
 
+    @Test
+    void parsesStrictOutputSelectionsAndDefaultsToGenericJson() {
+        var omitted = parser.parseYaml(validYaml().getBytes(UTF_8));
+        var generic = parser.parseYaml(withYamlOutput("GENERIC_JSON").getBytes(UTF_8));
+        var typed = parser.parseYaml(withYamlOutput("TYPED").getBytes(UTF_8));
+
+        assertEquals(OutputKind.GENERIC_JSON, omitted.operations().getFirst().output().mode());
+        assertEquals(OutputKind.GENERIC_JSON, generic.operations().getFirst().output().mode());
+        assertEquals(OutputKind.TYPED_DTO, typed.operations().getFirst().output().mode());
+    }
+
+    @Test
+    void rejectsMalformedOutputSelectionsWithoutLeakingRejectedValues() {
+        String rejected = "private-output-marker";
+        for (String yaml : java.util.List.of(
+                withYamlOutput(rejected),
+                validYaml().replace("    parameters: {}", "    parameters: {}\n    output: null"),
+                validYaml().replace("    parameters: {}",
+                        "    parameters: {}\n    output:\n      mode: TYPED\n      unknown: true"),
+                validYaml().replace("    parameters: {}", "    parameters: {}\n    output:\n      mode: 7"))) {
+            GenerationConfigurationException failure = assertThrows(
+                    GenerationConfigurationException.class,
+                    () -> parser.parseYaml(yaml.getBytes(UTF_8)));
+            assertEquals("Generation configuration is invalid", failure.getMessage());
+            assertFalse(failure.getMessage().contains(rejected));
+        }
+    }
+
     private void assertInvalidJson(String json) {
         GenerationConfigurationException exception = assertThrows(
                 GenerationConfigurationException.class,
@@ -93,6 +122,10 @@ class GenerationConfigurationParserTest {
                     toolDescription: Get the public weather forecast.
                     parameters: {}
                 """;
+    }
+
+    private static String withYamlOutput(String mode) {
+        return validYaml().replace("    parameters: {}", "    parameters: {}\n    output:\n      mode: " + mode);
     }
 
     private static String validJson() {

@@ -4,6 +4,7 @@ import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import java.net.URI;
 import java.util.List;
+import java.util.Objects;
 
 public record McpToolDefinition(
         String operationId,
@@ -12,9 +13,29 @@ public record McpToolDefinition(
         List<McpInputDefinition> inputs,
         HttpExecutionDefinition execution,
         List<SecretBinding> secretBindings,
-        OutputKind outputKind) {
+        OutputDefinition output) {
     public enum ParameterSource { USER_INPUT, SERVER_SECRET, SERVER_DEFAULT, CONTEXT_DERIVED, INTERNAL, UNSUPPORTED }
-    public enum OutputKind { GENERIC_JSON }
+    public enum OutputKind { GENERIC_JSON, TYPED_DTO }
+
+    public McpToolDefinition {
+        Objects.requireNonNull(output, "output");
+    }
+
+    public McpToolDefinition(
+            String operationId,
+            String name,
+            String description,
+            List<McpInputDefinition> inputs,
+            HttpExecutionDefinition execution,
+            List<SecretBinding> secretBindings,
+            OutputKind outputKind) {
+        this(operationId, name, description, inputs, execution, secretBindings,
+                new OutputDefinition(outputKind, null, null));
+    }
+
+    public OutputKind outputKind() {
+        return output.kind();
+    }
 
     public record McpInputDefinition(
             String name,

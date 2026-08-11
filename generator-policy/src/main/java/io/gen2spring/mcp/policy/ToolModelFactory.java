@@ -2,7 +2,6 @@ package io.gen2spring.mcp.policy;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.OPERATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SECRET_EXPOSURE_DETECTED;
-import static io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind.GENERIC_JSON;
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SERVER_SECRET;
 import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.USER_INPUT;
 
@@ -22,6 +21,7 @@ import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import javax.lang.model.SourceVersion;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,18 +42,29 @@ public final class ToolModelFactory {
     private final ToolNamingPolicy namingPolicy;
     private final SecretParameterPolicy secretPolicy;
     private final ToolDescriptionPolicy descriptionPolicy;
+    private final OutputSchemaResolver outputSchemaResolver;
 
     public ToolModelFactory() {
-        this(new ToolNamingPolicy(), new SecretParameterPolicy(), new ToolDescriptionPolicy());
+        this(new ToolNamingPolicy(), new SecretParameterPolicy(), new ToolDescriptionPolicy(),
+                new OutputSchemaResolver());
     }
 
     public ToolModelFactory(
             ToolNamingPolicy namingPolicy,
             SecretParameterPolicy secretPolicy,
             ToolDescriptionPolicy descriptionPolicy) {
+        this(namingPolicy, secretPolicy, descriptionPolicy, new OutputSchemaResolver());
+    }
+
+    public ToolModelFactory(
+            ToolNamingPolicy namingPolicy,
+            SecretParameterPolicy secretPolicy,
+            ToolDescriptionPolicy descriptionPolicy,
+            OutputSchemaResolver outputSchemaResolver) {
         this.namingPolicy = namingPolicy;
         this.secretPolicy = secretPolicy;
         this.descriptionPolicy = descriptionPolicy;
+        this.outputSchemaResolver = outputSchemaResolver;
     }
 
     public List<McpToolDefinition> create(OpenApiDocument document, GenerationRequest request) {
@@ -127,6 +138,9 @@ public final class ToolModelFactory {
         validateSecretOverrideConflicts(operation, document, overrides);
         validateOverrideKeys(operation, document, overrides);
         validateRequestBody(operation);
+        ResponseNormalizationPolicy normalization = responsePolicy(selection);
+        OutputDefinition output = outputSchemaResolver.resolve(
+                selection.output(), operation.successResponse(), normalization);
         Map<String, ResolvedApiKeySecret> apiKeySecrets = resolveApiKeySecrets(operation, document, overrides);
         Set<String> secretTargets = new HashSet<>();
         for (ApiParameter parameter : operation.parameters()) {
@@ -198,9 +212,9 @@ public final class ToolModelFactory {
                         operation.requestBody() != null
                                 && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT,
                         operation.requestBodyRequired(),
-                        responsePolicy(selection)),
+                        normalization),
                 List.copyOf(secretBindings),
-                GENERIC_JSON);
+                output);
     }
 
     private OpenApiDocument.ApiSecurityScheme matchingApiKeyScheme(

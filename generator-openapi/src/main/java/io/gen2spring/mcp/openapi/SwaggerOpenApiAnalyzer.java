@@ -169,6 +169,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             warnings.add("GET operations with request bodies are not supported");
         }
         validateSuccessResponseMediaTypes(operation, warnings);
+        ApiSchema successResponse = normalizeSuccessResponse(operation, componentSchemas, warnings);
         parameters.forEach(parameter -> addSchemaWarnings(warnings, parameter.schema()));
         addSchemaWarnings(warnings, requestBody);
         if (parameters.stream().anyMatch(parameter -> !parameter.schema().supported())
@@ -181,7 +182,50 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                         && Boolean.TRUE.equals(operation.getRequestBody().getRequired()),
                 securityRequirements(operation.getSecurity() == null ? openApi.getSecurity() : operation.getSecurity(),
                         securitySchemes, warnings),
-                warnings.isEmpty(), List.copyOf(warnings));
+                warnings.isEmpty(), List.copyOf(warnings), successResponse);
+    }
+
+    private ApiSchema normalizeSuccessResponse(
+            Operation operation,
+            Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas,
+            List<String> warnings) {
+        if (operation.getResponses() == null) {
+            return null;
+        }
+        List<ApiSchema> schemas = new ArrayList<>();
+        boolean missingSchema = false;
+        for (Map.Entry<String, io.swagger.v3.oas.models.responses.ApiResponse> entry
+                : operation.getResponses().entrySet()) {
+            String statusCode = entry.getKey();
+            io.swagger.v3.oas.models.responses.ApiResponse response = entry.getValue();
+            if (!isSuccessStatus(statusCode) || response == null || response.getContent() == null
+                    || response.getContent().isEmpty()) {
+                continue;
+            }
+            MediaType mediaType = response.getContent().size() == 1
+                    ? response.getContent().get("application/json") : null;
+            if (mediaType == null) {
+                continue;
+            }
+            if (mediaType.getSchema() == null) {
+                missingSchema = true;
+                continue;
+            }
+            schemas.add(schemaNormalizer.normalize(mediaType.getSchema(), componentSchemas));
+        }
+        if (missingSchema) {
+            warnings.add("Success response schemas must be supported and structurally identical");
+            return null;
+        }
+        if (schemas.isEmpty()) {
+            return null;
+        }
+        ApiSchema first = schemas.getFirst();
+        if (!first.supported() || schemas.stream().anyMatch(schema -> !first.equals(schema))) {
+            warnings.add("Success response schemas must be supported and structurally identical");
+            return null;
+        }
+        return first;
     }
 
     private void validateSuccessResponseMediaTypes(Operation operation, List<String> warnings) {

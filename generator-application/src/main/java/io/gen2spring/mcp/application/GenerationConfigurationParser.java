@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
+import io.gen2spring.mcp.domain.config.GenerationRequest.OutputSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
@@ -20,6 +21,7 @@ import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -70,7 +72,8 @@ public final class GenerationConfigurationParser {
     private static final Set<String> VALIDATION_FIELDS = Set.of("toolCall");
     private static final Set<String> TOOL_CALL_FIELDS = Set.of("operationId", "arguments");
     private static final Set<String> OPERATION_FIELDS = Set.of(
-            "operationId", "enabled", "toolName", "toolDescription", "parameters", "responseNormalization");
+            "operationId", "enabled", "toolName", "toolDescription", "parameters", "responseNormalization", "output");
+    private static final Set<String> OUTPUT_FIELDS = Set.of("mode");
     private static final Set<String> PARAMETER_FIELDS = Set.of("source", "environmentVariable");
     private static final Set<String> RESPONSE_NORMALIZATION_FIELDS = Set.of(
             "dataPath", "successCodePath", "successValues", "errorMessagePath", "totalCountPath");
@@ -302,6 +305,12 @@ public final class GenerationConfigurationParser {
             requireBoolean(operation, "enabled", "Operation enabled state");
             optionalString(operation, "toolName", "Tool name");
             optionalString(operation, "toolDescription", "Tool description");
+            if (operation.has("output")) {
+                JsonNode output = operation.get("output");
+                requireObject(output, "Operation output");
+                requireFields(output, OUTPUT_FIELDS, OUTPUT_FIELDS, "Operation output");
+                requireString(output, "mode", "Operation output mode");
+            }
             if (operation.has("responseNormalization")) {
                 JsonNode normalization = operation.get("responseNormalization");
                 requireObject(normalization, "Response normalization");
@@ -489,7 +498,8 @@ public final class GenerationConfigurationParser {
             String toolName = optionalMatch(raw.toolName(), TOOL_NAME, "Tool name");
             String description = optionalDescription(raw.toolDescription());
             operations.add(new OperationSelection(operationId, raw.enabled(), toolName, description,
-                    parameters(raw.parameters()), responseNormalization(raw.responseNormalization())));
+                    parameters(raw.parameters()), responseNormalization(raw.responseNormalization()),
+                    output(raw.output())));
         }
         if (!enabled) {
             throw invalid("At least one operation must be enabled");
@@ -535,6 +545,16 @@ public final class GenerationConfigurationParser {
         } catch (IllegalArgumentException failure) {
             throw invalid("Response normalization policy is invalid");
         }
+    }
+
+    private OutputSelection output(RawOutput raw) {
+        if (raw == null) {
+            return new OutputSelection(OutputKind.GENERIC_JSON);
+        }
+        return new OutputSelection(switch (raw.mode()) {
+            case GENERIC_JSON -> OutputKind.GENERIC_JSON;
+            case TYPED -> OutputKind.TYPED_DTO;
+        });
     }
 
     private Object scalarValue(JsonNode value) {
@@ -622,7 +642,12 @@ public final class GenerationConfigurationParser {
             String toolName,
             String toolDescription,
             Map<String, RawParameterOverride> parameters,
-            RawResponseNormalization responseNormalization) {}
+            RawResponseNormalization responseNormalization,
+            RawOutput output) {}
+
+    private record RawOutput(RawOutputMode mode) {}
+
+    private enum RawOutputMode { GENERIC_JSON, TYPED }
 
     private record RawResponseNormalization(
             String dataPath,

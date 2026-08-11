@@ -4,10 +4,12 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.OPERATION_ID_DUP
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_REFERENCE_UNRESOLVED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +17,121 @@ import org.junit.jupiter.api.Test;
 
 class SwaggerOpenApiAnalyzerTest {
     private final SpecificationAnalyzer analyzer = new SwaggerOpenApiAnalyzer();
+
+    @Test
+    void normalizesStructurallyIdenticalJsonSuccessResponseSchemas() throws Exception {
+        Path specification = Files.createTempFile("success-response", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Weather API, version: '1.0' }
+                paths:
+                  /weather:
+                    get:
+                      operationId: getWeather
+                      responses:
+                        '200':
+                          description: Current weather
+                          content:
+                            application/json:
+                              schema:
+                                type: object
+                                required: [city]
+                                properties:
+                                  city: { type: string }
+                        '201':
+                          description: Cached weather
+                          content:
+                            application/json:
+                              schema:
+                                type: object
+                                required: [city]
+                                properties:
+                                  city: { type: string }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertTrue(operation.supported(), operation.warnings().toString());
+        assertEquals(SchemaType.OBJECT, operation.successResponse().type());
+        assertEquals(java.util.List.of("city"), operation.successResponse().requiredProperties());
+        assertEquals(SchemaType.STRING, operation.successResponse().properties().get("city").type());
+    }
+
+    @Test
+    void failsClosedForAmbiguousOrUnsupportedSuccessResponseSchemas() throws Exception {
+        Path specification = Files.createTempFile("success-response-boundaries", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Result API, version: '1.0' }
+                paths:
+                  /bodyless:
+                    get:
+                      operationId: bodyless
+                      responses: { '204': { description: Accepted } }
+                  /range:
+                    get:
+                      operationId: range
+                      responses:
+                        2XX:
+                          description: Result
+                          content:
+                            application/json:
+                              schema: { type: string }
+                  /conflicting:
+                    get:
+                      operationId: conflicting
+                      responses:
+                        '200':
+                          description: Text
+                          content:
+                            application/json:
+                              schema: { type: string }
+                        '201':
+                          description: Number
+                          content:
+                            application/json:
+                              schema: { type: integer }
+                  /missing-schema:
+                    get:
+                      operationId: missingSchema
+                      responses:
+                        '200':
+                          description: Missing
+                          content:
+                            application/json: {}
+                        '201':
+                          description: Present
+                          content:
+                            application/json:
+                              schema: { type: string }
+                  /composed:
+                    get:
+                      operationId: composed
+                      responses:
+                        '200':
+                          description: Composed
+                          content:
+                            application/json:
+                              schema:
+                                anyOf:
+                                  - { type: string }
+                                  - { type: integer }
+                """);
+
+        var operations = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().stream()
+                .collect(java.util.stream.Collectors.toMap(operation -> operation.operationId(), operation -> operation));
+
+        assertTrue(operations.get("bodyless").supported());
+        assertNull(operations.get("bodyless").successResponse());
+        assertTrue(operations.get("range").supported(), operations.get("range").warnings().toString());
+        assertEquals(SchemaType.STRING, operations.get("range").successResponse().type());
+        for (String operationId : java.util.List.of("conflicting", "missingSchema", "composed")) {
+            assertFalse(operations.get(operationId).supported(), operationId);
+            assertNull(operations.get(operationId).successResponse(), operationId);
+            assertTrue(operations.get(operationId).warnings().stream()
+                    .anyMatch(warning -> warning.contains("Success response schemas")), operationId);
+        }
+    }
 
     @Test
     void rejectsExternalReferencesBeforeSwaggerParserCanResolveThem() throws Exception {

@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
+import io.gen2spring.mcp.domain.config.GenerationRequest.OutputSelection;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
@@ -24,6 +25,7 @@ import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +55,23 @@ class ToolModelFactoryTest {
         var tool = factory.create(weatherDocument(), request).getFirst();
 
         assertSame(policy, tool.execution().responseNormalization());
+    }
+
+    @Test
+    void attachesTheResolvedTypedOutputToTheFinalToolIr() {
+        ApiSchema response = objectSchema(Map.of("city", textSchema()), List.of("city"));
+        var operation = new ApiOperation(
+                "getForecast", HttpMethod.GET, "/forecast", "Get forecast", null,
+                List.of(), null, false, List.of(), true, List.of(), response);
+        var selection = new OperationSelection(
+                "getForecast", true, null, null, Map.of(), null,
+                new OutputSelection(OutputKind.TYPED_DTO));
+
+        var tool = factory.create(document(List.of(operation)), request(List.of(selection))).getFirst();
+
+        assertEquals(OutputKind.TYPED_DTO, tool.outputKind());
+        assertSame(response, tool.output().providerSchema());
+        assertSame(response, tool.output().resultSchema());
     }
 
     @Test

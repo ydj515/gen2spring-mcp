@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public record GenerationRequest(
         ProjectCoordinates project,
@@ -37,7 +38,23 @@ public record GenerationRequest(
             String toolName,
             String toolDescription,
             Map<String, ParameterOverride> parameters,
-            ResponseNormalizationPolicy responseNormalization) {
+            ResponseNormalizationPolicy responseNormalization,
+            OutputSelection output) {
+        public OperationSelection {
+            Objects.requireNonNull(output, "output");
+        }
+
+        public OperationSelection(
+                String operationId,
+                boolean enabled,
+                String toolName,
+                String toolDescription,
+                Map<String, ParameterOverride> parameters,
+                ResponseNormalizationPolicy responseNormalization) {
+            this(operationId, enabled, toolName, toolDescription, parameters, responseNormalization,
+                    new OutputSelection(McpToolDefinition.OutputKind.GENERIC_JSON));
+        }
+
         public OperationSelection(
                 String operationId,
                 boolean enabled,
@@ -45,6 +62,12 @@ public record GenerationRequest(
                 String toolDescription,
                 Map<String, ParameterOverride> parameters) {
             this(operationId, enabled, toolName, toolDescription, parameters, null);
+        }
+    }
+
+    public record OutputSelection(McpToolDefinition.OutputKind mode) {
+        public OutputSelection {
+            Objects.requireNonNull(mode, "mode");
         }
     }
 
