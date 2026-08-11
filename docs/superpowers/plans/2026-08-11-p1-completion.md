@@ -12,6 +12,8 @@
 
 - Keep all four canonical profile IDs, Java/Boot/AI/Gradle/image pins, and `CompatibilityProfile.p0()` identity unchanged.
 - New output, retry, and pagination configuration is operation-level opt-in; omitted policy preserves current generic JSON and exactly-one request behavior.
+- Keep `McpToolDefinition` framework-neutral; Spring AI and MCP SDK types may exist only inside emitter modules.
+- Implement the `ToolEmitter` port plus Spring AI 1/2 adapters in this P1 branch; reserve the direct `McpJavaSdkToolEmitter` implementation for a separately designed runtime family.
 - Retry is GET-only, `maxRetries <= 3`, `initialBackoffMillis <= 5000`, `maxBackoffMillis <= 10000`, and total Tool-call timeout is the hard deadline.
 - Pagination is GET-only, query-scalar driven, `maxPages <= 20`, `maxItems <= 2000`, and page plus aggregate JSON are each bounded to 1 MiB.
 - Typed output accepts one structurally consistent supported `application/json` success schema and rejects ambiguous or unsupported response contracts before source generation.
@@ -23,7 +25,150 @@
 
 ---
 
-### Task 1: Normalize success schemas and create typed output IR
+### Task 1: Establish the framework-neutral ToolEmitter port
+
+**Files:**
+
+- Modify: `generator-domain/src/main/java/io/gen2spring/mcp/domain/generation/GenerationContracts.java`
+- Modify: `generator-domain/src/test/java/io/gen2spring/mcp/domain/generation/GenerationContractsTest.java`
+- Create: `generator-spring-ai-1/src/main/java/io/gen2spring/mcp/springai1/SpringAi1ToolEmitter.java`
+- Create: `generator-spring-ai-1/src/test/java/io/gen2spring/mcp/springai1/SpringAi1ToolEmitterTest.java`
+- Modify: `generator-spring-ai-1/src/main/java/io/gen2spring/mcp/springai1/SpringAi1ProjectGenerator.java`
+- Create: `generator-spring-ai-2/src/main/java/io/gen2spring/mcp/springai2/SpringAi2ToolEmitter.java`
+- Create: `generator-spring-ai-2/src/test/java/io/gen2spring/mcp/springai2/SpringAi2ToolEmitterTest.java`
+- Modify: `generator-spring-ai-2/src/main/java/io/gen2spring/mcp/springai2/SpringAi2ProjectGenerator.java`
+
+**Interfaces:**
+
+- Produces: `GenerationContracts.ToolEmitter.emit(GenerationContext)`.
+- Produces: `GenerationContracts.GeneratedToolSources(Map<String, byte[]> files)` with safe immutable sorted paths and cloned byte arrays.
+- Preserves: `ProjectGenerator.generate(GenerationContext)` and `ProjectGeneratorRegistry` profile/module selection.
+- Reserves: future `McpJavaSdkToolEmitter` using the same port; this task does not create an SDK module, profile, dependency, or placeholder class.
+
+- [ ] **Step 1: Write domain port tests that fail**
+
+Add tests that require non-null forward-slash relative paths; reject absolute, empty segment, `.`, `..`, backslash, control,
+null/blank paths and null bytes; sort paths; clone input byte arrays; and clone arrays returned from the accessor. The
+contract assertion is:
+
+```java
+GeneratedToolSources sources = new GeneratedToolSources(Map.of(
+        "src/main/java/example/B.java", new byte[] {2},
+        "src/main/java/example/A.java", new byte[] {1}));
+assertEquals(List.of(
+        "src/main/java/example/A.java",
+        "src/main/java/example/B.java"), new ArrayList<>(sources.files().keySet()));
+```
+
+- [ ] **Step 2: Run domain tests and verify RED**
+
+```bash
+mise exec -- ./gradlew :generator-domain:test \
+  --tests io.gen2spring.mcp.domain.generation.GenerationContractsTest \
+  --no-daemon --non-interactive --rerun-tasks
+```
+
+Expected: `ToolEmitter` and `GeneratedToolSources` do not exist.
+
+- [ ] **Step 3: Add the neutral port and immutable result**
+
+Add these nested contracts without importing Spring AI or MCP SDK classes:
+
+```java
+public interface ToolEmitter {
+    GeneratedToolSources emit(GenerationContext context);
+}
+
+public record GeneratedToolSources(Map<String, byte[]> files) {
+    public GeneratedToolSources {
+        files = immutableFileBytes(files, "Generated Tool sources are invalid");
+    }
+
+    @Override
+    public Map<String, byte[]> files() {
+        return immutableFileBytes(files, "Generated Tool sources are invalid");
+    }
+}
+```
+
+Use a private `TreeMap` copy and clone each byte array on construction/access. A safe path is one or more non-empty
+forward-slash segments, none equal to `.` or `..`, with no ISO control character or backslash. Do not change
+`GeneratedProjectFiles` in this refactor.
+
+- [ ] **Step 4: Write Spring AI adapter characterization tests that fail**
+
+For each family, generate a representative current context and assert the emitter source map is exactly the Java/runtime/test
+subset previously returned by `JavaSourceRenderer`. Assert the project generator output is byte-identical before and after
+delegation using a checked-in literal path set and SHA-256 digest, not by invoking the old and new paths as both oracle sides.
+
+```java
+GeneratedToolSources sources = new SpringAi2ToolEmitter().emit(context);
+assertEquals(EXPECTED_SOURCE_PATHS, sources.files().keySet());
+assertEquals(EXPECTED_SOURCE_DIGEST, checksum(sources.files()));
+```
+
+- [ ] **Step 5: Run adapter tests and verify RED**
+
+```bash
+mise exec -- ./gradlew \
+  :generator-spring-ai-1:test --tests io.gen2spring.mcp.springai1.SpringAi1ToolEmitterTest \
+  :generator-spring-ai-2:test --tests io.gen2spring.mcp.springai2.SpringAi2ToolEmitterTest \
+  --no-daemon --non-interactive --rerun-tasks
+```
+
+Expected: emitter classes do not exist.
+
+- [ ] **Step 6: Implement Spring AI ToolEmitter adapters**
+
+Each public final adapter is package-isolated and delegates only source rendering:
+
+```java
+public final class SpringAi2ToolEmitter implements ToolEmitter {
+    @Override
+    public GeneratedToolSources emit(GenerationContext context) {
+        CompatibilityProfile profile = context == null ? null : context.profile();
+        return new GeneratedToolSources(new JavaSourceRenderer(profile).render(context));
+    }
+}
+```
+
+The AI1 class uses `SpringAi1ToolEmitter` and its package renderer. No adapter imports the other emitter module.
+
+- [ ] **Step 7: Compose emitters in project generators**
+
+Give each project generator a final `ToolEmitter`, a public default constructor with its canonical family adapter, and a
+package-private test constructor. Replace the direct renderer call with:
+
+```java
+toolEmitter.emit(context).files().forEach(files::put);
+```
+
+Project scaffold, wrapper assets, README, YAML, Docker, and map immutability remain in the project generator.
+
+- [ ] **Step 8: Run domain and both emitter modules**
+
+```bash
+mise exec -- ./gradlew \
+  :generator-domain:test :generator-spring-ai-1:test :generator-spring-ai-2:test \
+  --no-daemon --non-interactive --rerun-tasks
+```
+
+Expected: BUILD SUCCESSFUL; generated project path sets and checksums remain unchanged.
+
+- [ ] **Step 9: Commit Task 1**
+
+```bash
+git add generator-domain generator-spring-ai-1 generator-spring-ai-2
+git diff --cached --check
+git commit -m "refactor(generator): separate Tool emitters" \
+  -m "- Add a framework-neutral ToolEmitter generation port" \
+  -m "- Delegate Spring AI source rendering through family adapters" \
+  -m "- Preserve project scaffolds and generated source bytes"
+```
+
+---
+
+### Task 2: Normalize success schemas and create typed output IR
 
 **Files:**
 
@@ -208,7 +353,7 @@ mise exec -- ./gradlew \
 
 Expected: BUILD SUCCESSFUL and zero failures/errors.
 
-- [ ] **Step 12: Commit Task 1**
+- [ ] **Step 12: Commit Task 2**
 
 ```bash
 git add generator-domain generator-openapi generator-application generator-policy
@@ -221,7 +366,7 @@ git commit -m "feat(domain): model typed Tool outputs" \
 
 ---
 
-### Task 2: Generate and execute typed output DTOs
+### Task 3: Generate and execute typed output DTOs
 
 **Files:**
 
@@ -243,7 +388,7 @@ git commit -m "feat(domain): model typed Tool outputs" \
 
 **Interfaces:**
 
-- Consumes: `McpToolDefinition.output().resultSchema()` from Task 1.
+- Consumes: `McpToolDefinition.output().resultSchema()` from Task 2.
 - Produces: `<Operation>Result` and nested response records/enums under `generated.model`.
 - Produces: typed Tool methods while retaining JSON-equivalent MCP text content.
 
@@ -343,7 +488,7 @@ mise exec -- ./gradlew :generator-spring-ai-1:test :generator-spring-ai-2:test \
 
 Expected: BUILD SUCCESSFUL and zero failures/errors.
 
-- [ ] **Step 8: Commit Task 2**
+- [ ] **Step 8: Commit Task 3**
 
 ```bash
 git add generator-spring-ai-1 generator-spring-ai-2
@@ -356,7 +501,7 @@ git commit -m "feat(runtime): generate typed Tool results" \
 
 ---
 
-### Task 3: Add bounded retry policy and runtime execution
+### Task 4: Add bounded retry policy and runtime execution
 
 **Files:**
 
@@ -485,7 +630,7 @@ mise exec -- ./gradlew :generator-spring-ai-1:test :generator-spring-ai-2:test \
 
 Expected: BUILD SUCCESSFUL and zero failures/errors.
 
-- [ ] **Step 9: Commit Task 3**
+- [ ] **Step 9: Commit Task 4**
 
 ```bash
 git add generator-domain generator-application generator-policy generator-spring-ai-1 generator-spring-ai-2
@@ -498,7 +643,7 @@ git commit -m "feat(runtime): execute bounded provider retries" \
 
 ---
 
-### Task 4: Execute pagination and validate ordered upstream interactions
+### Task 5: Execute pagination and validate ordered upstream interactions
 
 **Files:**
 
@@ -534,7 +679,7 @@ git commit -m "feat(runtime): execute bounded provider retries" \
 - Produces: `PaginationPolicy(String requestParameter, Object initialValue, String itemsPointer, String nextValuePointer, int maxPages, int maxItems)`.
 - Produces: `ExpectedUpstreamInteraction(Map<String,Object> internalParameters, Outcome outcome, ExpectedUpstreamResponse response)` where outcome is `RESPONSE` or `DISCONNECT`.
 - Changes: `ExpectedToolCall` stores `List<ExpectedUpstreamInteraction>` and preserves legacy constructors plus `upstreamResponse()` compatibility accessor.
-- Consumes: retry policy from Task 3 and response/output schemas from Task 1.
+- Consumes: retry policy from Task 4 and response/output schemas from Task 2.
 
 - [ ] **Step 1: Write strict pagination configuration tests that fail**
 
@@ -658,7 +803,7 @@ mise exec -- ./gradlew \
 
 Expected: BUILD SUCCESSFUL and zero failures/errors.
 
-- [ ] **Step 12: Commit Task 4**
+- [ ] **Step 12: Commit Task 5**
 
 ```bash
 git add generator-domain generator-application generator-policy generator-core \
@@ -672,7 +817,7 @@ git commit -m "feat(runtime): execute bounded pagination" \
 
 ---
 
-### Task 5: Support Windows validation hosts
+### Task 6: Support Windows validation hosts
 
 **Files:**
 
@@ -774,7 +919,7 @@ mise exec -- ./gradlew :generator-validation:test \
 
 Expected: BUILD SUCCESSFUL, current POSIX tests pass, Windows unit paths pass through injection.
 
-- [ ] **Step 10: Commit Task 5**
+- [ ] **Step 10: Commit Task 6**
 
 ```bash
 git add generator-validation .github/workflows/ci.yml
@@ -787,7 +932,7 @@ git commit -m "feat(validation): support Windows hosts" \
 
 ---
 
-### Task 6: Propagate policies to preview, editor, manifest, and generated docs
+### Task 7: Propagate policies to preview, editor, manifest, and generated docs
 
 **Files:**
 
@@ -810,7 +955,7 @@ git commit -m "feat(validation): support Windows hosts" \
 
 **Interfaces:**
 
-- Consumes: immutable output/retry/pagination Tool IR from Tasks 1, 3, and 4.
+- Consumes: immutable output/retry/pagination Tool IR from Tasks 2, 4, and 5.
 - Produces: deterministic preview JSON and manifest policy objects.
 - Produces: accessible local editor controls that serialize the exact CLI configuration shape.
 
@@ -897,7 +1042,7 @@ mise exec -- ./gradlew \
 
 Expected: BUILD SUCCESSFUL and zero failures/errors.
 
-- [ ] **Step 8: Commit Task 6**
+- [ ] **Step 8: Commit Task 7**
 
 ```bash
 git add generator-core generator-web generator-spring-ai-1 generator-spring-ai-2
@@ -910,7 +1055,7 @@ git commit -m "feat(web): configure P1 execution policies" \
 
 ---
 
-### Task 7: Prove four-profile journeys and close P1 documentation
+### Task 8: Prove four-profile journeys and close P1 documentation
 
 **Files:**
 

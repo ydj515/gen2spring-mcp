@@ -24,6 +24,7 @@ PRD 20장의 명시적 P1 기능은 이미 구현되어 있다. 이 설계는 RE
 - retry와 pagination을 반영한 exact upstream validation sequence
 - Spring AI 1.1 / 2.0, Java 17 / 21 parity
 - Windows의 `gradlew.bat` build validation과 target JDK application boot
+- emitter-neutral Tool source generation port와 Spring AI 1/2 adapter
 - CLI, manifest, generated README, root README와 PRD 동기화
 
 제외:
@@ -33,6 +34,7 @@ PRD 20장의 명시적 P1 기능은 이미 구현되어 있다. 이 설계는 RE
 - offset을 runtime이 임의 계산하는 provider-specific pagination
 - streaming pagination, lazy iterator, partial/truncated success
 - Windows container image build와 Windows container image 생성
+- direct MCP Java SDK project/profile과 `McpJavaSdkToolEmitter` production 구현
 - async/WebFlux/Maven/STDIO
 
 ## 3. 대안과 결정
@@ -62,6 +64,46 @@ standard에는 일반 pagination 실행 의미가 없고 retry safety도 operati
 
 JSONPath, expression language, custom retry predicate를 도입하면 configuration 공격 표면, 결정성, renderer
 parity와 검증 oracle 복잡도가 크게 증가한다. P1에서는 bounded typed policy만 제공한다.
+
+### 3.4 Tool emitter architecture
+
+`McpToolDefinition`은 framework-neutral canonical IR로 유지한다. emitter는 Tool definition의 subtype이나
+상속 계층이 아니라 `GenerationContext`가 가진 Tool 목록을 소비하는 output port다.
+
+```text
+McpToolDefinition
+        |
+        v
+ToolEmitter
+├── SpringAi2ToolEmitter
+├── SpringAi1ToolEmitter
+└── McpJavaSdkToolEmitter  (separate follow-up runtime family)
+```
+
+P1에서 domain port와 두 Spring AI adapter를 실제 구현한다.
+
+```java
+public interface ToolEmitter {
+    GeneratedToolSources emit(GenerationContext context);
+}
+
+public record GeneratedToolSources(Map<String, byte[]> files) {}
+```
+
+`GeneratedToolSources`는 forward-slash 상대 경로만 허용하고 absolute path, empty segment, `.`, `..`,
+backslash와 control character를 거부한다. path는 code-point order로 정렬하고 byte array는 construction과 accessor
+양쪽에서 복제해 emitter와 project generator 사이에 mutable source buffer를 공유하지 않는다.
+
+`SpringAi1ProjectGenerator`와 `SpringAi2ProjectGenerator`는 project scaffold를 소유하고 대응 `ToolEmitter`에
+generated Java/runtime/test source 생성을 위임한다. 기존 `JavaSourceRenderer`는 각 adapter 내부 구현으로
+남고 registry/profile 선택은 계속 `ProjectGenerator` 경계에서 수행한다. 이 분리는 framework-neutral IR에
+Spring AI annotation/SDK type이 유입되는 것을 막는다.
+
+`McpJavaSdkToolEmitter`는 같은 port의 세 번째 구현 방향으로 예약한다. 하지만 direct SDK server는 Spring Boot,
+Spring AI, MVC를 필수로 가정하는 현재 `TargetPlatform`, project scaffold, application-context validation을
+그대로 사용할 수 없다. SDK version, transport bootstrap, dependency/project layout, compatibility profile,
+application readiness 계약이 별도 설계로 확정되기 전에는 빈 emitter, 거짓 profile, Spring AI scaffold 재사용을
+추가하지 않는다.
 
 ## 4. Configuration 계약
 
@@ -387,12 +429,13 @@ Windows CI는 같은 Gradle task set을 PowerShell에서 실행하고 generated 
 
 ## 13. 구현 단위
 
-1. response schema와 output policy domain/config/OpenAPI
-2. typed output IR, renderer, generated runtime
-3. retry policy와 generated executor
-4. pagination policy, aggregation, ordered mock validation
-5. Windows runtime/wrapper platform adapter와 CI
-6. four-profile CLI journey, manifest/preview/editor/docs
-7. full acceptance, review, meaningful feature commits, remote branch push
+1. ToolEmitter port와 Spring AI 1/2 adapter extraction
+2. response schema와 output policy domain/config/OpenAPI
+3. typed output IR, renderer, generated runtime
+4. retry policy와 generated executor
+5. pagination policy, aggregation, ordered mock validation
+6. Windows runtime/wrapper platform adapter와 CI
+7. four-profile CLI journey, manifest/preview/editor/docs
+8. full acceptance, review, meaningful feature commits, remote branch push
 
 각 단위는 test-first로 진행하며 production 변경과 대응 회귀 테스트를 같은 의미 단위 커밋에 포함한다.
