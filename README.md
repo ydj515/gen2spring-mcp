@@ -75,7 +75,28 @@ OPENAPI_MCP=generator-cli/build/install/openapi-mcp/bin/openapi-mcp
 
 브라우저에서 operation 선택, project/profile 설정, Tool schema preview, 실제 생성·검증과 artifact
 다운로드를 완료하는 로컬 UI와 Generator API를 제공한다. 상태는 `UI operation editor complete`다.
-설치와 실행은 다음과 같다.
+Java 17을 한 번 설치한 뒤 mise task로 실행한다.
+
+```bash
+mise install
+mise install java@17
+mise run ui
+```
+
+서버가 출력한 `READY` JSON의 URL을 브라우저에서 연다. 포트를 고정해야 하면 다음처럼 실행한다.
+
+```bash
+GEN2SPRING_UI_PORT=8080 mise run ui
+```
+
+UI distribution 빌드와 빠른 단위 테스트는 각각 다음 task로 실행한다.
+
+```bash
+mise run ui:build
+mise run ui:test
+```
+
+mise 없이 직접 설치하고 실행하려면 다음 명령을 사용한다.
 
 ```bash
 mise exec -- ./gradlew :generator-web:installDist
