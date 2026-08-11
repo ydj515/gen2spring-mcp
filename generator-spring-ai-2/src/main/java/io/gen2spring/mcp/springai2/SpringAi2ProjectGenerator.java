@@ -5,19 +5,28 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ToolEmitter;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public final class SpringAi2ProjectGenerator implements ProjectGenerator {
-    public SpringAi2ProjectGenerator() {}
+    private final ToolEmitter toolEmitter;
+
+    public SpringAi2ProjectGenerator() {
+        this(new SpringAi2ToolEmitter());
+    }
+
+    SpringAi2ProjectGenerator(ToolEmitter toolEmitter) {
+        this.toolEmitter = Objects.requireNonNull(toolEmitter, "toolEmitter");
+    }
 
     @Override
     public GeneratedProjectFiles generate(GenerationContext context) {
         CompatibilityProfile profile = context == null ? null : context.profile();
         var renderer = new ProjectFileRenderer(profile);
-        var javaSourceRenderer = new JavaSourceRenderer(profile);
         var coordinates = renderer.requireContext(context);
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put(".dockerignore", utf8(renderer.dockerignore(coordinates)));
@@ -32,7 +41,7 @@ public final class SpringAi2ProjectGenerator implements ProjectGenerator {
         files.put("gradlew.bat", renderer.wrapperAsset("gradlew.bat"));
         files.put("settings.gradle.kts", utf8(renderer.settingsGradle(coordinates)));
         files.put("src/main/resources/application.yml", utf8(renderer.applicationYaml(context)));
-        javaSourceRenderer.render(context).forEach(files::put);
+        toolEmitter.emit(context).files().forEach(files::put);
         return new GeneratedProjectFiles(Collections.unmodifiableMap(files));
     }
 
