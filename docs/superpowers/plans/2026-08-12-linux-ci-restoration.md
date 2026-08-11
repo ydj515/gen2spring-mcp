@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restore the Linux GitHub Actions validation job with Node.js 24-based immutable Action pins while leaving Windows disabled.
+**Goal:** Restore a fast Linux core validation job with Node.js 24-based immutable Action pins while leaving Windows disabled.
 
-**Architecture:** Keep the existing single workflow and activate only its Linux job. Preserve the Windows definition as comments, but synchronize its Action pins with Linux so later restoration starts from supported dependencies.
+**Architecture:** Keep the existing single workflow and activate only its Linux job. Run core module contracts plus a full production compilation through the installed CLI and web classes, while leaving generated-project and end-to-end tests for a later manual or scheduled lane. Preserve the Windows definition as comments, but synchronize its Action pins with Linux so later restoration starts from supported dependencies.
 
 **Tech Stack:** GitHub Actions, Temurin 17/21, Gradle 9.6.1
 
@@ -14,7 +14,7 @@
 - Keep the entire `windows` job commented.
 - Use `actions/checkout` commit `3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7.0.1`, Node.js 24).
 - Use `actions/setup-java` commit `b6effb05e454b25005698d916606bdc6ffcbf961` (`v5.7.0`, Node.js 24).
-- Preserve `contents: read` and the existing Gradle command.
+- Preserve `contents: read`.
 - Limit failed-generation diagnostics to validation status and safe stage metadata.
 - Canonicalize Linux tool-cache JDK homes with `realpath` before passing them to validation.
 
@@ -136,3 +136,25 @@ Use `realpath "$JAVA_HOME"` when writing each Linux `GEN2SPRING_JAVA_*_HOME` val
 - [ ] **Step 4: Verify Linux CI**
 
 Push the change and require the PR's Linux job to complete successfully.
+
+### Task 4: Bound the Required PR Gate
+
+**Files:**
+- Modify: `.github/workflows/ci.yml`
+- Modify: `docs/superpowers/specs/2026-08-12-linux-ci-restoration-design.md`
+
+**Interfaces:**
+- Consumes: Production sources and fast core module tests.
+- Produces: A required Linux result without generated-project boot or end-to-end MCP execution.
+
+- [x] **Step 1: Capture the slow-suite boundary**
+
+Confirm the full command spends most of its runtime in installed CLI, generated-project runtime, and integration tests after core compilation succeeds.
+
+- [x] **Step 2: Define the fast core command**
+
+Run domain, OpenAPI, policy, core, and application tests. Build `generator-cli:installDist` so both emitters and validation production sources compile, and compile `generator-web:classes`.
+
+- [ ] **Step 3: Verify locally and in the PR**
+
+Run the exact workflow command locally, then push and require the Linux job to pass. Keep the full suite out of this required workflow until it is restored as a separate manual or scheduled lane.

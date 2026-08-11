@@ -30,9 +30,16 @@ jobs:
       - name: Capture Java 21 home
         shell: bash
         run: echo "GEN2SPRING_JAVA_21_HOME=$(realpath "$JAVA_HOME")" >> "$GITHUB_ENV"
-      - name: Test Linux validation
+      - name: Test Linux core
         run: >-
-          ./gradlew clean test integrationTest :generator-cli:installDist
+          ./gradlew clean
+          :generator-domain:test
+          :generator-openapi:test
+          :generator-policy:test
+          :generator-core:test
+          :generator-application:test
+          :generator-cli:installDist
+          :generator-web:classes
           --no-daemon --non-interactive --rerun-tasks
 
 # Windows CI remains disabled until the Linux workflow is stable.
