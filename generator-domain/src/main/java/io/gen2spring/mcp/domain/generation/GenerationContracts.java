@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public final class GenerationContracts {
     private GenerationContracts() {}
@@ -20,6 +21,40 @@ public final class GenerationContracts {
 
     public interface GeneratedProjectValidator {
         ValidationReport validate(ValidationRequest request);
+
+        default ValidationReport validate(
+                ValidationRequest request,
+                GenerationProgressListener listener) {
+            Objects.requireNonNull(listener, "listener");
+            return validate(request);
+        }
+    }
+
+    public enum ProgressStatus { PENDING, RUNNING, SUCCESS, FAILED, SKIPPED }
+
+    public record GenerationProgress(String stage, ProgressStatus status) {
+        public static final List<String> STAGES = List.of(
+                "ANALYZE",
+                "GENERATE",
+                "COMPILE",
+                "APPLICATION_CONTEXT",
+                "MCP_INITIALIZE",
+                "MCP_TOOLS_LIST",
+                "MCP_TOOL_CALL",
+                "PACKAGE");
+
+        public GenerationProgress {
+            if (!STAGES.contains(stage) || status == null) {
+                throw new IllegalArgumentException("Generation progress is invalid");
+            }
+        }
+    }
+
+    @FunctionalInterface
+    public interface GenerationProgressListener {
+        GenerationProgressListener NOOP = progress -> {};
+
+        void onProgress(GenerationProgress progress);
     }
 
     public record GenerationContext(

@@ -17,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
@@ -73,8 +75,9 @@ class GradleMcpProjectValidatorTest {
     @Test
     void reportsBuildFailureAndSkipsLaterStagesWithoutRetainingRawOutput() throws Exception {
         Path root = project("#!/bin/sh\nprintf 'Authorization: Bearer secret-value'\nprintf 'apiKey=secret-value' >&2\nexit 7\n");
+        List<GenerationProgress> progress = new java.util.ArrayList<>();
 
-        var report = validator().validate(request(root, EXPECTED));
+        var report = validator().validate(request(root, EXPECTED), progress::add);
 
         assertEquals(UNVERIFIED, report.status());
         assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),
@@ -83,6 +86,13 @@ class GradleMcpProjectValidatorTest {
                 report.stages().stream().map(stage -> stage.status()).toList());
         assertTrue(report.stages().getFirst().summary().contains("exitCode=7"));
         assertFalse(report.stages().getFirst().summary().contains("secret-value"));
+        assertEquals(List.of(
+                new GenerationProgress("COMPILE", ProgressStatus.RUNNING),
+                new GenerationProgress("COMPILE", ProgressStatus.FAILED),
+                new GenerationProgress("APPLICATION_CONTEXT", ProgressStatus.SKIPPED),
+                new GenerationProgress("MCP_INITIALIZE", ProgressStatus.SKIPPED),
+                new GenerationProgress("MCP_TOOLS_LIST", ProgressStatus.SKIPPED),
+                new GenerationProgress("MCP_TOOL_CALL", ProgressStatus.SKIPPED)), progress);
     }
 
     @Test

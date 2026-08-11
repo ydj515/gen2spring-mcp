@@ -20,6 +20,7 @@ import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,8 +56,9 @@ class McpStreamableHttpClientTest {
 
     @Test
     void invokesTheExpectedToolWithTheInitializedSessionAndValidatesTheMockResult() throws Exception {
+        List<McpStage> startedStages = new ArrayList<>();
         try (var server = McpTestServer.startWithJsonInitializeAndSseToolsList()) {
-            var result = client.validate(server.uri(), EXPECTED, EXPECTED_CALL);
+            var result = client.validate(server.uri(), EXPECTED, EXPECTED_CALL, startedStages::add);
 
             assertEquals("tools/call", server.request(3).path("method").textValue());
             assertEquals("kma_weather_get_forecast",
@@ -65,6 +67,7 @@ class McpStreamableHttpClientTest {
                     mapper.convertValue(server.request(3).path("params").path("arguments"), Map.class));
             assertEquals(server.sessionId(), server.requestHeader(3, "Mcp-Session-Id"));
             assertTrue(result.toolsCallDurationMillis() >= 0);
+            assertEquals(List.of(McpStage.INITIALIZE, McpStage.TOOLS_LIST, McpStage.TOOL_CALL), startedStages);
         }
     }
 

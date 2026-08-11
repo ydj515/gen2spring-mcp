@@ -30,6 +30,8 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
@@ -115,6 +117,63 @@ class GenerationPipelineTest {
     void writeSpecification() throws IOException {
         safeTempDir = tempDir.toRealPath();
         specification = Files.writeString(safeTempDir.resolve("weather.yaml"), SPECIFICATION, UTF_8);
+    }
+
+    @Test
+    void publishesTheExactSuccessfulGenerationProgressSequence() {
+        List<GenerationProgress> progress = new java.util.ArrayList<>();
+        ValidationReport report = new ValidationReport(
+                VALIDATED,
+                List.of(
+                        new ValidationStageResult("COMPILE", SUCCESS, 1, 0, 0, "ok"),
+                        new ValidationStageResult("APPLICATION_CONTEXT", SUCCESS, 1, 0, 0, "ok"),
+                        new ValidationStageResult("MCP_INITIALIZE", SUCCESS, 1, 0, 0, "ok"),
+                        new ValidationStageResult("MCP_TOOLS_LIST", SUCCESS, 1, 0, 0, "ok"),
+                        new ValidationStageResult("MCP_TOOL_CALL", SUCCESS, 1, 0, 0, "ok")),
+                List.of());
+
+        pipelineWithValidator(request -> report).generate(
+                specification, weatherGenerationRequest(), safeTempDir.resolve("progress-success"), progress::add);
+
+        assertEquals(List.of(
+                event("ANALYZE", ProgressStatus.RUNNING), event("ANALYZE", ProgressStatus.SUCCESS),
+                event("GENERATE", ProgressStatus.RUNNING), event("GENERATE", ProgressStatus.SUCCESS),
+                event("COMPILE", ProgressStatus.RUNNING), event("COMPILE", ProgressStatus.SUCCESS),
+                event("APPLICATION_CONTEXT", ProgressStatus.RUNNING),
+                event("APPLICATION_CONTEXT", ProgressStatus.SUCCESS),
+                event("MCP_INITIALIZE", ProgressStatus.RUNNING),
+                event("MCP_INITIALIZE", ProgressStatus.SUCCESS),
+                event("MCP_TOOLS_LIST", ProgressStatus.RUNNING),
+                event("MCP_TOOLS_LIST", ProgressStatus.SUCCESS),
+                event("MCP_TOOL_CALL", ProgressStatus.RUNNING),
+                event("MCP_TOOL_CALL", ProgressStatus.SUCCESS),
+                event("PACKAGE", ProgressStatus.RUNNING), event("PACKAGE", ProgressStatus.SUCCESS)), progress);
+    }
+
+    @Test
+    void failsTheActiveGenerationStageAndSkipsEveryLaterStage() {
+        List<GenerationProgress> progress = new java.util.ArrayList<>();
+        ProjectGenerator failing = context -> {
+            throw new IllegalStateException("private-generation-marker");
+        };
+
+        assertThrows(GeneratorException.class, () -> pipelineWith(failing, request -> validatedReport()).generate(
+                specification, weatherGenerationRequest(), safeTempDir.resolve("progress-failure"), progress::add));
+
+        assertEquals(List.of(
+                event("ANALYZE", ProgressStatus.RUNNING), event("ANALYZE", ProgressStatus.SUCCESS),
+                event("GENERATE", ProgressStatus.RUNNING), event("GENERATE", ProgressStatus.FAILED),
+                event("COMPILE", ProgressStatus.SKIPPED),
+                event("APPLICATION_CONTEXT", ProgressStatus.SKIPPED),
+                event("MCP_INITIALIZE", ProgressStatus.SKIPPED),
+                event("MCP_TOOLS_LIST", ProgressStatus.SKIPPED),
+                event("MCP_TOOL_CALL", ProgressStatus.SKIPPED),
+                event("PACKAGE", ProgressStatus.SKIPPED)), progress);
+        assertFalse(progress.toString().contains("private-generation-marker"));
+    }
+
+    private GenerationProgress event(String stage, ProgressStatus status) {
+        return new GenerationProgress(stage, status);
     }
 
     @Test

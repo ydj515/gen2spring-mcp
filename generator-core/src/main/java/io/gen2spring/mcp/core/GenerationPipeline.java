@@ -14,6 +14,9 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectF
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgressListener;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
@@ -111,11 +114,36 @@ public final class GenerationPipeline {
     }
 
     public GenerationOutcome generate(Path specification, GenerationRequest request, Path outputRoot) {
+        return generate(specification, request, outputRoot, GenerationProgressListener.NOOP);
+    }
+
+    public GenerationOutcome generate(
+            Path specification,
+            GenerationRequest request,
+            Path outputRoot,
+            GenerationProgressListener listener) {
+        ProgressTracker progress = new ProgressTracker(listener);
+        try {
+            return generate(specification, request, outputRoot, progress);
+        } catch (Error | RuntimeException failure) {
+            progress.failActiveAndSkipRemaining();
+            throw failure;
+        }
+    }
+
+    private GenerationOutcome generate(
+            Path specification,
+            GenerationRequest request,
+            Path outputRoot,
+            ProgressTracker progress) {
         Path requestedRoot = normalizedOutputRoot(outputRoot);
         Path requestedArchive = archivePath(requestedRoot);
         zipPackager.requireArchiveAvailable(requestedRoot, requestedArchive);
         GenerationPlanner.ResolvedTarget target = planner.resolve(request);
+        progress.start("ANALYZE");
         var analysis = analyzer.analyze(specification, DEFAULT_MAX_SPECIFICATION_BYTES);
+        progress.succeed("ANALYZE");
+        progress.start("GENERATE");
         GenerationPlanner.PlannedGeneration plan = planner.plan(analysis.document(), request, target);
         List<McpToolDefinition> tools = plan.tools();
         List<String> sensitiveNames = sensitiveNames(request, tools);
@@ -132,12 +160,14 @@ public final class GenerationPipeline {
         SourceTreeChecksum.SourceSnapshot sourceSnapshot = sourceTreeChecksum.snapshot(projectRoot);
         String sourceChecksum = sourceSnapshot.checksum();
         manifestWriter.write(projectRoot, plan.profile(), analysis.document(), sourceChecksum, tools);
+        progress.succeed("GENERATE");
 
         ValidationReport report;
+        progress.start("COMPILE");
         try (ValidationWorkspace workspace = ValidationWorkspace.copyOf(projectRoot, projectWriter)) {
             report = validator.validate(new ValidationRequest(
                     workspace.root(), request.project().artifactId(), request.validationLevel(),
-                    plan.expectedTools(), plan.expectedToolCall(), plan.profile()));
+                    plan.expectedTools(), plan.expectedToolCall(), plan.profile()), progress);
             if (report == null) {
                 throw GeneratorException.system(
                         INTERNAL_ERROR, "VALIDATION", "Generated project validation returned no report", null);
@@ -152,9 +182,11 @@ public final class GenerationPipeline {
             throw wrapped;
         }
 
+        progress.completeValidation(report);
         reportWriter.write(projectRoot, report, sensitiveNames);
         Path archive = null;
         if (report.status() == VALIDATED) {
+            progress.start("PACKAGE");
             archive = archivePath(projectRoot);
             try {
                 zipPackager.packageProject(projectRoot, archive, sourceSnapshot);
@@ -162,6 +194,9 @@ public final class GenerationPipeline {
                 replaceReportAfterPackagingFailure(projectRoot, exception, sensitiveNames);
                 throw exception;
             }
+            progress.succeed("PACKAGE");
+        } else {
+            progress.skip("PACKAGE");
         }
         return new GenerationOutcome(projectRoot, archive, report.status(), sourceChecksum);
     }
@@ -303,6 +338,124 @@ public final class GenerationPipeline {
             throw exception;
         } catch (RuntimeException exception) {
             throw GeneratorException.system(errorCode, stage, safeMessage, exception);
+        }
+    }
+
+    private static final class ProgressTracker implements GenerationProgressListener {
+        private static final List<String> VALIDATION_STAGES = List.of(
+                "COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL");
+
+        private final GenerationProgressListener listener;
+        private final Map<String, ProgressStatus> statuses = new LinkedHashMap<>();
+
+        private ProgressTracker(GenerationProgressListener listener) {
+            this.listener = Objects.requireNonNull(listener, "listener");
+            GenerationProgress.STAGES.forEach(stage -> statuses.put(stage, ProgressStatus.PENDING));
+        }
+
+        @Override
+        public synchronized void onProgress(GenerationProgress progress) {
+            Objects.requireNonNull(progress, "progress");
+            if (progress.status() == ProgressStatus.PENDING) {
+                throw invalidTransition();
+            }
+            if (progress.status() == ProgressStatus.RUNNING) {
+                start(progress.stage());
+                return;
+            }
+            finish(progress.stage(), progress.status());
+        }
+
+        private synchronized void start(String stage) {
+            ProgressStatus current = status(stage);
+            if (current == ProgressStatus.RUNNING) {
+                return;
+            }
+            if (current != ProgressStatus.PENDING) {
+                throw invalidTransition();
+            }
+            publish(stage, ProgressStatus.RUNNING);
+        }
+
+        private synchronized void succeed(String stage) {
+            finish(stage, ProgressStatus.SUCCESS);
+        }
+
+        private synchronized void skip(String stage) {
+            finish(stage, ProgressStatus.SKIPPED);
+        }
+
+        private synchronized void completeValidation(ValidationReport report) {
+            for (ValidationStageResult result : report.stages()) {
+                if (!VALIDATION_STAGES.contains(result.stage())) {
+                    continue;
+                }
+                ProgressStatus terminal = switch (result.status()) {
+                    case SUCCESS -> ProgressStatus.SUCCESS;
+                    case FAILED -> ProgressStatus.FAILED;
+                    case SKIPPED -> ProgressStatus.SKIPPED;
+                };
+                if (status(result.stage()) == ProgressStatus.PENDING && terminal != ProgressStatus.SKIPPED) {
+                    start(result.stage());
+                }
+                finish(result.stage(), terminal);
+            }
+            for (String stage : VALIDATION_STAGES) {
+                if (status(stage) == ProgressStatus.PENDING) {
+                    skip(stage);
+                } else if (status(stage) == ProgressStatus.RUNNING) {
+                    finish(stage, ProgressStatus.FAILED);
+                }
+            }
+        }
+
+        private synchronized void failActiveAndSkipRemaining() {
+            for (String stage : GenerationProgress.STAGES) {
+                if (status(stage) == ProgressStatus.RUNNING) {
+                    publish(stage, ProgressStatus.FAILED);
+                    break;
+                }
+            }
+            for (String stage : GenerationProgress.STAGES) {
+                if (status(stage) == ProgressStatus.PENDING) {
+                    publish(stage, ProgressStatus.SKIPPED);
+                }
+            }
+        }
+
+        private void finish(String stage, ProgressStatus terminal) {
+            if (terminal == ProgressStatus.PENDING || terminal == ProgressStatus.RUNNING) {
+                throw invalidTransition();
+            }
+            ProgressStatus current = status(stage);
+            if (current == terminal) {
+                return;
+            }
+            if (terminal == ProgressStatus.SKIPPED) {
+                if (current != ProgressStatus.PENDING) {
+                    throw invalidTransition();
+                }
+            } else if (current != ProgressStatus.RUNNING) {
+                throw invalidTransition();
+            }
+            publish(stage, terminal);
+        }
+
+        private ProgressStatus status(String stage) {
+            ProgressStatus status = statuses.get(stage);
+            if (status == null) {
+                throw invalidTransition();
+            }
+            return status;
+        }
+
+        private void publish(String stage, ProgressStatus status) {
+            statuses.put(stage, status);
+            listener.onProgress(new GenerationProgress(stage, status));
+        }
+
+        private IllegalStateException invalidTransition() {
+            return new IllegalStateException("Generation progress transition is invalid");
         }
     }
 }

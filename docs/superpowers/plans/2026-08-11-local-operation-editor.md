@@ -255,7 +255,7 @@ git commit -m "feat(core): add canonical generation preview"
 - Produces: `GenerationPipeline.generate(..., GenerationProgressListener)`.
 - Produces: backward-compatible `GeneratedProjectValidator.validate(request, listener)` default overload.
 
-- [ ] **Step 1: Write ordered progress RED tests**
+- [x] **Step 1: Write ordered progress RED tests**
 
 Use a recording listener to assert exact successful sequence and a compile failure sequence whose remaining stages become `SKIPPED`. Add listener tests for validation timeout, interrupt flag, cleanup, late callback ignore at the eventual job boundary, and absence of summary/path/argument fields.
 
@@ -271,7 +271,7 @@ assertEquals(List.of(
         event("PACKAGE", RUNNING), event("PACKAGE", SUCCESS)), events);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 mise exec -- ./gradlew :generator-domain:compileTestJava :generator-core:compileTestJava \
@@ -280,7 +280,7 @@ mise exec -- ./gradlew :generator-domain:compileTestJava :generator-core:compile
 
 Expected: compilation fails because progress types and overloads are absent.
 
-- [ ] **Step 3: Add finite progress types**
+- [x] **Step 3: Add finite progress types**
 
 ```java
 public enum ProgressStatus { PENDING, RUNNING, SUCCESS, FAILED, SKIPPED }
@@ -302,13 +302,13 @@ public interface GenerationProgressListener {
 
 The exact stage allow-list is `ANALYZE`, `GENERATE`, `COMPILE`, `APPLICATION_CONTEXT`, `MCP_INITIALIZE`, `MCP_TOOLS_LIST`, `MCP_TOOL_CALL`, `PACKAGE`.
 
-- [ ] **Step 4: Instrument pipeline and validator**
+- [x] **Step 4: Instrument pipeline and validator**
 
 The existing three-argument pipeline method delegates to the new overload with `NOOP`. Emit `RUNNING` before each bounded stage and one terminal status after it. `GradleMcpProjectValidator` emits the existing validation stage names immediately before execution and from each final `ValidationStageResult`.
 
 On failure, emit `FAILED` for the active stage and `SKIPPED` once for all later stages. Never include duration, summary, output, argument, path, or Throwable in the event.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 ```bash
 mise exec -- ./gradlew \
@@ -318,7 +318,7 @@ mise exec -- ./gradlew \
   --no-daemon --non-interactive --rerun-tasks
 ```
 
-- [ ] **Step 6: Review and commit**
+- [x] **Step 6: Review and commit**
 
 ```bash
 git diff --check
