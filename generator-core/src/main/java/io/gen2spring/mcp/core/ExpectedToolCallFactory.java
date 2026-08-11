@@ -6,6 +6,9 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
@@ -54,11 +57,35 @@ public final class ExpectedToolCallFactory {
             }
         });
         var response = new ExpectedToolResponseFactory().create(tool);
+        List<ExpectedUpstreamInteraction> interactions = retryInteractions(tool, response.upstreamInteractions());
         return new ExpectedToolCall(
                 tool,
                 normalizedArguments,
-                response.upstreamResponse(),
+                interactions,
                 response.expectedResult());
+    }
+
+    private List<ExpectedUpstreamInteraction> retryInteractions(
+            McpToolDefinition tool, List<ExpectedUpstreamInteraction> successful) {
+        var retry = tool.execution() == null ? null : tool.execution().retryPolicy();
+        if (retry == null) {
+            return successful;
+        }
+        ExpectedUpstreamInteraction first = successful.getFirst();
+        ExpectedUpstreamInteraction failure;
+        if (retry.statusCodes() != null && !retry.statusCodes().isEmpty()) {
+            failure = new ExpectedUpstreamInteraction(
+                    first.internalParameters(), ExpectedUpstreamOutcome.RESPONSE,
+                    new ExpectedUpstreamResponse(
+                            retry.statusCodes().getFirst(), "application/json", Map.of("retryable", true)));
+        } else {
+            failure = new ExpectedUpstreamInteraction(
+                    first.internalParameters(), ExpectedUpstreamOutcome.DISCONNECT, null);
+        }
+        List<ExpectedUpstreamInteraction> result = new ArrayList<>(successful.size() + 1);
+        result.add(failure);
+        result.addAll(successful);
+        return List.copyOf(result);
     }
 
     private McpToolDefinition findTool(List<McpToolDefinition> tools, String operationId) {

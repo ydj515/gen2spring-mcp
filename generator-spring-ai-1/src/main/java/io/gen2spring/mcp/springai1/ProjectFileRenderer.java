@@ -433,50 +433,84 @@ public final class ProjectFileRenderer {
                 - Operations without response normalization return the provider's successful JSON body unchanged.
                 - Configured operations return `data`, optional `page.totalCount`, and optional `provider` metadata.
                 - Expected provider, HTTP, timeout, availability, protocol, and local-capacity failures return one MCP Tool error JSON payload with a local trace ID.
-                - Provider responses remain bounded to 1 MiB. Retry and pagination are not executed automatically.
+                - Every provider response page and the aggregated Tool result remain bounded to 1 MiB.
+                - Retry and pagination are disabled unless an operation policy below enables them.
+                - Limit violations fail the Tool call without returning partial items.
                 """.stripTrailing();
-        if (tools == null) {
+        if (tools == null || tools.isEmpty()) {
             return contract;
         }
         String policies = tools.stream()
                 .filter(java.util.Objects::nonNull)
-                .filter(tool -> tool.execution() != null && tool.execution().responseNormalization() != null)
                 .sorted(Comparator.comparing(McpToolDefinition::operationId))
                 .map(this::renderedResponsePolicy)
                 .reduce("", (left, right) -> left.isEmpty() ? right : left + "\n" + right);
         if (policies.isEmpty()) {
             return contract;
         }
-        return contract + "\n\n### Configured response normalization\n\n" + policies;
+        return contract + "\n\n### Operation response policies\n\n" + policies;
     }
 
     private String renderedResponsePolicy(McpToolDefinition tool) {
-        ResponseNormalizationPolicy policy = tool.execution().responseNormalization();
         StringBuilder rendered = new StringBuilder("- ")
                 .append(markdownCodeSpan(tool.operationId()))
                 .append("\n");
-        appendPolicyPointer(rendered, "dataPath", policy.dataPointer());
-        appendPolicyPointer(rendered, "successCodePath", policy.successCodePointer());
-        if (!policy.successValues().isEmpty()) {
+        appendPolicyValue(rendered, "output.mode",
+                tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO ? "TYPED" : "GENERIC_JSON");
+        var retry = tool.execution() == null ? null : tool.execution().retryPolicy();
+        if (retry == null) {
+            appendPolicyValue(rendered, "retry", "disabled (one attempt)");
+        } else {
             try {
-                rendered.append("  - `successValues`: ")
-                        .append(markdownCodeSpan(JSON.writeValueAsString(policy.successValues())))
-                        .append("\n");
+                appendPolicyValue(rendered, "retry.statusCodes", JSON.writeValueAsString(retry.statusCodes()));
             } catch (JsonProcessingException exception) {
                 throw GeneratorException.system(SOURCE_GENERATION_FAILED, "spring-ai-1-render",
-                        "Failed to render response normalization metadata", exception);
+                        "Failed to render retry metadata", exception);
             }
+            appendPolicyValue(rendered, "retry.networkErrors", Boolean.toString(retry.networkErrors()));
+            appendPolicyValue(rendered, "retry.maxRetries", Integer.toString(retry.maxRetries()));
+            appendPolicyValue(rendered, "retry.initialBackoffMillis", Long.toString(retry.initialBackoffMillis()));
+            appendPolicyValue(rendered, "retry.maxBackoffMillis", Long.toString(retry.maxBackoffMillis()));
+            appendPolicyValue(rendered, "retry.respectRetryAfter", Boolean.toString(retry.respectRetryAfter()));
         }
-        appendPolicyPointer(rendered, "errorMessagePath", policy.errorMessagePointer());
-        appendPolicyPointer(rendered, "totalCountPath", policy.totalCountPointer());
+        var pagination = tool.execution() == null ? null : tool.execution().paginationPolicy();
+        if (pagination == null) {
+            appendPolicyValue(rendered, "pagination", "disabled (one request)");
+        } else {
+            appendPolicyValue(rendered, "pagination.requestParameter", pagination.requestParameter());
+            appendPolicyValue(rendered, "pagination.itemsPath", pagination.itemsPointer());
+            appendPolicyValue(rendered, "pagination.nextValuePath", pagination.nextValuePointer());
+            appendPolicyValue(rendered, "pagination.maxPages", Integer.toString(pagination.maxPages()));
+            appendPolicyValue(rendered, "pagination.maxItems", Integer.toString(pagination.maxItems()));
+        }
+        ResponseNormalizationPolicy policy = tool.execution() == null
+                ? null : tool.execution().responseNormalization();
+        if (policy != null) {
+            appendPolicyPointer(rendered, "dataPath", policy.dataPointer());
+            appendPolicyPointer(rendered, "successCodePath", policy.successCodePointer());
+            if (!policy.successValues().isEmpty()) {
+                try {
+                    appendPolicyValue(rendered, "successValues", JSON.writeValueAsString(policy.successValues()));
+                } catch (JsonProcessingException exception) {
+                    throw GeneratorException.system(SOURCE_GENERATION_FAILED, "spring-ai-1-render",
+                            "Failed to render response normalization metadata", exception);
+                }
+            }
+            appendPolicyPointer(rendered, "errorMessagePath", policy.errorMessagePointer());
+            appendPolicyPointer(rendered, "totalCountPath", policy.totalCountPointer());
+        }
         return rendered.toString().stripTrailing();
     }
 
     private void appendPolicyPointer(StringBuilder rendered, String name, String value) {
         if (value != null) {
-            rendered.append("  - `").append(name).append("`: ")
-                    .append(markdownCodeSpan(value)).append("\n");
+            appendPolicyValue(rendered, name, value);
         }
+    }
+
+    private void appendPolicyValue(StringBuilder rendered, String name, String value) {
+        rendered.append("  - `").append(name).append("`: ")
+                .append(markdownCodeSpan(value)).append("\n");
     }
 
     private String markdownCodeSpan(String value) {

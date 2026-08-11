@@ -5,14 +5,30 @@ import java.util.Map;
 
 final class RuntimeSourceRenderer {
     Map<String, String> render(
-            String packageName, String packagePath, String domainClass, String contextOperationId) {
+            String packageName,
+            String packagePath,
+            String domainClass,
+            String contextOperationId,
+            boolean hasTypedOutputs,
+            boolean hasRetryPolicies,
+            boolean hasPaginationPolicies) {
         Map<String, String> sources = new LinkedHashMap<>();
         String runtimePath = "src/main/java/" + packagePath + "/runtime/";
         sources.put(runtimePath + "ParameterLocation.java", parameterLocation(packageName));
         sources.put(runtimePath + "ParameterBinding.java", parameterBinding(packageName));
         sources.put(runtimePath + "SecretBinding.java", secretBinding(packageName));
-        sources.put(runtimePath + "OperationDefinition.java", operationDefinition(packageName));
-        sources.put(runtimePath + "OpenApiOperationExecutor.java", executor(packageName));
+        sources.put(runtimePath + "OperationDefinition.java", hasPaginationPolicies
+                ? operationDefinitionWithPagination(packageName)
+                : hasRetryPolicies ? operationDefinitionWithRetry(packageName) : operationDefinition(packageName));
+        if (hasRetryPolicies) {
+            sources.put(runtimePath + "RetryPolicy.java", retryPolicy(packageName));
+        }
+        if (hasPaginationPolicies) {
+            sources.put(runtimePath + "PaginationPolicy.java", paginationPolicy(packageName));
+            sources.put(runtimePath + "PageAccumulator.java", pageAccumulator(packageName));
+        }
+        sources.put(runtimePath + "OpenApiOperationExecutor.java",
+                executor(packageName, hasTypedOutputs, hasRetryPolicies, hasPaginationPolicies));
         sources.put("src/main/java/" + packagePath + "/application/" + domainClass + "McpApplication.java",
                 application(packageName, domainClass));
         sources.put("src/test/java/" + packagePath + "/application/" + domainClass + "McpApplicationTest.java",
@@ -128,8 +144,320 @@ final class RuntimeSourceRenderer {
                 """.formatted(packageName);
     }
 
-    private String executor(String packageName) {
+    private String operationDefinitionWithRetry(String packageName) {
         return """
+                package %s.runtime;
+
+                import java.util.List;
+                import java.util.Objects;
+
+                public record OperationDefinition(
+                        String operationId,
+                        String method,
+                        String path,
+                        List<ParameterBinding> parameterBindings,
+                        List<SecretBinding> secretBindings,
+                        boolean objectRequestBody,
+                        boolean requestBodyRequired,
+                        ResponseNormalizationPolicy responseNormalization,
+                        RetryPolicy retryPolicy) {
+                    public OperationDefinition(
+                            String operationId,
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings,
+                            boolean objectRequestBody,
+                            boolean requestBodyRequired,
+                            ResponseNormalizationPolicy responseNormalization) {
+                        this(operationId, method, path, parameterBindings, secretBindings,
+                                objectRequestBody, requestBodyRequired, responseNormalization, null);
+                    }
+
+                    public OperationDefinition(
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings) {
+                        this("unknown", method, path, parameterBindings, secretBindings, false, false, null, null);
+                    }
+
+                    public OperationDefinition(
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings,
+                            boolean objectRequestBody) {
+                        this("unknown", method, path, parameterBindings, secretBindings,
+                                objectRequestBody, objectRequestBody, null, null);
+                    }
+
+                    public OperationDefinition(
+                            String method,
+                            String path,
+                            List<ParameterBinding> parameterBindings,
+                            List<SecretBinding> secretBindings,
+                            boolean objectRequestBody,
+                            boolean requestBodyRequired) {
+                        this("unknown", method, path, parameterBindings, secretBindings,
+                                objectRequestBody, requestBodyRequired, null, null);
+                    }
+
+                    public OperationDefinition {
+                        Objects.requireNonNull(operationId, "operationId");
+                        Objects.requireNonNull(method, "method");
+                        Objects.requireNonNull(path, "path");
+                        parameterBindings = List.copyOf(parameterBindings);
+                        secretBindings = List.copyOf(secretBindings);
+                    }
+                }
+                """.formatted(packageName);
+    }
+
+    private String operationDefinitionWithPagination(String packageName) {
+        return operationDefinitionWithRetry(packageName)
+                .replace("RetryPolicy retryPolicy) {",
+                        "RetryPolicy retryPolicy,\n        PaginationPolicy paginationPolicy) {")
+                .replace("responseNormalization, null);", "responseNormalization, null, null);")
+                .replace("false, false, null, null);", "false, false, null, null, null);")
+                .replace("objectRequestBody, objectRequestBody, null, null);",
+                        "objectRequestBody, objectRequestBody, null, null, null);")
+                .replace("objectRequestBody, requestBodyRequired, null, null);",
+                        "objectRequestBody, requestBodyRequired, null, null, null);");
+    }
+
+    private String retryPolicy(String packageName) {
+        return """
+                package %s.runtime;
+
+                import java.util.List;
+
+                public record RetryPolicy(
+                        List<Integer> statusCodes,
+                        boolean networkErrors,
+                        int maxRetries,
+                        long initialBackoffMillis,
+                        long maxBackoffMillis,
+                        boolean respectRetryAfter) {
+                    public RetryPolicy {
+                        statusCodes = List.copyOf(statusCodes);
+                    }
+
+                    boolean retryableStatus(Integer status) {
+                        return status != null && statusCodes.contains(status);
+                    }
+                }
+
+                @FunctionalInterface
+                interface RetryClock {
+                    long nanoTime();
+                }
+
+                @FunctionalInterface
+                interface RetrySleeper {
+                    void sleep(long millis) throws InterruptedException;
+                }
+                """.formatted(packageName);
+    }
+
+    private String paginationPolicy(String packageName) {
+        return """
+                package %s.runtime;
+
+                public record PaginationPolicy(
+                        String requestParameter,
+                        Object initialValue,
+                        String itemsPointer,
+                        String nextValuePointer,
+                        int maxPages,
+                        int maxItems) {}
+                """.formatted(packageName);
+    }
+
+    private String pageAccumulator(String packageName) {
+        return """
+                package %s.runtime;
+
+                import tools.jackson.databind.JsonNode;
+                import tools.jackson.databind.json.JsonMapper;
+                import tools.jackson.databind.node.ArrayNode;
+                import tools.jackson.databind.node.ObjectNode;
+                import java.math.BigInteger;
+                import java.util.ArrayList;
+                import java.util.HashSet;
+                import java.util.List;
+                import java.util.Set;
+
+                final class PageAccumulator {
+                    private static final int MAX_BYTES = 1024 * 1024;
+                    private final JsonMapper mapper;
+                    private final PaginationPolicy policy;
+                    private final Set<String> seenValues = new HashSet<>();
+                    private JsonNode aggregate;
+                    private ArrayNode aggregateItems;
+                    private int pageCount;
+
+                    PageAccumulator(JsonMapper mapper, PaginationPolicy policy) {
+                        this.mapper = java.util.Objects.requireNonNull(mapper);
+                        this.policy = java.util.Objects.requireNonNull(policy);
+                        if (policy.initialValue() != null) {
+                            seenValues.add(wire(policy.initialValue()));
+                        }
+                    }
+
+                    PageStep append(byte[] body) {
+                        if (body.length > MAX_BYTES) {
+                            throw new PageResourceException();
+                        }
+                        JsonNode page;
+                        try {
+                            page = mapper.readTree(body);
+                        } catch (RuntimeException failure) {
+                            throw new PageProtocolException();
+                        }
+                        JsonNode pageItems = page.at(policy.itemsPointer());
+                        if (!pageItems.isArray()) {
+                            throw new PageProtocolException();
+                        }
+                        if (aggregate == null) {
+                            aggregate = page.deepCopy();
+                            JsonNode selected = aggregate.at(policy.itemsPointer());
+                            if (!(selected instanceof ArrayNode array)) {
+                                throw new PageProtocolException();
+                            }
+                            aggregateItems = array;
+                        } else {
+                            pageItems.forEach(item -> aggregateItems.add(item.deepCopy()));
+                        }
+                        pageCount++;
+
+                        JsonNode next = page.at(policy.nextValuePointer());
+                        boolean terminal = next.isMissingNode() || next.isNull()
+                                || next.isTextual() && next.stringValue().isEmpty();
+                        String wireValue = null;
+                        if (!terminal) {
+                            wireValue = wire(next);
+                            if (!seenValues.add(wireValue)) {
+                                throw new PageProtocolException();
+                            }
+                        }
+                        if (!next.isMissingNode() || !terminal || !aggregate.at(policy.nextValuePointer()).isMissingNode()) {
+                            setAt(aggregate, policy.nextValuePointer(), terminal ? mapper.nullNode() : next.deepCopy());
+                        }
+                        if (aggregateItems.size() > policy.maxItems()
+                                || !terminal && (pageCount >= policy.maxPages()
+                                || aggregateItems.size() >= policy.maxItems())) {
+                            throw new PageResourceException();
+                        }
+                        resultBytes();
+                        return new PageStep(wireValue, terminal);
+                    }
+
+                    byte[] resultBytes() {
+                        if (aggregate == null) {
+                            throw new PageProtocolException();
+                        }
+                        byte[] bytes;
+                        try {
+                            bytes = mapper.writeValueAsBytes(aggregate);
+                        } catch (RuntimeException failure) {
+                            throw new PageProtocolException();
+                        }
+                        if (bytes.length > MAX_BYTES) {
+                            throw new PageResourceException();
+                        }
+                        return bytes;
+                    }
+
+                    private String wire(JsonNode value) {
+                        if (value.isTextual() && !value.stringValue().isEmpty()) {
+                            return value.stringValue();
+                        }
+                        if (value.isIntegralNumber()) {
+                            return value.bigIntegerValue().toString();
+                        }
+                        throw new PageProtocolException();
+                    }
+
+                    private String wire(Object value) {
+                        if (value instanceof String text && !text.isEmpty()) {
+                            return text;
+                        }
+                        if (value instanceof BigInteger integer) {
+                            return integer.toString();
+                        }
+                        throw new PageProtocolException();
+                    }
+
+                    private void setAt(JsonNode root, String pointer, JsonNode value) {
+                        List<String> tokens = tokens(pointer);
+                        JsonNode current = root;
+                        for (int index = 0; index < tokens.size() - 1; index++) {
+                            current = child(current, tokens.get(index));
+                        }
+                        String leaf = tokens.get(tokens.size() - 1);
+                        if (current instanceof ObjectNode object) {
+                            object.set(leaf, value);
+                        } else if (current instanceof ArrayNode array) {
+                            int index = arrayIndex(leaf);
+                            if (index >= array.size()) {
+                                throw new PageProtocolException();
+                            }
+                            array.set(index, value);
+                        } else {
+                            throw new PageProtocolException();
+                        }
+                    }
+
+                    private JsonNode child(JsonNode current, String token) {
+                        JsonNode child;
+                        if (current instanceof ObjectNode object) {
+                            child = object.get(token);
+                        } else if (current instanceof ArrayNode array) {
+                            int index = arrayIndex(token);
+                            child = index < array.size() ? array.get(index) : null;
+                        } else {
+                            child = null;
+                        }
+                        if (child == null || child.isMissingNode()) {
+                            throw new PageProtocolException();
+                        }
+                        return child;
+                    }
+
+                    private List<String> tokens(String pointer) {
+                        List<String> result = new ArrayList<>();
+                        for (String encoded : pointer.substring(1).split("/", -1)) {
+                            result.add(encoded.replace("~1", "/").replace("~0", "~"));
+                        }
+                        return result;
+                    }
+
+                    private int arrayIndex(String value) {
+                        try {
+                            if (value.isEmpty() || value.length() > 1 && value.startsWith("0")) {
+                                throw new NumberFormatException();
+                            }
+                            return Integer.parseInt(value);
+                        } catch (NumberFormatException failure) {
+                            throw new PageProtocolException();
+                        }
+                    }
+
+                    record PageStep(String nextValue, boolean terminal) {}
+                }
+
+                final class PageProtocolException extends RuntimeException {}
+                final class PageResourceException extends RuntimeException {}
+                """.formatted(packageName);
+    }
+
+    private String executor(
+            String packageName,
+            boolean hasTypedOutputs,
+            boolean hasRetryPolicies,
+            boolean hasPaginationPolicies) {
+        String source = """
                 package %s.runtime;
 
                 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -263,6 +591,18 @@ final class RuntimeSourceRenderer {
                                     null,
                                     secretNames,
                                     secretValues);
+                        }
+                    }
+
+                    public <T> T execute(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            Class<T> resultType) {
+                        JsonNode result = execute(operation, arguments);
+                        try {
+                            return jsonMapper.treeToValue(result, resultType);
+                        } catch (JacksonException failure) {
+                            throw new IllegalStateException("Generated Tool result conversion failed");
                         }
                     }
 
@@ -745,6 +1085,542 @@ final class RuntimeSourceRenderer {
                     private static final class RequestSerializationException extends RuntimeException {}
                 }
                 """.formatted(packageName);
+        if (!hasTypedOutputs) {
+            source = source.replace(typedExecutorMethod(), "");
+        }
+        if (hasRetryPolicies) {
+            source = withRetryExecution(source);
+        }
+        return hasPaginationPolicies ? withPaginationExecution(source) : source;
+    }
+
+    private String typedExecutorMethod() {
+        return """
+                    public <T> T execute(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            Class<T> resultType) {
+                        JsonNode result = execute(operation, arguments);
+                        try {
+                            return jsonMapper.treeToValue(result, resultType);
+                        } catch (JacksonException failure) {
+                            throw new IllegalStateException("Generated Tool result conversion failed");
+                        }
+                    }
+
+                """;
+    }
+
+    private String withRetryExecution(String source) {
+        source = replaceRequired(source,
+                "    private final long totalTimeoutMillis;\n"
+                        + "    private final ThreadPoolExecutor rawRequestExecutor;",
+                "    private final long totalTimeoutMillis;\n"
+                        + "    private final RetryClock retryClock;\n"
+                        + "    private final RetrySleeper retrySleeper;\n"
+                        + "    private final ThreadPoolExecutor rawRequestExecutor;");
+        source = replaceRequired(source, """
+                    @Autowired
+                    public OpenApiOperationExecutor(
+                            RestClient.Builder builder,
+                            Environment environment,
+                            RuntimeTelemetry runtimeTelemetry) {
+                        this.environment = environment;
+                """, """
+                    @Autowired
+                    public OpenApiOperationExecutor(
+                            RestClient.Builder builder,
+                            Environment environment,
+                            RuntimeTelemetry runtimeTelemetry) {
+                        this(builder, environment, runtimeTelemetry, System::nanoTime, Thread::sleep);
+                    }
+
+                    OpenApiOperationExecutor(
+                            RestClient.Builder builder,
+                            Environment environment,
+                            RuntimeTelemetry runtimeTelemetry,
+                            RetryClock retryClock,
+                            RetrySleeper retrySleeper) {
+                        this.environment = environment;
+                        this.retryClock = java.util.Objects.requireNonNull(retryClock);
+                        this.retrySleeper = java.util.Objects.requireNonNull(retrySleeper);
+                """);
+        source = replaceSectionRequired(
+                source,
+                "    private OperationOutcome await(\n",
+                "    private ProviderAttempt executeSafely(\n",
+                retryAwaitMethods());
+        source = replaceRequired(source, """
+                            return new RawResponse(
+                                    status,
+                                    upstreamResponse.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE),
+                                    readBounded(upstreamResponse.getBody(), status));
+                """, """
+                            return new RawResponse(
+                                    status,
+                                    upstreamResponse.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE),
+                                    upstreamResponse.getHeaders().getFirst(HttpHeaders.RETRY_AFTER),
+                                    readBounded(upstreamResponse.getBody(), status));
+                """);
+        source = replaceRequired(source, """
+                                response.status(),
+                                response.body().length);
+                """, """
+                                response.status(),
+                                response.body().length,
+                                response.retryAfter());
+                """);
+        return replaceRequired(source, """
+                    private record RawResponse(int status, String contentType, byte[] body) {}
+
+                    private record ProviderAttempt(
+                            OperationOutcome outcome,
+                            Integer httpStatus,
+                            Integer responseBytes) {}
+                """, """
+                    private record RawResponse(
+                            int status,
+                            String contentType,
+                            String retryAfter,
+                            byte[] body) {}
+
+                    private record ProviderAttempt(
+                            OperationOutcome outcome,
+                            Integer httpStatus,
+                            Integer responseBytes,
+                            String retryAfter) {
+                        private ProviderAttempt(
+                                OperationOutcome outcome,
+                                Integer httpStatus,
+                                Integer responseBytes) {
+                            this(outcome, httpStatus, responseBytes, null);
+                        }
+                    }
+
+                    private record AttemptResult(ProviderAttempt attempt, boolean networkFailure) {}
+                """);
+    }
+
+    private String retryAwaitMethods() {
+        return """
+                    private OperationOutcome await(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        long deadlineNanos = retryClock.nanoTime()
+                                + TimeUnit.MILLISECONDS.toNanos(totalTimeoutMillis);
+                        int retryCount = 0;
+                        while (true) {
+                            AttemptResult result = awaitAttempt(
+                                    operation, arguments, secretNames, secretValues, deadlineNanos);
+                            ProviderAttempt attempt = result.attempt();
+                            RetryPolicy retryPolicy = operation.retryPolicy();
+                            boolean retryable = retryPolicy != null
+                                    && retryCount < retryPolicy.maxRetries()
+                                    && (retryPolicy.retryableStatus(attempt.httpStatus())
+                                    || retryPolicy.networkErrors() && result.networkFailure());
+                            if (!retryable) {
+                                return attempt.outcome();
+                            }
+                            OperationOutcome sleepFailure = sleepBeforeRetry(
+                                    operation, retryPolicy, attempt.retryAfter(), retryCount,
+                                    deadlineNanos, secretNames, secretValues);
+                            if (sleepFailure != null) {
+                                return sleepFailure;
+                            }
+                            retryCount++;
+                        }
+                    }
+
+                    private AttemptResult awaitAttempt(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues,
+                            long deadlineNanos) {
+                        long remainingNanos = deadlineNanos - retryClock.nanoTime();
+                        if (remainingNanos <= 0) {
+                            return new AttemptResult(new ProviderAttempt(providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues), null, null, null), false);
+                        }
+                        RuntimeTelemetry.Call providerCall = runtimeTelemetry.startProviderCall(
+                                operation.operationId(), operation.method());
+                        Future<ProviderAttempt> request;
+                        try (var ignored = providerCall.openScope()) {
+                            try {
+                                request = requestExecutor.submit(
+                                        () -> executeSafely(operation, arguments, secretNames, secretValues));
+                            } catch (RejectedExecutionException failure) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                        RuntimeTelemetry.ErrorCategory.LOCAL_RESOURCE,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                return new AttemptResult(new ProviderAttempt(providerError(
+                                        operation,
+                                        ProviderErrorCategory.LOCAL_RESOURCE,
+                                        null,
+                                        secretNames,
+                                        secretValues), null, null, null), false);
+                            }
+                        }
+                        try {
+                            ProviderAttempt attempt = request.get(remainingNanos, TimeUnit.NANOSECONDS);
+                            completeProviderCall(providerCall, attempt);
+                            return new AttemptResult(attempt, false);
+                        } catch (TimeoutException failure) {
+                            request.cancel(true);
+                            providerCall.complete(
+                                    RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                    RuntimeTelemetry.ErrorCategory.UPSTREAM_TIMEOUT,
+                                    RuntimeTelemetry.HttpStatusClass.NONE);
+                            return new AttemptResult(new ProviderAttempt(providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues), null, null, null), false);
+                        } catch (InterruptedException failure) {
+                            request.cancel(true);
+                            Thread.currentThread().interrupt();
+                            providerCall.complete(
+                                    RuntimeTelemetry.Outcome.EXPECTED_ERROR,
+                                    RuntimeTelemetry.ErrorCategory.LOCAL_RESOURCE,
+                                    RuntimeTelemetry.HttpStatusClass.NONE);
+                            return new AttemptResult(new ProviderAttempt(providerError(
+                                    operation,
+                                    ProviderErrorCategory.LOCAL_RESOURCE,
+                                    null,
+                                    secretNames,
+                                    secretValues), null, null, null), false);
+                        } catch (ExecutionException failure) {
+                            Throwable cause = failure.getCause();
+                            boolean networkFailure = retryableNetworkFailure(cause);
+                            try {
+                                OperationOutcome outcome = mapFailure(
+                                        operation, cause, secretNames, secretValues);
+                                Integer status = outcome instanceof ProviderError providerError
+                                        ? providerError.httpStatus() : null;
+                                ProviderAttempt attempt = new ProviderAttempt(outcome, status, null, null);
+                                completeProviderCall(providerCall, attempt);
+                                return new AttemptResult(attempt, networkFailure);
+                            } catch (Error fatal) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.FATAL,
+                                        RuntimeTelemetry.ErrorCategory.FATAL,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                throw fatal;
+                            } catch (RuntimeException runtimeFailure) {
+                                providerCall.complete(
+                                        RuntimeTelemetry.Outcome.INTERNAL_ERROR,
+                                        RuntimeTelemetry.ErrorCategory.UNEXPECTED_RUNTIME,
+                                        RuntimeTelemetry.HttpStatusClass.NONE);
+                                throw runtimeFailure;
+                            }
+                        }
+                    }
+
+                    private boolean retryableNetworkFailure(Throwable failure) {
+                        return findCause(failure, Error.class) == null
+                                && findCause(failure, ResponseTooLargeException.class) == null
+                                && (hasCause(failure, ResourceAccessException.class)
+                                || hasCause(failure, IOException.class));
+                    }
+
+                    private OperationOutcome sleepBeforeRetry(
+                            OperationDefinition operation,
+                            RetryPolicy retryPolicy,
+                            String retryAfter,
+                            int retryCount,
+                            long deadlineNanos,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        long delayMillis = retryDelayMillis(retryPolicy, retryAfter, retryCount);
+                        long remainingNanos = deadlineNanos - retryClock.nanoTime();
+                        if (remainingNanos <= TimeUnit.MILLISECONDS.toNanos(delayMillis)) {
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        try {
+                            retrySleeper.sleep(delayMillis);
+                        } catch (InterruptedException failure) {
+                            Thread.currentThread().interrupt();
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.LOCAL_RESOURCE,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        if (deadlineNanos - retryClock.nanoTime() <= 0) {
+                            return providerError(
+                                    operation,
+                                    ProviderErrorCategory.UPSTREAM_TIMEOUT,
+                                    null,
+                                    secretNames,
+                                    secretValues);
+                        }
+                        return null;
+                    }
+
+                    private long retryDelayMillis(RetryPolicy policy, String retryAfter, int retryCount) {
+                        long exponential = policy.initialBackoffMillis();
+                        for (int index = 0; index < retryCount; index++) {
+                            exponential = Math.min(policy.maxBackoffMillis(), exponential * 2);
+                        }
+                        long providerDelay = policy.respectRetryAfter() ? retryAfterMillis(retryAfter) : 0;
+                        return Math.min(policy.maxBackoffMillis(), Math.max(exponential, providerDelay));
+                    }
+
+                    private long retryAfterMillis(String value) {
+                        if (value == null || value.isEmpty()) {
+                            return 0;
+                        }
+                        for (int index = 0; index < value.length(); index++) {
+                            if (value.charAt(index) < '0' || value.charAt(index) > '9') {
+                                return 0;
+                            }
+                        }
+                        try {
+                            return Math.multiplyExact(Long.parseLong(value), 1_000L);
+                        } catch (ArithmeticException | NumberFormatException failure) {
+                            return 0;
+                        }
+                    }
+
+                """;
+    }
+
+    private String withPaginationExecution(String source) {
+        source = replaceRequired(source, """
+                            OperationOutcome outcome = await(
+                                    operation,
+                                    arguments == null ? Map.of() : arguments,
+                                    secretNames,
+                                    secretValues);
+                """, """
+                            OperationOutcome outcome = operation.paginationPolicy() == null
+                                    ? await(operation, arguments == null ? Map.of() : arguments, secretNames, secretValues)
+                                    : awaitPaginated(operation, arguments == null ? Map.of() : arguments,
+                                            secretNames, secretValues);
+                """);
+        source = replaceSectionRequired(
+                source,
+                "    private OperationOutcome await(\n",
+                "    private AttemptResult awaitAttempt(\n",
+                paginationAwaitMethods());
+        source = replaceRequired(source, """
+                    private AttemptResult awaitAttempt(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues,
+                            long deadlineNanos) {
+                """, """
+                    private AttemptResult awaitAttempt(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues,
+                            long deadlineNanos,
+                            Object internalPageValue) {
+                """);
+        source = replaceRequired(source,
+                "() -> executeSafely(operation, arguments, secretNames, secretValues)",
+                "() -> executeSafely(operation, arguments, secretNames, secretValues, internalPageValue)");
+        source = replaceRequired(source, """
+                    private ProviderAttempt executeSafely(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                """, """
+                    private ProviderAttempt executeSafely(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues,
+                            Object internalPageValue) {
+                """);
+        source = replaceRequired(source, """
+                        for (SecretBinding binding : operation.secretBindings()) {
+                """, """
+                        if (operation.paginationPolicy() != null && internalPageValue != null) {
+                            uriBuilder.queryParam(
+                                    operation.paginationPolicy().requestParameter(),
+                                    paginationWireValue(internalPageValue));
+                        }
+                        for (SecretBinding binding : operation.secretBindings()) {
+                """);
+        source = replaceRequired(source, """
+                                response.status(),
+                                response.body().length,
+                                response.retryAfter());
+                """, """
+                                response.status(),
+                                response.body().length,
+                                response.retryAfter(),
+                                response);
+                """);
+        return replaceRequired(source, """
+                    private record ProviderAttempt(
+                            OperationOutcome outcome,
+                            Integer httpStatus,
+                            Integer responseBytes,
+                            String retryAfter) {
+                        private ProviderAttempt(
+                                OperationOutcome outcome,
+                                Integer httpStatus,
+                                Integer responseBytes) {
+                            this(outcome, httpStatus, responseBytes, null);
+                        }
+                    }
+
+                    private record AttemptResult(ProviderAttempt attempt, boolean networkFailure) {}
+                """, """
+                    private record ProviderAttempt(
+                            OperationOutcome outcome,
+                            Integer httpStatus,
+                            Integer responseBytes,
+                            String retryAfter,
+                            RawResponse rawResponse) {
+                        private ProviderAttempt(
+                                OperationOutcome outcome,
+                                Integer httpStatus,
+                                Integer responseBytes) {
+                            this(outcome, httpStatus, responseBytes, null, null);
+                        }
+
+                        private ProviderAttempt(
+                                OperationOutcome outcome,
+                                Integer httpStatus,
+                                Integer responseBytes,
+                                String retryAfter) {
+                            this(outcome, httpStatus, responseBytes, retryAfter, null);
+                        }
+                    }
+
+                    private record AttemptResult(ProviderAttempt attempt, boolean networkFailure) {}
+                """);
+    }
+
+    private String paginationAwaitMethods() {
+        return """
+                    private OperationOutcome await(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        long deadlineNanos = retryClock.nanoTime()
+                                + TimeUnit.MILLISECONDS.toNanos(totalTimeoutMillis);
+                        return awaitProviderAttempt(
+                                operation, arguments, secretNames, secretValues, null, deadlineNanos).outcome();
+                    }
+
+                    private OperationOutcome awaitPaginated(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues) {
+                        long deadlineNanos = retryClock.nanoTime()
+                                + TimeUnit.MILLISECONDS.toNanos(totalTimeoutMillis);
+                        PaginationPolicy pagination = operation.paginationPolicy();
+                        PageAccumulator accumulator = new PageAccumulator(jsonMapper, pagination);
+                        Object pageValue = pagination.initialValue();
+                        while (true) {
+                            ProviderAttempt attempt = awaitProviderAttempt(
+                                    operation, arguments, secretNames, secretValues, pageValue, deadlineNanos);
+                            if (!(attempt.outcome() instanceof NormalizedSuccess) || attempt.rawResponse() == null) {
+                                return attempt.outcome();
+                            }
+                            try {
+                                PageAccumulator.PageStep step = accumulator.append(attempt.rawResponse().body());
+                                if (step.terminal()) {
+                                    byte[] aggregate = accumulator.resultBytes();
+                                    return responseNormalizer.normalize(
+                                            operation,
+                                            attempt.rawResponse().status(),
+                                            parseContentType(attempt.rawResponse().contentType()),
+                                            aggregate,
+                                            secretNames,
+                                            secretValues);
+                                }
+                                pageValue = step.nextValue();
+                            } catch (PageResourceException failure) {
+                                return providerError(operation, ProviderErrorCategory.LOCAL_RESOURCE,
+                                        null, secretNames, secretValues);
+                            } catch (PageProtocolException failure) {
+                                return providerError(operation, ProviderErrorCategory.UPSTREAM_PROTOCOL,
+                                        null, secretNames, secretValues);
+                            }
+                        }
+                    }
+
+                    private ProviderAttempt awaitProviderAttempt(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            List<String> secretNames,
+                            List<String> secretValues,
+                            Object internalPageValue,
+                            long deadlineNanos) {
+                        int retryCount = 0;
+                        while (true) {
+                            AttemptResult result = awaitAttempt(
+                                    operation, arguments, secretNames, secretValues, deadlineNanos, internalPageValue);
+                            ProviderAttempt attempt = result.attempt();
+                            RetryPolicy retryPolicy = operation.retryPolicy();
+                            boolean retryable = retryPolicy != null
+                                    && retryCount < retryPolicy.maxRetries()
+                                    && (retryPolicy.retryableStatus(attempt.httpStatus())
+                                    || retryPolicy.networkErrors() && result.networkFailure());
+                            if (!retryable) {
+                                return attempt;
+                            }
+                            OperationOutcome sleepFailure = sleepBeforeRetry(
+                                    operation, retryPolicy, attempt.retryAfter(), retryCount,
+                                    deadlineNanos, secretNames, secretValues);
+                            if (sleepFailure != null) {
+                                return new ProviderAttempt(sleepFailure, null, null);
+                            }
+                            retryCount++;
+                        }
+                    }
+
+                    private String paginationWireValue(Object value) {
+                        if (value instanceof String text && !text.isEmpty()) {
+                            return text;
+                        }
+                        if (value instanceof java.math.BigInteger integer) {
+                            return integer.toString();
+                        }
+                        throw new PageProtocolException();
+                    }
+
+                """;
+    }
+
+    private String replaceSectionRequired(String source, String start, String end, String replacement) {
+        int startIndex = source.indexOf(start);
+        int endIndex = source.indexOf(end, startIndex);
+        if (startIndex < 0 || endIndex < 0) {
+            throw JavaSourceRenderer.invalid("Retry runtime template is inconsistent");
+        }
+        return source.substring(0, startIndex) + replacement + source.substring(endIndex);
+    }
+
+    private String replaceRequired(String source, String target, String replacement) {
+        if (!source.contains(target)) {
+            throw JavaSourceRenderer.invalid("Retry runtime template is inconsistent");
+        }
+        return source.replace(target, replacement);
     }
 
     private String application(String packageName, String domainClass) {

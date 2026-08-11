@@ -101,8 +101,8 @@ public final class DeterministicZipPackager {
         Path root = requireProjectRoot(projectRoot);
         Path output = requireArchivePath(root, archive);
         Path staging = null;
-        Object stagingKey = null;
-        Object outputKey = null;
+        StablePathIdentity stagingIdentity = null;
+        StablePathIdentity outputIdentity = null;
         ParentIdentity parentIdentity = parentIdentity(output.getParent());
         try {
             List<ProjectEntry> entries = collectEntries(root);
@@ -110,18 +110,24 @@ public final class DeterministicZipPackager {
             validateClassicBounds(entries);
             String prefix = "." + output.getFileName() + ".staging-";
             staging = Files.createTempFile(output.getParent(), prefix, ".tmp");
-            stagingKey = requiredFileKey(staging);
+            StablePathIdentity reservedStagingIdentity = StablePathIdentity.capture(staging);
             createArchive(entries, staging, expectedSource);
-            byte[] bytes = readBoundedArchive(staging, stagingKey);
+            if (!reservedStagingIdentity.matchesObject(staging)) {
+                throw failure("Generated project archive staging identity changed");
+            }
+            stagingIdentity = StablePathIdentity.capture(staging);
+            byte[] bytes = readBoundedArchive(staging, stagingIdentity);
             verifyClassicZip(bytes);
             bytes = applyUnixModes(bytes, entries);
+            verifyObjectIdentity(staging, stagingIdentity);
             Files.write(staging, bytes, WRITE, TRUNCATE_EXISTING, NOFOLLOW_LINKS);
-            if (!hasExactBytes(staging, stagingKey, bytes)) {
+            stagingIdentity = StablePathIdentity.capture(staging);
+            if (!hasExactBytes(staging, stagingIdentity, bytes)) {
                 throw failure("Generated project archive staging verification failed");
             }
             publicationHook.beforeTargetReservation(staging, output);
             verifyParentIdentity(output.getParent(), parentIdentity);
-            verifyFileKey(staging, stagingKey);
+            verifyIdentity(staging, stagingIdentity);
             try {
                 Files.createLink(output, staging);
             } catch (UnsupportedOperationException exception) {
@@ -131,25 +137,25 @@ public final class DeterministicZipPackager {
                         "No-replace archive publication is unavailable for the output filesystem",
                         exception);
             }
-            outputKey = stagingKey;
-            Object observedOutputKey = requiredFileKey(output);
-            if (!stagingKey.equals(observedOutputKey) || !hasExactBytes(output, observedOutputKey, bytes)) {
+            outputIdentity = StablePathIdentity.capture(output);
+            if (!stagingIdentity.sameFile(staging, outputIdentity, output)
+                    || !hasExactBytes(output, outputIdentity, bytes)) {
                 throw failure("Published archive identity or bytes changed");
             }
-            deleteOwnedFile(staging, output.getParent(), parentIdentity, stagingKey);
+            deleteOwnedFile(staging, output.getParent(), parentIdentity, stagingIdentity);
             staging = null;
-            stagingKey = null;
-            outputKey = null;
+            stagingIdentity = null;
+            outputIdentity = null;
             return bytes;
         } catch (GeneratorException exception) {
-            cleanupOwnedFile(exception, output, output.getParent(), parentIdentity, outputKey);
-            cleanupOwnedFile(exception, staging, output.getParent(), parentIdentity, stagingKey);
+            cleanupOwnedFile(exception, output, output.getParent(), parentIdentity, outputIdentity);
+            cleanupOwnedFile(exception, staging, output.getParent(), parentIdentity, stagingIdentity);
             throw exception;
         } catch (IOException | RuntimeException exception) {
             GeneratorException wrapped = GeneratorException.system(
                     ARTIFACT_PACKAGE_FAILED, STAGE, "Generated project archive could not be created", exception);
-            cleanupOwnedFile(wrapped, output, output.getParent(), parentIdentity, outputKey);
-            cleanupOwnedFile(wrapped, staging, output.getParent(), parentIdentity, stagingKey);
+            cleanupOwnedFile(wrapped, output, output.getParent(), parentIdentity, outputIdentity);
+            cleanupOwnedFile(wrapped, staging, output.getParent(), parentIdentity, stagingIdentity);
             throw wrapped;
         }
     }
@@ -237,12 +243,10 @@ public final class DeterministicZipPackager {
             if (!attributes.isRegularFile()) {
                 throw failure("Generated project archive contains an unsupported file entry");
             }
-            if (attributes.fileKey() == null) {
-                throw failure("Generated project archive requires stable file identities");
-            }
             String relative = portableRelativePath(root.relativize(path));
             int unixMode = relative.equals("gradlew") ? EXECUTABLE_FILE_MODE : REGULAR_FILE_MODE;
-            return new ProjectEntry(relative, path, attributes.size(), attributes.fileKey(), unixMode);
+            return new ProjectEntry(
+                    relative, path, attributes.size(), StablePathIdentity.capture(path), unixMode);
         } catch (IOException exception) {
             throw GeneratorException.system(
                     ARTIFACT_PACKAGE_FAILED, STAGE, "Generated project file metadata could not be read", exception);
@@ -372,13 +376,13 @@ public final class DeterministicZipPackager {
         BasicFileAttributes attributes = Files.readAttributes(entry.source(), BasicFileAttributes.class, NOFOLLOW_LINKS);
         if (!attributes.isRegularFile()
                 || attributes.size() != entry.size()
-                || !entry.fileKey().equals(attributes.fileKey())) {
+                || !entry.identity().matches(entry.source())) {
             throw failure("Generated project entry changed while it was packaged");
         }
     }
 
-    private byte[] readBoundedArchive(Path archive, Object expectedFileKey) throws IOException {
-        verifyFileKey(archive, expectedFileKey);
+    private byte[] readBoundedArchive(Path archive, StablePathIdentity expectedIdentity) throws IOException {
+        verifyIdentity(archive, expectedIdentity);
         long size = Files.size(archive);
         if (size < 0 || size > maxArchiveBytes || size > Integer.MAX_VALUE) {
             throw failure("Generated project archive exceeds the classic ZIP offset bound");
@@ -399,12 +403,12 @@ public final class DeterministicZipPackager {
                 throw failure("Generated project archive changed while it was read");
             }
         }
-        verifyFileKey(archive, expectedFileKey);
+        verifyIdentity(archive, expectedIdentity);
         return bytes;
     }
 
-    private boolean hasExactBytes(Path path, Object expectedFileKey, byte[] expected) throws IOException {
-        verifyFileKey(path, expectedFileKey);
+    private boolean hasExactBytes(Path path, StablePathIdentity expectedIdentity, byte[] expected) throws IOException {
+        verifyIdentity(path, expectedIdentity);
         if (Files.size(path) != expected.length) {
             return false;
         }
@@ -425,7 +429,7 @@ public final class DeterministicZipPackager {
                 total += read;
             }
         }
-        verifyFileKey(path, expectedFileKey);
+        verifyIdentity(path, expectedIdentity);
         return total == expected.length && MessageDigest.isEqual(expectedDigest.digest(), observedDigest.digest());
     }
 
@@ -729,8 +733,7 @@ public final class DeterministicZipPackager {
 
     private ParentIdentity parentIdentity(Path parent) {
         try {
-            Object fileKey = requiredFileKey(parent);
-            return new ParentIdentity(parent.toRealPath(), fileKey);
+            return new ParentIdentity(StablePathIdentity.capture(parent));
         } catch (IOException exception) {
             throw GeneratorException.system(
                     ARTIFACT_PACKAGE_FAILED, STAGE, "Archive parent identity could not be recorded", exception);
@@ -738,18 +741,21 @@ public final class DeterministicZipPackager {
     }
 
     private void verifyParentIdentity(Path parent, ParentIdentity expected) {
-        if (!expected.equals(parentIdentity(parent))) {
-            throw failure("Archive output parent identity changed");
+        try {
+            if (!expected.identity().matches(parent)) {
+                throw failure("Archive output parent identity changed");
+            }
+        } catch (IOException exception) {
+            throw GeneratorException.system(
+                    ARTIFACT_PACKAGE_FAILED, STAGE, "Archive parent identity could not be verified", exception);
         }
     }
 
-    private Object requiredFileKey(Path path) {
+    private void verifyIdentity(Path path, StablePathIdentity expected) {
         try {
-            Object fileKey = Files.readAttributes(path, BasicFileAttributes.class, NOFOLLOW_LINKS).fileKey();
-            if (fileKey == null) {
-                throw failure("Archive filesystem does not expose stable file keys");
+            if (!expected.matches(path)) {
+                throw failure("Owned archive path identity changed");
             }
-            return fileKey;
         } catch (GeneratorException exception) {
             throw exception;
         } catch (IOException exception) {
@@ -758,9 +764,16 @@ public final class DeterministicZipPackager {
         }
     }
 
-    private void verifyFileKey(Path path, Object expected) {
-        if (!expected.equals(requiredFileKey(path))) {
-            throw failure("Owned archive path identity changed");
+    private void verifyObjectIdentity(Path path, StablePathIdentity expected) {
+        try {
+            if (!expected.matchesObject(path)) {
+                throw failure("Owned archive path identity changed");
+            }
+        } catch (GeneratorException exception) {
+            throw exception;
+        } catch (IOException exception) {
+            throw GeneratorException.system(
+                    ARTIFACT_PACKAGE_FAILED, STAGE, "Archive path identity could not be read", exception);
         }
     }
 
@@ -768,9 +781,9 @@ public final class DeterministicZipPackager {
             Path path,
             Path parent,
             ParentIdentity parentIdentity,
-            Object expectedFileKey) {
+            StablePathIdentity expectedIdentity) {
         verifyParentIdentity(parent, parentIdentity);
-        verifyFileKey(path, expectedFileKey);
+        verifyIdentity(path, expectedIdentity);
         try {
             Files.delete(path);
         } catch (IOException exception) {
@@ -784,12 +797,12 @@ public final class DeterministicZipPackager {
             Path path,
             Path parent,
             ParentIdentity parentIdentity,
-            Object expectedFileKey) {
-        if (path == null || expectedFileKey == null) {
+            StablePathIdentity expectedIdentity) {
+        if (path == null || expectedIdentity == null) {
             return;
         }
         try {
-            deleteOwnedFile(path, parent, parentIdentity, expectedFileKey);
+            deleteOwnedFile(path, parent, parentIdentity, expectedIdentity);
         } catch (GeneratorException cleanupFailure) {
             failure.addSuppressed(cleanupFailure);
         }
@@ -814,9 +827,14 @@ public final class DeterministicZipPackager {
             int nameOffset,
             int nameLength) {}
 
-    private record ProjectEntry(String relativePath, Path source, long size, Object fileKey, int unixMode) {}
+    private record ProjectEntry(
+            String relativePath,
+            Path source,
+            long size,
+            StablePathIdentity identity,
+            int unixMode) {}
 
-    private record ParentIdentity(Path realPath, Object fileKey) {}
+    private record ParentIdentity(StablePathIdentity identity) {}
 
     private static final class BoundedOutputStream extends OutputStream {
         private final OutputStream delegate;

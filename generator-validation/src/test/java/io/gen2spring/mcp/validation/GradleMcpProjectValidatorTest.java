@@ -17,11 +17,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
@@ -46,8 +50,11 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+@EnabledOnOs({OS.LINUX, OS.MAC})
 class GradleMcpProjectValidatorTest {
     private static final String ARTIFACT_ID = "weather-mcp-server";
     private static final Map<String, ExpectedTool> EXPECTED = Map.of(
@@ -148,6 +155,51 @@ class GradleMcpProjectValidatorTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> GradleMcpProjectValidator.pinGradleWrapper(symlinkRoot, outside));
+    }
+
+    @Test
+    void pinsANonExecutableWindowsWrapperAndInvokesTheExactCmdCommand() throws Exception {
+        Path commandArguments = tempDir.resolve("cmd-arguments");
+        ValidationHostPlatform windows = windowsPlatform(commandArguments);
+        Path root = windowsProject(tempDir.resolve("windows-project"));
+        Path wrapper = root.resolve("gradlew.bat");
+        Path runtimeHome = windowsRuntime("windows-java-17");
+        JavaRuntimeResolver resolver = new JavaRuntimeResolver(
+                Map.of("GEN2SPRING_JAVA_17_HOME", runtimeHome.toString()), runtimeHome,
+                executable -> 17, windows);
+
+        var report = validator(resolver, windows).validate(request(root, EXPECTED, java17()));
+
+        assertEquals(SUCCESS, report.stages().getFirst().status());
+        assertEquals(FAILED, report.stages().get(1).status());
+        assertFalse(Files.isExecutable(wrapper));
+        List<String> arguments = Files.readAllLines(commandArguments);
+        assertEquals(List.of("/D", "/E:OFF", "/V:OFF", "/S", "/C"), arguments.subList(0, 5));
+        String commandLine = arguments.get(5);
+        assertTrue(commandLine.startsWith("call .gradlew-validated-"));
+        assertTrue(commandLine.contains(".bat -Dorg.gradle.java.installations.auto-detect=false"));
+        assertTrue(commandLine.contains("-Dorg.gradle.java.installations.paths=\"" + runtimeHome + "\""));
+        assertFalse(commandLine.contains(root.toString()));
+        try (var paths = Files.list(root)) {
+            assertFalse(paths.anyMatch(path -> path.getFileName().toString()
+                    .startsWith(".gradlew-validated-")));
+        }
+    }
+
+    @Test
+    void rejectsAnUnsafeWindowsTargetHomeBeforeBuildWithoutLeakingThePath() throws Exception {
+        ValidationHostPlatform windows = windowsPlatform(tempDir.resolve("unused-command-arguments"));
+        Path root = windowsProject(tempDir.resolve("unsafe-windows-project"));
+        Path runtimeHome = windowsRuntime("private&java-home");
+        JavaRuntimeResolver resolver = new JavaRuntimeResolver(
+                Map.of("GEN2SPRING_JAVA_17_HOME", runtimeHome.toString()), runtimeHome,
+                executable -> 17, windows);
+
+        var report = validator(resolver, windows).validate(request(root, EXPECTED, java17()));
+
+        assertEquals(FAILED, report.stages().getFirst().status());
+        assertFalse(report.toString().contains(runtimeHome.toString()));
+        assertFalse(Files.exists(tempDir.resolve("unused-command-arguments")));
     }
 
     @Test
@@ -346,6 +398,24 @@ class GradleMcpProjectValidatorTest {
 
         assertEquals(VALIDATED, report.status());
         assertEquals(new GenerationProgress("MCP_TOOL_CALL", ProgressStatus.SUCCESS), progress.getLast());
+    }
+
+    @Test
+    void passesTheCompleteOrderedInteractionSequenceToTheMockFactory() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        writeJar(root, ARTIFACT_ID + ".jar", McpTestApplication.class);
+        AtomicReference<List<UpstreamCallExpectation>> captured = new AtomicReference<>();
+        GradleMcpProjectValidator.MockUpstreamFactory factory = expectations -> {
+            captured.set(expectations);
+            throw new IOException("intentional mock start failure");
+        };
+
+        var report = validator(factory).validate(request(root, EXPECTED, paginatedExpectedToolCall()));
+
+        assertEquals(UNVERIFIED, report.status());
+        assertEquals(2, captured.get().size());
+        assertEquals(List.of("first"), captured.get().get(0).query().get("cursor"));
+        assertEquals(List.of("second"), captured.get().get(1).query().get("cursor"));
     }
 
     @Test
@@ -941,6 +1011,17 @@ class GradleMcpProjectValidatorTest {
     }
 
     private GradleMcpProjectValidator validator(
+            JavaRuntimeResolver resolver, ValidationHostPlatform platform) {
+        return new GradleMcpProjectValidator(
+                new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
+                Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofMillis(20), 8 * 1024,
+                GradleMcpProjectValidator.WrapperSnapshotHook.NOOP,
+                GradleMcpProjectValidator.ApplicationLaunchHook.NOOP,
+                new TrackingMockFactory(false),
+                GradleMcpProjectValidator.ApplicationCleanupHook.NOOP, resolver, platform);
+    }
+
+    private GradleMcpProjectValidator validator(
             JavaRuntimeResolver resolver,
             GradleMcpProjectValidator.WrapperSnapshotHook wrapperHook,
             GradleMcpProjectValidator.ApplicationLaunchHook launchHook) {
@@ -985,6 +1066,33 @@ class GradleMcpProjectValidatorTest {
                 List.of(new SecretBinding(
                         "VALIDATOR_SERVICE_KEY", "service-key", QUERY, "serviceKey", true)),
                 McpToolDefinition.OutputKind.GENERIC_JSON), Map.of("nx", nx));
+    }
+
+    private ExpectedToolCall paginatedExpectedToolCall() {
+        ExpectedToolCall base = expectedToolCall();
+        HttpExecutionDefinition execution = base.tool().execution();
+        var tool = new McpToolDefinition(
+                base.tool().operationId(), base.tool().name(), base.tool().description(), base.tool().inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
+                        false, false, null, null,
+                        new PaginationPolicy("cursor", "first", "/items", "/next", 2, 10)),
+                base.tool().secretBindings(), base.tool().output());
+        return new ExpectedToolCall(
+                tool,
+                base.arguments(),
+                List.of(
+                        new ExpectedUpstreamInteraction(
+                                Map.of("cursor", "first"),
+                                ExpectedUpstreamOutcome.RESPONSE,
+                                new ExpectedUpstreamResponse(
+                                        200, "application/json", Map.of("items", List.of(1), "next", "second"))),
+                        new ExpectedUpstreamInteraction(
+                                Map.of("cursor", "second"),
+                                ExpectedUpstreamOutcome.RESPONSE,
+                                new ExpectedUpstreamResponse(
+                                        200, "application/json", Map.of("items", List.of(2))))),
+                Map.of("items", List.of(1, 2)));
     }
 
     private Path runnableProject(String behavior) throws IOException {
@@ -1059,6 +1167,31 @@ class GradleMcpProjectValidatorTest {
         Path wrapper = Files.writeString(root.resolve("gradlew"), gradlew);
         assertTrue(wrapper.toFile().setExecutable(true));
         return root.toRealPath();
+    }
+
+    private Path windowsProject(Path root) throws IOException {
+        Files.createDirectories(root.resolve("build/libs"));
+        Path wrapper = Files.writeString(root.resolve("gradlew.bat"), "@echo off\r\nexit /b 0\r\n");
+        assertTrue(wrapper.toFile().setExecutable(false, false));
+        return root.toRealPath();
+    }
+
+    private Path windowsRuntime(String name) throws IOException {
+        Path home = Files.createDirectories(tempDir.resolve(name).resolve("bin")).getParent().toRealPath();
+        Files.writeString(home.resolve("bin/java.exe"), "fixed-test-runtime");
+        return home;
+    }
+
+    private ValidationHostPlatform windowsPlatform(Path commandArguments) throws IOException {
+        Path systemRoot = Files.createDirectories(tempDir.resolve("Windows/System32")).getParent().toRealPath();
+        Path command = Files.writeString(systemRoot.resolve("System32/cmd.exe"),
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + shellSingleQuoted(commandArguments) + "'\nexit 0\n");
+        assertTrue(command.toFile().setExecutable(true));
+        return ValidationHostPlatform.forHost("Windows 11", Map.of("SystemRoot", systemRoot.toString()));
+    }
+
+    private String shellSingleQuoted(Path value) {
+        return value.toString().replace("'", "'\"'\"'");
     }
 
     private void writeJar(Path root, String fileName, Class<?> mainClass) throws IOException {
@@ -1146,9 +1279,9 @@ class GradleMcpProjectValidatorTest {
         }
 
         @Override
-        public GradleMcpProjectValidator.RunningMockUpstream start(UpstreamCallExpectation expectation)
+        public GradleMcpProjectValidator.RunningMockUpstream start(List<UpstreamCallExpectation> expectations)
                 throws IOException {
-            MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+            MockUpstreamServer delegate = MockUpstreamServer.start(expectations);
             return new GradleMcpProjectValidator.RunningMockUpstream() {
                 @Override
                 public URI baseUri() {

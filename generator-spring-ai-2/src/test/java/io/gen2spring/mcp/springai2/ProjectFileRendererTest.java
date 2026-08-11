@@ -13,6 +13,8 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.gen2spring.mcp.domain.config.GenerationRequest;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
@@ -20,6 +22,9 @@ import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -293,7 +298,9 @@ class ProjectFileRendererTest {
             assertTrue(readme.contains("Expected provider, HTTP, timeout, availability, protocol, and local-capacity "
                     + "failures return one MCP Tool error JSON payload with a local trace ID."));
             assertTrue(readme.contains(
-                    "Provider responses remain bounded to 1 MiB. Retry and pagination are not executed automatically."));
+                    "Every provider response page and the aggregated Tool result remain bounded to 1 MiB."));
+            assertTrue(readme.contains("`retry`: `disabled (one attempt)`"));
+            assertTrue(readme.contains("`pagination`: `disabled (one request)`"));
             assertFalse(readme.contains("Known P0 limits"), profile.id());
             assertFalse(readme.contains("Spring AI 1.x"), profile.id());
             assertTrue(readme.contains("-e PROVIDER_BASE_URL=https://api.example.test -e KMA_SERVICE_KEY"));
@@ -320,6 +327,26 @@ class ProjectFileRendererTest {
         assertTrue(readme.contains("`successValues`: `[\"00\",1.50,true]`"));
         assertTrue(readme.contains("`errorMessagePath`: `/response/header/resultMsg`"));
         assertTrue(readme.contains("`totalCountPath`: `/response/body/totalCount`"));
+    }
+
+    @Test
+    void documentsFinalOutputRetryAndPaginationPoliciesWithoutInitialCursorValues() {
+        String readme = renderer.readme(contextWithSecrets(List.of(policyTool())));
+
+        assertTrue(readme.contains("`output.mode`: `TYPED`"));
+        assertTrue(readme.contains("`retry.statusCodes`: `[429,503]`"));
+        assertTrue(readme.contains("`retry.networkErrors`: `true`"));
+        assertTrue(readme.contains("`retry.maxRetries`: `2`"));
+        assertTrue(readme.contains("`retry.initialBackoffMillis`: `100`"));
+        assertTrue(readme.contains("`retry.maxBackoffMillis`: `1000`"));
+        assertTrue(readme.contains("`retry.respectRetryAfter`: `true`"));
+        assertTrue(readme.contains("`pagination.requestParameter`: `cursor`"));
+        assertTrue(readme.contains("`pagination.itemsPath`: `/items`"));
+        assertTrue(readme.contains("`pagination.nextValuePath`: `/next`"));
+        assertTrue(readme.contains("`pagination.maxPages`: `10`"));
+        assertTrue(readme.contains("`pagination.maxItems`: `1000`"));
+        assertTrue(readme.contains("Limit violations fail the Tool call without returning partial items."));
+        assertFalse(readme.contains("initial-private-cursor"));
     }
 
     @Test
@@ -518,6 +545,21 @@ class ProjectFileRendererTest {
                         execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
                         execution.objectRequestBody(), execution.requestBodyRequired(), normalization),
                 tool.secretBindings(), tool.outputKind());
+    }
+
+    private McpToolDefinition policyTool() {
+        ApiSchema result = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, true, List.of());
+        return new McpToolDefinition(
+                "getForecast", "weather_get_forecast", "Get forecast", List.of(),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), "/forecast", List.of(),
+                        false, false, null,
+                        new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true),
+                        new PaginationPolicy(
+                                "cursor", "initial-private-cursor", "/items", "/next", 10, 1_000)),
+                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, result, result));
     }
 
     private void assertFilesEqual(java.util.Map<String, byte[]> first, java.util.Map<String, byte[]> second) {

@@ -49,6 +49,36 @@ class StaticAssetContractTest {
         assertTrue(app.contains("await pollJob(jobId);"));
         assertTrue(app.contains("else ui['delete-job-button'].disabled = false;"));
         assertTrue(index.contains("id=\"tool-description\" maxlength=\"1024\""));
+        for (String id : new String[] {
+                "output-mode",
+                "retry-enabled", "retry-status-codes", "retry-network-errors", "retry-max-retries",
+                "retry-initial-backoff", "retry-max-backoff", "retry-respect-retry-after",
+                "pagination-enabled", "pagination-request-parameter", "pagination-initial-value",
+                "pagination-items-path", "pagination-next-value-path", "pagination-max-pages",
+                "pagination-max-items"
+        }) {
+            assertTrue(index.contains("id=\"" + id + "\""), id);
+            assertTrue(index.contains("for=\"" + id + "\""), id + " label");
+        }
+        assertTrue(index.contains("<option value=\"GENERIC_JSON\">"));
+        assertTrue(index.contains("<option value=\"TYPED\">"));
+        assertTrue(index.contains("id=\"retry-max-retries\" type=\"number\" min=\"1\" max=\"3\""));
+        assertTrue(index.contains("id=\"retry-initial-backoff\" type=\"number\" min=\"1\" max=\"5000\""));
+        assertTrue(index.contains("id=\"retry-max-backoff\" type=\"number\" min=\"1\" max=\"10000\""));
+        assertTrue(index.contains("id=\"pagination-max-pages\" type=\"number\" min=\"2\" max=\"20\""));
+        assertTrue(index.contains("id=\"pagination-max-items\" type=\"number\" min=\"1\" max=\"2000\""));
+        assertTrue(styles.contains("@media (max-width: 400px)"));
+        assertTrue(editor.contains("normalizeRetryStatusCodes"));
+        assertTrue(editor.contains("Retry status codes must be unique HTTP error integers."));
+        assertTrue(editor.contains("Pagination initial value must be one JSON string or integer."));
+        assertTrue(editor.contains("Number.isSafeInteger"));
+        assertTrue(editor.contains("...(operation.retry.enabled ? {retry:"));
+        assertTrue(editor.contains("...(operation.pagination.enabled ? {pagination:"));
+        assertTrue(editor.contains("output: {mode: operation.outputMode}"));
+        assertTrue(editor.contains("delete pagination.initialValue"));
+        assertTrue(resource("/web/state.js").contains("outputMode: 'GENERIC_JSON'"));
+        assertTrue(resource("/web/state.js").contains("retry: {"));
+        assertTrue(resource("/web/state.js").contains("pagination: {"));
 
         assertFalse(index.contains("type=\"url\""));
         assertFalse(index.matches("(?s).*<(?:script|style)[^>]*>\\s*[^<]+.*"));

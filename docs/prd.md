@@ -612,6 +612,13 @@ Spring AI 및 MCP SDK에서 사용하는 JSON Schema가 OpenAPI 제약을 최대
 
 ## FR-4.6 Output 생성
 
+FR-4.6 구현 상태: 완료 (P1 지원 범위)
+
+현재 구현은 기존 호환 기본값인 `GENERIC_JSON`과 operation별 opt-in `TYPED_DTO`를 지원한다. `TYPED_DTO`는
+하나의 structurally consistent `application/json` object success schema에서 Java record를 생성한다. ambiguous
+success response, composed/recursive schema, unsupported media type은 source 생성 전에 fail-closed로 거부한다.
+response normalization은 두 output mode와 독립적으로 적용된다.
+
 출력 전략은 operation별로 선택할 수 있어야 한다.
 
 ```text
@@ -621,12 +628,12 @@ GENERIC_JSON
 TEXT
 ```
 
-기본값은 다음과 같다.
+P1의 실제 선택 규칙은 다음과 같다.
 
-- 단순 JSON object: `TYPED_DTO`
-- 깊은 공공 API envelope: `NORMALIZED_DTO`
-- 동적 schema: `GENERIC_JSON`
-- text/plain: `TEXT`
+- output 설정 생략: `GENERIC_JSON`
+- supported JSON object에 `output.mode: TYPED`: `TYPED_DTO`
+- 깊은 공공 API envelope: `responseNormalization`과 `GENERIC_JSON` 또는 `TYPED_DTO` 조합
+- `NORMALIZED_DTO`와 `TEXT` 독립 mode는 현재 지원 범위 밖이다.
 
 ---
 
@@ -670,6 +677,8 @@ operation별 또는 provider별로 설정 가능해야 한다.
 
 ## FR-5.3 Retry
 
+FR-5.3 구현 상태: 완료 (P1 지원 범위)
+
 기본값은 비활성화한다.
 
 활성화 시 다음 조건을 설정할 수 있어야 한다.
@@ -681,7 +690,14 @@ operation별 또는 provider별로 설정 가능해야 한다.
 - idempotent method만 허용
 - Retry-After 존중
 
+현재 구현은 GET operation만 허용하고 `maxRetries` 1..3, initial backoff 1..5000ms, max backoff
+initial 이상 10000ms 이하로 제한한다. retry status는 400..599에서 최대 16개이며 network error 여부를
+별도로 설정한다. delta-seconds `Retry-After`와 exponential backoff 중 큰 값을 사용하되 max backoff와
+operation total timeout을 넘지 않는다. retry가 없는 기존 operation은 정확히 한 번만 요청한다.
+
 ## FR-5.4 Response Size Limit
+
+FR-5.4 구현 상태: 완료 (P1 지원 범위)
 
 대용량 응답으로 MCP Server 또는 LLM context가 과도하게 사용되지 않도록 응답 크기 제한을 제공해야 한다.
 
@@ -690,6 +706,11 @@ operation별 또는 provider별로 설정 가능해야 한다.
 - truncation 여부
 - pagination 안내
 - 원본 응답 저장 금지 또는 제한
+
+현재 생성 runtime은 각 provider response와 pagination aggregate JSON을 각각 1 MiB로 제한한다. pagination은
+GET query string/integer cursor, RFC 6901 items/next pointer, `maxPages` 2..20, `maxItems` 1..2000을 요구한다.
+page/aggregate 한계를 넘거나 cursor가 반복되면 partial result나 truncation 없이 `LOCAL_RESOURCE` 또는
+`UPSTREAM_PROTOCOL`로 fail-closed하며 원본 provider response를 artifact나 log에 저장하지 않는다.
 
 ---
 
@@ -1777,6 +1798,8 @@ INTERNAL_ERROR
 
 ### 17.3 Compile Matrix Test
 
+플랫폼 검증 상태: Linux와 Windows 완료
+
 지원 profile별로 대표 프로젝트를 실제 컴파일한다.
 
 ```text
@@ -1787,6 +1810,14 @@ Spring AI 2.x + Java 21
 ```
 
 실제 지원 matrix에 따라 조정한다.
+
+Linux CI는 POSIX `gradlew`와 target `bin/java`, Windows CI는 `gradlew.bat`와 target `bin/java.exe`를 사용해
+네 profile의 compile, generated test, ApplicationContext, MCP initialize/tools/list/tools/call을 실행한다.
+Windows command는 trusted `%SystemRoot%\System32\cmd.exe`의 고정 argument만 사용하고 wrapper/runtime identity를
+기동 직전 재검증한다. native file key를 제공하지 않는 Windows JDK에서는 physical path, file store,
+creation time과 bounded file metadata를 사용하고 hard-link 관계는 별도로 확인한다. CLI private staging은
+owner-only Windows ACL을 요구한다. 관련 구현 경계는
+[issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)와 연결한다.
 
 ### 17.4 MCP Contract Test
 
@@ -1899,6 +1930,10 @@ Spring AI 2.x + Java 21
 - validation report
 - Dockerfile
 - runtime metrics and tracing
+- typed output DTO
+- bounded retry
+- bounded pagination
+- Windows validation host
 
 ### P2
 

@@ -67,6 +67,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private final MockUpstreamFactory mockUpstreamFactory;
     private final ApplicationCleanupHook applicationCleanupHook;
     private final JavaRuntimeResolver javaRuntimeResolver;
+    private final ValidationHostPlatform platform;
 
     public GradleMcpProjectValidator() {
         this(new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
@@ -168,6 +169,25 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             MockUpstreamFactory mockUpstreamFactory,
             ApplicationCleanupHook applicationCleanupHook,
             JavaRuntimeResolver javaRuntimeResolver) {
+        this(processRunner, portAllocator, mcpClient, buildTimeout, startupTimeout, pollInterval,
+                maxProcessOutputBytes, wrapperSnapshotHook, applicationLaunchHook, mockUpstreamFactory,
+                applicationCleanupHook, javaRuntimeResolver, ValidationHostPlatform.current());
+    }
+
+    GradleMcpProjectValidator(
+            BoundedProcessRunner processRunner,
+            LoopbackPortAllocator portAllocator,
+            McpStreamableHttpClient mcpClient,
+            Duration buildTimeout,
+            Duration startupTimeout,
+            Duration pollInterval,
+            int maxProcessOutputBytes,
+            WrapperSnapshotHook wrapperSnapshotHook,
+            ApplicationLaunchHook applicationLaunchHook,
+            MockUpstreamFactory mockUpstreamFactory,
+            ApplicationCleanupHook applicationCleanupHook,
+            JavaRuntimeResolver javaRuntimeResolver,
+            ValidationHostPlatform platform) {
         this.processRunner = Objects.requireNonNull(processRunner, "processRunner");
         this.portAllocator = Objects.requireNonNull(portAllocator, "portAllocator");
         this.mcpClient = Objects.requireNonNull(mcpClient, "mcpClient");
@@ -179,6 +199,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         this.mockUpstreamFactory = Objects.requireNonNull(mockUpstreamFactory, "mockUpstreamFactory");
         this.applicationCleanupHook = Objects.requireNonNull(applicationCleanupHook, "applicationCleanupHook");
         this.javaRuntimeResolver = Objects.requireNonNull(javaRuntimeResolver, "javaRuntimeResolver");
+        this.platform = Objects.requireNonNull(platform, "platform");
         if (maxProcessOutputBytes <= 0) {
             throw new IllegalArgumentException("maxProcessOutputBytes must be positive");
         }
@@ -219,7 +240,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         }
         VerifiedGradleWrapper gradleWrapper;
         try {
-            gradleWrapper = pinGradleWrapper(validated.root(), validated.root().resolve("gradlew"));
+            gradleWrapper = pinGradleWrapper(
+                    validated.root(), validated.root().resolve(platform.wrapperFileName()), platform);
         } catch (IllegalArgumentException exception) {
             stages.add(failed("COMPILE", compileStarted, "Gradle wrapper is unsafe or unavailable"));
             return failedReport(stages, List.of());
@@ -230,12 +252,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             validated.runtime().requireStable();
             Path executable = gradleWrapper.verifiedExecutable();
             build = processRunner.run(
-                    List.of(
-                            executable.toString(),
-                            "-Dorg.gradle.java.installations.auto-detect=false",
-                            "-Dorg.gradle.java.installations.auto-download=false",
-                            "-Dorg.gradle.java.installations.paths=" + validated.runtime().home(),
-                            "classes", "test", "bootJar", "--no-daemon", "--non-interactive"),
+                    platform.buildCommand(executable, validated.runtime().home()),
                     validated.root(), buildTimeout, maxProcessOutputBytes);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -283,8 +300,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         Throwable primaryFailure = null;
         ValidationPhase phase = ValidationPhase.MOCK_START;
         try {
-            UpstreamCallExpectation expectation = UpstreamCallExpectation.from(request.expectedToolCall());
-            RunningMockUpstream upstream = mockUpstreamFactory.start(expectation);
+            List<UpstreamCallExpectation> expectations = UpstreamCallExpectation.allFrom(request.expectedToolCall());
+            RunningMockUpstream upstream = mockUpstreamFactory.start(expectations);
             progress.start("APPLICATION_CONTEXT");
             Throwable upstreamFailure = null;
             try {
@@ -632,9 +649,17 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     }
 
     static VerifiedGradleWrapper pinGradleWrapper(Path validationRoot, Path candidate) {
+        return pinGradleWrapper(validationRoot, candidate, ValidationHostPlatform.current());
+    }
+
+    static VerifiedGradleWrapper pinGradleWrapper(
+            Path validationRoot,
+            Path candidate,
+            ValidationHostPlatform platform) {
         if (validationRoot == null || candidate == null) {
             throw new IllegalArgumentException("Gradle wrapper path is required");
         }
+        Objects.requireNonNull(platform, "platform");
         Path root = validationRoot.toAbsolutePath().normalize();
         Path wrapper = candidate.toAbsolutePath().normalize();
         if (!Files.isDirectory(root, NOFOLLOW_LINKS)
@@ -642,7 +667,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             throw new IllegalArgumentException("Gradle wrapper escaped the validation workspace");
         }
         Path snapshot = null;
-        Object originalFileKey = null;
+        StablePathIdentity originalIdentity = null;
+        StablePathIdentity snapshotIdentity = null;
         try {
             Path realRoot = root.toRealPath();
             Path realParent = wrapper.getParent().toRealPath();
@@ -653,12 +679,15 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             if (!rootAttributes.isDirectory()) {
                 throw new IllegalArgumentException("Validation workspace is not a physical directory");
             }
-            Object rootFileKey = requiredFileKey(rootAttributes);
+            StablePathIdentity rootIdentity = StablePathIdentity.capture(root);
             BasicFileAttributes original = regularFileAttributes(wrapper);
-            originalFileKey = requiredFileKey(original);
-            requireOwnerExecutable(wrapper);
+            originalIdentity = StablePathIdentity.capture(wrapper);
+            if (platform.requiresOwnerExecutable()) {
+                requireOwnerExecutable(wrapper);
+            }
             for (int attempt = 0; attempt < 32; attempt++) {
-                Path candidateSnapshot = root.resolve(".gradlew-validated-" + UUID.randomUUID());
+                String suffix = platform.wrapperFileName().endsWith(".bat") ? ".bat" : "";
+                Path candidateSnapshot = root.resolve(".gradlew-validated-" + UUID.randomUUID() + suffix);
                 try {
                     Files.createLink(candidateSnapshot, wrapper);
                     snapshot = candidateSnapshot;
@@ -670,22 +699,26 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             if (snapshot == null) {
                 throw new IllegalArgumentException("Gradle wrapper snapshot path could not be reserved");
             }
-            Object snapshotFileKey = requiredFileKey(regularFileAttributes(snapshot));
-            if (!originalFileKey.equals(snapshotFileKey)) {
+            regularFileAttributes(snapshot);
+            snapshotIdentity = StablePathIdentity.capture(snapshot);
+            if (!originalIdentity.sameFile(wrapper, snapshotIdentity, snapshot)) {
                 throw new IllegalArgumentException("Gradle wrapper changed while its identity was pinned");
             }
-            requireOwnerExecutable(snapshot);
+            if (platform.requiresOwnerExecutable()) {
+                requireOwnerExecutable(snapshot);
+            }
             if (!snapshot.toAbsolutePath().normalize().startsWith(root)
                     || !root.equals(snapshot.getParent())
                     || !snapshot.getParent().toRealPath().equals(root)) {
                 throw new IllegalArgumentException("Gradle wrapper snapshot escaped the validation workspace");
             }
-            return new VerifiedGradleWrapper(root, rootFileKey, wrapper, snapshot, snapshotFileKey);
+            return new VerifiedGradleWrapper(
+                    root, rootIdentity, wrapper, snapshot, snapshotIdentity, platform.requiresOwnerExecutable());
         } catch (IllegalArgumentException exception) {
-            deleteIfSameFile(snapshot, originalFileKey);
+            deletePinnedSnapshot(snapshot, snapshotIdentity, wrapper, originalIdentity);
             throw exception;
         } catch (IOException | UnsupportedOperationException exception) {
-            deleteIfSameFile(snapshot, originalFileKey);
+            deletePinnedSnapshot(snapshot, snapshotIdentity, wrapper, originalIdentity);
             throw new IllegalArgumentException("Gradle wrapper identity could not be pinned", exception);
         }
     }
@@ -701,14 +734,6 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         return attributes;
     }
 
-    private static Object requiredFileKey(BasicFileAttributes attributes) {
-        Object fileKey = attributes.fileKey();
-        if (fileKey == null) {
-            throw new IllegalArgumentException("Validation filesystem does not expose stable file keys");
-        }
-        return fileKey;
-    }
-
     private static void requireOwnerExecutable(Path wrapper) throws IOException {
         PosixFileAttributeView posix = Files.getFileAttributeView(
                 wrapper, PosixFileAttributeView.class, NOFOLLOW_LINKS);
@@ -720,14 +745,20 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         }
     }
 
-    private static void deleteIfSameFile(Path path, Object expectedFileKey) {
-        if (path == null || expectedFileKey == null) {
+    private static void deletePinnedSnapshot(
+            Path snapshot,
+            StablePathIdentity snapshotIdentity,
+            Path original,
+            StablePathIdentity originalIdentity) {
+        if (snapshot == null) {
             return;
         }
         try {
-            BasicFileAttributes current = Files.readAttributes(path, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (current.isRegularFile() && expectedFileKey.equals(current.fileKey())) {
-                Files.deleteIfExists(path);
+            boolean owned = snapshotIdentity != null
+                    ? snapshotIdentity.matches(snapshot)
+                    : originalIdentity != null && originalIdentity.sameFile(original, snapshot);
+            if (owned) {
+                Files.deleteIfExists(snapshot);
             }
         } catch (IOException | RuntimeException ignored) {
             // Fail closed: an unverified path is never removed.
@@ -972,7 +1003,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     @FunctionalInterface
     interface MockUpstreamFactory {
-        RunningMockUpstream start(UpstreamCallExpectation expectation) throws IOException;
+        RunningMockUpstream start(List<UpstreamCallExpectation> expectations) throws IOException;
     }
 
     interface RunningMockUpstream extends AutoCloseable {
@@ -993,8 +1024,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         void afterClose() throws IOException;
     }
 
-    private static RunningMockUpstream startMockUpstream(UpstreamCallExpectation expectation) throws IOException {
-        MockUpstreamServer delegate = MockUpstreamServer.start(expectation);
+    private static RunningMockUpstream startMockUpstream(List<UpstreamCallExpectation> expectations) throws IOException {
+        MockUpstreamServer delegate = MockUpstreamServer.start(expectations);
         return new RunningMockUpstream() {
             @Override
             public URI baseUri() {
@@ -1020,22 +1051,25 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     static final class VerifiedGradleWrapper implements AutoCloseable {
         private final Path root;
-        private final Object rootFileKey;
+        private final StablePathIdentity rootIdentity;
         private final Path original;
         private final Path snapshot;
-        private final Object fileKey;
+        private final StablePathIdentity snapshotIdentity;
+        private final boolean requiresOwnerExecutable;
 
         private VerifiedGradleWrapper(
                 Path root,
-                Object rootFileKey,
+                StablePathIdentity rootIdentity,
                 Path original,
                 Path snapshot,
-                Object fileKey) {
+                StablePathIdentity snapshotIdentity,
+                boolean requiresOwnerExecutable) {
             this.root = root;
-            this.rootFileKey = rootFileKey;
+            this.rootIdentity = rootIdentity;
             this.original = original;
             this.snapshot = snapshot;
-            this.fileKey = fileKey;
+            this.snapshotIdentity = snapshotIdentity;
+            this.requiresOwnerExecutable = requiresOwnerExecutable;
         }
 
         Path original() {
@@ -1049,17 +1083,19 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         Path verifiedExecutable() {
             try {
                 BasicFileAttributes currentRoot = Files.readAttributes(root, BasicFileAttributes.class, NOFOLLOW_LINKS);
-                if (!currentRoot.isDirectory() || !rootFileKey.equals(requiredFileKey(currentRoot))
+                if (!currentRoot.isDirectory() || !rootIdentity.matches(root)
                         || !root.toRealPath().equals(root)
                         || !root.equals(snapshot.getParent())
                         || !snapshot.getParent().toRealPath().equals(root)) {
                     throw new IllegalArgumentException("Gradle wrapper snapshot escaped the validation workspace");
                 }
-                BasicFileAttributes current = regularFileAttributes(snapshot);
-                if (!fileKey.equals(requiredFileKey(current))) {
+                regularFileAttributes(snapshot);
+                if (!snapshotIdentity.matches(snapshot)) {
                     throw new IllegalArgumentException("Gradle wrapper snapshot identity changed before execution");
                 }
-                requireOwnerExecutable(snapshot);
+                if (requiresOwnerExecutable) {
+                    requireOwnerExecutable(snapshot);
+                }
                 return snapshot;
             } catch (IOException exception) {
                 throw new IllegalArgumentException("Gradle wrapper snapshot could not be reverified", exception);
@@ -1070,8 +1106,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         public void close() {
             try {
                 BasicFileAttributes currentRoot = Files.readAttributes(root, BasicFileAttributes.class, NOFOLLOW_LINKS);
-                if (currentRoot.isDirectory() && rootFileKey.equals(requiredFileKey(currentRoot))) {
-                    deleteIfSameFile(snapshot, fileKey);
+                if (currentRoot.isDirectory() && rootIdentity.matches(root)) {
+                    deletePinnedSnapshot(snapshot, snapshotIdentity, original, null);
                 }
             } catch (IOException | RuntimeException ignored) {
                 // Fail closed: cleanup never follows a changed workspace identity.

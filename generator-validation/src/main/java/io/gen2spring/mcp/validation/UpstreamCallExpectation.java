@@ -3,10 +3,15 @@ package io.gen2spring.mcp.validation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,7 +37,8 @@ public record UpstreamCallExpectation(
         Map<String, String> environmentOverrides,
         int responseStatus,
         String responseContentType,
-        Object responseBody) {
+        Object responseBody,
+        ExpectedUpstreamOutcome outcome) {
     private static final Pattern PATH_VARIABLE = Pattern.compile("\\{([^{}]+)}");
     private static final String SECRET_PREFIX = "mcp-validation-secret-";
     private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -40,10 +46,16 @@ public record UpstreamCallExpectation(
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 
     public UpstreamCallExpectation {
-        if (responseStatus < 100 || responseStatus > 599 || !validContentType(responseContentType)) {
+        if (outcome == null) {
             throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
         }
-        requireBoundedResponse(responseBody);
+        if (outcome == ExpectedUpstreamOutcome.RESPONSE
+                && (responseStatus < 100 || responseStatus > 599 || !validContentType(responseContentType))) {
+            throw new IllegalArgumentException("Expected Tool call response fixture is invalid");
+        }
+        if (outcome == ExpectedUpstreamOutcome.RESPONSE) {
+            requireBoundedResponse(responseBody);
+        }
         operationId = requireNonBlank(operationId, "Upstream expectation operation ID is missing");
         method = requireNonBlank(method, "Upstream expectation HTTP method is missing");
         rawPath = requireNonBlank(rawPath, "Upstream expectation path is missing");
@@ -51,7 +63,24 @@ public record UpstreamCallExpectation(
         headers = immutableStringLists(headers);
         body = immutableJson(body);
         environmentOverrides = immutableStrings(environmentOverrides);
-        responseBody = immutableResponseJson(responseBody);
+        responseBody = outcome == ExpectedUpstreamOutcome.RESPONSE
+                ? immutableResponseJson(responseBody)
+                : null;
+    }
+
+    public UpstreamCallExpectation(
+            String operationId,
+            String method,
+            String rawPath,
+            Map<String, List<String>> query,
+            Map<String, List<String>> headers,
+            Object body,
+            Map<String, String> environmentOverrides,
+            int responseStatus,
+            String responseContentType,
+            Object responseBody) {
+        this(operationId, method, rawPath, query, headers, body, environmentOverrides,
+                responseStatus, responseContentType, responseBody, ExpectedUpstreamOutcome.RESPONSE);
     }
 
     public UpstreamCallExpectation(
@@ -72,10 +101,15 @@ public record UpstreamCallExpectation(
                 environmentOverrides,
                 200,
                 "application/json",
-                legacyResponse(operationId));
+                legacyResponse(operationId),
+                ExpectedUpstreamOutcome.RESPONSE);
     }
 
     public static UpstreamCallExpectation from(ExpectedToolCall expectedCall) {
+        return allFrom(expectedCall).getFirst();
+    }
+
+    public static List<UpstreamCallExpectation> allFrom(ExpectedToolCall expectedCall) {
         Objects.requireNonNull(expectedCall, "expectedCall");
         var tool = Objects.requireNonNull(expectedCall.tool(), "expectedCall.tool");
         HttpExecutionDefinition execution = Objects.requireNonNull(
@@ -116,17 +150,71 @@ public record UpstreamCallExpectation(
         }
 
         String rawPath = expandPath(pathTemplate, derivation.pathValues());
-        return new UpstreamCallExpectation(
-                operationId,
-                execution.method().name(),
-                rawPath,
-                derivation.query(),
-                derivation.headers(),
-                derivation.body(),
-                overrides,
-                expectedCall.upstreamResponse().status(),
-                expectedCall.upstreamResponse().contentType(),
-                expectedCall.upstreamResponse().body());
+        List<UpstreamCallExpectation> expectations = new ArrayList<>();
+        for (ExpectedUpstreamInteraction interaction : expectedCall.upstreamInteractions()) {
+            Map<String, List<String>> query = interactionQuery(
+                    derivation.query(), execution.paginationPolicy(), interaction);
+            if (interaction.outcome() == ExpectedUpstreamOutcome.RESPONSE) {
+                expectations.add(new UpstreamCallExpectation(
+                        operationId,
+                        execution.method().name(),
+                        rawPath,
+                        query,
+                        derivation.headers(),
+                        derivation.body(),
+                        overrides,
+                        interaction.response().status(),
+                        interaction.response().contentType(),
+                        interaction.response().body(),
+                        ExpectedUpstreamOutcome.RESPONSE));
+            } else {
+                expectations.add(new UpstreamCallExpectation(
+                        operationId,
+                        execution.method().name(),
+                        rawPath,
+                        query,
+                        derivation.headers(),
+                        derivation.body(),
+                        overrides,
+                        200,
+                        "application/json",
+                        null,
+                        ExpectedUpstreamOutcome.DISCONNECT));
+            }
+        }
+        return List.copyOf(expectations);
+    }
+
+    private static Map<String, List<String>> interactionQuery(
+            Map<String, List<String>> base,
+            PaginationPolicy pagination,
+            ExpectedUpstreamInteraction interaction) {
+        Map<String, Object> internal = interaction.internalParameters();
+        if (pagination == null) {
+            if (!internal.isEmpty()) {
+                throw new IllegalArgumentException("Expected Tool call internal parameters are invalid");
+            }
+            return base;
+        }
+        if (internal.isEmpty() && pagination.initialValue() == null) {
+            return base;
+        }
+        String name = pagination.requestParameter();
+        if (internal.size() != 1 || !internal.containsKey(name) || base.containsKey(name)) {
+            throw new IllegalArgumentException("Expected Tool call internal parameters are invalid");
+        }
+        Object value = internal.get(name);
+        String wireValue;
+        if (value instanceof String text && !text.isEmpty()) {
+            wireValue = text;
+        } else if (value instanceof BigInteger integer) {
+            wireValue = integer.toString();
+        } else {
+            throw new IllegalArgumentException("Expected Tool call internal parameters are invalid");
+        }
+        Map<String, List<String>> result = new LinkedHashMap<>(base);
+        result.put(name, List.of(wireValue));
+        return result;
     }
 
     private static List<SecretBinding> executionSecrets(List<SecretBinding> bindings) {
@@ -246,7 +334,7 @@ public record UpstreamCallExpectation(
         if (!scalar(value)) {
             throw new IllegalArgumentException("Expected Tool call path value is unsupported");
         }
-        return percentEncode(String.valueOf(value), false);
+        return percentEncode(wireScalar(value), false);
     }
 
     private static String encodePathLiteral(String value) {
@@ -501,10 +589,10 @@ public record UpstreamCallExpectation(
             List<String> values = new ArrayList<>();
             if (value instanceof List<?> list) {
                 for (Object item : list) {
-                    values.add(String.valueOf(requireScalar(item, location)));
+                    values.add(UpstreamCallExpectation.wireScalar(requireScalar(item, location)));
                 }
             } else {
-                values.add(String.valueOf(requireScalar(value, location)));
+                values.add(UpstreamCallExpectation.wireScalar(requireScalar(value, location)));
             }
             if (!values.isEmpty()) {
                 target.put(targetName, List.copyOf(values));
@@ -533,5 +621,13 @@ public record UpstreamCallExpectation(
         private Object body() {
             return body;
         }
+    }
+
+    private static String wireScalar(Object value) {
+        if (!(value instanceof BigDecimal decimal)) {
+            return String.valueOf(value);
+        }
+        BigDecimal normalized = decimal.stripTrailingZeros();
+        return decimal.scale() < 0 ? normalized.toString() : normalized.toPlainString();
     }
 }

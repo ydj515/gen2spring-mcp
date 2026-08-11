@@ -18,11 +18,15 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.URI;
@@ -224,6 +228,38 @@ class ExpectedToolCallFactoryTest {
         assertEquals(Map.of(
                 "data", Map.of("validated", true, "operationId", "getForecast"),
                 "provider", Map.of("code", "00")), result.expectedResult());
+    }
+
+    @Test
+    void derivesOrderedRetryAndPaginationInteractionsAndAggregatedResult() {
+        ExpectedToolCall call = factory.create(
+                List.of(paginatedTool()), validation("getForecast", validArguments()));
+
+        assertEquals(3, call.upstreamInteractions().size());
+        assertEquals(ExpectedUpstreamOutcome.RESPONSE, call.upstreamInteractions().get(0).outcome());
+        assertEquals(503, call.upstreamInteractions().get(0).response().status());
+        assertEquals(Map.of("cursor", "first"), call.upstreamInteractions().get(1).internalParameters());
+        assertEquals(Map.of("cursor", "second"), call.upstreamInteractions().get(2).internalParameters());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> response = (Map<String, Object>) call.expectedResult();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) ((Map<String, Object>) response.get("response")).get("body");
+        assertEquals(List.of(
+                Map.of("id", BigInteger.valueOf(Long.MIN_VALUE)),
+                Map.of("id", BigInteger.valueOf(Long.MIN_VALUE).add(BigInteger.ONE))), body.get("items"));
+        assertTrue(body.containsKey("next"));
+        assertEquals(null, body.get("next"));
+        assertEquals(call.upstreamInteractions().get(0).response(), call.upstreamResponse());
+    }
+
+    @Test
+    void omitsTheInternalCursorFromTheFirstInteractionWhenNoInitialValueIsConfigured() {
+        ExpectedToolCall call = factory.create(
+                List.of(paginatedTool(null)), validation("getForecast", validArguments()));
+
+        assertEquals(Map.of(), call.upstreamInteractions().get(0).internalParameters());
+        assertEquals(Map.of(), call.upstreamInteractions().get(1).internalParameters());
+        assertEquals(Map.of("cursor", "second"), call.upstreamInteractions().get(2).internalParameters());
     }
 
     @Test
@@ -438,6 +474,40 @@ class ExpectedToolCallFactoryTest {
                                 null)),
                 tool.secretBindings(),
                 tool.outputKind());
+    }
+
+    private McpToolDefinition paginatedTool() {
+        return paginatedTool("first");
+    }
+
+    private McpToolDefinition paginatedTool(Object initialValue) {
+        McpToolDefinition tool = weatherTool();
+        ApiSchema item = schema(
+                OBJECT, List.of(), null, null, null, null, null,
+                Map.of("id", integerSchema("int64")), List.of("id"), null);
+        ApiSchema items = schema(
+                ARRAY, List.of(), null, null, null, null, null, Map.of(), List.of(), item);
+        ApiSchema next = new ApiSchema(
+                STRING, null, true, List.of("first", "second"), null, null, null, null, null,
+                null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema response = schema(
+                OBJECT, List.of(), null, null, null, null, null,
+                Map.of("response", schema(
+                        OBJECT, List.of(), null, null, null, null, null,
+                        Map.of("body", schema(
+                                OBJECT, List.of(), null, null, null, null, null,
+                                Map.of("items", items, "next", next), List.of("items"), null)),
+                        List.of("body"), null)),
+                List.of("response"), null);
+        return new McpToolDefinition(
+                tool.operationId(), tool.name(), tool.description(), tool.inputs(),
+                new HttpExecutionDefinition(
+                        GET, URI.create("https://api.example.test"), "/forecast", List.of(),
+                        false, false, null,
+                        new RetryPolicy(List.of(503), false, 1, 1, 1, false),
+                        new PaginationPolicy("cursor", initialValue, "/response/body/items", "/response/body/next", 2, 2)),
+                tool.secretBindings(), new OutputDefinition(
+                        McpToolDefinition.OutputKind.GENERIC_JSON, response, null));
     }
 
     private ApiSchema integerSchema(String format) {

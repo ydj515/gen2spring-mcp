@@ -15,8 +15,11 @@ Spring AI 1.1.8 또는 Spring Boot 4.1.0/Spring AI 2.0.0 기반 Streamable HTTP 
   `GEN2SPRING_JAVA_17_HOME`에 지정해야 한다. Java 21 기본 profile은 현재
   `java.home`이 Java 21이면 이를 사용하며, 필요하면 `GEN2SPRING_JAVA_21_HOME`으로 명시한다.
 - Gradle Wrapper 9.6.1. 시스템 Gradle 설치는 필요하지 않다.
-- 물리 경로와 안정적인 filesystem `fileKey`, hard link를 지원하는 로컬 파일시스템
+- 물리 경로와 hard link를 지원하는 로컬 파일시스템. native filesystem `fileKey`를 제공하지 않는
+  Windows JDK에서는 physical path, file store, creation time과 bounded file metadata를 안정적으로
+  재조회할 수 있어야 한다.
 - POSIX 환경에서는 생성된 `gradlew`에 owner execute 권한을 기록하고 검증할 수 있어야 한다.
+- Windows 환경에서는 CLI의 private staging 파일에 owner-only ACL을 적용하고 검증할 수 있어야 한다.
 - 최초 빌드와 생성 프로젝트 검증 시 Gradle 배포본과 Maven Central dependency를 받을 수 있어야 한다.
 
 ```bash
@@ -361,8 +364,17 @@ value의 32자리 lowercase hex를 사용한다.
 | `UPSTREAM_PROTOCOL` | `false` |
 | `LOCAL_RESOURCE` | `false` |
 
-응답 처리는 JSON body만 지원한다. 이 슬라이스는 retry와 pagination을 자동 실행하지 않고,
-typed output DTO를 생성하지 않는다.
+응답 처리는 JSON body만 지원한다. `output`을 생략하면 기존 `GENERIC_JSON` 결과를 유지하고,
+`output.mode: TYPED`를 선택하면 supported JSON object response에서 typed output DTO를 생성한다.
+ambiguous success schema, composed/recursive schema, 지원하지 않는 response media type은 source 생성 전에
+fail-closed로 거부한다.
+
+operation별 실행 정책은 opt-in이다. retry를 생략하면 한 번만 요청하고, 설정하면 GET operation에 bounded retry를 실행한다.
+`maxRetries` 1..3, initial backoff 최대 5000ms, max backoff 최대 10000ms이며 status/network
+조건, exponential backoff, delta-seconds `Retry-After`를 total timeout 안에서만 적용한다. pagination을 생략하면
+한 페이지만 요청하고, 설정하면 GET operation에 bounded pagination을 실행한다. query string/integer cursor,
+RFC 6901 items/next pointer, `maxPages` 2..20, `maxItems` 1..2000을 요구한다. 각 page와 aggregate JSON은
+각각 1 MiB로 제한하며 partial/truncated success나 원본 response 저장은 제공하지 않는다.
 
 ## 검증과 종료 코드
 
@@ -432,7 +444,7 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
 - 실제 compile, generated test, ApplicationContext, MCP `initialize`, `tools/list`, 대표
   `tools/call`과 loopback mock upstream 검증
 
-## 알려진 제한과 후속 P1 경계
+## 알려진 제한과 후속 P2 경계
 
 - OpenAPI parameter와 JSON body property는 Java-safe MCP key로 변환하고 원본 upstream
   JSON 이름은 binding에 보존한다. 예를 들어 `postal-code`는 MCP의 `postalCode` 입력으로
@@ -448,9 +460,14 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
   (예: `full-detail`)을 일관되게 사용한다.
 - remote `$ref`, URL import, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator,
   recursive schema는 지원하지 않는다.
-- typed output DTO, retry 실행, pagination 실행은 후속 P1 범위다.
 - Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다.
-- `Windows validation host remains follow-up P1`; 현재 설치 배포본과 validation process 경계는
-  macOS/Linux 로컬 host를 대상으로 한다.
+- Windows validation host는 host별 adapter로 지원한다. Windows에서는 repository wrapper를
+  `gradlew.bat`로 선택하고 trusted `%SystemRoot%\System32\cmd.exe`의 고정 `/d /s /c` argument로 실행하며,
+  verified target JDK의 `bin/java.exe`로 application을 기동한다. command metacharacter·control character와
+  불안정한 wrapper/JDK identity는 fail-closed로 거부한다. identity는 native file key가 있으면 이를 사용하고,
+  없으면 physical path·file store·creation time·bounded metadata로 재검증하며 hard link 관계는
+  `Files.isSameFile`로 확인한다. Linux와 `windows-latest` CI가 Java 17·21 전체
+  compile/test/ApplicationContext/MCP journey를 실행하며 [Windows 지원 issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)의
+  구현 경계를 검증한다.
 - P0의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
   OCI sandbox, dependency proxy, CPU/memory limit, network egress 통제는 제공하지 않는다.

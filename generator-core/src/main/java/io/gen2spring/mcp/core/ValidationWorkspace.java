@@ -8,7 +8,6 @@ import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectF
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,23 +19,20 @@ final class ValidationWorkspace implements AutoCloseable {
     private final Path canonicalRoot;
     private final Path workspaceRoot;
     private final String workspacePrefix;
-    private final Path parentRealPath;
-    private final Object parentFileKey;
-    private final Object workspaceFileKey;
+    private final StablePathIdentity parentIdentity;
+    private final StablePathIdentity workspaceIdentity;
 
     private ValidationWorkspace(
             Path canonicalRoot,
             Path workspaceRoot,
             String workspacePrefix,
-            Path parentRealPath,
-            Object parentFileKey,
-            Object workspaceFileKey) {
+            StablePathIdentity parentIdentity,
+            StablePathIdentity workspaceIdentity) {
         this.canonicalRoot = canonicalRoot;
         this.workspaceRoot = workspaceRoot;
         this.workspacePrefix = workspacePrefix;
-        this.parentRealPath = parentRealPath;
-        this.parentFileKey = parentFileKey;
-        this.workspaceFileKey = workspaceFileKey;
+        this.parentIdentity = parentIdentity;
+        this.workspaceIdentity = workspaceIdentity;
     }
 
     static ValidationWorkspace copyOf(Path canonicalProjectRoot, SafeProjectWriter writer) {
@@ -54,9 +50,8 @@ final class ValidationWorkspace implements AutoCloseable {
                 canonical,
                 workspace,
                 prefix,
-                realPath(parent),
-                requiredFileKey(parent),
-                requiredFileKey(workspace));
+                identity(parent),
+                identity(workspace));
     }
 
     Path root() {
@@ -92,33 +87,23 @@ final class ValidationWorkspace implements AutoCloseable {
 
     private void verifyCleanupIdentity() {
         Path parent = workspaceRoot.getParent();
-        if (!parentRealPath.equals(realPath(parent)) || !parentFileKey.equals(requiredFileKey(parent))) {
-            throw failure("Validation workspace parent identity changed before cleanup", null);
-        }
-        if (!workspaceFileKey.equals(requiredFileKey(workspaceRoot))) {
-            throw failure("Validation workspace identity changed before cleanup", null);
-        }
-    }
-
-    private static Path realPath(Path path) {
         try {
-            return path.toRealPath();
+            if (!parentIdentity.matches(parent)) {
+                throw failure("Validation workspace parent identity changed before cleanup", null);
+            }
+            if (!workspaceIdentity.matches(workspaceRoot)) {
+                throw failure("Validation workspace identity changed before cleanup", null);
+            }
         } catch (IOException exception) {
             throw failure("Validation workspace path identity could not be resolved", exception);
         }
     }
 
-    private static Object requiredFileKey(Path path) {
+    private static StablePathIdentity identity(Path path) {
         try {
-            Object fileKey = Files.readAttributes(path, BasicFileAttributes.class, NOFOLLOW_LINKS).fileKey();
-            if (fileKey == null) {
-                throw failure("Validation filesystem does not expose stable file keys", null);
-            }
-            return fileKey;
-        } catch (GeneratorException exception) {
-            throw exception;
+            return StablePathIdentity.capture(path);
         } catch (IOException exception) {
-            throw failure("Validation workspace file key could not be read", exception);
+            throw failure("Validation workspace path identity could not be resolved", exception);
         }
     }
 

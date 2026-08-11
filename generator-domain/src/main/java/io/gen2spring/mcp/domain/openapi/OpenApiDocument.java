@@ -28,7 +28,24 @@ public record OpenApiDocument(
             boolean requestBodyRequired,
             List<String> securityRequirements,
             boolean supported,
-            List<String> warnings) {}
+            List<String> warnings,
+            ApiSchema successResponse) {
+        public ApiOperation(
+                String operationId,
+                HttpMethod method,
+                String path,
+                String summary,
+                String description,
+                List<ApiParameter> parameters,
+                ApiSchema requestBody,
+                boolean requestBodyRequired,
+                List<String> securityRequirements,
+                boolean supported,
+                List<String> warnings) {
+            this(operationId, method, path, summary, description, parameters, requestBody, requestBodyRequired,
+                    securityRequirements, supported, warnings, null);
+        }
+    }
 
     public record ApiParameter(
             String name,

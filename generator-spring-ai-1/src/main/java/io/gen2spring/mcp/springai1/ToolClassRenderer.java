@@ -33,8 +33,11 @@ final class ToolClassRenderer {
             McpToolDefinition tool) {
         List<McpInputDefinition> inputs = InputRecordRenderer.inputs(tool);
         String operationClass = JavaSourceRenderer.upperCamel(tool.operationId());
+        String resultType = tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO
+                ? operationClass + "Result" : "JsonNode";
         source.append('\n');
-        source.append("    public JsonNode ").append(JavaSourceRenderer.lowerCamel(tool.operationId())).append('(');
+        source.append("    public ").append(resultType).append(' ')
+                .append(JavaSourceRenderer.lowerCamel(tool.operationId())).append('(');
         if (!inputs.isEmpty()) {
             source.append('\n');
         }
@@ -63,7 +66,10 @@ final class ToolClassRenderer {
         }
         source.append(");\n")
                 .append("        return executor.execute(").append(domainClass).append("Operations.")
-                .append(JavaSourceRenderer.constantName(tool.operationId())).append(", input.toArguments());\n")
+                .append(JavaSourceRenderer.constantName(tool.operationId())).append(", input.toArguments()")
+                .append(tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO
+                        ? ", " + operationClass + "Result.class" : "")
+                .append(");\n")
                 .append("    }\n");
     }
 
@@ -76,10 +82,14 @@ final class ToolClassRenderer {
         imports.add(packageName + ".runtime.OpenApiOperationExecutor");
         imports.add("org.springframework.stereotype.Component");
         imports.add("org.springframework.validation.annotation.Validated");
-        imports.add("com.fasterxml.jackson.databind.JsonNode");
         for (McpToolDefinition tool : tools) {
             String operationClass = JavaSourceRenderer.upperCamel(tool.operationId());
             imports.add(packageName + ".generated.model." + operationClass + "Input");
+            if (tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO) {
+                imports.add(packageName + ".generated.model." + operationClass + "Result");
+            } else {
+                imports.add("com.fasterxml.jackson.databind.JsonNode");
+            }
             for (McpInputDefinition input : InputRecordRenderer.inputs(tool)) {
                 addValidationImports(imports, input);
                 String type = JavaSourceRenderer.javaType(

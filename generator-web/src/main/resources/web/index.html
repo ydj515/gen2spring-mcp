@@ -71,6 +71,38 @@
             <label for="tool-description">Tool description</label>
             <textarea id="tool-description" maxlength="1024" rows="3"></textarea>
           </div>
+          <h3>Output</h3>
+          <div class="field compact">
+            <label for="output-mode">Output mode</label>
+            <select id="output-mode">
+              <option value="GENERIC_JSON">Generic JSON</option>
+              <option value="TYPED">Typed DTO</option>
+            </select>
+          </div>
+          <h3>Retry policy</h3>
+          <label class="checkbox" for="retry-enabled">
+            <input id="retry-enabled" type="checkbox"> Enable bounded retry
+          </label>
+          <div class="field-grid policy-fields">
+            <div class="field"><label for="retry-status-codes">HTTP error status codes</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
+            <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> Retry network errors</label>
+            <div class="field"><label for="retry-max-retries">Maximum retries</label><input id="retry-max-retries" type="number" min="1" max="3" value="1"></div>
+            <div class="field"><label for="retry-initial-backoff">Initial backoff milliseconds</label><input id="retry-initial-backoff" type="number" min="1" max="5000" value="100"></div>
+            <div class="field"><label for="retry-max-backoff">Maximum backoff milliseconds</label><input id="retry-max-backoff" type="number" min="1" max="10000" value="1000"></div>
+            <label class="checkbox" for="retry-respect-retry-after"><input id="retry-respect-retry-after" type="checkbox" checked> Respect Retry-After</label>
+          </div>
+          <h3>Pagination policy</h3>
+          <label class="checkbox" for="pagination-enabled">
+            <input id="pagination-enabled" type="checkbox"> Enable bounded cursor pagination
+          </label>
+          <div class="field-grid policy-fields">
+            <div class="field"><label for="pagination-request-parameter">Cursor query parameter</label><input id="pagination-request-parameter" type="text" maxlength="128"></div>
+            <div class="field"><label for="pagination-initial-value">Initial value as JSON string or integer</label><textarea id="pagination-initial-value" rows="2"></textarea></div>
+            <div class="field"><label for="pagination-items-path">Items JSON Pointer</label><input id="pagination-items-path" type="text" value="/items"></div>
+            <div class="field"><label for="pagination-next-value-path">Next value JSON Pointer</label><input id="pagination-next-value-path" type="text" value="/next"></div>
+            <div class="field"><label for="pagination-max-pages">Maximum pages</label><input id="pagination-max-pages" type="number" min="2" max="20" value="10"></div>
+            <div class="field"><label for="pagination-max-items">Maximum items</label><input id="pagination-max-items" type="number" min="1" max="2000" value="1000"></div>
+          </div>
           <h3>Parameter sources</h3>
           <div id="parameter-editor"></div>
           <h3>Response normalization</h3>

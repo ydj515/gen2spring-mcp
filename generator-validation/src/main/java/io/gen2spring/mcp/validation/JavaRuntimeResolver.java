@@ -34,15 +34,26 @@ final class JavaRuntimeResolver {
     private final Map<String, String> environment;
     private final Path currentJavaHome;
     private final RuntimeProbe probe;
+    private final ValidationHostPlatform platform;
 
     JavaRuntimeResolver() {
-        this(System.getenv(), Path.of(System.getProperty("java.home")), new DefaultRuntimeProbe());
+        this(System.getenv(), Path.of(System.getProperty("java.home")), new DefaultRuntimeProbe(),
+                ValidationHostPlatform.current());
     }
 
     JavaRuntimeResolver(Map<String, String> environment, Path currentJavaHome, RuntimeProbe probe) {
+        this(environment, currentJavaHome, probe, ValidationHostPlatform.current());
+    }
+
+    JavaRuntimeResolver(
+            Map<String, String> environment,
+            Path currentJavaHome,
+            RuntimeProbe probe,
+            ValidationHostPlatform platform) {
         this.environment = Map.copyOf(Objects.requireNonNull(environment, "environment"));
         this.currentJavaHome = Objects.requireNonNull(currentJavaHome, "currentJavaHome");
         this.probe = Objects.requireNonNull(probe, "probe");
+        this.platform = Objects.requireNonNull(platform, "platform");
     }
 
     ResolvedJavaRuntime resolve(CompatibilityProfile profile) {
@@ -54,7 +65,7 @@ final class JavaRuntimeResolver {
         Path candidate;
         try {
             candidate = configured == null ? currentJavaHome : Path.of(configured);
-            ResolvedJavaRuntime runtime = pin(candidate);
+            ResolvedJavaRuntime runtime = pin(candidate, platform);
             if (probe.feature(runtime.executable()) != feature) {
                 throw safeFailure();
             }
@@ -67,7 +78,8 @@ final class JavaRuntimeResolver {
         }
     }
 
-    private static ResolvedJavaRuntime pin(Path candidate) throws IOException {
+    private static ResolvedJavaRuntime pin(
+            Path candidate, ValidationHostPlatform platform) throws IOException {
         if (candidate == null || !candidate.isAbsolute() || Files.isSymbolicLink(candidate)) {
             throw safeFailure();
         }
@@ -76,28 +88,22 @@ final class JavaRuntimeResolver {
         if (!homeAttributes.isDirectory() || !home.toRealPath().equals(home)) {
             throw safeFailure();
         }
-        Object homeFileKey = requiredFileKey(homeAttributes);
+        StablePathIdentity homeIdentity = StablePathIdentity.capture(home);
 
-        Path executable = home.resolve("bin/java").normalize();
+        Path executable = platform.javaExecutable(home);
         if (!executable.startsWith(home) || Files.isSymbolicLink(executable)
                 || !executable.toRealPath().equals(executable)) {
             throw safeFailure();
         }
         BasicFileAttributes executableAttributes =
                 Files.readAttributes(executable, BasicFileAttributes.class, NOFOLLOW_LINKS);
-        if (!executableAttributes.isRegularFile() || !Files.isExecutable(executable)) {
+        if (!executableAttributes.isRegularFile()
+                || platform.requiresOwnerExecutable() && !Files.isExecutable(executable)) {
             throw safeFailure();
         }
-        Object executableFileKey = requiredFileKey(executableAttributes);
-        return new ResolvedJavaRuntime(home, executable, homeFileKey, executableFileKey);
-    }
-
-    private static Object requiredFileKey(BasicFileAttributes attributes) {
-        Object fileKey = attributes.fileKey();
-        if (fileKey == null) {
-            throw safeFailure();
-        }
-        return fileKey;
+        StablePathIdentity executableIdentity = StablePathIdentity.capture(executable);
+        return new ResolvedJavaRuntime(
+                home, executable, homeIdentity, executableIdentity, platform.requiresOwnerExecutable());
     }
 
     private static JavaRuntimeException safeFailure() {
@@ -118,18 +124,21 @@ final class JavaRuntimeResolver {
     static final class ResolvedJavaRuntime {
         private final Path home;
         private final Path executable;
-        private final Object homeFileKey;
-        private final Object executableFileKey;
+        private final StablePathIdentity homeIdentity;
+        private final StablePathIdentity executableIdentity;
+        private final boolean requiresExecutable;
 
         private ResolvedJavaRuntime(
                 Path home,
                 Path executable,
-                Object homeFileKey,
-                Object executableFileKey) {
+                StablePathIdentity homeIdentity,
+                StablePathIdentity executableIdentity,
+                boolean requiresExecutable) {
             this.home = home;
             this.executable = executable;
-            this.homeFileKey = homeFileKey;
-            this.executableFileKey = executableFileKey;
+            this.homeIdentity = homeIdentity;
+            this.executableIdentity = executableIdentity;
+            this.requiresExecutable = requiresExecutable;
         }
 
         Path home() {
@@ -145,19 +154,19 @@ final class JavaRuntimeResolver {
                 if (Files.isSymbolicLink(home) || !home.toRealPath().equals(home)) {
                     throw safeFailure();
                 }
-                BasicFileAttributes currentHome =
-                        Files.readAttributes(home, BasicFileAttributes.class, NOFOLLOW_LINKS);
-                if (!currentHome.isDirectory() || !homeFileKey.equals(requiredFileKey(currentHome))) {
+                BasicFileAttributes currentHome = Files.readAttributes(
+                        home, BasicFileAttributes.class, NOFOLLOW_LINKS);
+                if (!currentHome.isDirectory() || !homeIdentity.matches(home)) {
                     throw safeFailure();
                 }
                 if (Files.isSymbolicLink(executable) || !executable.toRealPath().equals(executable)) {
                     throw safeFailure();
                 }
-                BasicFileAttributes currentExecutable =
-                        Files.readAttributes(executable, BasicFileAttributes.class, NOFOLLOW_LINKS);
+                BasicFileAttributes currentExecutable = Files.readAttributes(
+                        executable, BasicFileAttributes.class, NOFOLLOW_LINKS);
                 if (!currentExecutable.isRegularFile()
-                        || !Files.isExecutable(executable)
-                        || !executableFileKey.equals(requiredFileKey(currentExecutable))) {
+                        || requiresExecutable && !Files.isExecutable(executable)
+                        || !executableIdentity.matches(executable)) {
                     throw safeFailure();
                 }
             } catch (IOException | RuntimeException exception) {

@@ -11,12 +11,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 public final class GenerationContracts {
     private GenerationContracts() {}
 
     public interface ProjectGenerator {
         GeneratedProjectFiles generate(GenerationContext context);
+    }
+
+    public interface ToolEmitter {
+        GeneratedToolSources emit(GenerationContext context);
     }
 
     public interface GeneratedProjectValidator {
@@ -66,6 +71,53 @@ public final class GenerationContracts {
 
     public record GeneratedProjectFiles(Map<String, byte[]> files) {}
 
+    public record GeneratedToolSources(Map<String, byte[]> files) {
+        private static final String INVALID_SOURCES_MESSAGE = "Generated Tool sources are invalid";
+
+        public GeneratedToolSources {
+            files = immutableFileBytes(files);
+        }
+
+        @Override
+        public Map<String, byte[]> files() {
+            return immutableFileBytes(files);
+        }
+
+        private static Map<String, byte[]> immutableFileBytes(Map<String, byte[]> source) {
+            if (source == null) {
+                throw new IllegalArgumentException(INVALID_SOURCES_MESSAGE);
+            }
+            Map<String, byte[]> sorted = new TreeMap<>();
+            source.forEach((path, bytes) -> {
+                if (invalidSourcePath(path) || bytes == null) {
+                    throw new IllegalArgumentException(INVALID_SOURCES_MESSAGE);
+                }
+                sorted.put(path, bytes.clone());
+            });
+            return Collections.unmodifiableMap(new LinkedHashMap<>(sorted));
+        }
+
+        private static boolean invalidSourcePath(String path) {
+            if (path == null || path.isBlank() || path.startsWith("/")
+                    || (path.length() >= 3 && isAsciiLetter(path.charAt(0))
+                    && path.charAt(1) == ':' && path.charAt(2) == '/')
+                    || path.indexOf('\\') >= 0
+                    || path.chars().anyMatch(Character::isISOControl)) {
+                return true;
+            }
+            for (String segment : path.split("/", -1)) {
+                if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static boolean isAsciiLetter(char value) {
+            return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z';
+        }
+    }
+
     public record ValidationRequest(
             Path projectRoot,
             String artifactId,
@@ -104,21 +156,56 @@ public final class GenerationContracts {
         }
     }
 
+    public enum ExpectedUpstreamOutcome { RESPONSE, DISCONNECT }
+
+    public record ExpectedUpstreamInteraction(
+            Map<String, Object> internalParameters,
+            ExpectedUpstreamOutcome outcome,
+            ExpectedUpstreamResponse response) {
+        public ExpectedUpstreamInteraction {
+            if (internalParameters == null || outcome == null
+                    || outcome == ExpectedUpstreamOutcome.RESPONSE && response == null
+                    || outcome == ExpectedUpstreamOutcome.DISCONNECT && response != null) {
+                throw new IllegalArgumentException("Expected upstream interaction is incomplete");
+            }
+            internalParameters = immutableMap(internalParameters, false, false);
+        }
+    }
+
     public record ExpectedToolCall(
             McpToolDefinition tool,
             Map<String, Object> arguments,
-            ExpectedUpstreamResponse upstreamResponse,
+            List<ExpectedUpstreamInteraction> upstreamInteractions,
             Object expectedResult) {
         public ExpectedToolCall {
-            if (tool == null || arguments == null || upstreamResponse == null) {
+            if (tool == null || arguments == null || upstreamInteractions == null || upstreamInteractions.isEmpty()
+                    || upstreamInteractions.stream().anyMatch(Objects::isNull)) {
                 throw new IllegalArgumentException("Expected Tool call is incomplete");
             }
             arguments = immutableMap(arguments, false, false);
+            upstreamInteractions = List.copyOf(upstreamInteractions);
             expectedResult = immutableJsonValue(expectedResult, true, true);
+        }
+
+        public ExpectedToolCall(
+                McpToolDefinition tool,
+                Map<String, Object> arguments,
+                ExpectedUpstreamResponse upstreamResponse,
+                Object expectedResult) {
+            this(tool, arguments, List.of(new ExpectedUpstreamInteraction(
+                    Map.of(), ExpectedUpstreamOutcome.RESPONSE, upstreamResponse)), expectedResult);
         }
 
         public ExpectedToolCall(McpToolDefinition tool, Map<String, Object> arguments) {
             this(tool, arguments, legacyResponse(tool), legacyResult(tool));
+        }
+
+        public ExpectedUpstreamResponse upstreamResponse() {
+            ExpectedUpstreamInteraction first = upstreamInteractions.getFirst();
+            if (first.outcome() != ExpectedUpstreamOutcome.RESPONSE) {
+                throw new IllegalStateException("Expected upstream interaction has no response");
+            }
+            return first.response();
         }
     }
     public enum ValidationStatus { VALIDATED, UNVERIFIED }

@@ -12,14 +12,29 @@ validation:
     arguments:
       stationId: STN01
       days: 3
-      location:
-        latitude: 37.5
-        longitude: 127.0
+      latitude: 37.5
+      longitude: 127.0
 operations:
   - operationId: getForecast
     enabled: true
     toolName: kma_weather_get_forecast
     toolDescription: Get the public weather forecast for a grid location.
+    output:
+      mode: TYPED
+    retry:
+      statusCodes: [503]
+      networkErrors: false
+      maxRetries: 1
+      initialBackoffMillis: 1
+      maxBackoffMillis: 10
+      respectRetryAfter: true
+    pagination:
+      requestParameter: cursor
+      initialValue: page-1
+      itemsPath: /response/body/items/item
+      nextValuePath: /response/body/nextCursor
+      maxPages: 2
+      maxItems: 10
     responseNormalization:
       dataPath: /response/body/items/item
       successCodePath: /response/header/resultCode

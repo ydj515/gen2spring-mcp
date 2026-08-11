@@ -1,12 +1,23 @@
 package io.gen2spring.mcp.core;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.AnalysisWarning;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 public record GenerationPreview(
         CompatibilityProfile profile,
@@ -14,6 +25,7 @@ public record GenerationPreview(
         List<String> secretEnvironmentVariables,
         List<AnalysisWarning> warnings,
         List<String> generatedFilePaths) {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public GenerationPreview {
         Objects.requireNonNull(profile, "profile");
@@ -28,14 +40,111 @@ public record GenerationPreview(
             String name,
             String description,
             Map<String, Object> inputSchema,
+            Output output,
+            Retry retry,
+            Pagination pagination,
             ResponseNormalization responseNormalization) {
         public Tool {
             if (operationId == null || operationId.isBlank()
                     || name == null || name.isBlank()
-                    || description == null || description.isBlank()) {
+                    || description == null || description.isBlank()
+                    || output == null) {
                 throw new IllegalArgumentException("Generation preview Tool is invalid");
             }
             inputSchema = new ExpectedTool(description, inputSchema).inputSchema();
+        }
+
+        public Tool(
+                String operationId,
+                String name,
+                String description,
+                Map<String, Object> inputSchema,
+                ResponseNormalization responseNormalization) {
+            this(operationId, name, description, inputSchema,
+                    new Output("GENERIC_JSON", null), null, null, responseNormalization);
+        }
+
+        public static Tool from(McpToolDefinition tool, Map<String, Object> inputSchema) {
+            Objects.requireNonNull(tool, "tool");
+            return new Tool(
+                    tool.operationId(),
+                    tool.name(),
+                    tool.description(),
+                    inputSchema,
+                    Output.from(tool),
+                    Retry.from(tool),
+                    Pagination.from(tool),
+                    ResponseNormalization.from(tool.execution().responseNormalization()));
+        }
+    }
+
+    public record Output(String mode, String schemaChecksum) {
+        public Output {
+            if (!("TYPED".equals(mode) || "GENERIC_JSON".equals(mode))
+                    || ("TYPED".equals(mode) && !isLowercaseSha256(schemaChecksum))
+                    || ("GENERIC_JSON".equals(mode) && schemaChecksum != null)) {
+                throw new IllegalArgumentException("Generation preview output is invalid");
+            }
+        }
+
+        public static Output from(McpToolDefinition tool) {
+            Objects.requireNonNull(tool, "tool");
+            boolean typed = tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO;
+            return new Output(
+                    typed ? "TYPED" : "GENERIC_JSON",
+                    typed ? GenerationPreview.schemaChecksum(tool.output().resultSchema()) : null);
+        }
+    }
+
+    public record Retry(
+            List<Integer> statusCodes,
+            boolean networkErrors,
+            int maxRetries,
+            long initialBackoffMillis,
+            long maxBackoffMillis,
+            boolean respectRetryAfter) {
+        public Retry {
+            statusCodes = statusCodes == null
+                    ? List.of()
+                    : statusCodes.stream().distinct().sorted().toList();
+        }
+
+        public static Retry from(McpToolDefinition tool) {
+            Objects.requireNonNull(tool, "tool");
+            var policy = tool.execution().retryPolicy();
+            return policy == null ? null : new Retry(
+                    policy.statusCodes(),
+                    policy.networkErrors(),
+                    policy.maxRetries(),
+                    policy.initialBackoffMillis(),
+                    policy.maxBackoffMillis(),
+                    policy.respectRetryAfter());
+        }
+    }
+
+    public record Pagination(
+            String requestParameter,
+            String itemsPath,
+            String nextValuePath,
+            int maxPages,
+            int maxItems) {
+        public Pagination {
+            if (requestParameter == null || requestParameter.isBlank()
+                    || itemsPath == null || itemsPath.isBlank()
+                    || nextValuePath == null || nextValuePath.isBlank()) {
+                throw new IllegalArgumentException("Generation preview pagination is invalid");
+            }
+        }
+
+        public static Pagination from(McpToolDefinition tool) {
+            Objects.requireNonNull(tool, "tool");
+            var policy = tool.execution().paginationPolicy();
+            return policy == null ? null : new Pagination(
+                    policy.requestParameter(),
+                    policy.itemsPointer(),
+                    policy.nextValuePointer(),
+                    policy.maxPages(),
+                    policy.maxItems());
         }
     }
 
@@ -60,5 +169,80 @@ public record GenerationPreview(
                     policy.errorMessagePointer(),
                     policy.totalCountPointer());
         }
+    }
+
+    private static String schemaChecksum(ApiSchema schema) {
+        try {
+            byte[] canonical = OBJECT_MAPPER.writeValueAsBytes(canonicalSchema(schema));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical));
+        } catch (JsonProcessingException | NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("Generation preview schema checksum could not be created", exception);
+        }
+    }
+
+    private static Map<String, Object> canonicalSchema(ApiSchema schema) {
+        if (schema == null || schema.type() == null || !schema.supported()) {
+            throw new IllegalArgumentException("Generation preview output schema is invalid");
+        }
+        Map<String, Object> result = new TreeMap<>();
+        result.put("type", switch (schema.type()) {
+            case STRING -> "string";
+            case INTEGER -> "integer";
+            case NUMBER -> "number";
+            case BOOLEAN -> "boolean";
+            case ARRAY -> "array";
+            case OBJECT -> "object";
+        });
+        if (schema.nullable()) {
+            result.put("nullable", true);
+        }
+        if (schema.format() != null && !schema.format().isBlank()) {
+            result.put("format", schema.format());
+        }
+        if (schema.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.STRING
+                && schema.enumValues() != null && !schema.enumValues().isEmpty()) {
+            result.put("enum", List.copyOf(schema.enumValues()));
+        }
+        if (schema.minimum() != null) {
+            result.put("minimum", schema.minimum());
+        }
+        if (schema.maximum() != null) {
+            result.put("maximum", schema.maximum());
+        }
+        if (schema.minLength() != null) {
+            result.put("minLength", schema.minLength());
+        }
+        if (schema.maxLength() != null) {
+            result.put("maxLength", schema.maxLength());
+        }
+        if (schema.pattern() != null) {
+            result.put("pattern", schema.pattern());
+        }
+        if (schema.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.ARRAY) {
+            result.put("items", canonicalSchema(schema.items()));
+        }
+        if (schema.type() == io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.OBJECT) {
+            Map<String, Object> properties = new TreeMap<>();
+            Map<String, ApiSchema> source = schema.properties() == null ? Map.of() : schema.properties();
+            source.forEach((name, property) -> {
+                if (name == null || name.isBlank()) {
+                    throw new IllegalArgumentException("Generation preview output schema is invalid");
+                }
+                properties.put(name, canonicalSchema(property));
+            });
+            List<String> required = schema.requiredProperties() == null
+                    ? List.of()
+                    : schema.requiredProperties().stream().distinct().sorted().toList();
+            if (required.stream().anyMatch(name -> !properties.containsKey(name))) {
+                throw new IllegalArgumentException("Generation preview output schema is invalid");
+            }
+            result.put("properties", properties);
+            result.put("required", required);
+        }
+        return new LinkedHashMap<>(result);
+    }
+
+    private static boolean isLowercaseSha256(String value) {
+        return value != null && value.matches("[0-9a-f]{64}");
     }
 }

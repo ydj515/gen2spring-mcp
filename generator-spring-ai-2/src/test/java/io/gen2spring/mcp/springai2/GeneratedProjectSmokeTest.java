@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
@@ -16,6 +18,7 @@ import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,6 +57,85 @@ class GeneratedProjectSmokeTest {
                 tempDir.resolve("weather-java17"),
                 files,
                 requiredJavaHome("GEN2SPRING_JAVA_17_HOME"));
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedTypedOutputsRoundTripWholeAndNormalizedResponses() throws Exception {
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(typedOutputTools()))
+                .files();
+        Map<String, byte[]> withContract = new java.util.LinkedHashMap<>(files);
+        withContract.put(
+                "src/test/java/com/example/weather/application/GeneratedTypedOutputContractTest.java",
+                typedOutputContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("typed-output"), withContract);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedExecutorRetriesBoundedRequestsWithinOneDeadline() throws Exception {
+        McpToolDefinition base = JavaSourceRendererTest.weatherTool();
+        var execution = base.execution();
+        var retry = new RetryPolicy(List.of(429, 503), true, 3, 100, 1_000, true);
+        var tool = new McpToolDefinition(
+                base.operationId(), base.name(), base.description(), base.inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
+                        execution.objectRequestBody(), execution.requestBodyRequired(),
+                        execution.responseNormalization(), retry),
+                base.secretBindings(), base.output());
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .files();
+        var withRetryTest = new java.util.LinkedHashMap<>(files);
+        withRetryTest.put(
+                "src/test/java/com/example/weather/runtime/GeneratedRetryContractTest.java",
+                retryContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("retry"), withRetryTest);
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedExecutorRetriesAndAggregatesPaginatedResponses() throws Exception {
+        McpToolDefinition base = JavaSourceRendererTest.weatherTool();
+        ApiSchema item = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null,
+                null, Map.of("id", new ApiSchema(
+                        SchemaType.INTEGER, "int64", false, List.of(), null, null, null, null, null,
+                        null, Map.of(), List.of(), null, true, List.of())),
+                List.of("id"), null, true, List.of());
+        ApiSchema response = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null,
+                null, Map.of(
+                        "items", new ApiSchema(
+                                SchemaType.ARRAY, null, false, List.of(), null, null, null, null, null,
+                                null, Map.of(), List.of(), item, true, List.of()),
+                        "next", new ApiSchema(
+                                SchemaType.STRING, null, true, List.of(), null, null, null, null, null,
+                                null, Map.of(), List.of(), null, true, List.of())),
+                List.of("items"), null, true, List.of());
+        var execution = base.execution();
+        var tool = new McpToolDefinition(
+                base.operationId(), base.name(), base.description(), base.inputs(),
+                new HttpExecutionDefinition(
+                        execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
+                        execution.objectRequestBody(), execution.requestBodyRequired(), null,
+                        new RetryPolicy(List.of(503), false, 1, 1, 1, false),
+                        new PaginationPolicy("cursor", "first", "/items", "/next", 2, 10)),
+                base.secretBindings(), new OutputDefinition(
+                        McpToolDefinition.OutputKind.GENERIC_JSON, response, null));
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .files();
+        var withPaginationTest = new java.util.LinkedHashMap<>(files);
+        withPaginationTest.put(
+                "src/test/java/com/example/weather/runtime/GeneratedPaginationContractTest.java",
+                paginationContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("pagination"), withPaginationTest);
     }
 
     @Test
@@ -435,6 +517,49 @@ class GeneratedProjectSmokeTest {
         assertProjectBuilds(project, files, null);
     }
 
+    private List<McpToolDefinition> typedOutputTools() {
+        ApiSchema text = new ApiSchema(
+                SchemaType.STRING, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema count = new ApiSchema(
+                SchemaType.INTEGER, "int64", false, List.of(), BigDecimal.ZERO, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema city = objectSchema(Map.of("city-name", text), List.of("city-name"));
+        ApiSchema provider = objectSchema(Map.of("payload", city, "total", count), List.of("payload", "total"));
+        ApiSchema page = objectSchema(Map.of("totalCount", count), List.of("totalCount"));
+        ApiSchema normalized = objectSchema(Map.of("data", city, "page", page), List.of("data", "page"));
+        return List.of(
+                typedTool("wholeResponse", "/whole", null, city, city),
+                typedTool("normalizedResponse", "/normalized",
+                        new ResponseNormalizationPolicy("/payload", null, List.of(), null, "/total"),
+                        provider, normalized),
+                typedTool("malformedResponse", "/malformed", null, city, city));
+    }
+
+    private McpToolDefinition typedTool(
+            String operationId,
+            String path,
+            ResponseNormalizationPolicy normalization,
+            ApiSchema providerSchema,
+            ApiSchema resultSchema) {
+        return new McpToolDefinition(
+                operationId,
+                "weather_" + operationId.replaceAll("([A-Z])", "_$1").toLowerCase(java.util.Locale.ROOT),
+                "Get a typed weather response.",
+                List.of(),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), path, List.of(),
+                        false, false, normalization),
+                List.of(),
+                new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, providerSchema, resultSchema));
+    }
+
+    private ApiSchema objectSchema(Map<String, ApiSchema> properties, List<String> required) {
+        return new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, properties, required, null, true, List.of());
+    }
+
     private void assertProjectBuilds(
             Path project,
             Map<String, byte[]> files,
@@ -445,10 +570,12 @@ class GeneratedProjectSmokeTest {
             Files.createDirectories(target.getParent());
             Files.write(target, entry.getValue());
         }
-        assertTrue(project.resolve("gradlew").toFile().setExecutable(true));
+        if (!isWindows()) {
+            assertTrue(project.resolve("gradlew").toFile().setExecutable(true));
+        }
 
         List<String> command = new java.util.ArrayList<>(List.of(
-                "./gradlew", "test", "--no-daemon", "--non-interactive"));
+                gradleWrapper(project).toString(), "test", "--no-daemon", "--non-interactive"));
         if (targetJavaHome != null) {
             command.add("-Dorg.gradle.java.installations.auto-detect=false");
             command.add("-Dorg.gradle.java.installations.auto-download=false");
@@ -497,6 +624,97 @@ class GeneratedProjectSmokeTest {
                 observabilityRuntimeTest(profile.id()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         addTelemetryTestDependency(files);
         return files;
+    }
+
+    private String typedOutputContractTest() {
+        return """
+                package com.example.weather.application;
+
+                import static java.nio.charset.StandardCharsets.UTF_8;
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertNull;
+                import static org.junit.jupiter.api.Assertions.assertThrows;
+
+                import com.example.weather.generated.model.NormalizedResponseResult;
+                import com.example.weather.generated.model.WholeResponseResult;
+                import com.example.weather.generated.tool.WeatherMcpTools;
+                import com.sun.net.httpserver.HttpExchange;
+                import com.sun.net.httpserver.HttpServer;
+                import java.io.IOException;
+                import java.net.InetSocketAddress;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.boot.test.context.SpringBootTest;
+                import org.springframework.test.context.DynamicPropertyRegistry;
+                import org.springframework.test.context.DynamicPropertySource;
+                import tools.jackson.databind.json.JsonMapper;
+
+                @SpringBootTest(properties = {
+                        "provider.response-max-bytes=1024",
+                        "provider.connect-timeout-millis=1000",
+                        "provider.read-timeout-millis=1000",
+                        "provider.total-timeout-millis=1000"
+                })
+                class GeneratedTypedOutputContractTest {
+                    private static HttpServer server;
+
+                    @Autowired WeatherMcpTools tools;
+                    @Autowired JsonMapper jsonMapper;
+
+                    @DynamicPropertySource
+                    static void provider(DynamicPropertyRegistry registry) {
+                        try {
+                            server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                            server.createContext("/whole", exchange -> respond(
+                                    exchange, "{\\\"city-name\\\":\\\"Seoul\\\"}"));
+                            server.createContext("/normalized", exchange -> respond(
+                                    exchange, "{\\\"payload\\\":{\\\"city-name\\\":\\\"Busan\\\"},\\\"total\\\":1}"));
+                            server.createContext("/malformed", exchange -> respond(
+                                    exchange, "{\\\"city-name\\\":{\\\"private\\\":\\\"raw-private-marker\\\"}}"));
+                            server.start();
+                        } catch (IOException failure) {
+                            throw new IllegalStateException("Test provider failed to start", failure);
+                        }
+                        registry.add("provider.base-url",
+                                () -> "http://127.0.0.1:" + server.getAddress().getPort());
+                    }
+
+                    @Test
+                    void returnsTypedWholeAndNormalizedResultsWithoutChangingJsonShape() throws Exception {
+                        WholeResponseResult whole = tools.wholeResponse();
+                        NormalizedResponseResult normalized = tools.normalizedResponse();
+
+                        assertEquals("Seoul", whole.cityName());
+                        assertEquals("Busan", normalized.data().cityName());
+                        assertEquals(1L, normalized.page().totalCount());
+                        assertEquals("{\\\"city-name\\\":\\\"Seoul\\\"}", jsonMapper.writeValueAsString(whole));
+                        assertEquals("{\\\"data\\\":{\\\"city-name\\\":\\\"Busan\\\"},\\\"page\\\":{\\\"totalCount\\\":1}}",
+                                jsonMapper.writeValueAsString(normalized));
+
+                        IllegalStateException failure = assertThrows(
+                                IllegalStateException.class, () -> tools.malformedResponse());
+                        assertEquals("Generated Tool result conversion failed", failure.getMessage());
+                        assertNull(failure.getCause());
+                    }
+
+                    private static void respond(HttpExchange exchange, String json) throws IOException {
+                        byte[] body = json.getBytes(UTF_8);
+                        exchange.getResponseHeaders().set("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(200, body.length);
+                        try (var output = exchange.getResponseBody()) {
+                            output.write(body);
+                        }
+                    }
+
+                    @AfterAll
+                    static void stopProvider() {
+                        if (server != null) {
+                            server.stop(0);
+                        }
+                    }
+                }
+                """;
     }
 
     private void addTelemetryTestDependency(Map<String, byte[]> files) {
@@ -824,8 +1042,20 @@ class GeneratedProjectSmokeTest {
         String configured = System.getenv(environmentVariable);
         assertTrue(configured != null && !configured.isBlank(), environmentVariable + " must be configured");
         Path javaHome = Path.of(configured).toAbsolutePath().normalize();
-        assertTrue(Files.isRegularFile(javaHome.resolve("bin/java")), environmentVariable);
+        assertTrue(Files.isRegularFile(javaExecutable(javaHome)), environmentVariable);
         return javaHome;
+    }
+
+    private Path gradleWrapper(Path project) {
+        return project.resolve(isWindows() ? "gradlew.bat" : "gradlew");
+    }
+
+    private Path javaExecutable(Path javaHome) {
+        return javaHome.resolve(isWindows() ? "bin/java.exe" : "bin/java");
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).startsWith("windows");
     }
 
     private String telemetryExecutionContractTest() {
@@ -1516,6 +1746,493 @@ class GeneratedProjectSmokeTest {
                 }
                 """;
     }
+
+    private String paginationContractTest() {
+        return """
+                package com.example.weather.runtime;
+
+                import com.example.weather.generated.metadata.WeatherOperations;
+                import com.sun.net.httpserver.HttpExchange;
+                import com.sun.net.httpserver.HttpServer;
+                import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+                import io.micrometer.observation.ObservationRegistry;
+                import io.micrometer.tracing.Tracer;
+                import java.io.IOException;
+                import java.math.BigInteger;
+                import java.net.InetAddress;
+                import java.net.InetSocketAddress;
+                import java.nio.charset.StandardCharsets;
+                import java.util.ArrayList;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.concurrent.atomic.AtomicInteger;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.BeforeAll;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.mock.env.MockEnvironment;
+                import org.springframework.web.client.RestClient;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertThrows;
+
+                class GeneratedPaginationContractTest {
+                    private static final AtomicInteger ATTEMPTS = new AtomicInteger();
+                    private static HttpServer server;
+                    private static String baseUrl;
+
+                    @BeforeAll
+                    static void start() throws Exception {
+                        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+                        server.createContext("/forecast", GeneratedPaginationContractTest::handle);
+                        server.start();
+                        baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+                    }
+
+                    @AfterAll
+                    static void stop() {
+                        if (server != null) {
+                            server.stop(0);
+                        }
+                    }
+
+                    @Test
+                    void retriesOnePageAndAggregatesTheExactCursorJourney() {
+                        FakeTime time = new FakeTime();
+                        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+                        OpenApiOperationExecutor executor = executor(meters, time);
+                        try {
+                            tools.jackson.databind.JsonNode result;
+                            try {
+                                result = executor.execute(
+                                        WeatherOperations.GET_FORECAST, Map.of("nx", 60, "ny", 127));
+                            } catch (ProviderErrorException failure) {
+                                throw new AssertionError("pagination outcome=" + failure.error().category()
+                                        + "/" + failure.error().httpStatus() + ", attempts=" + ATTEMPTS.get()
+                                        + ", interrupted=" + Thread.currentThread().isInterrupted(), failure);
+                            }
+                            assertEquals("{\\\"items\\\":[{\\\"id\\\":1},{\\\"id\\\":2}],\\\"next\\\":null}", result.toString());
+                            assertEquals(3, ATTEMPTS.get());
+                            assertEquals(List.of(1L), time.sleeps);
+                            assertEquals(3.0, meters.find("gen2spring.runtime.provider.request").timers()
+                                    .stream()
+                                    .mapToDouble(io.micrometer.core.instrument.Timer::count)
+                                    .sum());
+                        } finally {
+                            executor.shutdown();
+                        }
+                    }
+
+                    @Test
+                    void rejectsRepeatedTokensWrongShapesAndAggregateBounds() {
+                        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+                        PageAccumulator repeated = new PageAccumulator(
+                                mapper, new PaginationPolicy("cursor", "first", "/items", "/next", 4, 10));
+                        repeated.append(json("{'items':[{'id':1}],'next':'second'}"));
+                        assertThrows(PageProtocolException.class,
+                                () -> repeated.append(json("{'items':[{'id':2}],'next':'second'}")));
+
+                        PageAccumulator wrong = new PageAccumulator(
+                                mapper, new PaginationPolicy("cursor", null, "/items", "/next", 4, 10));
+                        assertThrows(PageProtocolException.class,
+                                () -> wrong.append(json("{'items':{},'next':null}")));
+
+                        PageAccumulator maximum = new PageAccumulator(
+                                mapper, new PaginationPolicy("cursor", null, "/items", "/next", 4, 1));
+                        assertThrows(PageResourceException.class,
+                                () -> maximum.append(json("{'items':[1],'next':'second'}")));
+
+                        PageAccumulator integer = new PageAccumulator(
+                                mapper, new PaginationPolicy("cursor", BigInteger.ONE, "/items", "/next", 4, 10));
+                        assertEquals("2", integer.append(json("{'items':[1],'next':2}")).nextValue());
+
+                        String large = "x".repeat(600_000);
+                        PageAccumulator bytes = new PageAccumulator(
+                                mapper, new PaginationPolicy("cursor", null, "/items", "/next", 4, 10));
+                        bytes.append(json("{'items':['" + large + "'],'next':'second'}"));
+                        assertThrows(PageResourceException.class,
+                                () -> bytes.append(json("{'items':['" + large + "'],'next':null}")));
+
+                        PageAccumulator oversizedPage = new PageAccumulator(
+                                mapper, new PaginationPolicy("cursor", null, "/items", "/next", 4, 10));
+                        oversizedPage.append(json("{'items':[1],'next':'second'}"));
+                        assertThrows(PageResourceException.class,
+                                () -> oversizedPage.append(json(
+                                        "{'items':[2],'next':null,'metadata':'" + "x".repeat(1_048_576) + "'}")));
+                    }
+
+                    private static OpenApiOperationExecutor executor(SimpleMeterRegistry meters, FakeTime time) {
+                        MockEnvironment environment = new MockEnvironment()
+                                .withProperty("provider.base-url", baseUrl)
+                                .withProperty("provider.connect-timeout-millis", "1000")
+                                .withProperty("provider.read-timeout-millis", "1000")
+                                .withProperty("provider.total-timeout-millis", "5000")
+                                .withProperty("provider.response-max-bytes", "1048576")
+                                .withProperty("provider.secrets.service-key", "test-service-key")
+                                .withProperty("provider.max-concurrent-requests", "2")
+                                .withProperty("provider.max-queued-requests", "2");
+                        RuntimeTelemetry telemetry = new RuntimeTelemetry(
+                                ObservationRegistry.NOOP, meters, Tracer.NOOP);
+                        return new OpenApiOperationExecutor(
+                                RestClient.builder(), environment, telemetry, time, time);
+                    }
+
+                    private static void handle(HttpExchange exchange) throws IOException {
+                        int attempt = ATTEMPTS.incrementAndGet();
+                        String query = exchange.getRequestURI().getRawQuery();
+                        boolean base = query != null && query.contains("nx=60") && query.contains("ny=127");
+                        if (!base || attempt == 1 && !query.contains("cursor=first")
+                                || attempt >= 2 && !query.contains("cursor=second")) {
+                            respond(exchange, 400, null, "{'error':'query'}");
+                            return;
+                        }
+                        if (attempt == 1) {
+                            respond(exchange, 200, null, "{'items':[{'id':1}],'next':'second'}");
+                        } else if (attempt == 2) {
+                            respond(exchange, 503, "0", "{'retryable':true}");
+                        } else {
+                            respond(exchange, 200, null, "{'items':[{'id':2}],'next':null}");
+                        }
+                    }
+
+                    private static void respond(
+                            HttpExchange exchange, int status, String retryAfter, String body) throws IOException {
+                        byte[] bytes = body.replace('\\'', '"').getBytes(StandardCharsets.UTF_8);
+                        try (exchange) {
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            if (retryAfter != null) {
+                                exchange.getResponseHeaders().set("Retry-After", retryAfter);
+                            }
+                            exchange.sendResponseHeaders(status, bytes.length);
+                            exchange.getResponseBody().write(bytes);
+                        }
+                    }
+
+                    private static byte[] json(String value) {
+                        return value.replace('\\'', '"').getBytes(StandardCharsets.UTF_8);
+                    }
+
+                    private static final class FakeTime implements RetryClock, RetrySleeper {
+                        private final List<Long> sleeps = new ArrayList<>();
+                        private long nanos;
+
+                        @Override
+                        public long nanoTime() {
+                            return nanos;
+                        }
+
+                        @Override
+                        public void sleep(long millis) {
+                            sleeps.add(millis);
+                            nanos += java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+                        }
+                    }
+                }
+                """;
+    }
+
+    private String retryContractTest() {
+        return """
+                package com.example.weather.runtime;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
+                import static org.junit.jupiter.api.Assertions.assertSame;
+                import static org.junit.jupiter.api.Assertions.assertThrows;
+                import static org.junit.jupiter.api.Assertions.assertTrue;
+
+                import com.sun.net.httpserver.HttpExchange;
+                import com.sun.net.httpserver.HttpServer;
+                import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+                import io.micrometer.observation.ObservationRegistry;
+                import io.micrometer.tracing.Tracer;
+                import java.io.IOException;
+                import java.net.InetSocketAddress;
+                import java.nio.charset.StandardCharsets;
+                import java.util.ArrayList;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.concurrent.ExecutorService;
+                import java.util.concurrent.Executors;
+                import java.util.concurrent.TimeUnit;
+                import java.util.concurrent.atomic.AtomicInteger;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.BeforeAll;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.mock.env.MockEnvironment;
+                import org.springframework.web.client.RestClient;
+
+                class GeneratedRetryContractTest {
+                    private static final AtomicInteger STATUS_ATTEMPTS = new AtomicInteger();
+                    private static final AtomicInteger SMALLER_ATTEMPTS = new AtomicInteger();
+                    private static final AtomicInteger MAX_ATTEMPTS = new AtomicInteger();
+                    private static final AtomicInteger NETWORK_ATTEMPTS = new AtomicInteger();
+                    private static final AtomicInteger DEADLINE_ATTEMPTS = new AtomicInteger();
+                    private static HttpServer server;
+                    private static ExecutorService serverExecutor;
+                    private static String baseUrl;
+
+                    @BeforeAll
+                    static void startProvider() throws Exception {
+                        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                        serverExecutor = Executors.newCachedThreadPool();
+                        server.setExecutor(serverExecutor);
+                        server.createContext("/status", exchange -> {
+                            int attempt = STATUS_ATTEMPTS.incrementAndGet();
+                            if (attempt == 1) {
+                                respond(exchange, 429, "1", "{'private':'retry-after-private'}");
+                            } else if (attempt == 2) {
+                                respond(exchange, 503, "invalid-private", "{}");
+                            } else if (attempt == 3) {
+                                respond(exchange, 503, "999999999999999999999", "{}");
+                            } else {
+                                respond(exchange, 200, null, "{'ok':true}");
+                            }
+                        });
+                        server.createContext("/smaller", exchange -> {
+                            if (SMALLER_ATTEMPTS.incrementAndGet() == 1) {
+                                respond(exchange, 429, "0", "{}");
+                            } else {
+                                respond(exchange, 200, null, "{'ok':true}");
+                            }
+                        });
+                        server.createContext("/unconfigured", exchange ->
+                                respond(exchange, 500, null, "{'private':'unconfigured-private'}"));
+                        server.createContext("/max", exchange -> {
+                            MAX_ATTEMPTS.incrementAndGet();
+                            respond(exchange, 503, null, "{'private':'max-private'}");
+                        });
+                        server.createContext("/network", exchange -> {
+                            if (NETWORK_ATTEMPTS.incrementAndGet() == 1) {
+                                truncateResponse(exchange);
+                            } else {
+                                respond(exchange, 200, null, "{'ok':true}");
+                            }
+                        });
+                        server.createContext("/deadline", exchange -> {
+                            DEADLINE_ATTEMPTS.incrementAndGet();
+                            respond(exchange, 503, null, "{}");
+                        });
+                        server.createContext("/interrupt-retry", exchange ->
+                                respond(exchange, 429, null, "{}"));
+                        server.createContext("/fatal-retry", exchange ->
+                                respond(exchange, 503, null, "{}"));
+                        server.start();
+                        baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+                    }
+
+                    @Test
+                    void retriesConfiguredStatusesAndHonorsBoundedRetryAfter() {
+                        FakeTime time = new FakeTime();
+                        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+                        OpenApiOperationExecutor executor = executor(5_000, meters, time, time);
+                        try {
+                            assertTrue(executor.execute(operation(
+                                    "/status", new RetryPolicy(
+                                            List.of(429, 503), false, 3, 100, 1_000, true)), Map.of())
+                                    .get("ok").booleanValue());
+                            assertEquals(List.of(1_000L, 200L, 400L), time.sleeps);
+                            assertEquals(4, STATUS_ATTEMPTS.get());
+                            assertEquals(4.0, meters.find("gen2spring.runtime.provider.request").timers()
+                                    .stream()
+                                    .mapToDouble(io.micrometer.core.instrument.Timer::count)
+                                    .sum());
+                        } finally {
+                            executor.shutdown();
+                        }
+
+                        FakeTime smaller = new FakeTime();
+                        OpenApiOperationExecutor smallerExecutor = executor(
+                                5_000, new SimpleMeterRegistry(), smaller, smaller);
+                        try {
+                            assertTrue(smallerExecutor.execute(operation(
+                                    "/smaller", new RetryPolicy(
+                                            List.of(429), false, 1, 100, 1_000, true)), Map.of())
+                                    .get("ok").booleanValue());
+                            assertEquals(List.of(100L), smaller.sleeps);
+                        } finally {
+                            smallerExecutor.shutdown();
+                        }
+                    }
+
+                    @Test
+                    void retriesNetworkFailuresButNotUnconfiguredStatuses() {
+                        FakeTime network = new FakeTime();
+                        OpenApiOperationExecutor networkExecutor = executor(
+                                5_000, new SimpleMeterRegistry(), network, network);
+                        try {
+                            assertTrue(networkExecutor.execute(operation(
+                                    "/network", new RetryPolicy(
+                                            List.of(), true, 1, 10, 10, false)), Map.of())
+                                    .get("ok").booleanValue());
+                            assertEquals(2, NETWORK_ATTEMPTS.get());
+                            assertEquals(List.of(10L), network.sleeps);
+                        } finally {
+                            networkExecutor.shutdown();
+                        }
+
+                        FakeTime unconfigured = new FakeTime();
+                        OpenApiOperationExecutor unconfiguredExecutor = executor(
+                                5_000, new SimpleMeterRegistry(), unconfigured, unconfigured);
+                        try {
+                            ProviderErrorException failure = assertThrows(
+                                    ProviderErrorException.class,
+                                    () -> unconfiguredExecutor.execute(operation(
+                                            "/unconfigured", new RetryPolicy(
+                                                    List.of(429), false, 3, 10, 10, false)), Map.of()));
+                            assertEquals("UPSTREAM_SERVER",
+                                    failure.error().payload().at("/error/category").textValue());
+                            assertTrue(unconfigured.sleeps.isEmpty());
+                            assertFalse(failure.error().payload().toString().contains("unconfigured-private"));
+                        } finally {
+                            unconfiguredExecutor.shutdown();
+                        }
+                    }
+
+                    @Test
+                    void stopsAtMaxRetriesAndAtTheSharedDeadline() {
+                        FakeTime max = new FakeTime();
+                        OpenApiOperationExecutor maxExecutor = executor(
+                                5_000, new SimpleMeterRegistry(), max, max);
+                        try {
+                            ProviderErrorException failure = assertThrows(
+                                    ProviderErrorException.class,
+                                    () -> maxExecutor.execute(operation(
+                                            "/max", new RetryPolicy(
+                                                    List.of(503), false, 3, 100, 1_000, false)), Map.of()));
+                            assertEquals("UPSTREAM_SERVER",
+                                    failure.error().payload().at("/error/category").textValue());
+                            assertEquals(4, MAX_ATTEMPTS.get());
+                            assertEquals(List.of(100L, 200L, 400L), max.sleeps);
+                        } finally {
+                            maxExecutor.shutdown();
+                        }
+
+                        FakeTime deadline = new FakeTime();
+                        OpenApiOperationExecutor deadlineExecutor = executor(
+                                250, new SimpleMeterRegistry(), deadline, deadline);
+                        try {
+                            ProviderErrorException failure = assertThrows(
+                                    ProviderErrorException.class,
+                                    () -> deadlineExecutor.execute(operation(
+                                            "/deadline", new RetryPolicy(
+                                                    List.of(503), false, 3, 200, 1_000, false)), Map.of()));
+                            assertEquals("UPSTREAM_TIMEOUT",
+                                    failure.error().payload().at("/error/category").textValue());
+                            assertEquals(2, DEADLINE_ATTEMPTS.get());
+                            assertEquals(List.of(200L), deadline.sleeps);
+                        } finally {
+                            deadlineExecutor.shutdown();
+                        }
+                    }
+
+                    @Test
+                    void preservesInterruptAndFatalErrorFromTheSleeper() {
+                        FakeTime clock = new FakeTime();
+                        OpenApiOperationExecutor interrupted = executor(
+                                5_000, new SimpleMeterRegistry(), clock,
+                                millis -> { throw new InterruptedException("private-interrupt"); });
+                        try {
+                            ProviderErrorException failure = assertThrows(
+                                    ProviderErrorException.class,
+                                    () -> interrupted.execute(operation(
+                                            "/interrupt-retry", new RetryPolicy(
+                                                    List.of(429), false, 1, 10, 10, false)), Map.of()));
+                            assertEquals("LOCAL_RESOURCE",
+                                    failure.error().payload().at("/error/category").textValue());
+                            assertTrue(Thread.currentThread().isInterrupted());
+                        } finally {
+                            Thread.interrupted();
+                            interrupted.shutdown();
+                        }
+
+                        AssertionError fatal = new AssertionError("private-fatal-retry");
+                        OpenApiOperationExecutor fatalExecutor = executor(
+                                5_000, new SimpleMeterRegistry(), new FakeTime(), millis -> { throw fatal; });
+                        try {
+                            AssertionError actual = assertThrows(AssertionError.class,
+                                    () -> fatalExecutor.execute(operation(
+                                            "/fatal-retry", new RetryPolicy(
+                                                    List.of(503), false, 1, 10, 10, false)), Map.of()));
+                            assertSame(fatal, actual);
+                        } finally {
+                            fatalExecutor.shutdown();
+                        }
+                    }
+
+                    private static OperationDefinition operation(String path, RetryPolicy retry) {
+                        return new OperationDefinition(
+                                "getForecast", "GET", path, List.of(), List.of(), false, false, null, retry);
+                    }
+
+                    private static OpenApiOperationExecutor executor(
+                            long totalTimeoutMillis,
+                            SimpleMeterRegistry meters,
+                            RetryClock clock,
+                            RetrySleeper sleeper) {
+                        MockEnvironment environment = new MockEnvironment()
+                                .withProperty("provider.base-url", baseUrl)
+                                .withProperty("provider.response-max-bytes", "1024")
+                                .withProperty("provider.connect-timeout-millis", "1000")
+                                .withProperty("provider.read-timeout-millis", "1000")
+                                .withProperty("provider.total-timeout-millis", String.valueOf(totalTimeoutMillis))
+                                .withProperty("provider.max-concurrent-requests", "2")
+                                .withProperty("provider.max-queued-requests", "2");
+                        RuntimeTelemetry telemetry = new RuntimeTelemetry(
+                                ObservationRegistry.NOOP, meters, Tracer.NOOP);
+                        return new OpenApiOperationExecutor(
+                                RestClient.builder(), environment, telemetry, clock, sleeper);
+                    }
+
+                    private static void respond(
+                            HttpExchange exchange, int status, String retryAfter, String body) throws IOException {
+                        byte[] bytes = body.replace('\\'', '"').getBytes(StandardCharsets.UTF_8);
+                        try (exchange) {
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            if (retryAfter != null) {
+                                exchange.getResponseHeaders().set("Retry-After", retryAfter);
+                            }
+                            exchange.sendResponseHeaders(status, bytes.length);
+                            exchange.getResponseBody().write(bytes);
+                        }
+                    }
+
+                    private static void truncateResponse(HttpExchange exchange) throws IOException {
+                        try (exchange) {
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(200, 8);
+                            exchange.getResponseBody().write("{".getBytes(StandardCharsets.UTF_8));
+                        }
+                    }
+
+                    private static final class FakeTime implements RetryClock, RetrySleeper {
+                        private final List<Long> sleeps = new ArrayList<>();
+                        private long nanos;
+
+                        @Override
+                        public long nanoTime() {
+                            return nanos;
+                        }
+
+                        @Override
+                        public void sleep(long millis) {
+                            sleeps.add(millis);
+                            nanos += TimeUnit.MILLISECONDS.toNanos(millis);
+                        }
+                    }
+
+                    @AfterAll
+                    static void stopProvider() {
+                        if (server != null) {
+                            server.stop(0);
+                        }
+                        if (serverExecutor != null) {
+                            serverExecutor.shutdownNow();
+                        }
+                    }
+                }
+                """;
+    }
+
 
     private String executorFailureContractTest() {
         return """

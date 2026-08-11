@@ -17,7 +17,18 @@ import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
 import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
 import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
+import java.net.URI;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.policy.ToolModelFactory;
 import java.nio.file.Files;
@@ -78,6 +89,61 @@ class GenerationPreviewTest {
                 preview.tools().getFirst().inputSchema().get("properties");
         assertThrows(UnsupportedOperationException.class,
                 () -> properties.put("late", Map.of()));
+        assertEquals("GENERIC_JSON", preview.tools().getFirst().output().mode());
+        assertEquals(null, preview.tools().getFirst().output().schemaChecksum());
+        assertEquals(null, preview.tools().getFirst().retry());
+        assertEquals(null, preview.tools().getFirst().pagination());
+    }
+
+    @Test
+    void projectsTypedOutputRetryAndPaginationFromFinalToolIrDeterministically() throws Exception {
+        McpToolDefinition tool = policyTool();
+        Map<String, Object> inputSchema = Map.of(
+                "type", "object", "properties", Map.of(), "required", List.of());
+
+        GenerationPreview.Tool first = GenerationPreview.Tool.from(tool, inputSchema);
+        GenerationPreview.Tool second = GenerationPreview.Tool.from(tool, inputSchema);
+
+        String canonicalSchema = """
+                {"properties":{"items":{"items":{"properties":{"id":{"format":"int64","type":"integer"}},"required":["id"],"type":"object"},"type":"array"},"next":{"nullable":true,"type":"string"}},"required":["items"],"type":"object"}
+                """.strip();
+        String checksum = HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(canonicalSchema.getBytes(UTF_8)));
+        assertEquals(new GenerationPreview.Output("TYPED", checksum), first.output());
+        assertEquals(new GenerationPreview.Retry(
+                List.of(429, 503), true, 2, 100, 1_000, true), first.retry());
+        assertEquals(new GenerationPreview.Pagination(
+                "cursor", "/items", "/next", 10, 1_000), first.pagination());
+        assertEquals(first, second);
+        assertFalse(first.toString().contains("initial-private-cursor"));
+    }
+
+    private McpToolDefinition policyTool() {
+        ApiSchema id = new ApiSchema(
+                SchemaType.INTEGER, "int64", false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema item = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, Map.of("id", id), List.of("id"), null, true, List.of());
+        ApiSchema items = new ApiSchema(
+                SchemaType.ARRAY, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), item, true, List.of());
+        ApiSchema next = new ApiSchema(
+                SchemaType.STRING, null, true, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema output = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, Map.of("next", next, "items", items),
+                List.of("items"), null, true, List.of());
+        return new McpToolDefinition(
+                "getForecast", "weather_get_forecast", "Get forecast", List.of(),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://weather.example.test"), "/forecast", List.of(),
+                        false, false, null,
+                        new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true),
+                        new PaginationPolicy(
+                                "cursor", "initial-private-cursor", "/items", "/next", 10, 1_000)),
+                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, output, output));
     }
 
     private static String specification() {

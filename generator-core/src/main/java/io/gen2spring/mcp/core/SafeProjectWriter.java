@@ -12,7 +12,6 @@ import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -118,11 +117,7 @@ public final class SafeProjectWriter {
 
     private ParentIdentity parentIdentity(Path parent) {
         try {
-            BasicFileAttributes attributes = Files.readAttributes(parent, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (attributes.fileKey() == null) {
-                throw failure("The output filesystem does not expose stable file keys");
-            }
-            return new ParentIdentity(parent.toRealPath(), attributes.fileKey());
+            return new ParentIdentity(StablePathIdentity.capture(parent));
         } catch (GeneratorException exception) {
             throw exception;
         } catch (IOException exception) {
@@ -133,8 +128,13 @@ public final class SafeProjectWriter {
 
     private void verifyParentIdentity(Path parent, ParentIdentity expected) {
         rejectExistingSymbolicLinkAncestors(parent);
-        if (!expected.equals(parentIdentity(parent))) {
-            throw failure("The project output parent changed during generation");
+        try {
+            if (!expected.identity().matches(parent)) {
+                throw failure("The project output parent changed during generation");
+            }
+        } catch (IOException exception) {
+            throw GeneratorException.system(
+                    SOURCE_GENERATION_FAILED, STAGE, "The project output parent could not be verified", exception);
         }
     }
 
@@ -294,10 +294,9 @@ public final class SafeProjectWriter {
         }
     }
 
-    private void verifyFileKey(Path path, Object expectedKey) {
+    private void verifyIdentity(Path path, StablePathIdentity expected) {
         try {
-            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!expectedKey.equals(attributes.fileKey())) {
+            if (!expected.matches(path)) {
                 throw failure("Owned generation path identity changed");
             }
         } catch (GeneratorException exception) {
@@ -320,7 +319,7 @@ public final class SafeProjectWriter {
     private final class OwnedTree {
         private final Path parent;
         private final ParentIdentity parentIdentity;
-        private final Map<Path, Object> fileKeys = new LinkedHashMap<>();
+        private final Map<Path, StablePathIdentity> identities = new LinkedHashMap<>();
 
         private OwnedTree(Path parent, ParentIdentity parentIdentity) {
             this.parent = parent;
@@ -329,11 +328,7 @@ public final class SafeProjectWriter {
 
         private void record(Path path) {
             try {
-                Object fileKey = Files.readAttributes(path, BasicFileAttributes.class, NOFOLLOW_LINKS).fileKey();
-                if (fileKey == null) {
-                    throw failure("The output filesystem does not expose stable file keys");
-                }
-                fileKeys.put(path, fileKey);
+                identities.put(path, StablePathIdentity.capture(path));
             } catch (GeneratorException exception) {
                 throw exception;
             } catch (IOException exception) {
@@ -343,15 +338,15 @@ public final class SafeProjectWriter {
         }
 
         private void verify(Path path) {
-            Object expected = fileKeys.get(path);
+            StablePathIdentity expected = identities.get(path);
             if (expected == null) {
                 throw failure("Generation cleanup encountered an unowned path");
             }
-            verifyFileKey(path, expected);
+            verifyIdentity(path, expected);
         }
 
         private List<Path> pathsInReverseOrder() {
-            return fileKeys.keySet().stream().sorted(Comparator.reverseOrder()).toList();
+            return identities.keySet().stream().sorted(Comparator.reverseOrder()).toList();
         }
 
         private Path parent() {
@@ -365,5 +360,5 @@ public final class SafeProjectWriter {
 
     private record Entry(Path relativePath, String portablePath, byte[] bytes) {}
 
-    private record ParentIdentity(Path realPath, Object fileKey) {}
+    private record ParentIdentity(StablePathIdentity identity) {}
 }
