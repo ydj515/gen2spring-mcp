@@ -18,6 +18,21 @@ final class WebErrorMapper {
             return new WebFailure(400, "SPECIFICATION_NAME_INVALID", "SPEC_STORE",
                     "The specification name is invalid");
         }
+        if (failure instanceof GenerationJobManager.GenerationCapacityException) {
+            return new WebFailure(429, "GENERATION_CAPACITY_EXCEEDED", "JOB_CREATE",
+                    "The generation capacity is exhausted");
+        }
+        if (failure instanceof GenerationJobManager.JobNotFoundException) {
+            return new WebFailure(404, "JOB_NOT_FOUND", "JOB_LOOKUP", "The generation job was not found");
+        }
+        if (failure instanceof GenerationJobManager.JobStateException) {
+            return new WebFailure(409, "JOB_STATE_INVALID", "JOB_DELETE",
+                    "The generation job state does not allow this request");
+        }
+        if (failure instanceof GenerationJobManager.ArtifactUnavailableException) {
+            return new WebFailure(409, "ARTIFACT_UNAVAILABLE", "ARTIFACT_READ",
+                    "The requested artifact is unavailable");
+        }
         if (failure instanceof GenerationConfigurationException exception) {
             return new WebFailure(400, "CONFIGURATION_INVALID", "CONFIG_PARSE", exception.getMessage());
         }

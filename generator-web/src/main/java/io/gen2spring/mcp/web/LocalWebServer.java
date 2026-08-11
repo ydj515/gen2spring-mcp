@@ -30,9 +30,12 @@ public final class LocalWebServer implements AutoCloseable {
     private final HttpServer server;
     private final ThreadPoolExecutor executor;
     private final SpecificationStore specifications;
+    private final GenerationJobManager jobs;
     private final RequestGuard guard;
     private final StaticAssetHandler assets;
     private final PreviewHandler previews;
+    private final JobHandler jobHandler;
+    private final ArtifactHandler artifactHandler;
     private final JsonHttp http;
     private final WebErrorMapper errors = new WebErrorMapper();
     private final String token;
@@ -43,15 +46,19 @@ public final class LocalWebServer implements AutoCloseable {
             int port,
             GeneratorApplication application,
             SpecificationStore specifications,
+            GenerationJobManager jobs,
             ObjectMapper json) {
         if (port < 0 || port > 65535) {
             throw new IllegalArgumentException("Web server port is invalid");
         }
         this.specifications = Objects.requireNonNull(specifications, "specifications");
+        this.jobs = Objects.requireNonNull(jobs, "jobs");
         this.token = token();
         this.http = new JsonHttp(json);
         this.assets = new StaticAssetHandler(token);
         this.previews = new PreviewHandler(application, specifications, http.mapper());
+        this.jobHandler = new JobHandler(application, specifications, jobs, http.mapper());
+        this.artifactHandler = new ArtifactHandler(jobs);
         this.executor = new ThreadPoolExecutor(
                 2,
                 2,
@@ -65,6 +72,7 @@ public final class LocalWebServer implements AutoCloseable {
             this.server = HttpServer.create(new InetSocketAddress(loopback, port), 16);
         } catch (IOException exception) {
             executor.shutdownNow();
+            jobs.close();
             specifications.close();
             throw WebErrorMapper.failure(
                     500, "WEB_BIND_FAILED", "WEB_START", "The local server could not be started");
@@ -105,6 +113,7 @@ public final class LocalWebServer implements AutoCloseable {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         } finally {
+            jobs.close();
             specifications.close();
         }
     }
@@ -159,6 +168,33 @@ public final class LocalWebServer implements AutoCloseable {
             http.sendJson(exchange, 200, previews.preview(specificationId, exchange.getRequestBody()));
             return;
         }
+        String jobSpecificationId = jobSpecificationId(path);
+        if (jobSpecificationId != null) {
+            requireMethod(method, "POST");
+            requireJsonContentType(exchange.getRequestHeaders());
+            http.sendJson(exchange, 202, jobHandler.start(jobSpecificationId, exchange.getRequestBody()));
+            return;
+        }
+        JobRoute jobRoute = jobRoute(path);
+        if (jobRoute != null) {
+            if (jobRoute.artifact() == null && "GET".equals(method)) {
+                http.sendJson(exchange, 200, jobHandler.status(jobRoute.id()));
+                return;
+            }
+            if (jobRoute.artifact() == null && "DELETE".equals(method)) {
+                jobHandler.delete(jobRoute.id());
+                http.sendEmpty(exchange, 204);
+                return;
+            }
+            if (jobRoute.artifact() != null && "GET".equals(method)) {
+                ArtifactHandler.Download download = artifactHandler.download(jobRoute.id(), jobRoute.artifact());
+                exchange.getResponseHeaders().set("Content-Disposition", download.contentDisposition());
+                http.sendBytes(exchange, 200, download.contentType(), download.bytes());
+                return;
+            }
+            throw WebErrorMapper.failure(405, "METHOD_NOT_ALLOWED", "HTTP",
+                    "The request method is not allowed");
+        }
         throw WebErrorMapper.failure(404, "ROUTE_NOT_FOUND", "HTTP", "The route was not found");
     }
 
@@ -170,6 +206,36 @@ public final class LocalWebServer implements AutoCloseable {
         }
         String value = path.substring(prefix.length(), path.length() - suffix.length());
         return value.matches("[a-f0-9]{64}") ? value : null;
+    }
+
+    private String jobSpecificationId(String path) {
+        String prefix = "/api/specifications/";
+        String suffix = "/jobs";
+        if (!path.startsWith(prefix) || !path.endsWith(suffix)) {
+            return null;
+        }
+        String value = path.substring(prefix.length(), path.length() - suffix.length());
+        return value.matches("[a-f0-9]{64}") ? value : null;
+    }
+
+    private JobRoute jobRoute(String path) {
+        String prefix = "/api/jobs/";
+        if (!path.startsWith(prefix)) {
+            return null;
+        }
+        String remainder = path.substring(prefix.length());
+        String[] components = remainder.split("/", -1);
+        if ((components.length != 1 && components.length != 2)
+                || !components[0].matches("[a-f0-9]{64}")) {
+            return null;
+        }
+        if (components.length == 1) {
+            return new JobRoute(components[0], null);
+        }
+        if (!List.of("archive", "manifest", "report").contains(components[1])) {
+            return null;
+        }
+        return new JobRoute(components[0], components[1]);
     }
 
     private void requireMethod(String actual, String expected) {
@@ -244,4 +310,6 @@ public final class LocalWebServer implements AutoCloseable {
             return thread;
         };
     }
+
+    private record JobRoute(String id, String artifact) {}
 }

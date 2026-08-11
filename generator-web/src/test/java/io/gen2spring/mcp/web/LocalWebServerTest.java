@@ -8,17 +8,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.application.GeneratorApplication;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
+import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus;
 import java.io.InputStream;
 import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class LocalWebServerTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final HttpClient client = HttpClient.newHttpClient();
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void servesTheSecureShellProfilesUploadAndPreviewJourney() throws Exception {
@@ -101,6 +114,65 @@ class LocalWebServerTest {
                 () -> WebArguments.parse(new String[] {"--bind", "127.0.0.1"}));
     }
 
+    @Test
+    void servesTheJobStatusArtifactAndDeleteRoutes() throws Exception {
+        GeneratorApplication application = GeneratorApplication.defaults();
+        try (SpecificationStore specifications = new SpecificationStore(tempDir, application.analyzer());
+                GenerationJobManager jobs = new GenerationJobManager(
+                        tempDir,
+                        (specification, request, output, progress) -> {
+                            for (String stage : GenerationProgress.STAGES) {
+                                progress.onProgress(new GenerationProgress(stage, ProgressStatus.RUNNING));
+                                progress.onProgress(new GenerationProgress(stage, ProgressStatus.SUCCESS));
+                            }
+                            Files.createDirectory(output);
+                            Files.writeString(output.resolve("GENERATION_MANIFEST.json"), "{}");
+                            Files.writeString(output.resolve("VALIDATION_REPORT.json"), "{}");
+                            Path archive = Files.writeString(
+                                    output.resolveSibling(output.getFileName() + ".zip"), "zip");
+                            return new GenerationOutcome(
+                                    output, archive, ValidationStatus.VALIDATED, "checksum");
+                        },
+                        Clock.systemUTC(), Duration.ofHours(1), ignored -> {});
+                LocalWebServer server = new LocalWebServer(
+                        0, application, specifications, jobs, new ObjectMapper())) {
+            server.start();
+            JsonNode upload = JSON.readTree(send(
+                    server.uri(), "/api/specifications", "POST", specification(),
+                    server.tokenForTest(), "weather.yaml").body());
+            String specificationId = upload.path("id").textValue();
+
+            HttpResponse<String> accepted = send(
+                    server.uri(), "/api/specifications/" + specificationId + "/jobs",
+                    "POST", configuration(), server.tokenForTest(), null);
+            assertEquals(202, accepted.statusCode(), accepted.body());
+            String jobId = JSON.readTree(accepted.body()).path("id").textValue();
+
+            HttpResponse<String> status;
+            do {
+                status = send(server.uri(), "/api/jobs/" + jobId, "GET", null,
+                        server.tokenForTest(), null);
+            } while (!"VALIDATED".equals(JSON.readTree(status.body()).path("state").textValue()));
+            assertEquals(200, status.statusCode());
+            assertEquals(8, JSON.readTree(status.body()).path("stages").size());
+
+            HttpResponse<String> archive = send(
+                    server.uri(), "/api/jobs/" + jobId + "/archive", "GET", null,
+                    server.tokenForTest(), null);
+            assertEquals(200, archive.statusCode());
+            assertEquals("zip", archive.body());
+            assertEquals("attachment; filename=\"" + jobId + ".zip\"",
+                    archive.headers().firstValue("Content-Disposition").orElseThrow());
+
+            HttpResponse<String> deleted = send(
+                    server.uri(), "/api/jobs/" + jobId, "DELETE", null,
+                    server.tokenForTest(), null);
+            assertEquals(204, deleted.statusCode());
+            assertEquals(404, send(server.uri(), "/api/jobs/" + jobId, "GET", null,
+                    server.tokenForTest(), null).statusCode());
+        }
+    }
+
     private String rawRequest(LocalWebServer server, String host) throws Exception {
         try (Socket socket = new Socket("127.0.0.1", server.address().getPort())) {
             socket.getOutputStream().write(("GET / HTTP/1.1\r\nHost: " + host
@@ -132,6 +204,9 @@ class LocalWebServerTest {
         if ("POST".equals(method)) {
             request.header("Origin", base.toString().replaceAll("/$", ""));
             request.POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body, UTF_8));
+        } else if ("DELETE".equals(method)) {
+            request.header("Origin", base.toString().replaceAll("/$", ""));
+            request.DELETE();
         } else {
             request.GET();
         }

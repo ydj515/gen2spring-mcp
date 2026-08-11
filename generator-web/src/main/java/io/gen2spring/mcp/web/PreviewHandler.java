@@ -57,10 +57,15 @@ final class PreviewHandler {
     }
 
     ObjectNode preview(String specificationId, InputStream body) {
-        SpecificationStore.StoredSpecification stored = specifications.require(specificationId);
-        byte[] configuration = configurationReader.read(body);
-        GenerationPreview preview = application.pipeline().preview(
-                stored.path(), application.configurationParser().parseJson(configuration));
+        SpecificationStore.StoredSpecification stored = specifications.retain(specificationId);
+        GenerationPreview preview;
+        try {
+            byte[] configuration = configurationReader.read(body);
+            preview = application.pipeline().preview(
+                    stored.path(), application.configurationParser().parseJson(configuration));
+        } finally {
+            specifications.release(specificationId);
+        }
 
         ObjectNode root = json.createObjectNode();
         root.set("profile", profile(preview.profile()));

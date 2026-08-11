@@ -10,6 +10,8 @@ import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,6 +43,25 @@ class SpecificationStoreTest {
                 store.store("../private.yaml", new ByteArrayInputStream(specification().getBytes(UTF_8)));
             }
         });
+    }
+
+    @Test
+    void evictsOnlyTheOldestUnpinnedSpecificationAtTheRetainedBound() {
+        try (SpecificationStore store = new SpecificationStore(tempDir, new SwaggerOpenApiAnalyzer())) {
+            List<String> ids = new ArrayList<>();
+            for (int index = 0; index < 8; index++) {
+                ids.add(store.store("weather.yaml", new ByteArrayInputStream(
+                        specification().getBytes(UTF_8))).id());
+            }
+            store.retain(ids.getFirst());
+            String ninth = store.store("weather.yaml", new ByteArrayInputStream(
+                    specification().getBytes(UTF_8))).id();
+
+            assertEquals(ids.getFirst(), store.require(ids.getFirst()).id());
+            assertEquals(ninth, store.require(ninth).id());
+            assertThrows(WebErrorMapper.WebException.class, () -> store.require(ids.get(1)));
+            store.release(ids.getFirst());
+        }
     }
 
     private String specification() {

@@ -27,7 +27,8 @@ final class SpecificationStore implements AutoCloseable {
     private final Path root;
     private final SpecificationAnalyzer analyzer;
     private final BoundedBodyReader bodyReader = new BoundedBodyReader(MAX_SPECIFICATION_BYTES);
-    private final Map<String, StoredSpecification> specifications = new LinkedHashMap<>();
+    private final Map<String, StoredEntry> specifications = new LinkedHashMap<>();
+    private long accessSequence;
     private boolean closed;
 
     SpecificationStore(Path temporaryParent, SpecificationAnalyzer analyzer) {
@@ -54,11 +55,7 @@ final class SpecificationStore implements AutoCloseable {
                 || name.contains("/") || name.contains("\\") || name.contains("..")) {
             throw new InvalidSpecificationNameException();
         }
-        if (specifications.size() >= MAX_RETAINED_SPECIFICATIONS) {
-            throw WebErrorMapper.failure(
-                    429, "SPECIFICATION_CAPACITY_EXCEEDED", "SPEC_STORE",
-                    "The specification capacity is exhausted");
-        }
+        evictForCapacity();
 
         byte[] bytes = bodyReader.read(input);
         String identifier = identifier();
@@ -78,7 +75,7 @@ final class SpecificationStore implements AutoCloseable {
             SpecificationAnalyzer.AnalysisResult analysis = analyzer.analyze(path, MAX_SPECIFICATION_BYTES);
             StoredSpecification stored = new StoredSpecification(
                     identifier, path, attributes.fileKey(), attributes.size(), analysis);
-            specifications.put(identifier, stored);
+            specifications.put(identifier, new StoredEntry(stored, ++accessSequence));
             published = true;
             return stored;
         } catch (RuntimeException exception) {
@@ -100,12 +97,27 @@ final class SpecificationStore implements AutoCloseable {
             throw WebErrorMapper.failure(404, "SPECIFICATION_NOT_FOUND", "SPEC_STORE",
                     "The specification was not found");
         }
-        StoredSpecification stored = specifications.get(identifier);
-        if (stored == null || !stable(stored)) {
+        StoredEntry entry = specifications.get(identifier);
+        if (entry == null || !stable(entry.stored)) {
             throw WebErrorMapper.failure(404, "SPECIFICATION_NOT_FOUND", "SPEC_STORE",
                     "The specification was not found");
         }
+        entry.lastAccess = ++accessSequence;
+        return entry.stored;
+    }
+
+    synchronized StoredSpecification retain(String identifier) {
+        StoredSpecification stored = require(identifier);
+        specifications.get(identifier).pins++;
         return stored;
+    }
+
+    synchronized void release(String identifier) {
+        StoredEntry entry = specifications.get(identifier);
+        if (entry != null && entry.pins > 0) {
+            entry.pins--;
+            entry.lastAccess = ++accessSequence;
+        }
     }
 
     Path root() {
@@ -118,7 +130,7 @@ final class SpecificationStore implements AutoCloseable {
             return;
         }
         closed = true;
-        specifications.values().forEach(stored -> deleteOwned(stored.path()));
+        specifications.values().forEach(entry -> deleteOwned(entry.stored.path()));
         specifications.clear();
         deleteOwned(root);
     }
@@ -150,6 +162,20 @@ final class SpecificationStore implements AutoCloseable {
             candidate = java.util.HexFormat.of().formatHex(bytes);
         } while (specifications.containsKey(candidate));
         return candidate;
+    }
+
+    private void evictForCapacity() {
+        if (specifications.size() < MAX_RETAINED_SPECIFICATIONS) {
+            return;
+        }
+        Map.Entry<String, StoredEntry> oldest = specifications.entrySet().stream()
+                .filter(entry -> entry.getValue().pins == 0)
+                .min(java.util.Comparator.comparingLong(entry -> entry.getValue().lastAccess))
+                .orElseThrow(() -> WebErrorMapper.failure(
+                        429, "SPECIFICATION_CAPACITY_EXCEEDED", "SPEC_STORE",
+                        "The specification capacity is exhausted"));
+        specifications.remove(oldest.getKey());
+        deleteOwned(oldest.getValue().stored.path());
     }
 
     private String suffix(String name) {
@@ -201,6 +227,17 @@ final class SpecificationStore implements AutoCloseable {
     static final class InvalidSpecificationNameException extends IllegalArgumentException {
         InvalidSpecificationNameException() {
             super("Specification name is invalid");
+        }
+    }
+
+    private static final class StoredEntry {
+        private final StoredSpecification stored;
+        private long lastAccess;
+        private int pins;
+
+        private StoredEntry(StoredSpecification stored, long lastAccess) {
+            this.stored = stored;
+            this.lastAccess = lastAccess;
         }
     }
 }

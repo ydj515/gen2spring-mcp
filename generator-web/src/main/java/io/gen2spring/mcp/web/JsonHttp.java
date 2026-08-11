@@ -40,6 +40,10 @@ final class JsonHttp {
         exchange.getResponseBody().write(bytes);
     }
 
+    void sendEmpty(HttpExchange exchange, int status) throws IOException {
+        exchange.sendResponseHeaders(status, -1);
+    }
+
     ObjectNode error(WebErrorMapper.WebFailure failure) {
         ObjectNode root = json.createObjectNode();
         ObjectNode error = root.putObject("error");

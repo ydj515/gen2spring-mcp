@@ -445,7 +445,7 @@ git commit -m "feat(web): serve secure operation previews"
 - Produces: `GenerationJobManager` with one running/one queued job, atomic terminal seal, TTL cleanup.
 - Consumes: Task 3 progress overload.
 
-- [ ] **Step 1: Write job lifecycle RED tests**
+- [x] **Step 1: Write job lifecycle RED tests**
 
 Cover success, UNVERIFIED, user failure, runtime failure, interrupt, fatal identity, duplicate/late progress, one active + one queued, third rejection, TTL, retained bound, explicit delete, close cleanup, and unavailable artifact.
 
@@ -462,7 +462,7 @@ assertEquals(List.of("ANALYZE", "GENERATE", "COMPILE", "APPLICATION_CONTEXT",
         jobs.await(first.id()).stages().stream().map(JobStage::stage).toList());
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 mise exec -- ./gradlew :generator-web:test \
@@ -472,30 +472,30 @@ mise exec -- ./gradlew :generator-web:test \
 
 Expected: compilation fails because job types are absent.
 
-- [ ] **Step 3: Implement the bounded manager**
+- [x] **Step 3: Implement the bounded manager**
 
 Use `ThreadPoolExecutor(1, 1, 0, MILLISECONDS, new ArrayBlockingQueue<>(1), ...)` and a single daemon scheduled cleanup thread. Prepopulate eight `PENDING` stages. Progress callbacks apply synchronized legal transitions; terminal seal is one atomic operation and marks remaining stages `SKIPPED`.
 
 Store only opaque ID, pinned specification/output paths, immutable request, stage/status values, safe error, validation status, and exact known artifact paths. Do not retain serialized request bodies or response logs.
 
-- [ ] **Step 4: Preserve interrupt/fatal/cleanup semantics**
+- [x] **Step 4: Preserve interrupt/fatal/cleanup semantics**
 
 On `InterruptedException`, restore the flag after bounded workspace cleanup. On `Error`, seal a fixed failed snapshot, perform cleanup without self-suppression, then rethrow the identical instance. Ignore progress after terminal seal. `close()` stops accepting jobs, interrupts queued work, waits a finite grace period, force-closes the executor, and deletes only owned private workspaces.
 
-- [ ] **Step 5: Implement job and artifact routes**
+- [x] **Step 5: Implement job and artifact routes**
 
 Parse job configuration through the shared JSON parser. Return `429` with `GENERATION_CAPACITY_EXCEEDED` for the third unfinished job. Status DTO includes only opaque ID, state, current stage, stage/status pairs, validation status, safe error, and available download names.
 
 Artifact handlers open only stored regular non-symlink paths. ZIP is available only for VALIDATED. Manifest/report are available when present. Set a fixed sanitized `Content-Disposition` derived from the already validated artifact ID.
 
-- [ ] **Step 6: Run GREEN and full Web regression**
+- [x] **Step 6: Run GREEN and full Web regression**
 
 ```bash
 mise exec -- ./gradlew :generator-web:test :generator-core:test :generator-validation:test \
   --no-daemon --non-interactive --rerun-tasks
 ```
 
-- [ ] **Step 7: Review and commit**
+- [x] **Step 7: Review and commit**
 
 ```bash
 git diff --check
