@@ -11,7 +11,8 @@ Restore only the Linux GitHub Actions validation job while keeping the Windows j
 - Pin `actions/checkout` v7.0.1 to commit `3d3c42e5aac5ba805825da76410c181273ba90b1`.
 - Pin `actions/setup-java` v5.7.0 to commit `b6effb05e454b25005698d916606bdc6ffcbf961`.
 - Update both active Linux references and commented Windows references so Windows restoration cannot reintroduce deprecated Node.js 20 Actions.
-- Preserve the existing Java 17/21 environment capture and full validation command.
+- Resolve the Linux tool-cache `JAVA_HOME` symlinks to their canonical JDK directories before exposing Java 17/21 to the fail-closed runtime validator.
+- Preserve the full validation command.
 
 Both selected Action releases declare the Node.js 24 runtime. Immutable commit pins preserve the repository's existing supply-chain policy.
 
@@ -22,6 +23,7 @@ Both selected Action releases declare the Node.js 24 runtime. Immutable commit p
 - Run `git diff --check`.
 - Open a pull request and require the Linux GitHub Actions job to complete successfully before restoring Windows CI.
 - If installed generation fails, print only validation status and the stage name, status, warning count, error count, and safe summary before the temporary project is removed.
+- Confirm both canonical JDK homes satisfy the validator without weakening its symlink rejection policy.
 
 ## Out of Scope
 

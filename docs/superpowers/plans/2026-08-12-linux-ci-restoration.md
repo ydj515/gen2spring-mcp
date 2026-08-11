@@ -16,6 +16,7 @@
 - Use `actions/setup-java` commit `b6effb05e454b25005698d916606bdc6ffcbf961` (`v5.7.0`, Node.js 24).
 - Preserve `contents: read` and the existing Gradle command.
 - Limit failed-generation diagnostics to validation status and safe stage metadata.
+- Canonicalize Linux tool-cache JDK homes with `realpath` before passing them to validation.
 
 ---
 
@@ -109,3 +110,29 @@ Read the report only when an installed generation assertion fails. Copy only the
 Run the diagnostic regression and the two installed-generation tests that failed on Linux.
 
 Expected: all three tests pass locally; a subsequent Linux failure prints the exact safe validation stage.
+
+### Task 3: Canonicalize GitHub Tool-Cache JDK Homes
+
+**Files:**
+- Modify: `.github/workflows/ci.yml`
+- Modify: `docs/superpowers/specs/2026-08-12-linux-ci-restoration-design.md`
+
+**Interfaces:**
+- Consumes: `JAVA_HOME` values returned by `actions/setup-java`.
+- Produces: Canonical, non-symlink Java 17/21 homes accepted by the fail-closed runtime validator.
+
+- [x] **Step 1: Identify the failing boundary**
+
+Use the safe validation report to confirm both installed CLI failures stop at `COMPILE` with `Target Java runtime is unavailable or invalid`.
+
+- [x] **Step 2: Confirm the hosted-runner layout**
+
+Inspect the official `actions/runner-images` Ubuntu Java installation script and confirm its tool-cache `x64` entries are symbolic links to `/usr/lib/jvm/temurin-*`.
+
+- [x] **Step 3: Canonicalize captured homes**
+
+Use `realpath "$JAVA_HOME"` when writing each Linux `GEN2SPRING_JAVA_*_HOME` value to `GITHUB_ENV`. Keep Windows disabled and unchanged.
+
+- [ ] **Step 4: Verify Linux CI**
+
+Push the change and require the PR's Linux job to complete successfully.

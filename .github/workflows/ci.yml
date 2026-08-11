@@ -21,7 +21,7 @@ jobs:
           java-version: '17'
       - name: Capture Java 17 home
         shell: bash
-        run: echo "GEN2SPRING_JAVA_17_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+        run: echo "GEN2SPRING_JAVA_17_HOME=$(realpath "$JAVA_HOME")" >> "$GITHUB_ENV"
       - name: Install Temurin 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -29,7 +29,7 @@ jobs:
           java-version: '21'
       - name: Capture Java 21 home
         shell: bash
-        run: echo "GEN2SPRING_JAVA_21_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+        run: echo "GEN2SPRING_JAVA_21_HOME=$(realpath "$JAVA_HOME")" >> "$GITHUB_ENV"
       - name: Test Linux validation
         run: >-
           ./gradlew clean test integrationTest :generator-cli:installDist
