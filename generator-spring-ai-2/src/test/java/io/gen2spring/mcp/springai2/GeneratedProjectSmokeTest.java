@@ -16,6 +16,7 @@ import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,6 +55,20 @@ class GeneratedProjectSmokeTest {
                 tempDir.resolve("weather-java17"),
                 files,
                 requiredJavaHome("GEN2SPRING_JAVA_17_HOME"));
+    }
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedTypedOutputsRoundTripWholeAndNormalizedResponses() throws Exception {
+        var files = new SpringAi2ProjectGenerator()
+                .generate(JavaSourceRendererTest.context(typedOutputTools()))
+                .files();
+        Map<String, byte[]> withContract = new java.util.LinkedHashMap<>(files);
+        withContract.put(
+                "src/test/java/com/example/weather/application/GeneratedTypedOutputContractTest.java",
+                typedOutputContractTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertProjectBuilds(tempDir.resolve("typed-output"), withContract);
     }
 
     @Test
@@ -435,6 +450,49 @@ class GeneratedProjectSmokeTest {
         assertProjectBuilds(project, files, null);
     }
 
+    private List<McpToolDefinition> typedOutputTools() {
+        ApiSchema text = new ApiSchema(
+                SchemaType.STRING, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema count = new ApiSchema(
+                SchemaType.INTEGER, "int64", false, List.of(), BigDecimal.ZERO, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema city = objectSchema(Map.of("city-name", text), List.of("city-name"));
+        ApiSchema provider = objectSchema(Map.of("payload", city, "total", count), List.of("payload", "total"));
+        ApiSchema page = objectSchema(Map.of("totalCount", count), List.of("totalCount"));
+        ApiSchema normalized = objectSchema(Map.of("data", city, "page", page), List.of("data", "page"));
+        return List.of(
+                typedTool("wholeResponse", "/whole", null, city, city),
+                typedTool("normalizedResponse", "/normalized",
+                        new ResponseNormalizationPolicy("/payload", null, List.of(), null, "/total"),
+                        provider, normalized),
+                typedTool("malformedResponse", "/malformed", null, city, city));
+    }
+
+    private McpToolDefinition typedTool(
+            String operationId,
+            String path,
+            ResponseNormalizationPolicy normalization,
+            ApiSchema providerSchema,
+            ApiSchema resultSchema) {
+        return new McpToolDefinition(
+                operationId,
+                "weather_" + operationId.replaceAll("([A-Z])", "_$1").toLowerCase(java.util.Locale.ROOT),
+                "Get a typed weather response.",
+                List.of(),
+                new HttpExecutionDefinition(
+                        HttpMethod.GET, URI.create("https://api.example.test"), path, List.of(),
+                        false, false, normalization),
+                List.of(),
+                new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, providerSchema, resultSchema));
+    }
+
+    private ApiSchema objectSchema(Map<String, ApiSchema> properties, List<String> required) {
+        return new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, properties, required, null, true, List.of());
+    }
+
     private void assertProjectBuilds(
             Path project,
             Map<String, byte[]> files,
@@ -497,6 +555,97 @@ class GeneratedProjectSmokeTest {
                 observabilityRuntimeTest(profile.id()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         addTelemetryTestDependency(files);
         return files;
+    }
+
+    private String typedOutputContractTest() {
+        return """
+                package com.example.weather.application;
+
+                import static java.nio.charset.StandardCharsets.UTF_8;
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertNull;
+                import static org.junit.jupiter.api.Assertions.assertThrows;
+
+                import com.example.weather.generated.model.NormalizedResponseResult;
+                import com.example.weather.generated.model.WholeResponseResult;
+                import com.example.weather.generated.tool.WeatherMcpTools;
+                import com.sun.net.httpserver.HttpExchange;
+                import com.sun.net.httpserver.HttpServer;
+                import java.io.IOException;
+                import java.net.InetSocketAddress;
+                import org.junit.jupiter.api.AfterAll;
+                import org.junit.jupiter.api.Test;
+                import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.boot.test.context.SpringBootTest;
+                import org.springframework.test.context.DynamicPropertyRegistry;
+                import org.springframework.test.context.DynamicPropertySource;
+                import tools.jackson.databind.json.JsonMapper;
+
+                @SpringBootTest(properties = {
+                        "provider.response-max-bytes=1024",
+                        "provider.connect-timeout-millis=1000",
+                        "provider.read-timeout-millis=1000",
+                        "provider.total-timeout-millis=1000"
+                })
+                class GeneratedTypedOutputContractTest {
+                    private static HttpServer server;
+
+                    @Autowired WeatherMcpTools tools;
+                    @Autowired JsonMapper jsonMapper;
+
+                    @DynamicPropertySource
+                    static void provider(DynamicPropertyRegistry registry) {
+                        try {
+                            server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                            server.createContext("/whole", exchange -> respond(
+                                    exchange, "{\\\"city-name\\\":\\\"Seoul\\\"}"));
+                            server.createContext("/normalized", exchange -> respond(
+                                    exchange, "{\\\"payload\\\":{\\\"city-name\\\":\\\"Busan\\\"},\\\"total\\\":1}"));
+                            server.createContext("/malformed", exchange -> respond(
+                                    exchange, "{\\\"city-name\\\":{\\\"private\\\":\\\"raw-private-marker\\\"}}"));
+                            server.start();
+                        } catch (IOException failure) {
+                            throw new IllegalStateException("Test provider failed to start", failure);
+                        }
+                        registry.add("provider.base-url",
+                                () -> "http://127.0.0.1:" + server.getAddress().getPort());
+                    }
+
+                    @Test
+                    void returnsTypedWholeAndNormalizedResultsWithoutChangingJsonShape() throws Exception {
+                        WholeResponseResult whole = tools.wholeResponse();
+                        NormalizedResponseResult normalized = tools.normalizedResponse();
+
+                        assertEquals("Seoul", whole.cityName());
+                        assertEquals("Busan", normalized.data().cityName());
+                        assertEquals(1L, normalized.page().totalCount());
+                        assertEquals("{\\\"city-name\\\":\\\"Seoul\\\"}", jsonMapper.writeValueAsString(whole));
+                        assertEquals("{\\\"data\\\":{\\\"city-name\\\":\\\"Busan\\\"},\\\"page\\\":{\\\"totalCount\\\":1}}",
+                                jsonMapper.writeValueAsString(normalized));
+
+                        IllegalStateException failure = assertThrows(
+                                IllegalStateException.class, () -> tools.malformedResponse());
+                        assertEquals("Generated Tool result conversion failed", failure.getMessage());
+                        assertNull(failure.getCause());
+                    }
+
+                    private static void respond(HttpExchange exchange, String json) throws IOException {
+                        byte[] body = json.getBytes(UTF_8);
+                        exchange.getResponseHeaders().set("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(200, body.length);
+                        try (var output = exchange.getResponseBody()) {
+                            output.write(body);
+                        }
+                    }
+
+                    @AfterAll
+                    static void stopProvider() {
+                        if (server != null) {
+                            server.stop(0);
+                        }
+                    }
+                }
+                """;
     }
 
     private void addTelemetryTestDependency(Map<String, byte[]> files) {

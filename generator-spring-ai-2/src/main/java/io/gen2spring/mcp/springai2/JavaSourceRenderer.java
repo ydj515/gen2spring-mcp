@@ -29,6 +29,7 @@ public final class JavaSourceRenderer {
 
     private final ProjectFileRenderer projectRenderer;
     private final InputRecordRenderer inputRenderer;
+    private final OutputRecordRenderer outputRenderer;
     private final ToolClassRenderer toolRenderer;
     private final ToolCallbackConfigurationRenderer toolCallbackConfigurationRenderer;
     private final OperationMetadataRenderer metadataRenderer;
@@ -45,6 +46,7 @@ public final class JavaSourceRenderer {
     public JavaSourceRenderer(CompatibilityProfile profile) {
         this.projectRenderer = new ProjectFileRenderer(profile);
         this.inputRenderer = new InputRecordRenderer();
+        this.outputRenderer = new OutputRecordRenderer();
         this.toolRenderer = new ToolClassRenderer();
         this.toolCallbackConfigurationRenderer = new ToolCallbackConfigurationRenderer();
         this.metadataRenderer = new OperationMetadataRenderer();
@@ -62,8 +64,16 @@ public final class JavaSourceRenderer {
         String domainClass = upperCamel(requireSourceName(context.request().domain(), "domain"));
         List<McpToolDefinition> tools = orderedTools(context.tools());
         validateTools(tools);
+        boolean hasTypedOutputs = tools.stream()
+                .anyMatch(tool -> tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO);
         Map<String, String> sources = new LinkedHashMap<>();
         putAll(sources, inputRenderer.render(packageName, packagePath, tools));
+        for (McpToolDefinition tool : tools) {
+            if (tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO) {
+                putAll(sources, outputRenderer.render(
+                        packageName, packagePath, upperCamel(tool.operationId()), tool.output().resultSchema()));
+            }
+        }
         put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpTools.java",
                 toolRenderer.render(packageName, domainClass, tools));
         put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpToolCallbacks.java",
@@ -71,7 +81,7 @@ public final class JavaSourceRenderer {
         put(sources, "src/main/java/" + packagePath + "/generated/metadata/" + domainClass + "Operations.java",
                 metadataRenderer.render(packageName, domainClass, tools));
         putAll(sources, runtimeRenderer.render(
-                packageName, packagePath, domainClass, tools.getFirst().operationId()));
+                packageName, packagePath, domainClass, tools.getFirst().operationId(), hasTypedOutputs));
         putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
         put(sources, "src/main/java/" + packagePath + "/runtime/RuntimeTelemetry.java",
                 runtimeTelemetryRenderer.render(packageName, tools));

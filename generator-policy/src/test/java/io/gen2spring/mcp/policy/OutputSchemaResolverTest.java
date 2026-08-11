@@ -36,6 +36,12 @@ class OutputSchemaResolverTest {
     }
 
     @Test
+    void rejectsWholeResponseTypedScalarsAndArraysBeforeSourceGeneration() {
+        assertTypedUnsupported(string(), null);
+        assertTypedUnsupported(array(string()), null);
+    }
+
+    @Test
     void resolvesEscapedPointersIntoTheNormalizedEnvelopeShape() {
         ApiSchema items = array(string());
         ApiSchema provider = object(Map.of(

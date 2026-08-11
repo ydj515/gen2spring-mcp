@@ -23,6 +23,7 @@ import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -50,6 +51,52 @@ class JavaSourceRendererTest {
         assertTrue(tool.contains(
                 "return executor.execute(WeatherOperations.GET_FORECAST, input.toArguments());"));
         assertFalse(tool.contains("OperationOutcome"));
+        assertFalse(files.keySet().stream().anyMatch(path -> path.contains("/GetForecastResult")));
+    }
+
+    @Test
+    void rendersTypedOutputRecordsAndToolReturnType() {
+        var files = renderer.render(context(List.of(typedWeatherTool())));
+
+        String result = utf8(files.get(
+                "src/main/java/com/example/weather/generated/model/GetForecastResult.java"));
+        String data = utf8(files.get(
+                "src/main/java/com/example/weather/generated/model/GetForecastResultData.java"));
+        String condition = utf8(files.get(
+                "src/main/java/com/example/weather/generated/model/GetForecastResultDataConditionsItemValue.java"));
+        String tool = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
+
+        assertTrue(result.contains("public record GetForecastResult("), result);
+        assertTrue(result.contains("GetForecastResultData data"), result);
+        assertTrue(result.contains("GetForecastResultPage page"), result);
+        assertTrue(result.contains("GetForecastResultProvider provider"), result);
+        assertTrue(data.contains("@JsonProperty(\"city-name\") String cityName"), data);
+        assertTrue(data.contains("@JsonProperty(\"display name\") String displayName"), data);
+        assertTrue(data.contains("List<GetForecastResultDataConditionsItemValue> conditions"), data);
+        assertTrue(data.contains("BigDecimal temperature"), data);
+        assertFalse(data.contains("jakarta.validation"), data);
+        assertFalse(data.contains("@DecimalMin"), data);
+        assertTrue(condition.contains("@JsonProperty(\"partly-cloudy\")"), condition);
+        assertTrue(condition.contains("fromWireValue(String value)"), condition);
+        assertTrue(tool.contains("public GetForecastResult getForecast("), tool);
+        assertTrue(tool.contains("input.toArguments(), GetForecastResult.class"), tool);
+    }
+
+    @Test
+    void rejectsTypedOutputPropertyNamesThatCollideAfterJavaNormalization() {
+        ApiSchema collision = objectSchema(Map.of(
+                "postal-code", textSchema(), "postal_code", textSchema()), List.of());
+        McpToolDefinition base = weatherTool();
+        McpToolDefinition tool = new McpToolDefinition(
+                base.operationId(), base.name(), base.description(), base.inputs(), base.execution(),
+                base.secretBindings(), new OutputDefinition(
+                        McpToolDefinition.OutputKind.TYPED_DTO, collision, collision));
+
+        GeneratorException failure = assertThrows(
+                GeneratorException.class, () -> renderer.render(context(List.of(tool))));
+
+        assertEquals(io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED, failure.code());
     }
 
     @Test
@@ -624,6 +671,48 @@ class JavaSourceRendererTest {
                 List.of(
                         new ParameterBinding("nx", ParameterLocation.QUERY, "nx"),
                         new ParameterBinding("ny", ParameterLocation.QUERY, "ny")));
+    }
+
+    private static McpToolDefinition typedWeatherTool() {
+        McpToolDefinition base = weatherTool();
+        ApiSchema result = typedResultSchema();
+        return new McpToolDefinition(
+                base.operationId(), base.name(), base.description(), base.inputs(), base.execution(),
+                base.secretBindings(), new OutputDefinition(
+                        McpToolDefinition.OutputKind.TYPED_DTO, result, result));
+    }
+
+    private static ApiSchema typedResultSchema() {
+        ApiSchema condition = new ApiSchema(
+                SchemaType.STRING, null, false, List.of("sunny", "partly-cloudy"), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema conditions = new ApiSchema(
+                SchemaType.ARRAY, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), condition, true, List.of());
+        ApiSchema temperature = new ApiSchema(
+                SchemaType.NUMBER, "double", false, List.of(), BigDecimal.valueOf(-50), BigDecimal.valueOf(60),
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema data = objectSchema(Map.of(
+                "city-name", textSchema(),
+                "conditions", conditions,
+                "display name", textSchema(),
+                "temperature", temperature), List.of("city-name", "conditions"));
+        ApiSchema page = objectSchema(Map.of("totalCount", schema(SchemaType.INTEGER, "int64",
+                BigDecimal.ZERO, null, null, null, null, List.of())), List.of("totalCount"));
+        ApiSchema provider = objectSchema(Map.of("code", textSchema(), "message", textSchema()),
+                List.of("code", "message"));
+        return objectSchema(Map.of("data", data, "page", page, "provider", provider),
+                List.of("data", "page", "provider"));
+    }
+
+    private static ApiSchema objectSchema(Map<String, ApiSchema> properties, List<String> required) {
+        return new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, properties, required, null, true, List.of());
+    }
+
+    private static ApiSchema textSchema() {
+        return schema(SchemaType.STRING, null, null, null, null, null, null, List.of());
     }
 
     static McpToolDefinition weatherTool(ResponseNormalizationPolicy normalization) {

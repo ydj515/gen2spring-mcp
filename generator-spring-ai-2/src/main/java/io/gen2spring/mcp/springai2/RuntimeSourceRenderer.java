@@ -5,14 +5,18 @@ import java.util.Map;
 
 final class RuntimeSourceRenderer {
     Map<String, String> render(
-            String packageName, String packagePath, String domainClass, String contextOperationId) {
+            String packageName,
+            String packagePath,
+            String domainClass,
+            String contextOperationId,
+            boolean hasTypedOutputs) {
         Map<String, String> sources = new LinkedHashMap<>();
         String runtimePath = "src/main/java/" + packagePath + "/runtime/";
         sources.put(runtimePath + "ParameterLocation.java", parameterLocation(packageName));
         sources.put(runtimePath + "ParameterBinding.java", parameterBinding(packageName));
         sources.put(runtimePath + "SecretBinding.java", secretBinding(packageName));
         sources.put(runtimePath + "OperationDefinition.java", operationDefinition(packageName));
-        sources.put(runtimePath + "OpenApiOperationExecutor.java", executor(packageName));
+        sources.put(runtimePath + "OpenApiOperationExecutor.java", executor(packageName, hasTypedOutputs));
         sources.put("src/main/java/" + packagePath + "/application/" + domainClass + "McpApplication.java",
                 application(packageName, domainClass));
         sources.put("src/test/java/" + packagePath + "/application/" + domainClass + "McpApplicationTest.java",
@@ -128,8 +132,8 @@ final class RuntimeSourceRenderer {
                 """.formatted(packageName);
     }
 
-    private String executor(String packageName) {
-        return """
+    private String executor(String packageName, boolean hasTypedOutputs) {
+        String source = """
                 package %s.runtime;
 
                 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -263,6 +267,18 @@ final class RuntimeSourceRenderer {
                                     null,
                                     secretNames,
                                     secretValues);
+                        }
+                    }
+
+                    public <T> T execute(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            Class<T> resultType) {
+                        JsonNode result = execute(operation, arguments);
+                        try {
+                            return jsonMapper.treeToValue(result, resultType);
+                        } catch (JacksonException failure) {
+                            throw new IllegalStateException("Generated Tool result conversion failed");
                         }
                     }
 
@@ -745,6 +761,24 @@ final class RuntimeSourceRenderer {
                     private static final class RequestSerializationException extends RuntimeException {}
                 }
                 """.formatted(packageName);
+        return hasTypedOutputs ? source : source.replace(typedExecutorMethod(), "");
+    }
+
+    private String typedExecutorMethod() {
+        return """
+                    public <T> T execute(
+                            OperationDefinition operation,
+                            Map<String, Object> arguments,
+                            Class<T> resultType) {
+                        JsonNode result = execute(operation, arguments);
+                        try {
+                            return jsonMapper.treeToValue(result, resultType);
+                        } catch (JacksonException failure) {
+                            throw new IllegalStateException("Generated Tool result conversion failed");
+                        }
+                    }
+
+                """;
     }
 
     private String application(String packageName, String domainClass) {

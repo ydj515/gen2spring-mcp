@@ -37,6 +37,9 @@ public final class OutputSchemaResolver {
             throw unsupported();
         }
         if (normalization == null) {
+            if (providerSchema.type() != SchemaType.OBJECT) {
+                throw unsupported();
+            }
             return new OutputDefinition(TYPED_DTO, providerSchema, providerSchema);
         }
         try {
