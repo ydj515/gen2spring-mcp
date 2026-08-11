@@ -49,10 +49,10 @@ public final class SchemaFixtureFactory {
 
     private String string(ApiSchema schema, int variant) {
         if (schema.enumValues() != null && !schema.enumValues().isEmpty()) {
-            if (variant >= schema.enumValues().size()) {
+            if (variant >= schema.enumValues().size() && schema.enumValues().size() != 1) {
                 throw invalid();
             }
-            String value = schema.enumValues().get(variant);
+            String value = schema.enumValues().get(Math.min(variant, schema.enumValues().size() - 1));
             return validString(schema, value) ? value : fail();
         }
         int minimum = schema.minLength() == null ? 1 : Math.max(1, schema.minLength());

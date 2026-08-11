@@ -148,7 +148,9 @@ public final class ToolModelFactory {
         Map<String, ResolvedApiKeySecret> apiKeySecrets = resolveApiKeySecrets(operation, document, overrides);
         Set<String> secretTargets = new HashSet<>();
         for (ApiParameter parameter : operation.parameters()) {
-            if (paginationPolicy != null && parameter.name().equals(paginationPolicy.requestParameter())) {
+            if (paginationPolicy != null
+                    && parameter.location() == OpenApiDocument.ParameterLocation.QUERY
+                    && parameter.name().equals(paginationPolicy.requestParameter())) {
                 continue;
             }
             rejectRuntimeOwnedOrRestrictedHeader(parameter.location(), parameter.name());
@@ -252,11 +254,11 @@ public final class ToolModelFactory {
             throw paginationUnsupported();
         }
         ApiParameter parameter = operation.parameters().stream()
+                .filter(candidate -> candidate.location() == OpenApiDocument.ParameterLocation.QUERY)
                 .filter(candidate -> candidate.name().equals(policy.requestParameter()))
                 .findFirst()
                 .orElseThrow(this::paginationUnsupported);
-        if (parameter.location() != OpenApiDocument.ParameterLocation.QUERY
-                || parameter.schema() == null || !parameter.schema().supported()
+        if (parameter.schema() == null || !parameter.schema().supported()
                 || parameter.schema().type() != OpenApiDocument.SchemaType.STRING
                 && parameter.schema().type() != OpenApiDocument.SchemaType.INTEGER
                 || parameter.required() && policy.initialValue() == null

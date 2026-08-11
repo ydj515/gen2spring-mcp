@@ -7,6 +7,7 @@ import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -35,6 +36,9 @@ public final class ExpectedToolResponseFactory {
                 ? null : tool.execution().paginationPolicy();
         if (pagination != null) {
             return pagination(tool, policy, pagination);
+        }
+        if (tool.outputKind() == OutputKind.TYPED_DTO) {
+            return typed(tool, policy);
         }
         if (policy == null) {
             ExpectedUpstreamResponse upstream = new ExpectedUpstreamResponse(200, CONTENT_TYPE, marker);
@@ -75,6 +79,38 @@ public final class ExpectedToolResponseFactory {
 
         ExpectedUpstreamResponse upstream = new ExpectedUpstreamResponse(200, CONTENT_TYPE, root);
         return new ExpectedToolResponse(upstream, immutableJson(result));
+    }
+
+    private ExpectedToolResponse typed(McpToolDefinition tool, ResponseNormalizationPolicy policy) {
+        ApiSchema providerSchema = tool.output().providerSchema();
+        if (providerSchema == null) {
+            throw invalid();
+        }
+        SchemaFixtureFactory fixtures = new SchemaFixtureFactory();
+        Object root = mutableCopy(fixtures.create(providerSchema, 0));
+        if (policy != null) {
+            if (policy.dataPointer() != null) {
+                root = insert(root, policy.dataPointer(),
+                        fixtures.create(schemaAt(providerSchema, policy.dataPointer()), 0));
+            }
+            if (policy.successCodePointer() != null) {
+                if (policy.successValues().isEmpty()) {
+                    throw invalid();
+                }
+                root = insert(root, policy.successCodePointer(), policy.successValues().getFirst());
+            }
+            if (policy.errorMessagePointer() != null) {
+                root = insert(root, policy.errorMessagePointer(),
+                        fixtures.create(schemaAt(providerSchema, policy.errorMessagePointer()), 0));
+            }
+            if (policy.totalCountPointer() != null) {
+                root = insert(root, policy.totalCountPointer(),
+                        fixtures.create(schemaAt(providerSchema, policy.totalCountPointer()), 0));
+            }
+        }
+        Object expectedResult = policy == null ? immutableJson(root) : normalizedResult(root, policy);
+        ExpectedUpstreamResponse upstream = new ExpectedUpstreamResponse(200, CONTENT_TYPE, root);
+        return new ExpectedToolResponse(upstream, expectedResult);
     }
 
     private ExpectedToolResponse pagination(

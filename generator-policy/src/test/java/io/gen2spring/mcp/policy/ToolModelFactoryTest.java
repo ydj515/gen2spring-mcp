@@ -131,6 +131,28 @@ class ToolModelFactoryTest {
     }
 
     @Test
+    void internalizesOnlyTheMatchingPaginationQueryParameter() {
+        PaginationPolicy pagination = pagination("first");
+        ApiParameter header = new ApiParameter(
+                "cursor", ParameterLocation.HEADER, true, "Required header cursor", textSchema());
+        ApiParameter query = new ApiParameter(
+                "cursor", ParameterLocation.QUERY, false, "Pagination cursor", textSchema());
+        ApiOperation operation = new ApiOperation(
+                "getForecast", HttpMethod.GET, "/forecast", "Get forecast", null,
+                List.of(header, query), null, false, List.of(), true, List.of(),
+                paginatedResponse(textSchema(), nullableTextSchema()));
+        OperationSelection selection = new OperationSelection(
+                "getForecast", true, null, null, Map.of(), null,
+                new OutputSelection(OutputKind.TYPED_DTO), null, pagination);
+
+        var tool = factory.create(document(List.of(operation)), request(List.of(selection))).getFirst();
+
+        assertEquals(List.of("cursor"), tool.inputs().stream().map(input -> input.jsonName()).toList());
+        assertEquals(List.of(ParameterLocation.HEADER), tool.execution().bindings().stream()
+                .map(binding -> binding.targetLocation()).toList());
+    }
+
+    @Test
     void rejectsUnsupportedPaginationOperationParameterAndSchemaShapes() {
         List<ApiOperation> invalidOperations = List.of(
                 paginatedOperation(HttpMethod.POST,

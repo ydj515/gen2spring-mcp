@@ -31,7 +31,7 @@ class SchemaFixtureFactoryTest {
     }
 
     @Test
-    void rejectsImpossibleDistinctAndUnsupportedPatternFixtures() {
+    void reusesSingletonEnumsAndRejectsUnsupportedPatternFixtures() {
         ApiSchema single = new ApiSchema(
                 STRING, null, false, List.of("only"), null, null, null, null, null,
                 null, Map.of(), List.of(), null, true, List.of());
@@ -39,7 +39,7 @@ class SchemaFixtureFactoryTest {
                 STRING, null, false, List.of(), null, null, 1, 10, "(a+)+$",
                 null, Map.of(), List.of(), null, true, List.of());
 
-        assertThrows(IllegalArgumentException.class, () -> factory.create(single, 1));
+        assertEquals("only", factory.create(single, 1));
         assertThrows(IllegalArgumentException.class, () -> factory.create(unsupportedPattern, 0));
     }
 

@@ -10,6 +10,7 @@ import io.gen2spring.mcp.core.ExpectedToolResponseFactory.ExpectedToolResponse;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
+import io.gen2spring.mcp.domain.tool.OutputDefinition;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -143,6 +144,27 @@ class ExpectedToolResponseFactoryTest {
         assertEquals("application/json", result.upstreamResponse().contentType());
         assertEquals(marker, result.upstreamResponse().body());
         assertEquals(marker, result.expectedResult());
+    }
+
+    @Test
+    void derivesSchemaValidFixturesForTypedOutputWithoutPagination() {
+        var city = new io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema(
+                io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.STRING,
+                null, false, List.of(), null, null, 1, 10, null, null,
+                Map.of(), List.of(), null, true, List.of());
+        var provider = new io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema(
+                io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.OBJECT,
+                null, false, List.of(), null, null, null, null, null, null,
+                Map.of("city", city), List.of("city"), null, true, List.of());
+        McpToolDefinition typed = new McpToolDefinition(
+                "getForecast", "weather_get_forecast", "Get a forecast.", List.of(),
+                new HttpExecutionDefinition(GET, URI.create("https://api.example.test"), "/forecast", List.of()),
+                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, provider, provider));
+
+        ExpectedToolResponse result = factory.create(typed);
+
+        assertEquals(Map.of("city", "a"), result.upstreamResponse().body());
+        assertEquals(Map.of("city", "a"), result.expectedResult());
     }
 
     private ResponseNormalizationPolicy normalization() {

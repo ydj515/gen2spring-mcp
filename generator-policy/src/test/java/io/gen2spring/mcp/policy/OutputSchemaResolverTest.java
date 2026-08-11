@@ -61,7 +61,7 @@ class OutputSchemaResolverTest {
 
         ApiSchema expectedPage = object(Map.of("totalCount", nonNegativeInteger()), List.of("totalCount"));
         ApiSchema expectedProvider = object(
-                Map.of("code", string(), "message", string()), List.of("code", "message"));
+                Map.of("code", string(), "message", nullableString()), List.of("code", "message"));
         ApiSchema expected = object(
                 Map.of("data", items, "page", expectedPage, "provider", expectedProvider),
                 List.of("data", "page", "provider"));
@@ -142,6 +142,14 @@ class OutputSchemaResolverTest {
 
     private ApiSchema string() {
         return schema(SchemaType.STRING, null, null, Map.of(), List.of(), null);
+    }
+
+    private ApiSchema nullableString() {
+        ApiSchema value = string();
+        return new ApiSchema(
+                value.type(), value.format(), true, value.enumValues(), value.minimum(), value.maximum(),
+                value.minLength(), value.maxLength(), value.pattern(), value.defaultValue(), value.properties(),
+                value.requiredProperties(), value.items(), value.supported(), value.warnings());
     }
 
     private ApiSchema integer() {

@@ -77,7 +77,7 @@ public final class OutputSchemaResolver {
                 if (message.type() != SchemaType.STRING) {
                     throw unsupported();
                 }
-                providerProperties.put("message", string());
+                providerProperties.put("message", nullableString());
                 providerRequired.add("message");
             }
             if (!providerProperties.isEmpty()) {
@@ -186,6 +186,14 @@ public final class OutputSchemaResolver {
         return new ApiSchema(
                 SchemaType.STRING, null, false, List.of(), null, null, null, null, null, null,
                 Map.of(), List.of(), null, true, List.of());
+    }
+
+    private ApiSchema nullableString() {
+        ApiSchema value = string();
+        return new ApiSchema(
+                value.type(), value.format(), true, value.enumValues(), value.minimum(), value.maximum(),
+                value.minLength(), value.maxLength(), value.pattern(), value.defaultValue(), value.properties(),
+                value.requiredProperties(), value.items(), value.supported(), value.warnings());
     }
 
     private ApiSchema nonNegativeInteger() {

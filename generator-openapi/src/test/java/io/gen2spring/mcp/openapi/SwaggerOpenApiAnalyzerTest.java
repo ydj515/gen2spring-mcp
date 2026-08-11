@@ -58,6 +58,35 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
+    void leavesMixedBodyAndBodylessSuccessResponsesUntyped() throws Exception {
+        Path specification = Files.createTempFile("mixed-success-response", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Weather API, version: '1.0' }
+                paths:
+                  /weather:
+                    get:
+                      operationId: getWeather
+                      responses:
+                        '200':
+                          description: Current weather
+                          content:
+                            application/json:
+                              schema:
+                                type: object
+                                required: [city]
+                                properties:
+                                  city: { type: string }
+                        '204': { description: No content }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertTrue(operation.supported(), operation.warnings().toString());
+        assertNull(operation.successResponse());
+    }
+
+    @Test
     void failsClosedForAmbiguousOrUnsupportedSuccessResponseSchemas() throws Exception {
         Path specification = Files.createTempFile("success-response-boundaries", ".yaml");
         Files.writeString(specification, """
@@ -329,6 +358,37 @@ class SwaggerOpenApiAnalyzerTest {
         assertTrue(operation.supported(), operation.warnings().toString());
         assertEquals(java.util.Set.of("name"), operation.requestBody().properties().keySet());
         assertEquals(java.util.List.of("name"), operation.requestBody().requiredProperties());
+    }
+
+    @Test
+    void preservesReadOnlyAndOmitsWriteOnlyResponseProperties() throws Exception {
+        Path specification = Files.createTempFile("response-property-direction", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Widget API, version: '1.0' }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      responses:
+                        '200':
+                          description: Widget
+                          content:
+                            application/json:
+                              schema:
+                                type: object
+                                required: [id, secret, name]
+                                properties:
+                                  id: { type: string, readOnly: true }
+                                  secret: { type: string, writeOnly: true }
+                                  name: { type: string }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertTrue(operation.supported(), operation.warnings().toString());
+        assertEquals(java.util.Set.of("id", "name"), operation.successResponse().properties().keySet());
+        assertEquals(java.util.List.of("id", "name"), operation.successResponse().requiredProperties());
     }
 
     @Test

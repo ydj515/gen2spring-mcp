@@ -15,22 +15,24 @@ import java.util.Set;
 
 public final class SwaggerSchemaNormalizer {
     public ApiSchema normalize(Schema<?> schema, Map<String, Schema> componentSchemas) {
-        return normalize(schema, componentSchemas, false);
+        return normalize(schema, componentSchemas, false, false);
     }
 
     public ApiSchema normalizeResponse(Schema<?> schema, Map<String, Schema> componentSchemas) {
-        return normalize(schema, componentSchemas, true);
+        return normalize(schema, componentSchemas, true, true);
     }
 
     private ApiSchema normalize(
             Schema<?> schema,
             Map<String, Schema> componentSchemas,
-            boolean allowNullable) {
+            boolean allowNullable,
+            boolean responseSchema) {
         if (schema == null) {
             return unsupported("Schema is missing");
         }
         return normalize(schema, componentSchemas == null ? Map.of() : componentSchemas,
-                Collections.newSetFromMap(new IdentityHashMap<>()), new java.util.HashSet<>(), allowNullable);
+                Collections.newSetFromMap(new IdentityHashMap<>()), new java.util.HashSet<>(),
+                allowNullable, responseSchema);
     }
 
     private ApiSchema normalize(
@@ -38,7 +40,8 @@ public final class SwaggerSchemaNormalizer {
             Map<String, Schema> componentSchemas,
             Set<Schema<?>> ancestors,
             Set<String> ancestorReferences,
-            boolean allowNullable) {
+            boolean allowNullable,
+            boolean responseSchema) {
         String reference = schema.get$ref();
         if (reference != null) {
             if (!reference.startsWith("#/components/schemas/")) {
@@ -51,7 +54,8 @@ public final class SwaggerSchemaNormalizer {
                 Schema<?> referencedSchema = componentSchemas.get(reference.substring("#/components/schemas/".length()));
                 return referencedSchema == null
                         ? unsupported("Local schema reference " + reference + " could not be resolved")
-                        : normalize(referencedSchema, componentSchemas, ancestors, ancestorReferences, allowNullable);
+                        : normalize(referencedSchema, componentSchemas, ancestors, ancestorReferences,
+                                allowNullable, responseSchema);
             } finally {
                 ancestorReferences.remove(reference);
             }
@@ -74,14 +78,19 @@ public final class SwaggerSchemaNormalizer {
             Map<String, ApiSchema> properties = new LinkedHashMap<>();
             if (schema.getProperties() != null) {
                 schema.getProperties().forEach((name, property) -> {
-                    if (property == null || !Boolean.TRUE.equals(property.getReadOnly())) {
+                    boolean excluded = property != null && (responseSchema
+                            ? Boolean.TRUE.equals(property.getWriteOnly())
+                            : Boolean.TRUE.equals(property.getReadOnly()));
+                    if (!excluded) {
                         properties.put(name, normalize(
-                                property, componentSchemas, ancestors, ancestorReferences, allowNullable));
+                                property, componentSchemas, ancestors, ancestorReferences,
+                                allowNullable, responseSchema));
                     }
                 });
             }
             ApiSchema items = schema.getItems() == null ? null
-                    : normalize(schema.getItems(), componentSchemas, ancestors, ancestorReferences, allowNullable);
+                    : normalize(schema.getItems(), componentSchemas, ancestors, ancestorReferences,
+                            allowNullable, responseSchema);
             if (type == SchemaType.ARRAY && items == null) {
                 warnings.add("Array schemas must declare items");
             }

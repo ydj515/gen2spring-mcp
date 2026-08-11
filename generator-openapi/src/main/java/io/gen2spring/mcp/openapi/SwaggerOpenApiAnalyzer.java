@@ -194,12 +194,16 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         }
         List<ApiSchema> schemas = new ArrayList<>();
         boolean missingSchema = false;
+        boolean bodylessSuccess = false;
         for (Map.Entry<String, io.swagger.v3.oas.models.responses.ApiResponse> entry
                 : operation.getResponses().entrySet()) {
             String statusCode = entry.getKey();
             io.swagger.v3.oas.models.responses.ApiResponse response = entry.getValue();
-            if (!isSuccessStatus(statusCode) || response == null || response.getContent() == null
-                    || response.getContent().isEmpty()) {
+            if (!isSuccessStatus(statusCode) || response == null) {
+                continue;
+            }
+            if (response.getContent() == null || response.getContent().isEmpty()) {
+                bodylessSuccess = true;
                 continue;
             }
             MediaType mediaType = response.getContent().size() == 1
@@ -218,6 +222,9 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             return null;
         }
         if (schemas.isEmpty()) {
+            return null;
+        }
+        if (bodylessSuccess) {
             return null;
         }
         ApiSchema first = schemas.getFirst();
