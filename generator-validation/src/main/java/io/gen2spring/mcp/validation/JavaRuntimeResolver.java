@@ -88,7 +88,7 @@ final class JavaRuntimeResolver {
         if (!homeAttributes.isDirectory() || !home.toRealPath().equals(home)) {
             throw safeFailure();
         }
-        Object homeFileKey = requiredFileKey(homeAttributes);
+        StablePathIdentity homeIdentity = StablePathIdentity.capture(home);
 
         Path executable = platform.javaExecutable(home);
         if (!executable.startsWith(home) || Files.isSymbolicLink(executable)
@@ -101,17 +101,9 @@ final class JavaRuntimeResolver {
                 || platform.requiresOwnerExecutable() && !Files.isExecutable(executable)) {
             throw safeFailure();
         }
-        Object executableFileKey = requiredFileKey(executableAttributes);
+        StablePathIdentity executableIdentity = StablePathIdentity.capture(executable);
         return new ResolvedJavaRuntime(
-                home, executable, homeFileKey, executableFileKey, platform.requiresOwnerExecutable());
-    }
-
-    private static Object requiredFileKey(BasicFileAttributes attributes) {
-        Object fileKey = attributes.fileKey();
-        if (fileKey == null) {
-            throw safeFailure();
-        }
-        return fileKey;
+                home, executable, homeIdentity, executableIdentity, platform.requiresOwnerExecutable());
     }
 
     private static JavaRuntimeException safeFailure() {
@@ -132,20 +124,20 @@ final class JavaRuntimeResolver {
     static final class ResolvedJavaRuntime {
         private final Path home;
         private final Path executable;
-        private final Object homeFileKey;
-        private final Object executableFileKey;
+        private final StablePathIdentity homeIdentity;
+        private final StablePathIdentity executableIdentity;
         private final boolean requiresExecutable;
 
         private ResolvedJavaRuntime(
                 Path home,
                 Path executable,
-                Object homeFileKey,
-                Object executableFileKey,
+                StablePathIdentity homeIdentity,
+                StablePathIdentity executableIdentity,
                 boolean requiresExecutable) {
             this.home = home;
             this.executable = executable;
-            this.homeFileKey = homeFileKey;
-            this.executableFileKey = executableFileKey;
+            this.homeIdentity = homeIdentity;
+            this.executableIdentity = executableIdentity;
             this.requiresExecutable = requiresExecutable;
         }
 
@@ -162,19 +154,19 @@ final class JavaRuntimeResolver {
                 if (Files.isSymbolicLink(home) || !home.toRealPath().equals(home)) {
                     throw safeFailure();
                 }
-                BasicFileAttributes currentHome =
-                        Files.readAttributes(home, BasicFileAttributes.class, NOFOLLOW_LINKS);
-                if (!currentHome.isDirectory() || !homeFileKey.equals(requiredFileKey(currentHome))) {
+                BasicFileAttributes currentHome = Files.readAttributes(
+                        home, BasicFileAttributes.class, NOFOLLOW_LINKS);
+                if (!currentHome.isDirectory() || !homeIdentity.matches(home)) {
                     throw safeFailure();
                 }
                 if (Files.isSymbolicLink(executable) || !executable.toRealPath().equals(executable)) {
                     throw safeFailure();
                 }
-                BasicFileAttributes currentExecutable =
-                        Files.readAttributes(executable, BasicFileAttributes.class, NOFOLLOW_LINKS);
+                BasicFileAttributes currentExecutable = Files.readAttributes(
+                        executable, BasicFileAttributes.class, NOFOLLOW_LINKS);
                 if (!currentExecutable.isRegularFile()
                         || requiresExecutable && !Files.isExecutable(executable)
-                        || !executableFileKey.equals(requiredFileKey(currentExecutable))) {
+                        || !executableIdentity.matches(executable)) {
                     throw safeFailure();
                 }
             } catch (IOException | RuntimeException exception) {

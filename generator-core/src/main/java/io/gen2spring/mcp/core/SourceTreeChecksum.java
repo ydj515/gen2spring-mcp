@@ -111,11 +111,8 @@ public final class SourceTreeChecksum {
                 requireEntryCount(content.size() + 1);
                 requireEntrySize(attributes.size());
                 totalBytes = checkedTotal(totalBytes, attributes.size());
-                Object fileKey = attributes.fileKey();
-                if (fileKey == null) {
-                    throw failure("Generated project checksum requires stable file identities", null);
-                }
-                content.add(new FileContent(relative, path, attributes.size(), fileKey));
+                content.add(new FileContent(
+                        relative, path, attributes.size(), StablePathIdentity.capture(path)));
             }
         } catch (GeneratorException exception) {
             throw exception;
@@ -223,7 +220,7 @@ public final class SourceTreeChecksum {
         BasicFileAttributes attributes = Files.readAttributes(content.file(), BasicFileAttributes.class, NOFOLLOW_LINKS);
         if (!attributes.isRegularFile()
                 || attributes.size() != content.rawBytes()
-                || !content.fileKey().equals(attributes.fileKey())) {
+                || !content.identity().matches(content.file())) {
             throw failure("Generated project file changed during checksum calculation", null);
         }
     }
@@ -346,7 +343,7 @@ public final class SourceTreeChecksum {
 
     private record Content(String path, byte[] bytes) {}
 
-    private record FileContent(String path, Path file, long rawBytes, Object fileKey) {}
+    private record FileContent(String path, Path file, long rawBytes, StablePathIdentity identity) {}
 
     record SourceSnapshot(String checksum, Map<String, EntryFingerprint> entries) {
         SourceSnapshot {

@@ -667,7 +667,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             throw new IllegalArgumentException("Gradle wrapper escaped the validation workspace");
         }
         Path snapshot = null;
-        Object originalFileKey = null;
+        StablePathIdentity originalIdentity = null;
+        StablePathIdentity snapshotIdentity = null;
         try {
             Path realRoot = root.toRealPath();
             Path realParent = wrapper.getParent().toRealPath();
@@ -678,9 +679,9 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             if (!rootAttributes.isDirectory()) {
                 throw new IllegalArgumentException("Validation workspace is not a physical directory");
             }
-            Object rootFileKey = requiredFileKey(rootAttributes);
+            StablePathIdentity rootIdentity = StablePathIdentity.capture(root);
             BasicFileAttributes original = regularFileAttributes(wrapper);
-            originalFileKey = requiredFileKey(original);
+            originalIdentity = StablePathIdentity.capture(wrapper);
             if (platform.requiresOwnerExecutable()) {
                 requireOwnerExecutable(wrapper);
             }
@@ -698,8 +699,9 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             if (snapshot == null) {
                 throw new IllegalArgumentException("Gradle wrapper snapshot path could not be reserved");
             }
-            Object snapshotFileKey = requiredFileKey(regularFileAttributes(snapshot));
-            if (!originalFileKey.equals(snapshotFileKey)) {
+            regularFileAttributes(snapshot);
+            snapshotIdentity = StablePathIdentity.capture(snapshot);
+            if (!originalIdentity.sameFile(wrapper, snapshotIdentity, snapshot)) {
                 throw new IllegalArgumentException("Gradle wrapper changed while its identity was pinned");
             }
             if (platform.requiresOwnerExecutable()) {
@@ -711,12 +713,12 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 throw new IllegalArgumentException("Gradle wrapper snapshot escaped the validation workspace");
             }
             return new VerifiedGradleWrapper(
-                    root, rootFileKey, wrapper, snapshot, snapshotFileKey, platform.requiresOwnerExecutable());
+                    root, rootIdentity, wrapper, snapshot, snapshotIdentity, platform.requiresOwnerExecutable());
         } catch (IllegalArgumentException exception) {
-            deleteIfSameFile(snapshot, originalFileKey);
+            deletePinnedSnapshot(snapshot, snapshotIdentity, wrapper, originalIdentity);
             throw exception;
         } catch (IOException | UnsupportedOperationException exception) {
-            deleteIfSameFile(snapshot, originalFileKey);
+            deletePinnedSnapshot(snapshot, snapshotIdentity, wrapper, originalIdentity);
             throw new IllegalArgumentException("Gradle wrapper identity could not be pinned", exception);
         }
     }
@@ -732,14 +734,6 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         return attributes;
     }
 
-    private static Object requiredFileKey(BasicFileAttributes attributes) {
-        Object fileKey = attributes.fileKey();
-        if (fileKey == null) {
-            throw new IllegalArgumentException("Validation filesystem does not expose stable file keys");
-        }
-        return fileKey;
-    }
-
     private static void requireOwnerExecutable(Path wrapper) throws IOException {
         PosixFileAttributeView posix = Files.getFileAttributeView(
                 wrapper, PosixFileAttributeView.class, NOFOLLOW_LINKS);
@@ -751,14 +745,20 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         }
     }
 
-    private static void deleteIfSameFile(Path path, Object expectedFileKey) {
-        if (path == null || expectedFileKey == null) {
+    private static void deletePinnedSnapshot(
+            Path snapshot,
+            StablePathIdentity snapshotIdentity,
+            Path original,
+            StablePathIdentity originalIdentity) {
+        if (snapshot == null) {
             return;
         }
         try {
-            BasicFileAttributes current = Files.readAttributes(path, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (current.isRegularFile() && expectedFileKey.equals(current.fileKey())) {
-                Files.deleteIfExists(path);
+            boolean owned = snapshotIdentity != null
+                    ? snapshotIdentity.matches(snapshot)
+                    : originalIdentity != null && originalIdentity.sameFile(original, snapshot);
+            if (owned) {
+                Files.deleteIfExists(snapshot);
             }
         } catch (IOException | RuntimeException ignored) {
             // Fail closed: an unverified path is never removed.
@@ -1051,24 +1051,24 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     static final class VerifiedGradleWrapper implements AutoCloseable {
         private final Path root;
-        private final Object rootFileKey;
+        private final StablePathIdentity rootIdentity;
         private final Path original;
         private final Path snapshot;
-        private final Object fileKey;
+        private final StablePathIdentity snapshotIdentity;
         private final boolean requiresOwnerExecutable;
 
         private VerifiedGradleWrapper(
                 Path root,
-                Object rootFileKey,
+                StablePathIdentity rootIdentity,
                 Path original,
                 Path snapshot,
-                Object fileKey,
+                StablePathIdentity snapshotIdentity,
                 boolean requiresOwnerExecutable) {
             this.root = root;
-            this.rootFileKey = rootFileKey;
+            this.rootIdentity = rootIdentity;
             this.original = original;
             this.snapshot = snapshot;
-            this.fileKey = fileKey;
+            this.snapshotIdentity = snapshotIdentity;
             this.requiresOwnerExecutable = requiresOwnerExecutable;
         }
 
@@ -1083,14 +1083,14 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         Path verifiedExecutable() {
             try {
                 BasicFileAttributes currentRoot = Files.readAttributes(root, BasicFileAttributes.class, NOFOLLOW_LINKS);
-                if (!currentRoot.isDirectory() || !rootFileKey.equals(requiredFileKey(currentRoot))
+                if (!currentRoot.isDirectory() || !rootIdentity.matches(root)
                         || !root.toRealPath().equals(root)
                         || !root.equals(snapshot.getParent())
                         || !snapshot.getParent().toRealPath().equals(root)) {
                     throw new IllegalArgumentException("Gradle wrapper snapshot escaped the validation workspace");
                 }
-                BasicFileAttributes current = regularFileAttributes(snapshot);
-                if (!fileKey.equals(requiredFileKey(current))) {
+                regularFileAttributes(snapshot);
+                if (!snapshotIdentity.matches(snapshot)) {
                     throw new IllegalArgumentException("Gradle wrapper snapshot identity changed before execution");
                 }
                 if (requiresOwnerExecutable) {
@@ -1106,8 +1106,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         public void close() {
             try {
                 BasicFileAttributes currentRoot = Files.readAttributes(root, BasicFileAttributes.class, NOFOLLOW_LINKS);
-                if (currentRoot.isDirectory() && rootFileKey.equals(requiredFileKey(currentRoot))) {
-                    deleteIfSameFile(snapshot, fileKey);
+                if (currentRoot.isDirectory() && rootIdentity.matches(root)) {
+                    deletePinnedSnapshot(snapshot, snapshotIdentity, original, null);
                 }
             } catch (IOException | RuntimeException ignored) {
                 // Fail closed: cleanup never follows a changed workspace identity.

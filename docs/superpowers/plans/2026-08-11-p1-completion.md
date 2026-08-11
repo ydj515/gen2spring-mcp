@@ -871,17 +871,18 @@ filename in `/C`. Reject `\r`, `\n`, NUL, `"`, `%`, `!`, `^`, `&`, `|`, `<`, and
 - [ ] **Step 4: Write Java runtime executable tests that fail**
 
 Create fake physical runtime homes with `bin/java` and `bin/java.exe`; assert each platform probes only its exact filename,
-rechecks file-key stability, and never falls back across platforms.
+rechecks stable physical identity, and never falls back across platforms. Characterize the Windows JDK's null native
+file-key boundary with a physical-path/file-store/creation-time/bounded-metadata fallback test.
 
 - [ ] **Step 5: Inject platform into JavaRuntimeResolver and verify GREEN**
 
-Keep all current path/file-key/version/probe/descendant cleanup behavior. Change only executable selection and old constructor
+Keep all current path identity/version/probe/descendant cleanup behavior. Change only executable selection and old constructor
 delegation. Run `JavaRuntimeResolverTest` plus `ValidationHostPlatformTest`.
 
 - [ ] **Step 6: Write wrapper pinning and invocation tests that fail**
 
-Cover POSIX owner-executable characterization, Windows no-executable requirement, `gradlew.bat` selection, hard-link/file-key
-identity, replacement after snapshot, symlink, directory, outside root, missing file-key, unsafe target-home path, exact
+Cover POSIX owner-executable characterization, Windows no-executable requirement, `gradlew.bat` selection, hard-link/stable
+identity, replacement after snapshot, symlink, directory, outside root, unstable identity, unsafe target-home path, exact
 `cmd.exe` argv, validation failure report, and no archive publication.
 
 - [ ] **Step 7: Make wrapper verification platform-aware**

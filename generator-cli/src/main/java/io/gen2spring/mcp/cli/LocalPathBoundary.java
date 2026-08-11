@@ -5,17 +5,26 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+import io.gen2spring.mcp.core.StablePathIdentity;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.UserPrincipal;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -26,8 +35,58 @@ final class LocalPathBoundary {
             Set.copyOf(PosixFilePermissions.fromString("rwx------"));
     private static final Set<PosixFilePermission> PRIVATE_FILE_PERMISSIONS =
             Set.copyOf(PosixFilePermissions.fromString("rw-------"));
+    private static final Set<AclEntryPermission> PRIVATE_ACL_PERMISSIONS =
+            Set.copyOf(EnumSet.allOf(AclEntryPermission.class));
+
+    private interface PrivateAccess {
+        FileAttribute<?> attribute();
+
+        boolean matches(Path path) throws IOException;
+    }
+
+    private record PosixPrivateAccess(Set<PosixFilePermission> permissions) implements PrivateAccess {
+        @Override
+        public FileAttribute<Set<PosixFilePermission>> attribute() {
+            return PosixFilePermissions.asFileAttribute(permissions);
+        }
+
+        @Override
+        public boolean matches(Path path) throws IOException {
+            return permissions.equals(Files.readAttributes(
+                    path, PosixFileAttributes.class, NOFOLLOW_LINKS).permissions());
+        }
+    }
+
+    private record AclPrivateAccess(UserPrincipal owner, List<AclEntry> entries) implements PrivateAccess {
+        @Override
+        public FileAttribute<List<AclEntry>> attribute() {
+            return new FileAttribute<>() {
+                @Override
+                public String name() {
+                    return "acl:acl";
+                }
+
+                @Override
+                public List<AclEntry> value() {
+                    return entries;
+                }
+            };
+        }
+
+        @Override
+        public boolean matches(Path path) throws IOException {
+            AclFileAttributeView view = Files.getFileAttributeView(
+                    path, AclFileAttributeView.class, NOFOLLOW_LINKS);
+            return view != null && owner.equals(Files.getOwner(path, NOFOLLOW_LINKS))
+                    && entries.equals(view.getAcl());
+        }
+    }
 
     RegularFile regularFile(Path supplied, String label) {
+        return regularFile(supplied, label, null);
+    }
+
+    private RegularFile regularFile(Path supplied, String label, PrivateAccess privateAccess) {
         if (supplied == null) {
             throw failure(Reason.INVALID, label + " path is required", null);
         }
@@ -42,8 +101,12 @@ final class LocalPathBoundary {
         if (!parentAttributes.isDirectory() || !fileAttributes.isRegularFile()) {
             throw failure(Reason.INVALID, label + " must be a regular local file", null);
         }
-        return new RegularFile(path, requiredFileKey(parentAttributes, label + " parent"),
-                requiredFileKey(fileAttributes, label), label);
+        try {
+            return new RegularFile(path, StablePathIdentity.capture(parent),
+                    StablePathIdentity.capture(path), privateAccess, label);
+        } catch (IOException exception) {
+            throw failure(Reason.IO, label + " identity could not be read", exception);
+        }
     }
 
     NewFile newFile(Path supplied, String label) {
@@ -64,7 +127,11 @@ final class LocalPathBoundary {
             throw failure(Reason.INVALID, label + " parent must be a regular directory", null);
         }
         requireMissing(path, label);
-        return new NewFile(path, requiredFileKey(parentAttributes, label + " parent"), label);
+        try {
+            return new NewFile(path, StablePathIdentity.capture(parent), label);
+        } catch (IOException exception) {
+            throw failure(Reason.IO, label + " parent identity could not be read", exception);
+        }
     }
 
     PrivateDirectory privateDirectory(NewFile target, String prefix, String label) {
@@ -74,25 +141,24 @@ final class LocalPathBoundary {
         }
         target.verifyParentStable();
         Path parent = target.path().getParent();
-        if (Files.getFileAttributeView(parent, PosixFileAttributeView.class, NOFOLLOW_LINKS) == null) {
-            throw failure(Reason.INVALID, label + " requires owner-only POSIX permissions", null);
-        }
+        PrivateAccess privateAccess = privateAccess(parent, PRIVATE_DIRECTORY_PERMISSIONS, label);
         Path directory = null;
-        Object directoryKey = null;
+        StablePathIdentity directoryKey = null;
         try {
-            directory = Files.createTempDirectory(parent, prefix,
-                    PosixFilePermissions.asFileAttribute(PRIVATE_DIRECTORY_PERMISSIONS));
-            PosixFileAttributes directoryAttributes = posixAttributes(directory, label);
-            directoryKey = requiredFileKey(directoryAttributes, label);
+            directory = Files.createTempDirectory(parent, prefix, privateAccess.attribute());
+            if (!privateAccess.matches(directory)) {
+                throw failure(Reason.INVALID, label + " must have owner-only permissions", null);
+            }
+            directoryKey = StablePathIdentity.capture(directory);
             PrivateDirectory result = new PrivateDirectory(
-                    directory, target.parentKey, directoryKey, label);
+                    directory, target.parentKey, directoryKey, privateAccess, label);
             result.verifyStable();
             return result;
         } catch (PathBoundaryException exception) {
-            cleanupNewPrivateDirectory(directory, target.parentKey, directoryKey);
+            cleanupNewPrivateDirectory(directory, target.parentKey, directoryKey, privateAccess);
             throw exception;
         } catch (IOException | RuntimeException exception) {
-            cleanupNewPrivateDirectory(directory, target.parentKey, directoryKey);
+            cleanupNewPrivateDirectory(directory, target.parentKey, directoryKey, privateAccess);
             throw failure(Reason.IO, label + " could not be created safely", exception);
         }
     }
@@ -104,7 +170,7 @@ final class LocalPathBoundary {
         }
         byte[] bytes = source.readBounded(maxBytes);
         Path directory = null;
-        Object directoryKey = null;
+        StablePathIdentity directoryKey = null;
         try {
             Path configuredTemp = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize();
             Path physicalTemp = configuredTemp.toRealPath();
@@ -113,7 +179,7 @@ final class LocalPathBoundary {
             }
             directory = Files.createTempDirectory(physicalTemp, ".openapi-mcp-input-");
             BasicFileAttributes directoryAttributes = attributes(directory, "Temporary input directory");
-            directoryKey = requiredFileKey(directoryAttributes, "Temporary input directory");
+            directoryKey = StablePathIdentity.capture(directory);
             Path copy = directory.resolve("source" + suffix);
             Files.write(copy, bytes, CREATE_NEW, WRITE, NOFOLLOW_LINKS);
             RegularFile staged = regularFile(copy, "Temporary specification");
@@ -132,14 +198,21 @@ final class LocalPathBoundary {
 
     final class RegularFile {
         private final Path path;
-        private final Object parentKey;
-        private final Object fileKey;
+        private final StablePathIdentity parentKey;
+        private StablePathIdentity fileKey;
+        private final PrivateAccess privateAccess;
         private final String label;
 
-        private RegularFile(Path path, Object parentKey, Object fileKey, String label) {
+        private RegularFile(
+                Path path,
+                StablePathIdentity parentKey,
+                StablePathIdentity fileKey,
+                PrivateAccess privateAccess,
+                String label) {
             this.path = path;
             this.parentKey = parentKey;
             this.fileKey = fileKey;
+            this.privateAccess = privateAccess;
             this.label = label;
         }
 
@@ -152,9 +225,33 @@ final class LocalPathBoundary {
             BasicFileAttributes parentAttributes = attributes(path.getParent(), label + " parent");
             BasicFileAttributes fileAttributes = attributes(path, label);
             if (!parentAttributes.isDirectory() || !fileAttributes.isRegularFile()
-                    || !parentKey.equals(requiredFileKey(parentAttributes, label + " parent"))
-                    || !fileKey.equals(requiredFileKey(fileAttributes, label))) {
+                    || !matches(parentKey, path.getParent())
+                    || !matches(fileKey, path)) {
                 throw failure(Reason.INVALID, label + " changed during use", null);
+            }
+            if (privateAccess != null) {
+                try {
+                    if (!privateAccess.matches(path)) {
+                        throw failure(Reason.INVALID, label + " permissions changed during use", null);
+                    }
+                } catch (IOException exception) {
+                    throw failure(Reason.IO, label + " permissions could not be verified", exception);
+                }
+            }
+        }
+
+        void refreshAfterWrite() {
+            verifyPhysical(path, false, label);
+            try {
+                if (!parentKey.matches(path.getParent()) || !fileKey.matchesObject(path)
+                        || privateAccess != null && !privateAccess.matches(path)) {
+                    throw failure(Reason.INVALID, label + " changed during write", null);
+                }
+                fileKey = StablePathIdentity.capture(path);
+            } catch (PathBoundaryException exception) {
+                throw exception;
+            } catch (IOException exception) {
+                throw failure(Reason.IO, label + " identity could not be refreshed", exception);
             }
         }
 
@@ -179,18 +276,22 @@ final class LocalPathBoundary {
             Objects.requireNonNull(other, "other");
             verifyStable();
             other.verifyStable();
-            if (!fileKey.equals(other.fileKey)) {
-                throw failure(Reason.INVALID, label + " identity does not match the published file", null);
+            try {
+                if (!fileKey.sameFile(path, other.fileKey, other.path)) {
+                    throw failure(Reason.INVALID, label + " identity does not match the published file", null);
+                }
+            } catch (IOException exception) {
+                throw failure(Reason.IO, label + " identity could not be compared", exception);
             }
         }
     }
 
     final class NewFile {
         private final Path path;
-        private final Object parentKey;
+        private final StablePathIdentity parentKey;
         private final String label;
 
-        private NewFile(Path path, Object parentKey, String label) {
+        private NewFile(Path path, StablePathIdentity parentKey, String label) {
             this.path = path;
             this.parentKey = parentKey;
             this.label = label;
@@ -210,7 +311,7 @@ final class LocalPathBoundary {
             verifyPhysical(parent, false, label + " parent");
             BasicFileAttributes parentAttributes = attributes(parent, label + " parent");
             if (!parentAttributes.isDirectory()
-                    || !parentKey.equals(requiredFileKey(parentAttributes, label + " parent"))) {
+                    || !matches(parentKey, parent)) {
                 throw failure(Reason.INVALID, label + " parent changed during use", null);
             }
         }
@@ -218,14 +319,21 @@ final class LocalPathBoundary {
 
     final class PrivateDirectory {
         private final Path path;
-        private final Object parentKey;
-        private final Object directoryKey;
+        private final StablePathIdentity parentKey;
+        private final StablePathIdentity directoryKey;
+        private final PrivateAccess privateAccess;
         private final String label;
 
-        private PrivateDirectory(Path path, Object parentKey, Object directoryKey, String label) {
+        private PrivateDirectory(
+                Path path,
+                StablePathIdentity parentKey,
+                StablePathIdentity directoryKey,
+                PrivateAccess privateAccess,
+                String label) {
             this.path = path;
             this.parentKey = parentKey;
             this.directoryKey = directoryKey;
+            this.privateAccess = privateAccess;
             this.label = label;
         }
 
@@ -234,13 +342,12 @@ final class LocalPathBoundary {
             Path file = null;
             RegularFile identity = null;
             try {
-                file = Files.createTempFile(path, prefix, suffix,
-                        PosixFilePermissions.asFileAttribute(PRIVATE_FILE_PERMISSIONS));
-                identity = regularFile(file, fileLabel);
-                PosixFileAttributes attributes = posixAttributes(file, fileLabel);
-                if (!PRIVATE_FILE_PERMISSIONS.equals(attributes.permissions())) {
+                PrivateAccess fileAccess = privateAccess(path, PRIVATE_FILE_PERMISSIONS, fileLabel);
+                file = Files.createTempFile(path, prefix, suffix, fileAccess.attribute());
+                if (!fileAccess.matches(file)) {
                     throw failure(Reason.INVALID, fileLabel + " must have owner-only permissions", null);
                 }
+                identity = regularFile(file, fileLabel, fileAccess);
                 verifyStable();
                 return identity;
             } catch (PathBoundaryException exception) {
@@ -255,19 +362,23 @@ final class LocalPathBoundary {
         void verifyStable() {
             verifyPhysical(path, false, label);
             BasicFileAttributes parentAttributes = attributes(path.getParent(), label + " parent");
-            PosixFileAttributes directoryAttributes = posixAttributes(path, label);
-            if (!parentAttributes.isDirectory() || !directoryAttributes.isDirectory()
-                    || !parentKey.equals(requiredFileKey(parentAttributes, label + " parent"))
-                    || !directoryKey.equals(requiredFileKey(directoryAttributes, label))
-                    || !PRIVATE_DIRECTORY_PERMISSIONS.equals(directoryAttributes.permissions())) {
-                throw failure(Reason.INVALID, label + " changed during use", null);
+            BasicFileAttributes directoryAttributes = attributes(path, label);
+            try {
+                if (!parentAttributes.isDirectory() || !directoryAttributes.isDirectory()
+                    || !matches(parentKey, path.getParent())
+                    || !matches(directoryKey, path)
+                    || !privateAccess.matches(path)) {
+                    throw failure(Reason.INVALID, label + " changed during use", null);
+                }
+            } catch (IOException exception) {
+                throw failure(Reason.IO, label + " permissions could not be verified", exception);
             }
         }
 
         boolean deleteStagingIfOwned(RegularFile staging) throws IOException {
             Objects.requireNonNull(staging, "staging");
             verifyStable();
-            if (!path.equals(staging.path.getParent()) || !directoryKey.equals(staging.parentKey)) {
+            if (!path.equals(staging.path.getParent()) || !sameRecordedIdentity(directoryKey, staging.parentKey)) {
                 return false;
             }
             BasicFileAttributes stagingAttributes;
@@ -276,7 +387,7 @@ final class LocalPathBoundary {
             } catch (NoSuchFileException exception) {
                 return false;
             }
-            if (!stagingAttributes.isRegularFile() || !staging.fileKey.equals(stagingAttributes.fileKey())) {
+            if (!stagingAttributes.isRegularFile() || !matches(staging.fileKey, staging.path)) {
                 return false;
             }
             Files.delete(staging.path);
@@ -304,10 +415,10 @@ final class LocalPathBoundary {
 
     final class VerifiedCopy implements AutoCloseable {
         private final Path directory;
-        private final Object directoryKey;
+        private final StablePathIdentity directoryKey;
         private final RegularFile file;
 
-        private VerifiedCopy(Path directory, Object directoryKey, RegularFile file) {
+        private VerifiedCopy(Path directory, StablePathIdentity directoryKey, RegularFile file) {
             this.directory = directory;
             this.directoryKey = directoryKey;
             this.file = file;
@@ -325,7 +436,7 @@ final class LocalPathBoundary {
                 BasicFileAttributes attributes = LocalPathBoundary.this.attributes(
                         directory, "Temporary input directory");
                 if (!attributes.isDirectory()
-                        || !directoryKey.equals(requiredFileKey(attributes, "Temporary input directory"))) {
+                        || !matches(directoryKey, directory)) {
                     return;
                 }
                 Files.delete(file.path());
@@ -403,19 +514,39 @@ final class LocalPathBoundary {
         }
     }
 
-    private PosixFileAttributes posixAttributes(Path path, String label) {
+    private PrivateAccess privateAccess(
+            Path parent, Set<PosixFilePermission> posixPermissions, String label) {
         try {
-            return Files.readAttributes(path, PosixFileAttributes.class, NOFOLLOW_LINKS);
+            if (Files.getFileAttributeView(parent, PosixFileAttributeView.class, NOFOLLOW_LINKS) != null) {
+                return new PosixPrivateAccess(posixPermissions);
+            }
+            AclFileAttributeView view = Files.getFileAttributeView(
+                    parent, AclFileAttributeView.class, NOFOLLOW_LINKS);
+            if (view == null) {
+                throw failure(Reason.INVALID, label + " requires owner-only filesystem permissions", null);
+            }
+            UserPrincipal owner = Files.getOwner(parent, NOFOLLOW_LINKS);
+            AclEntry ownerOnly = AclEntry.newBuilder()
+                    .setType(AclEntryType.ALLOW)
+                    .setPrincipal(owner)
+                    .setPermissions(PRIVATE_ACL_PERMISSIONS)
+                    .build();
+            return new AclPrivateAccess(owner, List.of(ownerOnly));
         } catch (IOException | UnsupportedOperationException exception) {
             throw failure(Reason.INVALID, label + " owner-only identity could not be read", exception);
         }
     }
 
-    private Object requiredFileKey(BasicFileAttributes attributes, String label) {
-        if (attributes.fileKey() == null) {
-            throw failure(Reason.INVALID, label + " filesystem does not expose stable identity", null);
+    private boolean matches(StablePathIdentity expected, Path path) {
+        try {
+            return expected.matches(path);
+        } catch (IOException exception) {
+            throw failure(Reason.IO, "Local path identity could not be read", exception);
         }
-        return attributes.fileKey();
+    }
+
+    private boolean sameRecordedIdentity(StablePathIdentity first, StablePathIdentity second) {
+        return first.sameObjectIdentity(second);
     }
 
     private byte[] bounded(InputStream input, int maxBytes, String label) throws IOException {
@@ -439,13 +570,13 @@ final class LocalPathBoundary {
         }
     }
 
-    private void cleanupUnpublishedDirectory(Path directory, Object expectedDirectoryKey) {
+    private void cleanupUnpublishedDirectory(Path directory, StablePathIdentity expectedDirectoryKey) {
         if (directory == null || expectedDirectoryKey == null) {
             return;
         }
         try {
             BasicFileAttributes before = Files.readAttributes(directory, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!before.isDirectory() || !expectedDirectoryKey.equals(before.fileKey())) {
+            if (!before.isDirectory() || !matches(expectedDirectoryKey, directory)) {
                 return;
             }
         } catch (IOException ignored) {
@@ -454,7 +585,7 @@ final class LocalPathBoundary {
         try (var entries = Files.list(directory)) {
             for (Path entry : entries.toList()) {
                 BasicFileAttributes current = Files.readAttributes(directory, BasicFileAttributes.class, NOFOLLOW_LINKS);
-                if (!current.isDirectory() || !expectedDirectoryKey.equals(current.fileKey())) {
+                if (!current.isDirectory() || !matches(expectedDirectoryKey, directory)) {
                     return;
                 }
                 if (entry.getParent().equals(directory) && !Files.isSymbolicLink(entry)
@@ -463,7 +594,7 @@ final class LocalPathBoundary {
                 }
             }
             BasicFileAttributes after = Files.readAttributes(directory, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (after.isDirectory() && expectedDirectoryKey.equals(after.fileKey())) {
+            if (after.isDirectory() && matches(expectedDirectoryKey, directory)) {
                 Files.deleteIfExists(directory);
             }
         } catch (IOException ignored) {
@@ -471,18 +602,23 @@ final class LocalPathBoundary {
         }
     }
 
-    private void cleanupNewPrivateDirectory(Path directory, Object expectedParentKey, Object expectedDirectoryKey) {
+    private void cleanupNewPrivateDirectory(
+            Path directory,
+            StablePathIdentity expectedParentKey,
+            StablePathIdentity expectedDirectoryKey,
+            PrivateAccess privateAccess) {
         if (directory == null || expectedParentKey == null || expectedDirectoryKey == null) {
             return;
         }
         try {
             BasicFileAttributes parentAttributes = Files.readAttributes(
                     directory.getParent(), BasicFileAttributes.class, NOFOLLOW_LINKS);
-            PosixFileAttributes directoryAttributes = Files.readAttributes(
-                    directory, PosixFileAttributes.class, NOFOLLOW_LINKS);
+            BasicFileAttributes directoryAttributes = Files.readAttributes(
+                    directory, BasicFileAttributes.class, NOFOLLOW_LINKS);
             if (parentAttributes.isDirectory() && directoryAttributes.isDirectory()
-                    && expectedParentKey.equals(parentAttributes.fileKey())
-                    && expectedDirectoryKey.equals(directoryAttributes.fileKey())) {
+                    && matches(expectedParentKey, directory.getParent())
+                    && matches(expectedDirectoryKey, directory)
+                    && privateAccess.matches(directory)) {
                 Files.delete(directory);
             }
         } catch (IOException | RuntimeException ignored) {

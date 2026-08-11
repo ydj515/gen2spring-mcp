@@ -1,11 +1,8 @@
 package io.gen2spring.mcp.validation;
 
-import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -105,7 +102,7 @@ final class WindowsValidationHost implements ValidationHostPlatform {
     private static final Pattern SNAPSHOT_NAME = Pattern.compile("\\.gradlew-validated-[0-9a-f-]+\\.bat");
 
     private final Path command;
-    private final Object commandFileKey;
+    private final StablePathIdentity commandIdentity;
 
     WindowsValidationHost(Path systemRoot) {
         try {
@@ -121,13 +118,12 @@ final class WindowsValidationHost implements ValidationHostPlatform {
                     || !candidate.toRealPath().equals(candidate)) {
                 throw ValidationHostPlatform.failure();
             }
-            BasicFileAttributes attributes = Files.readAttributes(
-                    candidate, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!attributes.isRegularFile() || attributes.fileKey() == null) {
+            StablePathIdentity identity = StablePathIdentity.capture(candidate);
+            if (!identity.regularFile()) {
                 throw ValidationHostPlatform.failure();
             }
             this.command = candidate;
-            this.commandFileKey = attributes.fileKey();
+            this.commandIdentity = identity;
         } catch (IOException | RuntimeException failure) {
             throw ValidationHostPlatform.failure();
         }
@@ -174,9 +170,7 @@ final class WindowsValidationHost implements ValidationHostPlatform {
             if (Files.isSymbolicLink(command) || !command.toRealPath().equals(command)) {
                 throw ValidationHostPlatform.failure();
             }
-            BasicFileAttributes current = Files.readAttributes(
-                    command, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!current.isRegularFile() || !commandFileKey.equals(current.fileKey())) {
+            if (!commandIdentity.matches(command)) {
                 throw ValidationHostPlatform.failure();
             }
         } catch (IOException | RuntimeException failure) {

@@ -315,7 +315,7 @@ Windows는 다음 계약을 사용한다.
 
 - `gradlew.bat`
 - executable bit 미검사
-- regular file, non-symbolic/non-reparse, physical parent, stable file-key required
+- regular file, non-symbolic/non-reparse, physical parent, stable physical identity required
 - 같은 validation root 안의 unpredictable ASCII filename으로 hard-link snapshot
 - `%SystemRoot%\\System32\\cmd.exe`의 physical regular-file identity 확인
 - current directory를 validation root로 두고 safe relative snapshot filename만 command에 사용
@@ -325,8 +325,11 @@ Gradle argument는 generator가 소유한 fixed literal만 허용한다. target 
 Windows command metacharacter, control character, quote, percent를 거부한다. space는 quoted argument로
 지원한다. validation workspace absolute path는 command string에 포함하지 않는다.
 
-wrapper original/snapshot identity는 launch 직전 다시 확인한다. snapshot cleanup은 verified file-key가 같은
-경우에만 수행한다. hard link 또는 stable file-key를 제공하지 않는 Windows filesystem은 fail-closed한다.
+wrapper original/snapshot identity는 launch 직전 다시 확인한다. native file key가 있으면 file key와 creation
+time을 사용하고, Windows JDK처럼 file key가 없으면 physical path, file store, creation time, entry type과
+regular-file size/mtime의 bounded identity를 사용한다. hard-link 관계는 `Files.isSameFile`로 별도 확인한다.
+snapshot cleanup은 이 identity가 일치하는 경우에만 수행하며 hard link 또는 stable physical identity를
+제공하지 않는 Windows filesystem은 fail-closed한다.
 
 application boot는 shell을 사용하지 않고 verified target `bin/java.exe`를 `ProcessBuilder` argv로 직접
 실행한다. Java runtime resolver는 Windows에서 `bin/java.exe`, POSIX에서 `bin/java`를 선택한다.
@@ -360,7 +363,7 @@ root README와 PRD는 네 기능을 완료된 P1로 이동하고 다음 제한�
 - typed output supported schema subset
 - retry GET-only와 최대 횟수
 - pagination pointer/query/value/bounds
-- Windows host의 NTFS-style hard-link/file-key와 safe path requirement
+- Windows host의 NTFS-style hard-link/stable physical identity와 safe path/owner-only ACL requirement
 
 Windows issue #2는 구현 PR에 연결하고 Windows CI가 통과한 뒤 merge 시 닫는다.
 

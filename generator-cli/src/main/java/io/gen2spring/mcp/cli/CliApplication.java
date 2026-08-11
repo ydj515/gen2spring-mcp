@@ -325,6 +325,7 @@ public final class CliApplication {
             stagingDirectory.verifyStable();
             stagingIdentity.verifyStable();
             Files.write(staging, bytes, WRITE, TRUNCATE_EXISTING, NOFOLLOW_LINKS);
+            stagingIdentity.refreshAfterWrite();
             byte[] staged = stagingIdentity.readBounded(bytes.length);
             if (!Arrays.equals(bytes, staged)) {
                 throw new IOException("staged analysis verification failed");

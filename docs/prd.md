@@ -1814,7 +1814,10 @@ Spring AI 2.x + Java 21
 Linux CI는 POSIX `gradlew`와 target `bin/java`, Windows CI는 `gradlew.bat`와 target `bin/java.exe`를 사용해
 네 profile의 compile, generated test, ApplicationContext, MCP initialize/tools/list/tools/call을 실행한다.
 Windows command는 trusted `%SystemRoot%\System32\cmd.exe`의 고정 argument만 사용하고 wrapper/runtime identity를
-기동 직전 재검증한다. 관련 구현 경계는 [issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)와 연결한다.
+기동 직전 재검증한다. native file key를 제공하지 않는 Windows JDK에서는 physical path, file store,
+creation time과 bounded file metadata를 사용하고 hard-link 관계는 별도로 확인한다. CLI private staging은
+owner-only Windows ACL을 요구한다. 관련 구현 경계는
+[issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)와 연결한다.
 
 ### 17.4 MCP Contract Test
 

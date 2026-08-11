@@ -28,7 +28,7 @@ class InstalledCliTest {
     @Test
     void installedProfilesAndInspectKeepSuccessfulStderrEmpty() throws Exception {
         Path executable = Path.of(System.getProperty("openapiMcp.executable"));
-        assertTrue(Files.isExecutable(executable));
+        assertTrue(Files.isRegularFile(executable));
 
         Result profiles = run(executable, "profiles");
         Result repeatedProfiles = run(executable, "profiles");
@@ -283,7 +283,7 @@ class InstalledCliTest {
         Path stdoutPath = tempDir.resolve("generated-tests.stdout");
         Path stderrPath = tempDir.resolve("generated-tests.stderr");
         Process process = new ProcessBuilder(
-                projectRoot.resolve("gradlew").toString(),
+                gradleWrapper(projectRoot).toString(),
                 "test",
                 "--tests", "com.example.weather.runtime.RawResponseCompatibilityTest",
                 "--no-daemon",
@@ -312,6 +312,14 @@ class InstalledCliTest {
             }
             return Files.write(target, input.readAllBytes());
         }
+    }
+
+    private Path gradleWrapper(Path projectRoot) {
+        return projectRoot.resolve(isWindows() ? "gradlew.bat" : "gradlew");
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).startsWith("windows");
     }
 
     private void assertInstalledProfile(

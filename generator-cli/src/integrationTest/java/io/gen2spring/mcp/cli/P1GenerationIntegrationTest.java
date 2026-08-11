@@ -246,7 +246,7 @@ class P1GenerationIntegrationTest {
 
     private InstalledCliResult runInstalledCliCommand(String... arguments) throws Exception {
         Path executable = Path.of(System.getProperty("openapiMcp.executable"));
-        assertTrue(Files.isExecutable(executable));
+        assertTrue(Files.isRegularFile(executable));
         List<String> command = new ArrayList<>();
         command.add(executable.toString());
         command.addAll(List.of(arguments));
@@ -302,8 +302,9 @@ class P1GenerationIntegrationTest {
             ProfileCase profile) throws Exception {
         assertTrue(Files.isDirectory(result.projectRoot()));
         assertTrue(Files.isRegularFile(result.archive()));
-        assertTrue(Files.isExecutable(result.projectRoot().resolve("gradlew")));
-        if (Files.getFileStore(result.projectRoot()).supportsFileAttributeView("posix")) {
+        Path hostWrapper = gradleWrapper(result.projectRoot());
+        assertTrue(Files.isRegularFile(hostWrapper));
+        if (!isWindows() && Files.getFileStore(result.projectRoot()).supportsFileAttributeView("posix")) {
             assertTrue(Files.getPosixFilePermissions(result.projectRoot().resolve("gradlew"))
                     .contains(PosixFilePermission.OWNER_EXECUTE));
         }
@@ -600,8 +601,8 @@ class P1GenerationIntegrationTest {
     }
 
     private void buildBootJar(Path projectRoot, Path targetJavaHome) throws Exception {
-        Path gradle = projectRoot.resolve("gradlew");
-        assertTrue(Files.isExecutable(gradle), "generated Gradle wrapper is unavailable");
+        Path gradle = gradleWrapper(projectRoot);
+        assertTrue(Files.isRegularFile(gradle), "generated Gradle wrapper is unavailable");
         ProcessBuilder processBuilder = new ProcessBuilder(
                 gradle.toString(),
                 "-Dorg.gradle.java.installations.auto-detect=false",
@@ -619,6 +620,14 @@ class P1GenerationIntegrationTest {
         }
         assertTrue(Files.isRegularFile(projectRoot.resolve("build/libs/weather-mcp-server.jar")),
                 "generated boot JAR is unavailable");
+    }
+
+    private Path gradleWrapper(Path projectRoot) {
+        return projectRoot.resolve(isWindows() ? "gradlew.bat" : "gradlew");
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).startsWith("windows");
     }
 
     private void awaitApplication(ObservedProcess application, int port) throws Exception {

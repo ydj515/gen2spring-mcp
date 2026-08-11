@@ -15,8 +15,11 @@ Spring AI 1.1.8 또는 Spring Boot 4.1.0/Spring AI 2.0.0 기반 Streamable HTTP 
   `GEN2SPRING_JAVA_17_HOME`에 지정해야 한다. Java 21 기본 profile은 현재
   `java.home`이 Java 21이면 이를 사용하며, 필요하면 `GEN2SPRING_JAVA_21_HOME`으로 명시한다.
 - Gradle Wrapper 9.6.1. 시스템 Gradle 설치는 필요하지 않다.
-- 물리 경로와 안정적인 filesystem `fileKey`, hard link를 지원하는 로컬 파일시스템
+- 물리 경로와 hard link를 지원하는 로컬 파일시스템. native filesystem `fileKey`를 제공하지 않는
+  Windows JDK에서는 physical path, file store, creation time과 bounded file metadata를 안정적으로
+  재조회할 수 있어야 한다.
 - POSIX 환경에서는 생성된 `gradlew`에 owner execute 권한을 기록하고 검증할 수 있어야 한다.
+- Windows 환경에서는 CLI의 private staging 파일에 owner-only ACL을 적용하고 검증할 수 있어야 한다.
 - 최초 빌드와 생성 프로젝트 검증 시 Gradle 배포본과 Maven Central dependency를 받을 수 있어야 한다.
 
 ```bash
@@ -461,7 +464,9 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
 - Windows validation host는 host별 adapter로 지원한다. Windows에서는 repository wrapper를
   `gradlew.bat`로 선택하고 trusted `%SystemRoot%\System32\cmd.exe`의 고정 `/d /s /c` argument로 실행하며,
   verified target JDK의 `bin/java.exe`로 application을 기동한다. command metacharacter·control character와
-  불안정한 wrapper/JDK identity는 fail-closed로 거부한다. Linux와 `windows-latest` CI가 Java 17·21 전체
+  불안정한 wrapper/JDK identity는 fail-closed로 거부한다. identity는 native file key가 있으면 이를 사용하고,
+  없으면 physical path·file store·creation time·bounded metadata로 재검증하며 hard link 관계는
+  `Files.isSameFile`로 확인한다. Linux와 `windows-latest` CI가 Java 17·21 전체
   compile/test/ApplicationContext/MCP journey를 실행하며 [Windows 지원 issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)의
   구현 경계를 검증한다.
 - P0의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
