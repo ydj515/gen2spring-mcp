@@ -1,0 +1,28 @@
+{
+  "project": {
+    "groupId": "com.example",
+    "artifactId": "installed-editor-weather-mcp",
+    "packageName": "com.example.weather"
+  },
+  "provider": "weather",
+  "domain": "forecast",
+  "targetProfileId": "spring-ai-2.0-java21-mvc-streamable",
+  "validationLevel": "MCP_PROTOCOL",
+  "validation": {
+    "toolCall": {
+      "operationId": "getForecast",
+      "arguments": {
+        "city": "browser-private-value"
+      }
+    }
+  },
+  "operations": [
+    {
+      "operationId": "getForecast",
+      "enabled": true,
+      "toolName": "weather_get_forecast",
+      "toolDescription": "Get forecast",
+      "parameters": {}
+    }
+  ]
+}

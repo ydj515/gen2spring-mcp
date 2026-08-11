@@ -604,7 +604,7 @@ git commit -m "feat(web): build the operation editor workflow"
 - Produces: installed `gen2spring-mcp-web` start script and complete local browser journey.
 - Preserves: installed `openapi-mcp` CLI and four-profile acceptance.
 
-- [ ] **Step 1: Write real journey and README RED tests**
+- [x] **Step 1: Write real journey and README RED tests**
 
 The integration test starts the installed Web distribution with explicit Java 17/21 homes, reads the bounded startup JSON, obtains the token, uploads the fixture, previews, starts one real generation, polls ordered stages, and downloads manifest/report/ZIP. Verify exact profile/runtime/template, `VALIDATED`, source checksum, ZIP entry contract, no raw argument/secret/path, and server process-tree cleanup.
 
@@ -620,7 +620,7 @@ UI operation editor complete
 Windows validation host remains follow-up P1
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
@@ -633,15 +633,15 @@ mise exec -- ./gradlew :generator-web:integrationTest \
 
 Expected: integration resources/wiring and README contract fail before documentation is synchronized.
 
-- [ ] **Step 3: Wire the integration suite and distribution**
+- [x] **Step 3: Wire the integration suite and distribution**
 
 Use Gradle `application` with main class `io.gen2spring.mcp.web.Main` and application name `gen2spring-mcp-web`. Register `integrationTest` as a JvmTestSuite, depend on `installDist`, forward only the two test JDK home variables, use a private test temp root, and include it in `check`.
 
-- [ ] **Step 4: Document operation editor usage and boundaries**
+- [x] **Step 4: Document operation editor usage and boundaries**
 
 Add exact startup, five-step workflow, security defaults, capacity/TTL, artifact rules, Java home requirements, and browser support. Remove UI operation editor and Generator API from unfinished P1. Keep Windows validation host as the only explicitly unfinished local-platform slice; keep P2 items unchanged.
 
-- [ ] **Step 5: Run focused and affected GREEN**
+- [x] **Step 5: Run focused and affected GREEN**
 
 ```bash
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
@@ -657,7 +657,7 @@ mise exec -- ./gradlew \
   --no-daemon --non-interactive --rerun-tasks
 ```
 
-- [ ] **Step 6: Run exact full acceptance**
+- [x] **Step 6: Run exact full acceptance**
 
 ```bash
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
@@ -669,7 +669,7 @@ mise exec -- ./gradlew clean test integrationTest \
 
 Expected: all tests pass, only the three existing macOS filesystem assumption skips remain, and both installed executables exist.
 
-- [ ] **Step 7: Perform inline completion review**
+- [x] **Step 7: Perform inline completion review**
 
 ```bash
 git diff --check
@@ -681,7 +681,7 @@ ps -Ao pid=,ppid=,command= | rg 'gen2spring-mcp-web|weather-mcp-server.jar|opena
 
 Inspect the complete slice for route allow-listing, origin/host/token enforcement, bounded reads, path ownership, state transitions, fatal/interrupt/cleanup, exact DTO fields, external requests, high-cardinality/log leaks, accessibility, 400px layout, CLI compatibility, and PRD/README synchronization. Any Critical or Important finding gets a RED regression and a meaningful `feat:` or `refactor:` commit.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add README.md generator-cli/src/test/java/io/gen2spring/mcp/cli/InstalledCliTest.java generator-web
@@ -690,14 +690,14 @@ git commit -m "docs: document the local operation editor"
 
 ## Completion Gate
 
-- [ ] The shared parser accepts/rejects identical semantic configuration for CLI YAML and Web JSON.
-- [ ] CLI and Web use one canonical profile/analyzer/planner/pipeline composition graph.
-- [ ] Preview and generation use exact canonical Tool/schema/profile results without leaking validation values.
-- [ ] Progress publishes the exact eight-stage finite sequence and seals every terminal path once.
-- [ ] Server binds only numeric loopback and enforces remote/Host/Origin/token/body/content/path bounds.
-- [ ] One running plus one queued job works; third work is rejected; TTL/delete/close cleanup is bounded.
-- [ ] ZIP is downloadable only for VALIDATED; report/manifest follow exact owned path and state rules.
-- [ ] Five-step UI is keyboard accessible, 400px responsive, and makes no external request.
-- [ ] Real browser and real generation/download journeys pass.
-- [ ] Existing four-profile CLI and full repository acceptance pass without new skips.
-- [ ] README no longer lists Generator API/UI operation editor as unfinished; Windows validation host remains explicit.
+- [x] The shared parser accepts/rejects identical semantic configuration for CLI YAML and Web JSON.
+- [x] CLI and Web use one canonical profile/analyzer/planner/pipeline composition graph.
+- [x] Preview and generation use exact canonical Tool/schema/profile results without leaking validation values.
+- [x] Progress publishes the exact eight-stage finite sequence and seals every terminal path once.
+- [x] Server binds only numeric loopback and enforces remote/Host/Origin/token/body/content/path bounds.
+- [x] One running plus one queued job works; third work is rejected; TTL/delete/close cleanup is bounded.
+- [x] ZIP is downloadable only for VALIDATED; report/manifest follow exact owned path and state rules.
+- [x] Five-step UI is keyboard accessible, 400px responsive, and makes no external request.
+- [x] Real browser and real generation/download journeys pass.
+- [x] Existing four-profile CLI and full repository acceptance pass without new skips.
+- [x] README no longer lists Generator API/UI operation editor as unfinished; Windows validation host remains explicit.

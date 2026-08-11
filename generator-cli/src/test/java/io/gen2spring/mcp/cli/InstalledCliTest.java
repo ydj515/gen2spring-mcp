@@ -123,8 +123,10 @@ class InstalledCliTest {
         assertTrue(readme.contains("active OpenTelemetry span의 trace ID"));
         assertFalse(readme.contains("metrics와 OpenTelemetry tracing은 후속 P1 범위다"));
         assertTrue(readme.contains("Windows validation host"));
-        assertTrue(readme.contains("Generator API와 UI operation editor"));
-        assertTrue(readme.contains("후속 P1 범위"));
+        assertTrue(readme.contains("UI operation editor complete"));
+        assertTrue(readme.contains("Windows validation host remains follow-up P1"));
+        assertFalse(readme.contains(
+                "Generator API와 UI operation editor, Windows validation host 지원은 후속 P1 범위다"));
     }
 
     @Test
