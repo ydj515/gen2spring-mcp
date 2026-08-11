@@ -1,0 +1,30 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+  background: #f5f7fb;
+  color: #172033;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  box-sizing: border-box;
+  width: min(52rem, 100%);
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+section {
+  margin-top: 2rem;
+  padding: 1rem;
+  border: 1px solid #c8d1e1;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+li {
+  overflow-wrap: anywhere;
+  margin-block: 0.5rem;
+}

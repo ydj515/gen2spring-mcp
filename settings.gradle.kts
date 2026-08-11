@@ -10,4 +10,5 @@ include(
     "generator-spring-ai-2",
     "generator-validation",
     "generator-cli",
+    "generator-web",
 )

@@ -359,7 +359,7 @@ git commit -m "feat(core): publish generation progress"
 - Produces: `GET /api/profiles`, `POST /api/specifications`, `POST /api/specifications/{id}/preview`.
 - Consumes: Task 1 `GeneratorApplication`; Task 2 `GenerationPipeline.preview`.
 
-- [ ] **Step 1: Write transport/security RED tests**
+- [x] **Step 1: Write transport/security RED tests**
 
 Start the server on port 0 and assert numeric loopback binding, one bounded startup JSON line, token injection, exact CSP/security headers, four profiles, upload/analysis, preview, and fixed errors. Use a raw `Socket` request for wrong `Host`; use JDK HttpClient for same-origin/token tests.
 
@@ -374,7 +374,7 @@ assertEquals(413, oversizedSpecification.statusCode());
 assertFalse(error.body().contains("private-marker"));
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 mise exec -- ./gradlew :generator-web:compileTestJava --no-daemon --non-interactive
@@ -382,7 +382,7 @@ mise exec -- ./gradlew :generator-web:compileTestJava --no-daemon --non-interact
 
 Expected: compilation fails because `generator-web` and server types are absent.
 
-- [ ] **Step 3: Implement bounded startup and request guards**
+- [x] **Step 3: Implement bounded startup and request guards**
 
 `WebArguments` permits only `--port <0..65535>` and defaults to 0. `LocalWebServer` binds `new InetSocketAddress("127.0.0.1", port)`. Generate a 32-byte SecureRandom token and require:
 
@@ -394,15 +394,15 @@ Origin: http://127.0.0.1:<actual-port>   # POST/DELETE only
 
 Reject non-loopback remote addresses before reading a body. Apply the design's CSP, `nosniff`, `DENY`, `no-referrer`, and `no-store` headers.
 
-- [ ] **Step 4: Implement bounded specification storage**
+- [x] **Step 4: Implement bounded specification storage**
 
 Create one private temporary root at startup. Validate `X-Specification-Name` as a basename with the three allowed suffixes. Stream at most 10 MiB plus one byte, write through a private temporary file, pin the regular non-symlink path, analyze, and publish an immutable record under a 256-bit opaque ID. Delete partial files on every failure.
 
-- [ ] **Step 5: Implement profile/upload/preview routes**
+- [x] **Step 5: Implement profile/upload/preview routes**
 
 Use allow-list route matching; never resolve a URI path to a filesystem path. Serialize explicit response DTOs rather than arbitrary domain records. Parse preview body with `configurationParser.parseJson`, call `pipeline.preview`, and omit representative argument values from the response.
 
-- [ ] **Step 6: Run GREEN and leak scans**
+- [x] **Step 6: Run GREEN and leak scans**
 
 ```bash
 mise exec -- ./gradlew :generator-web:test :generator-application:test :generator-cli:test \
@@ -413,7 +413,7 @@ rg -n "private-marker|X-Gen2Spring-Token|/Users/|Authorization:|Bearer " \
 
 Expected: tests pass; the scan has no response/log leak match. Test fixture constants may appear only in source.
 
-- [ ] **Step 7: Review and commit**
+- [x] **Step 7: Review and commit**
 
 ```bash
 git diff --check
