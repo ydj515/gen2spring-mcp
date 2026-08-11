@@ -226,7 +226,7 @@ class InstalledCliTest {
         Result generation = run(executable, "generate", "--spec", specification.toString(),
                 "--config", configuration.toString(), "--output", output.toString());
 
-        assertEquals(0, generation.exitCode(), generation.stderr() + generation.stdout());
+        assertEquals(0, generation.exitCode(), () -> generationFailureMessage(generation, output));
         assertEquals("", generation.stderr());
         assertFalse(JSON.readTree(Files.readString(output.resolve("GENERATION_MANIFEST.json")))
                 .path("operationMappings").get(0).has("responseNormalization"));
@@ -255,13 +255,73 @@ class InstalledCliTest {
         Result generation = run(executable, "generate", "--spec", specification.toString(),
                 "--config", configuration.toString(), "--output", output.toString());
 
-        assertEquals(0, generation.exitCode(), generation.stderr() + generation.stdout());
+        assertEquals(0, generation.exitCode(), () -> generationFailureMessage(generation, output));
         assertEquals("", generation.stderr());
         assertTrue(Files.readString(output.resolve("build.gradle.kts"))
                 .contains("spring-ai-starter-mcp-server-webmvc"));
         assertEquals("spring-ai-1.1-java21-mvc-streamable",
                 JSON.readTree(Files.readString(output.resolve("GENERATION_MANIFEST.json")))
                         .path("targetProfileId").asText());
+    }
+
+    @Test
+    void failedGenerationDiagnosticsIncludeSafeValidationStages() throws Exception {
+        Path output = Files.createDirectories(tempDir.resolve("failed-project"));
+        Files.writeString(output.resolve("VALIDATION_REPORT.json"), """
+                {
+                  "status": "UNVERIFIED",
+                  "stages": [
+                    {
+                      "stage": "COMPILE",
+                      "status": "FAILED",
+                      "durationMillis": 19,
+                      "warningCount": 0,
+                      "errorCount": 1,
+                      "summary": "build process failed safely",
+                      "private": "must-not-leak"
+                    }
+                  ],
+                  "private": "must-not-leak"
+                }
+                """);
+
+        String diagnostic = generationFailureMessage(new Result(5, "stdout", "stderr"), output);
+
+        assertTrue(diagnostic.contains("\"status\" : \"UNVERIFIED\""));
+        assertTrue(diagnostic.contains("\"stage\" : \"COMPILE\""));
+        assertTrue(diagnostic.contains("\"errorCount\" : 1"));
+        assertTrue(diagnostic.contains("build process failed safely"));
+        assertFalse(diagnostic.contains("durationMillis"));
+        assertFalse(diagnostic.contains("must-not-leak"));
+    }
+
+    private String generationFailureMessage(Result generation, Path output) {
+        StringBuilder diagnostic = new StringBuilder()
+                .append(generation.stderr())
+                .append(generation.stdout());
+        Path report = output.resolve("VALIDATION_REPORT.json");
+        if (!Files.isRegularFile(report)) {
+            return diagnostic.append("\nvalidationReport=missing").toString();
+        }
+        try {
+            var source = JSON.readTree(Files.readString(report, StandardCharsets.UTF_8));
+            var safe = JSON.createObjectNode();
+            safe.put("status", source.path("status").asText("UNKNOWN"));
+            var safeStages = safe.putArray("stages");
+            for (var stage : source.path("stages")) {
+                var safeStage = safeStages.addObject();
+                safeStage.put("stage", stage.path("stage").asText("UNKNOWN"));
+                safeStage.put("status", stage.path("status").asText("UNKNOWN"));
+                safeStage.put("warningCount", stage.path("warningCount").asInt(-1));
+                safeStage.put("errorCount", stage.path("errorCount").asInt(-1));
+                safeStage.put("summary", stage.path("summary").asText(""));
+            }
+            return diagnostic.append("\nvalidationReport=")
+                    .append(JSON.writerWithDefaultPrettyPrinter().writeValueAsString(safe))
+                    .toString();
+        } catch (java.io.IOException | RuntimeException failure) {
+            return diagnostic.append("\nvalidationReport=unreadable").toString();
+        }
     }
 
     private Result run(Path executable, String... arguments) throws Exception {
