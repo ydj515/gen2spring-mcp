@@ -50,8 +50,11 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+@EnabledOnOs({OS.LINUX, OS.MAC})
 class GradleMcpProjectValidatorTest {
     private static final String ARTIFACT_ID = "weather-mcp-server";
     private static final Map<String, ExpectedTool> EXPECTED = Map.of(
@@ -152,6 +155,51 @@ class GradleMcpProjectValidatorTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> GradleMcpProjectValidator.pinGradleWrapper(symlinkRoot, outside));
+    }
+
+    @Test
+    void pinsANonExecutableWindowsWrapperAndInvokesTheExactCmdCommand() throws Exception {
+        Path commandArguments = tempDir.resolve("cmd-arguments");
+        ValidationHostPlatform windows = windowsPlatform(commandArguments);
+        Path root = windowsProject(tempDir.resolve("windows-project"));
+        Path wrapper = root.resolve("gradlew.bat");
+        Path runtimeHome = windowsRuntime("windows-java-17");
+        JavaRuntimeResolver resolver = new JavaRuntimeResolver(
+                Map.of("GEN2SPRING_JAVA_17_HOME", runtimeHome.toString()), runtimeHome,
+                executable -> 17, windows);
+
+        var report = validator(resolver, windows).validate(request(root, EXPECTED, java17()));
+
+        assertEquals(SUCCESS, report.stages().getFirst().status());
+        assertEquals(FAILED, report.stages().get(1).status());
+        assertFalse(Files.isExecutable(wrapper));
+        List<String> arguments = Files.readAllLines(commandArguments);
+        assertEquals(List.of("/D", "/E:OFF", "/V:OFF", "/S", "/C"), arguments.subList(0, 5));
+        String commandLine = arguments.get(5);
+        assertTrue(commandLine.startsWith("call .gradlew-validated-"));
+        assertTrue(commandLine.contains(".bat -Dorg.gradle.java.installations.auto-detect=false"));
+        assertTrue(commandLine.contains("-Dorg.gradle.java.installations.paths=\"" + runtimeHome + "\""));
+        assertFalse(commandLine.contains(root.toString()));
+        try (var paths = Files.list(root)) {
+            assertFalse(paths.anyMatch(path -> path.getFileName().toString()
+                    .startsWith(".gradlew-validated-")));
+        }
+    }
+
+    @Test
+    void rejectsAnUnsafeWindowsTargetHomeBeforeBuildWithoutLeakingThePath() throws Exception {
+        ValidationHostPlatform windows = windowsPlatform(tempDir.resolve("unused-command-arguments"));
+        Path root = windowsProject(tempDir.resolve("unsafe-windows-project"));
+        Path runtimeHome = windowsRuntime("private&java-home");
+        JavaRuntimeResolver resolver = new JavaRuntimeResolver(
+                Map.of("GEN2SPRING_JAVA_17_HOME", runtimeHome.toString()), runtimeHome,
+                executable -> 17, windows);
+
+        var report = validator(resolver, windows).validate(request(root, EXPECTED, java17()));
+
+        assertEquals(FAILED, report.stages().getFirst().status());
+        assertFalse(report.toString().contains(runtimeHome.toString()));
+        assertFalse(Files.exists(tempDir.resolve("unused-command-arguments")));
     }
 
     @Test
@@ -963,6 +1011,17 @@ class GradleMcpProjectValidatorTest {
     }
 
     private GradleMcpProjectValidator validator(
+            JavaRuntimeResolver resolver, ValidationHostPlatform platform) {
+        return new GradleMcpProjectValidator(
+                new BoundedProcessRunner(), new LoopbackPortAllocator(), new McpStreamableHttpClient(),
+                Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofMillis(20), 8 * 1024,
+                GradleMcpProjectValidator.WrapperSnapshotHook.NOOP,
+                GradleMcpProjectValidator.ApplicationLaunchHook.NOOP,
+                new TrackingMockFactory(false),
+                GradleMcpProjectValidator.ApplicationCleanupHook.NOOP, resolver, platform);
+    }
+
+    private GradleMcpProjectValidator validator(
             JavaRuntimeResolver resolver,
             GradleMcpProjectValidator.WrapperSnapshotHook wrapperHook,
             GradleMcpProjectValidator.ApplicationLaunchHook launchHook) {
@@ -1108,6 +1167,31 @@ class GradleMcpProjectValidatorTest {
         Path wrapper = Files.writeString(root.resolve("gradlew"), gradlew);
         assertTrue(wrapper.toFile().setExecutable(true));
         return root.toRealPath();
+    }
+
+    private Path windowsProject(Path root) throws IOException {
+        Files.createDirectories(root.resolve("build/libs"));
+        Path wrapper = Files.writeString(root.resolve("gradlew.bat"), "@echo off\r\nexit /b 0\r\n");
+        assertTrue(wrapper.toFile().setExecutable(false, false));
+        return root.toRealPath();
+    }
+
+    private Path windowsRuntime(String name) throws IOException {
+        Path home = Files.createDirectories(tempDir.resolve(name).resolve("bin")).getParent().toRealPath();
+        Files.writeString(home.resolve("bin/java.exe"), "fixed-test-runtime");
+        return home;
+    }
+
+    private ValidationHostPlatform windowsPlatform(Path commandArguments) throws IOException {
+        Path systemRoot = Files.createDirectories(tempDir.resolve("Windows/System32")).getParent().toRealPath();
+        Path command = Files.writeString(systemRoot.resolve("System32/cmd.exe"),
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + shellSingleQuoted(commandArguments) + "'\nexit 0\n");
+        assertTrue(command.toFile().setExecutable(true));
+        return ValidationHostPlatform.forHost("Windows 11", Map.of("SystemRoot", systemRoot.toString()));
+    }
+
+    private String shellSingleQuoted(Path value) {
+        return value.toString().replace("'", "'\"'\"'");
     }
 
     private void writeJar(Path root, String fileName, Class<?> mainClass) throws IOException {

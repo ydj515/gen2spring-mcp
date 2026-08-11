@@ -70,7 +70,10 @@ class GeneratedWeatherValidationSmokeTest {
             Files.createDirectories(target.getParent());
             Files.write(target, entry.getValue());
         }
-        assertTrue(root.resolve("gradlew").toFile().setExecutable(true));
+        ValidationHostPlatform platform = ValidationHostPlatform.current();
+        if (platform.requiresOwnerExecutable()) {
+            assertTrue(root.resolve(platform.wrapperFileName()).toFile().setExecutable(true));
+        }
         var expectedTools = new ExpectedToolSchemaFactory().create(List.of(tool));
         Map<String, Object> expectedSchema = expectedTools.get(TOOL_NAME).inputSchema();
         Map<?, ?> inputs = assertInstanceOf(Map.class, expectedSchema.get("properties"));
@@ -98,7 +101,8 @@ class GeneratedWeatherValidationSmokeTest {
 
         assertEquals(VALIDATED, report.status(), report.toString());
         assertEquals(
-                Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().normalize().toString(),
+                platform.javaExecutable(Path.of(System.getProperty("java.home")))
+                        .toAbsolutePath().normalize().toString(),
                 applicationCommand.get().getFirst());
         assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),
                 report.stages().stream().map(stage -> stage.stage()).toList());

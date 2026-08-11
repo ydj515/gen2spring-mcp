@@ -14,10 +14,14 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+@EnabledOnOs({OS.LINUX, OS.MAC})
 class JavaRuntimeResolverTest {
     private static final String SAFE_FAILURE = "Target Java runtime is unavailable or invalid";
+    private static final ValidationHostPlatform POSIX = ValidationHostPlatform.forHost("Linux", Map.of());
 
     @TempDir
     Path tempDir;
@@ -33,7 +37,7 @@ class JavaRuntimeResolverTest {
                 executable -> {
                     probed.set(executable);
                     return 17;
-                });
+                }, POSIX);
 
         var runtime = resolver.resolve(java17());
 
@@ -45,7 +49,7 @@ class JavaRuntimeResolverTest {
     @Test
     void matchingCurrentRuntimeIsUsedWhenTheEnvironmentIsAbsent() throws Exception {
         Path currentHome = runtimeHome("current");
-        var resolver = new JavaRuntimeResolver(Map.of(), currentHome, executable -> 21);
+        var resolver = new JavaRuntimeResolver(Map.of(), currentHome, executable -> 21, POSIX);
 
         var runtime = resolver.resolve(CompatibilityProfile.p0());
 
@@ -54,9 +58,31 @@ class JavaRuntimeResolverTest {
     }
 
     @Test
+    void probesOnlyTheExecutableSelectedByTheInjectedHostPlatform() throws Exception {
+        Path home = Files.createDirectories(tempDir.resolve("windows-runtime/bin")).getParent().toRealPath();
+        Files.writeString(home.resolve("bin/java"), "wrong-platform");
+        Path javaExe = Files.writeString(home.resolve("bin/java.exe"), "windows-runtime").toRealPath();
+        AtomicReference<Path> probed = new AtomicReference<>();
+        ValidationHostPlatform windows = ValidationHostPlatform.forHost(
+                "Windows 11", Map.of("SystemRoot", windowsSystemRoot().toString()));
+        var resolver = new JavaRuntimeResolver(
+                Map.of("GEN2SPRING_JAVA_17_HOME", home.toString()), home,
+                executable -> {
+                    probed.set(executable);
+                    return 17;
+                }, windows);
+
+        var runtime = resolver.resolve(java17());
+
+        assertEquals(javaExe, runtime.executable());
+        assertEquals(javaExe, probed.get());
+        runtime.requireStable();
+    }
+
+    @Test
     void missingTargetRuntimeFailsWithoutFallingBackToAWrongCurrentVersion() throws Exception {
         Path currentHome = runtimeHome("current");
-        var resolver = new JavaRuntimeResolver(Map.of(), currentHome, executable -> 21);
+        var resolver = new JavaRuntimeResolver(Map.of(), currentHome, executable -> 21, POSIX);
 
         assertSafeFailure(() -> resolver.resolve(java17()), currentHome);
     }
@@ -66,12 +92,12 @@ class JavaRuntimeResolverTest {
         var relative = new JavaRuntimeResolver(
                 Map.of("GEN2SPRING_JAVA_17_HOME", "relative-secret-home"),
                 runtimeHome("current"),
-                executable -> 17);
+                executable -> 17, POSIX);
         Path fileHome = Files.writeString(tempDir.resolve("secret-home-file"), "not a directory");
         var nonDirectory = new JavaRuntimeResolver(
                 Map.of("GEN2SPRING_JAVA_17_HOME", fileHome.toString()),
                 runtimeHome("other-current"),
-                executable -> 17);
+                executable -> 17, POSIX);
 
         assertSafeFailure(() -> relative.resolve(java17()), Path.of("relative-secret-home"));
         assertSafeFailure(() -> nonDirectory.resolve(java17()), fileHome);
@@ -85,7 +111,7 @@ class JavaRuntimeResolverTest {
         var resolver = new JavaRuntimeResolver(
                 Map.of("GEN2SPRING_JAVA_17_HOME", linked.toString()),
                 runtimeHome("current"),
-                executable -> 17);
+                executable -> 17, POSIX);
 
         assertSafeFailure(() -> resolver.resolve(java17()), linked);
     }
@@ -224,7 +250,7 @@ class JavaRuntimeResolverTest {
 
     private JavaRuntimeResolver resolverFor(Path home, JavaRuntimeResolver.RuntimeProbe probe) throws IOException {
         return new JavaRuntimeResolver(
-                Map.of("GEN2SPRING_JAVA_17_HOME", home.toString()), runtimeHome("unused-current"), probe);
+                Map.of("GEN2SPRING_JAVA_17_HOME", home.toString()), runtimeHome("unused-current"), probe, POSIX);
     }
 
     private CompatibilityProfile java17() {
@@ -243,6 +269,13 @@ class JavaRuntimeResolverTest {
         Path executable = Files.writeString(path, script);
         assertTrue(executable.toFile().setExecutable(true));
         return executable.toRealPath();
+    }
+
+    private Path windowsSystemRoot() throws IOException {
+        Path root = Files.createDirectories(tempDir.resolve("Windows"));
+        Files.createDirectories(root.resolve("System32"));
+        Files.writeString(root.resolve("System32/cmd.exe"), "fixed-test-command");
+        return root.toRealPath();
     }
 
     private void assertSafeFailure(ThrowingAction action, Path secretPath) {
