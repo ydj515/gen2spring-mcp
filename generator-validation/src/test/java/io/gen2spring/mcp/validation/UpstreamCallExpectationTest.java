@@ -21,6 +21,7 @@ import io.gen2spring.mcp.domain.tool.McpToolDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.util.AbstractMap;
 import java.util.LinkedHashMap;
@@ -172,6 +173,33 @@ class UpstreamCallExpectationTest {
 
         assertEquals(List.of("second", "first"), expectation.query().get("tag"));
         assertEquals(List.of("2", "1"), expectation.headers().get("x-version"));
+    }
+
+    @Test
+    void canonicalizesDecimalWireValuesAfterTheMcpJsonRoundTrip() {
+        var call = call(
+                GET,
+                "/coordinates/{longitude}",
+                List.of(
+                        binding("longitude", PATH, "longitude"),
+                        binding("latitude", QUERY, "latitude"),
+                        binding("distance", QUERY, "distance"),
+                        binding("altitude", HEADER, "X-Altitude")),
+                false,
+                false,
+                List.of(),
+                linkedArguments(
+                        "longitude", new BigDecimal("127.0"),
+                        "latitude", new BigDecimal("37.500"),
+                        "distance", new BigDecimal("1E+1000000"),
+                        "altitude", new BigDecimal("1000.0")));
+
+        var expectation = UpstreamCallExpectation.from(call);
+
+        assertEquals("/coordinates/127", expectation.rawPath());
+        assertEquals(List.of("37.5"), expectation.query().get("latitude"));
+        assertEquals(List.of("1E+1000000"), expectation.query().get("distance"));
+        assertEquals(List.of("1000"), expectation.headers().get("x-altitude"));
     }
 
     @Test

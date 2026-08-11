@@ -166,6 +166,10 @@ class JavaSourceRendererTest {
 
         assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/PaginationPolicy.java"));
         assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/PageAccumulator.java"));
+        String accumulator = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/PageAccumulator.java"));
+        assertTrue(accumulator.contains("tokens.get(tokens.size() - 1)"));
+        assertFalse(accumulator.contains("tokens.getLast()"));
         assertTrue(metadata.contains("new PaginationPolicy(\"cursor\", \"first\", \"/items\", \"/next\", 4, 100)"));
         assertTrue(operation.contains("PaginationPolicy paginationPolicy"), operation);
         assertTrue(executor.contains("awaitPaginated"), executor);

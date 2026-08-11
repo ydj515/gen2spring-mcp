@@ -78,8 +78,9 @@ class InstalledCliTest {
     }
 
     @Test
-    void rootReadmeDocumentsTheFourProfilePrerequisitesAndRemainingP1Work() throws Exception {
+    void rootReadmeDocumentsTheCompletedP1ContractsAndRemainingP2Work() throws Exception {
         String readme = Files.readString(repositoryRoot().resolve("README.md"));
+        String prd = Files.readString(repositoryRoot().resolve("docs/prd.md"));
 
         assertTrue(readme.contains("spring-ai-1.1-java17-mvc-streamable"));
         assertTrue(readme.contains("spring-ai-1.1-java21-mvc-streamable"));
@@ -122,11 +123,23 @@ class InstalledCliTest {
         assertTrue(readme.contains("MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED=true"));
         assertTrue(readme.contains("active OpenTelemetry span의 trace ID"));
         assertFalse(readme.contains("metrics와 OpenTelemetry tracing은 후속 P1 범위다"));
-        assertTrue(readme.contains("Windows validation host"));
+        assertTrue(readme.contains("supported JSON object response에서 typed output DTO를 생성한다"));
+        assertTrue(readme.contains("GET operation에 bounded retry를 실행한다"));
+        assertTrue(readme.contains("GET operation에 bounded pagination을 실행한다"));
+        assertTrue(readme.contains("`maxRetries` 1..3"));
+        assertTrue(readme.contains("`maxPages` 2..20, `maxItems` 1..2000"));
+        assertTrue(readme.contains("`gradlew.bat`"));
+        assertTrue(readme.contains("`bin/java.exe`"));
+        assertTrue(readme.contains("https://github.com/ydj515/gen2spring-mcp/issues/2"));
         assertTrue(readme.contains("UI operation editor complete"));
-        assertTrue(readme.contains("Windows validation host remains follow-up P1"));
+        assertFalse(readme.contains("typed output DTO, retry 실행, pagination 실행은 후속 P1 범위다"));
+        assertFalse(readme.contains("Windows validation host remains follow-up P1"));
         assertFalse(readme.contains(
                 "Generator API와 UI operation editor, Windows validation host 지원은 후속 P1 범위다"));
+        assertTrue(prd.contains("FR-4.6 구현 상태: 완료"));
+        assertTrue(prd.contains("FR-5.3 구현 상태: 완료"));
+        assertTrue(prd.contains("FR-5.4 구현 상태: 완료"));
+        assertTrue(prd.contains("플랫폼 검증 상태: Linux와 Windows 완료"));
     }
 
     @Test

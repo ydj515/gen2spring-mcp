@@ -19,7 +19,11 @@ class ReadmeContractTest {
         assertTrue(readme.contains("local files only; no URL import"));
         assertTrue(readme.contains("one running plus one queued job"));
         assertTrue(readme.contains("UI operation editor complete"));
-        assertTrue(readme.contains("Windows validation host remains follow-up P1"));
+        assertTrue(readme.contains("supported JSON object response에서 typed output DTO를 생성한다"));
+        assertTrue(readme.contains("GET operation에 bounded retry를 실행한다"));
+        assertTrue(readme.contains("GET operation에 bounded pagination을 실행한다"));
+        assertTrue(readme.contains("https://github.com/ydj515/gen2spring-mcp/issues/2"));
+        assertFalse(readme.contains("Windows validation host remains follow-up P1"));
         assertFalse(readme.contains(
                 "Generator API와 UI operation editor, Windows validation host 지원은 후속 P1 범위다"));
     }

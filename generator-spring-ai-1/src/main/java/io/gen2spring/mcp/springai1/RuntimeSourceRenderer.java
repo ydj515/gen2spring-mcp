@@ -396,7 +396,7 @@ final class RuntimeSourceRenderer {
                         for (int index = 0; index < tokens.size() - 1; index++) {
                             current = child(current, tokens.get(index));
                         }
-                        String leaf = tokens.getLast();
+                        String leaf = tokens.get(tokens.size() - 1);
                         if (current instanceof ObjectNode object) {
                             object.set(leaf, value);
                         } else if (current instanceof ArrayNode array) {

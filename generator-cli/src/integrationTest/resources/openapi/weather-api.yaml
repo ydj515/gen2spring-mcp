@@ -6,7 +6,7 @@ servers:
   - url: https://weather.example.test
 paths:
   /stations/{stationId}/forecast:
-    post:
+    get:
       operationId: getForecast
       summary: Get the public weather forecast for a station.
       parameters:
@@ -28,6 +28,28 @@ paths:
             format: int32
             minimum: 1
             maximum: 7
+        - name: latitude
+          in: query
+          required: true
+          description: Latitude.
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+        - name: longitude
+          in: query
+          required: true
+          description: Longitude.
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+        - name: cursor
+          in: query
+          required: false
+          description: Internal pagination cursor.
+          schema:
+            type: string
         - name: mode
           in: query
           required: false
@@ -62,12 +84,6 @@ paths:
       security:
         - WeatherQueryKey: []
           WeatherHeaderKey: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ForecastRequest'
       responses:
         '200':
           description: Forecast response.
@@ -75,9 +91,38 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [response]
                 properties:
-                  status:
-                    type: string
+                  response:
+                    type: object
+                    required: [header, body]
+                    properties:
+                      header:
+                        type: object
+                        required: [resultCode, resultMsg]
+                        properties:
+                          resultCode: {type: string}
+                          resultMsg: {type: string}
+                          rawHeader: {type: boolean}
+                      body:
+                        type: object
+                        required: [items, totalCount]
+                        properties:
+                          items:
+                            type: object
+                            required: [item]
+                            properties:
+                              item:
+                                type: array
+                                items:
+                                  type: object
+                                  required: [forecast]
+                                  properties:
+                                    forecast: {type: string}
+                          nextCursor: {type: string, nullable: true}
+                          totalCount: {type: integer, format: int64, minimum: 0}
+                          rawBody: {type: boolean}
+                  rawRoot: {type: boolean}
 components:
   securitySchemes:
     WeatherHeaderKey:
@@ -88,30 +133,3 @@ components:
       type: apiKey
       in: query
       name: serviceKey
-  schemas:
-    ForecastRequest:
-      type: object
-      required: [location]
-      properties:
-        location:
-          $ref: '#/components/schemas/Location'
-        note:
-          type: string
-          minLength: 1
-          maxLength: 80
-        includeAlerts:
-          type: boolean
-    Location:
-      type: object
-      required: [latitude, longitude]
-      properties:
-        latitude:
-          type: number
-          minimum: -90
-          maximum: 90
-        longitude:
-          type: number
-          minimum: -180
-          maximum: 180
-        label:
-          type: string

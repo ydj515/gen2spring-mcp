@@ -10,8 +10,9 @@ import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
-import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -333,7 +334,7 @@ public record UpstreamCallExpectation(
         if (!scalar(value)) {
             throw new IllegalArgumentException("Expected Tool call path value is unsupported");
         }
-        return percentEncode(String.valueOf(value), false);
+        return percentEncode(wireScalar(value), false);
     }
 
     private static String encodePathLiteral(String value) {
@@ -588,10 +589,10 @@ public record UpstreamCallExpectation(
             List<String> values = new ArrayList<>();
             if (value instanceof List<?> list) {
                 for (Object item : list) {
-                    values.add(String.valueOf(requireScalar(item, location)));
+                    values.add(UpstreamCallExpectation.wireScalar(requireScalar(item, location)));
                 }
             } else {
-                values.add(String.valueOf(requireScalar(value, location)));
+                values.add(UpstreamCallExpectation.wireScalar(requireScalar(value, location)));
             }
             if (!values.isEmpty()) {
                 target.put(targetName, List.copyOf(values));
@@ -620,5 +621,13 @@ public record UpstreamCallExpectation(
         private Object body() {
             return body;
         }
+    }
+
+    private static String wireScalar(Object value) {
+        if (!(value instanceof BigDecimal decimal)) {
+            return String.valueOf(value);
+        }
+        BigDecimal normalized = decimal.stripTrailingZeros();
+        return decimal.scale() < 0 ? normalized.toString() : normalized.toPlainString();
     }
 }
