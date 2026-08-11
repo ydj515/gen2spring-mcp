@@ -523,7 +523,7 @@ git commit -m "feat(web): run bounded generation jobs"
 - Consumes: Tasks 4/5 API exactly; makes no external request.
 - Produces: accessible 5-step editor at `/` for desktop and 400px viewport.
 
-- [ ] **Step 1: Write static UI contract RED tests**
+- [x] **Step 1: Write static UI contract RED tests**
 
 Assert exact step headings, visible labels, `aria-live`, error summary target, file input accept list, operation filters, target/profile fields, preview and generation controls, no URL input, no inline event/style/script, no external URL, no service worker/localStorage use, and only opaque IDs in `sessionStorage`.
 
@@ -536,7 +536,7 @@ assertFalse(allAssets.contains("localStorage"));
 assertFalse(allAssets.matches("(?s).*https?://.*"));
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 mise exec -- ./gradlew :generator-web:test \
@@ -546,27 +546,27 @@ mise exec -- ./gradlew :generator-web:test \
 
 Expected: tests fail because the complete wizard assets are absent.
 
-- [ ] **Step 3: Implement HTML and CSS**
+- [x] **Step 3: Implement HTML and CSS**
 
 Build semantic nav/main/section/form markup for the five approved steps. Use one operation list and editor split above 720px and a single column at 400px. Add visible focus, status text plus color, minimum 44px primary controls, `overflow-wrap:anywhere`, and no page-level horizontal overflow.
 
-- [ ] **Step 4: Implement bounded client state**
+- [x] **Step 4: Implement bounded client state**
 
 `state.js` owns one immutable-ish state object: current step, opaque specification/job IDs, analysis metadata, editable operation DTOs, selected profile/project fields, preview metadata, and progress. Raw uploaded bytes remain in the File object only until upload completes. Store only opaque IDs in `sessionStorage`.
 
-- [ ] **Step 5: Implement API and editor modules**
+- [x] **Step 5: Implement API and editor modules**
 
 `api.js` reads the token meta value and adds exact token/JSON headers. It exposes `profiles`, `upload`, `preview`, `startJob`, `job`, `downloadUrl`, and `deleteJob`. `editor.js` performs local required-field checks, converts typed success values and validation arguments to strict JSON, and renders operation filters/edit fields without using `innerHTML` for untrusted strings.
 
 `app.js` binds listeners with `addEventListener`, disables generation until server preview succeeds, polls from 500ms to 2s, stops at terminal state, moves errors to the summary focus target, and renders only server-safe error fields.
 
-- [ ] **Step 6: Run asset/server GREEN**
+- [x] **Step 6: Run asset/server GREEN**
 
 ```bash
 mise exec -- ./gradlew :generator-web:test --no-daemon --non-interactive --rerun-tasks
 ```
 
-- [ ] **Step 7: Run real browser smoke**
+- [x] **Step 7: Run real browser smoke**
 
 Start the installed Web application on port 0, open the printed numeric-loopback URL, upload `weather.yaml`, edit one operation, preview, and verify the job screen at desktop and 400px viewport. Confirm:
 
@@ -577,7 +577,7 @@ external/non-loopback requests = 0
 keyboard journey reaches Preview and Generate
 ```
 
-- [ ] **Step 8: Review and commit**
+- [x] **Step 8: Review and commit**
 
 ```bash
 git diff --check

@@ -11,7 +11,11 @@ final class StaticAssetHandler {
     private static final Map<String, AssetDefinition> ASSETS = Map.of(
             "/", new AssetDefinition("/web/index.html", "text/html; charset=utf-8", true),
             "/styles.css", new AssetDefinition("/web/styles.css", "text/css; charset=utf-8", false),
-            "/app.js", new AssetDefinition("/web/app.js", "text/javascript; charset=utf-8", false));
+            "/app.js", new AssetDefinition("/web/app.js", "text/javascript; charset=utf-8", false),
+            "/api.js", new AssetDefinition("/web/api.js", "text/javascript; charset=utf-8", false),
+            "/state.js", new AssetDefinition("/web/state.js", "text/javascript; charset=utf-8", false),
+            "/editor.js", new AssetDefinition("/web/editor.js", "text/javascript; charset=utf-8", false),
+            "/favicon.svg", new AssetDefinition("/web/favicon.svg", "image/svg+xml", false));
 
     private final String token;
 

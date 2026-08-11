@@ -112,6 +112,12 @@ class LocalWebServerTest {
                 () -> WebArguments.parse(new String[] {"--port", "65536"}));
         assertThrows(IllegalArgumentException.class,
                 () -> WebArguments.parse(new String[] {"--bind", "127.0.0.1"}));
+
+        Path current = WebApplicationFactory.privateTemporaryParent().getRoot();
+        for (Path component : WebApplicationFactory.privateTemporaryParent()) {
+            current = current.resolve(component);
+            assertFalse(Files.isSymbolicLink(current));
+        }
     }
 
     @Test
