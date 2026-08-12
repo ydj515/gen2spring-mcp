@@ -17,6 +17,10 @@ public interface JobQueue {
 
     boolean heartbeat(JobLease lease, Instant leaseUntil);
 
+    default boolean cancellationRequested(JobLease lease) {
+        return false;
+    }
+
     boolean complete(JobLease lease, JobCompletion completion);
 
     int recoverExpired(Instant now, int maxAttempts);

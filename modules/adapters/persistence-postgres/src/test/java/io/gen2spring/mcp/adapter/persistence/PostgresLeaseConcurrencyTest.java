@@ -126,6 +126,18 @@ class PostgresLeaseConcurrencyTest {
                 "select request_snapshot::text from generation_job where id = ?",
                 String.class,
                 lease.jobId().value()));
+        assertFalse(jobs.cancellationRequested(lease));
+    }
+
+    @Test
+    void exposesCancellationOnlyToTheCurrentFencedLease() {
+        PostgresJobQueue jobs = queueAt(NOW);
+        var created = jobs.create(importJob("job-1", hash(1)));
+        JobLease lease = jobs.claim(new WorkerId("worker-1"), NOW, LEASE).orElseThrow();
+
+        assertFalse(jobs.cancellationRequested(lease));
+        assertTrue(jobs.requestCancellation(owner, created.job().id()));
+        assertTrue(jobs.cancellationRequested(lease));
     }
 
     @Test

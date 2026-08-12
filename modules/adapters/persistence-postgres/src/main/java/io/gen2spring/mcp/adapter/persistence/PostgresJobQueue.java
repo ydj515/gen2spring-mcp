@@ -110,6 +110,25 @@ public final class PostgresJobQueue implements JobQueue {
     }
 
     @Override
+    public boolean cancellationRequested(JobLease lease) {
+        Objects.requireNonNull(lease, "lease");
+        List<Boolean> requested = jdbc.query(
+                """
+                select cancel_requested
+                  from generation_job
+                 where id = ?
+                   and status = 'RUNNING'
+                   and lease_owner = ?
+                   and fencing_token = ?
+                """,
+                (resultSet, row) -> resultSet.getBoolean("cancel_requested"),
+                lease.jobId().value(),
+                lease.worker().value(),
+                lease.fencingToken());
+        return requested.size() == 1 && Boolean.TRUE.equals(requested.getFirst());
+    }
+
+    @Override
     public boolean complete(JobLease lease, JobCompletion completion) {
         Objects.requireNonNull(lease, "lease");
         Objects.requireNonNull(completion, "completion");

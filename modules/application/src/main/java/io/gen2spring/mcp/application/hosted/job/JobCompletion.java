@@ -31,4 +31,11 @@ public record JobCompletion(JobStatus status, String safeCode, String safeSummar
     public static JobCompletion failure(String safeCode, String safeSummary) {
         return new JobCompletion(JobStatus.FAILED, safeCode, safeSummary);
     }
+
+    public static JobCompletion cancelled() {
+        return new JobCompletion(
+                JobStatus.CANCELLED,
+                "CANCELLED",
+                "The hosted job was cancelled");
+    }
 }

@@ -26,6 +26,11 @@ public record EncryptedImportTarget(
         }
     }
 
+    @Override
+    public String toString() {
+        return "EncryptedImportTarget[redacted]";
+    }
+
     private static boolean encodedLength(String value, int minimum, int maximum) {
         if (value == null || !BASE64_URL.matcher(value).matches()) {
             return false;

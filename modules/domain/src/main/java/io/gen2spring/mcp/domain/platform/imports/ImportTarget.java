@@ -62,6 +62,11 @@ public record ImportTarget(URI uri) {
         return "http".equalsIgnoreCase(uri.getScheme()) ? 80 : 443;
     }
 
+    @Override
+    public String toString() {
+        return "ImportTarget[redacted]";
+    }
+
     private static boolean validHost(String host) {
         if (host.indexOf(':') >= 0) {
             return true;

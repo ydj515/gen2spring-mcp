@@ -16,4 +16,9 @@ public record ObjectKey(String value) {
     public static ObjectKey parse(String value) {
         return new ObjectKey(value);
     }
+
+    @Override
+    public String toString() {
+        return "ObjectKey[redacted]";
+    }
 }

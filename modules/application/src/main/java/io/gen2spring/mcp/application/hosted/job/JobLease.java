@@ -22,4 +22,9 @@ public record JobLease(
             throw new IllegalArgumentException("Hosted job lease is invalid");
         }
     }
+
+    @Override
+    public String toString() {
+        return "JobLease[kind=" + kind + ", redacted]";
+    }
 }
