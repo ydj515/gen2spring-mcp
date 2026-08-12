@@ -2,10 +2,10 @@ package io.gen2spring.mcp.springai2;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ToolEmitter;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.usecase.GenerationContext;
+import io.gen2spring.mcp.application.port.outbound.ProjectGenerator;
+import io.gen2spring.mcp.application.port.outbound.ToolEmitter;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.util.Collections;
 import java.util.LinkedHashMap;

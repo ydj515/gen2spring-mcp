@@ -1,33 +1,35 @@
 package io.gen2spring.mcp.validation;
 
-import static io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel.MCP_PROTOCOL;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SUCCESS;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod.GET;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.HEADER;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.QUERY;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.ARRAY;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.INTEGER;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.OBJECT;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType.STRING;
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
+import static io.gen2spring.mcp.application.command.GenerationCommand.ValidationLevel.MCP_PROTOCOL;
+import static io.gen2spring.mcp.application.validation.StageStatus.SUCCESS;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.ARRAY;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.INTEGER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.OBJECT;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.STRING;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.domain.config.GenerationRequest;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
-import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
+import io.gen2spring.mcp.application.usecase.GenerationContext;
+import io.gen2spring.mcp.application.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.validation.ValidationRequest;
+import io.gen2spring.mcp.application.validation.ExpectedToolSchemaFactory;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ToolInput;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
 import io.gen2spring.mcp.springai2.SpringAi2ProjectGenerator;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -52,12 +54,12 @@ class GeneratedWeatherValidationSmokeTest {
     @Timeout(value = 5, unit = MINUTES)
     void validatesTheActualSpringAiToolsListSchemaForAGeneratedWeatherProject() throws Exception {
         Path root = tempDir.toRealPath();
-        McpToolDefinition tool = weatherTool();
+        ToolDefinition tool = weatherTool();
         var coordinates = new ProjectCoordinates(
                 "com.example", "weather-mcp-server", "com.example.weather");
-        var generationRequest = new GenerationRequest(
+        var generationRequest = new GenerationCommand(
                 coordinates, "kma", "weather", CompatibilityProfile.p0().id(), MCP_PROTOCOL,
-                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+                new GenerationCommand.ValidationConfiguration(new GenerationCommand.ToolCallValidation(
                         "getForecast", weatherArguments())),
                 List.of());
         var files = new SpringAi2ProjectGenerator().generate(new GenerationContext(
@@ -114,7 +116,7 @@ class GeneratedWeatherValidationSmokeTest {
         assertEquals(List.of(TOOL_NAME), report.tools().stream().map(toolResult -> toolResult.name()).toList());
     }
 
-    private McpToolDefinition weatherTool() {
+    private ToolDefinition weatherTool() {
         ApiSchema integer = new ApiSchema(
                 INTEGER, "int32", false, List.of(), BigDecimal.ZERO, BigDecimal.valueOf(1000),
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
@@ -132,15 +134,15 @@ class GeneratedWeatherValidationSmokeTest {
         ApiSchema tags = new ApiSchema(
                 ARRAY, null, false, List.of(), null, null, null, null, null,
                 null, Map.of(), List.of(), constrainedString, true, List.of());
-        List<McpInputDefinition> inputs = List.of(
-                new McpInputDefinition("nx", "nx", "Grid x coordinate", true, integer),
-                new McpInputDefinition("ny", "ny", "Grid y coordinate", true, integer),
-                new McpInputDefinition("options", "options", "Forecast options", true, options),
-                new McpInputDefinition("mode", "mode", "Forecast mode", false, mode),
-                new McpInputDefinition("tags", "tags", "Forecast tags", false, tags));
-        return new McpToolDefinition(
+        List<ToolInput> inputs = List.of(
+                new ToolInput("nx", "nx", "Grid x coordinate", true, integer),
+                new ToolInput("ny", "ny", "Grid y coordinate", true, integer),
+                new ToolInput("options", "options", "Forecast options", true, options),
+                new ToolInput("mode", "mode", "Forecast mode", false, mode),
+                new ToolInput("tags", "tags", "Forecast tags", false, tags));
+        return new ToolDefinition(
                 "getForecast", TOOL_NAME, TOOL_DESCRIPTION, inputs,
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         GET, URI.create("https://api.example.test"), "/forecast",
                         List.of(
                                 new ParameterBinding("nx", QUERY, "nx"),
@@ -150,7 +152,7 @@ class GeneratedWeatherValidationSmokeTest {
                 List.of(
                         new SecretBinding("KMA_SERVICE_KEY", "service-key", QUERY, "serviceKey", true),
                         new SecretBinding("KMA_HEADER_KEY", "header-key", HEADER, "X-Weather-Key", true)),
-                McpToolDefinition.OutputKind.GENERIC_JSON);
+                OutputKind.GENERIC_JSON);
     }
 
     private Map<String, Object> weatherArguments() {

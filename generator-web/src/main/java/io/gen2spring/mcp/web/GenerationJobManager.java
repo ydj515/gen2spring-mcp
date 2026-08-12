@@ -1,11 +1,11 @@
 package io.gen2spring.mcp.web;
 
-import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus;
+import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.validation.ValidationStatus;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -101,13 +101,13 @@ final class GenerationJobManager implements AutoCloseable {
                 intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
-    synchronized JobSnapshot submit(Path specification, GenerationRequest request) {
+    synchronized JobSnapshot submit(Path specification, GenerationCommand request) {
         return submit(specification, request, () -> {});
     }
 
     synchronized JobSnapshot submit(
             Path specification,
-            GenerationRequest request,
+            GenerationCommand request,
             Runnable completionHook) {
         requireOpen();
         Objects.requireNonNull(specification, "specification");
@@ -520,7 +520,7 @@ final class GenerationJobManager implements AutoCloseable {
     private static final class MutableJob {
         private final String id;
         private final Path specification;
-        private final GenerationRequest request;
+        private final GenerationCommand request;
         private final Path outputRoot;
         private final LinkedHashMap<String, ProgressStatus> stages = new LinkedHashMap<>();
         private final Runnable completionHook;
@@ -534,7 +534,7 @@ final class GenerationJobManager implements AutoCloseable {
         private MutableJob(
                 String id,
                 Path specification,
-                GenerationRequest request,
+                GenerationCommand request,
                 Path outputRoot,
                 Instant created,
                 Runnable completionHook) {

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind;
+import io.gen2spring.mcp.domain.tool.OutputKind;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.List;

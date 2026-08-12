@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.openapi;
 
+import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.OPERATION_ID_DUPLICATED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_REFERENCE_UNRESOLVED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -9,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;

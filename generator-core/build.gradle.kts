@@ -1,6 +1,6 @@
 dependencies {
-    implementation(project(":generator-domain"))
-    implementation(project(":generator-openapi"))
-    implementation(project(":generator-policy"))
+    implementation(project(":modules:domain"))
+    implementation(project(":modules:application"))
     implementation(libs.jackson.databind)
+    testImplementation(project(":generator-openapi"))
 }

@@ -6,11 +6,13 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.application.validation.ExpectedToolSchemaFactory;
+import io.gen2spring.mcp.application.usecase.GenerationContext;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolInput;
+import io.gen2spring.mcp.domain.tool.OutputKind;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -62,18 +64,18 @@ public final class JavaSourceRenderer {
         String packageName = coordinates.packageName();
         String packagePath = packageName.replace('.', '/');
         String domainClass = upperCamel(requireSourceName(context.request().domain(), "domain"));
-        List<McpToolDefinition> tools = orderedTools(context.tools());
+        List<ToolDefinition> tools = orderedTools(context.tools());
         validateTools(tools);
         boolean hasTypedOutputs = tools.stream()
-                .anyMatch(tool -> tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO);
+                .anyMatch(tool -> tool.outputKind() == OutputKind.TYPED_DTO);
         boolean hasRetryPolicies = tools.stream()
                 .anyMatch(tool -> tool.execution().retryPolicy() != null);
         boolean hasPaginationPolicies = tools.stream()
                 .anyMatch(tool -> tool.execution().paginationPolicy() != null);
         Map<String, String> sources = new LinkedHashMap<>();
         putAll(sources, inputRenderer.render(packageName, packagePath, tools));
-        for (McpToolDefinition tool : tools) {
-            if (tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO) {
+        for (ToolDefinition tool : tools) {
+            if (tool.outputKind() == OutputKind.TYPED_DTO) {
                 putAll(sources, outputRenderer.render(
                         packageName, packagePath, upperCamel(tool.operationId()), tool.output().resultSchema()));
             }
@@ -236,7 +238,7 @@ public final class JavaSourceRenderer {
         return GeneratorException.user(SOURCE_GENERATION_FAILED, "spring-ai-2-render", message);
     }
 
-    private Map<String, String> toolSchemas(List<McpToolDefinition> tools) {
+    private Map<String, String> toolSchemas(List<ToolDefinition> tools) {
         try {
             Map<String, String> schemas = new LinkedHashMap<>();
             expectedToolSchemaFactory.create(tools).forEach((name, tool) -> {
@@ -259,24 +261,24 @@ public final class JavaSourceRenderer {
         }
     }
 
-    private List<McpToolDefinition> orderedTools(List<McpToolDefinition> values) {
+    private List<ToolDefinition> orderedTools(List<ToolDefinition> values) {
         if (values == null) {
             return List.of();
         }
-        List<McpToolDefinition> tools = new ArrayList<>(values);
+        List<ToolDefinition> tools = new ArrayList<>(values);
         if (tools.stream().anyMatch(java.util.Objects::isNull)) {
             throw invalid("Generated tool definitions cannot contain null entries");
         }
-        tools.sort(Comparator.comparing(McpToolDefinition::operationId)
-                .thenComparing(McpToolDefinition::name));
+        tools.sort(Comparator.comparing(ToolDefinition::operationId)
+                .thenComparing(ToolDefinition::name));
         return List.copyOf(tools);
     }
 
-    private void validateTools(List<McpToolDefinition> tools) {
+    private void validateTools(List<ToolDefinition> tools) {
         Set<String> operationClasses = new HashSet<>();
         Set<String> methodNames = new HashSet<>();
         Set<String> constants = new HashSet<>();
-        for (McpToolDefinition tool : tools) {
+        for (ToolDefinition tool : tools) {
             requireSourceName(tool.operationId(), "operation");
             if (tool.name() == null || !TOOL_NAME.matcher(tool.name()).matches()) {
                 throw invalid("Generated Tool names must be lower snake case and at most 64 characters");
@@ -297,10 +299,10 @@ public final class JavaSourceRenderer {
         }
     }
 
-    private void validateInputs(McpToolDefinition tool) {
+    private void validateInputs(ToolDefinition tool) {
         Set<String> names = new HashSet<>();
         Set<String> javaNames = new HashSet<>();
-        List<McpToolDefinition.McpInputDefinition> inputs = tool.inputs() == null ? List.of() : tool.inputs();
+        List<ToolInput> inputs = tool.inputs() == null ? List.of() : tool.inputs();
         for (var input : inputs) {
             if (input == null) {
                 throw invalid("Generated inputs cannot contain null entries");

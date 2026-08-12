@@ -17,7 +17,8 @@ configurations.configureEach {
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.16"))
     implementation(project(":generator-application"))
-    implementation(project(":generator-domain"))
+    implementation(project(":modules:domain"))
+    implementation(project(":modules:application"))
     implementation(project(":generator-openapi"))
     implementation(project(":generator-core"))
     implementation(libs.jackson.databind)

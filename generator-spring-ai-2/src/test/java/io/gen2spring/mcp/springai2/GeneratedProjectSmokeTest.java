@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.springai2;
 
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -8,17 +10,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
-import io.gen2spring.mcp.domain.tool.OutputDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ToolInput;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolOutput;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,12 +78,12 @@ class GeneratedProjectSmokeTest {
     @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedExecutorRetriesBoundedRequestsWithinOneDeadline() throws Exception {
-        McpToolDefinition base = JavaSourceRendererTest.weatherTool();
+        ToolDefinition base = JavaSourceRendererTest.weatherTool();
         var execution = base.execution();
         var retry = new RetryPolicy(List.of(429, 503), true, 3, 100, 1_000, true);
-        var tool = new McpToolDefinition(
+        var tool = new ToolDefinition(
                 base.operationId(), base.name(), base.description(), base.inputs(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
                         execution.objectRequestBody(), execution.requestBodyRequired(),
                         execution.responseNormalization(), retry),
@@ -100,7 +102,7 @@ class GeneratedProjectSmokeTest {
     @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedExecutorRetriesAndAggregatesPaginatedResponses() throws Exception {
-        McpToolDefinition base = JavaSourceRendererTest.weatherTool();
+        ToolDefinition base = JavaSourceRendererTest.weatherTool();
         ApiSchema item = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null,
                 null, Map.of("id", new ApiSchema(
@@ -118,15 +120,15 @@ class GeneratedProjectSmokeTest {
                                 null, Map.of(), List.of(), null, true, List.of())),
                 List.of("items"), null, true, List.of());
         var execution = base.execution();
-        var tool = new McpToolDefinition(
+        var tool = new ToolDefinition(
                 base.operationId(), base.name(), base.description(), base.inputs(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
                         execution.objectRequestBody(), execution.requestBodyRequired(), null,
                         new RetryPolicy(List.of(503), false, 1, 1, 1, false),
                         new PaginationPolicy("cursor", "first", "/items", "/next", 2, 10)),
-                base.secretBindings(), new OutputDefinition(
-                        McpToolDefinition.OutputKind.GENERIC_JSON, response, null));
+                base.secretBindings(), new ToolOutput(
+                        OutputKind.GENERIC_JSON, response, null));
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(tool)))
                 .files();
@@ -149,36 +151,36 @@ class GeneratedProjectSmokeTest {
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
         ResponseNormalizationPolicy normalization = new ResponseNormalizationPolicy(
                 "/data", "/code", List.of("00"), "/message", null);
-        var success = new McpToolDefinition(
+        var success = new ToolDefinition(
                 "getSuccess", "weather_get_success", "Get a successful weather response.",
-                List.of(new McpInputDefinition("city", "city", "City", true, city)),
-                new HttpExecutionDefinition(
+                List.of(new ToolInput("city", "city", "City", true, city)),
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/success",
                         List.of(new ParameterBinding("city", ParameterLocation.QUERY, "city")),
                         false, false, normalization),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
-        var providerFailure = new McpToolDefinition(
+                List.of(), OutputKind.GENERIC_JSON);
+        var providerFailure = new ToolDefinition(
                 "getProviderFailure", "weather_get_provider_failure", "Get a provider failure.",
-                List.of(new McpInputDefinition("code", "code", "Code", true, code)),
-                new HttpExecutionDefinition(
+                List.of(new ToolInput("code", "code", "Code", true, code)),
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/provider-failure",
                         List.of(new ParameterBinding("code", ParameterLocation.QUERY, "code")),
                         false, false, normalization),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
-        var internalFailure = new McpToolDefinition(
+                List.of(), OutputKind.GENERIC_JSON);
+        var internalFailure = new ToolDefinition(
                 "internalFailure", "weather_internal_failure", "Trigger an internal failure.", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/internal-failure", List.of(),
                         false, false, normalization),
                 List.of(new SecretBinding(
                         "PROVIDER_SECRET", "service-secret", ParameterLocation.HEADER,
-                        "X-Service-Secret", true)), McpToolDefinition.OutputKind.GENERIC_JSON);
-        var fatalFailure = new McpToolDefinition(
+                        "X-Service-Secret", true)), OutputKind.GENERIC_JSON);
+        var fatalFailure = new ToolDefinition(
                 "fatalFailure", "weather_fatal_failure", "Trigger a fatal failure.", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/fatal-failure", List.of(),
                         false, false, normalization),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(
                         List.of(success, providerFailure, internalFailure, fatalFailure)))
@@ -271,19 +273,19 @@ class GeneratedProjectSmokeTest {
         ApiSchema options = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null,
                 null, null, null, null, Map.of("city", city), List.of("city"), null, true, List.of());
-        var enumTool = new McpToolDefinition(
+        var enumTool = new ToolDefinition(
                 "getForecast",
                 "kma_weather_get_forecast",
                 "Get the public weather forecast for a grid location.",
                 List.of(
-                        new McpInputDefinition("nx", "nx", "Grid x coordinate", true, integer),
-                        new McpInputDefinition("accept", "accept", "Requested response type", false,
+                        new ToolInput("nx", "nx", "Grid x coordinate", true, integer),
+                        new ToolInput("accept", "accept", "Requested response type", false,
                                 new ApiSchema(
                                         SchemaType.STRING, null, false, List.of(), null, null,
                                         null, null, null, null, Map.of(), List.of(), null, true, List.of())),
-                        new McpInputDefinition("mode", "mode", "Response mode", false, mode),
-                        new McpInputDefinition("options", "options", "Forecast options", true, options)),
-                new HttpExecutionDefinition(
+                        new ToolInput("mode", "mode", "Response mode", false, mode),
+                        new ToolInput("options", "options", "Forecast options", true, options)),
+                new HttpExecution(
                         HttpMethod.GET,
                         URI.create("https://api.example.test"),
                         "/forecast",
@@ -292,19 +294,19 @@ class GeneratedProjectSmokeTest {
                                 new ParameterBinding("accept", ParameterLocation.HEADER, "Accept"),
                                 new ParameterBinding("mode", ParameterLocation.QUERY, "mode"))),
                 List.of(),
-                McpToolDefinition.OutputKind.GENERIC_JSON);
-        var normalTool = new McpToolDefinition(
+                OutputKind.GENERIC_JSON);
+        var normalTool = new ToolDefinition(
                 "getAlerts",
                 "kma_weather_get_alerts",
                 "Get weather alerts.",
-                List.of(new McpInputDefinition("region", "region", "Region", true, city)),
-                new HttpExecutionDefinition(
+                List.of(new ToolInput("region", "region", "Region", true, city)),
+                new HttpExecution(
                         HttpMethod.GET,
                         URI.create("https://api.example.test"),
                         "/alerts",
                         List.of(new ParameterBinding("region", ParameterLocation.QUERY, "region"))),
                 List.of(),
-                McpToolDefinition.OutputKind.GENERIC_JSON);
+                OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(enumTool, normalTool)))
                 .files();
@@ -326,13 +328,13 @@ class GeneratedProjectSmokeTest {
                 SchemaType.OBJECT, null, false, List.of(), null, null,
                 null, null, null, null, Map.of("display name", constrainedEnum),
                 List.of("display name"), null, true, List.of());
-        var tool = new McpToolDefinition(
+        var tool = new ToolDefinition(
                 "submitDetails", "kma_weather_submit_details", "Submit display details.",
-                List.of(new McpInputDefinition("details", "details", "Display details", true, details)),
-                new HttpExecutionDefinition(
+                List.of(new ToolInput("details", "details", "Display details", true, details)),
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/details",
                         List.of(new ParameterBinding("details", ParameterLocation.BODY, "body"))),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(tool)))
                 .files();
@@ -357,20 +359,20 @@ class GeneratedProjectSmokeTest {
         ApiSchema tags = new ApiSchema(
                 SchemaType.ARRAY, null, false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), text, true, List.of());
-        var detailsTool = new McpToolDefinition(
+        var detailsTool = new ToolDefinition(
                 "submitDetails", "kma_weather_submit_details", "Submit weather details.",
-                List.of(new McpInputDefinition("details", "details", "Weather details", true, details)),
-                new HttpExecutionDefinition(
+                List.of(new ToolInput("details", "details", "Weather details", true, details)),
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/details",
                         List.of(new ParameterBinding("details", ParameterLocation.BODY, "body"))),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
-        var tagsTool = new McpToolDefinition(
+                List.of(), OutputKind.GENERIC_JSON);
+        var tagsTool = new ToolDefinition(
                 "submitTags", "kma_weather_submit_tags", "Submit weather tags.",
-                List.of(new McpInputDefinition("body", "body", "Weather tags", true, tags)),
-                new HttpExecutionDefinition(
+                List.of(new ToolInput("body", "body", "Weather tags", true, tags)),
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/tags",
                         List.of(new ParameterBinding("body", ParameterLocation.BODY, "body"))),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(detailsTool, tagsTool)))
                 .files();
@@ -391,15 +393,15 @@ class GeneratedProjectSmokeTest {
         ApiSchema mode = new ApiSchema(
                 SchemaType.STRING, null, false, List.of("brief", "full-detail"), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
-        var tool = new McpToolDefinition(
+        var tool = new ToolDefinition(
                 "submitValue", "kma_weather_submit_value", "Submit a JSON value.",
                 List.of(
-                        new McpInputDefinition("body", "body", "Value", true, text),
-                        new McpInputDefinition("mode", "mode", "Mode", false, mode)),
-                new HttpExecutionDefinition(
+                        new ToolInput("body", "body", "Value", true, text),
+                        new ToolInput("mode", "mode", "Mode", false, mode)),
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/value",
                         List.of(new ParameterBinding("body", ParameterLocation.BODY, "body"))),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(tool)))
                 .files();
@@ -417,13 +419,13 @@ class GeneratedProjectSmokeTest {
         ApiSchema text = new ApiSchema(
                 SchemaType.STRING, null, false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
-        var tool = new McpToolDefinition(
+        var tool = new ToolDefinition(
                 "getResource", "kma_weather_get_resource", "Get a resource.",
-                List.of(new McpInputDefinition("resourceId", "resourceId", "Resource identifier", true, text)),
-                new HttpExecutionDefinition(
+                List.of(new ToolInput("resourceId", "resourceId", "Resource identifier", true, text)),
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/resources/{resourceId}",
                         List.of(new ParameterBinding("resourceId", ParameterLocation.PATH, "resourceId"))),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(tool)))
                 .files();
@@ -444,18 +446,18 @@ class GeneratedProjectSmokeTest {
         ApiSchema deliveryMode = new ApiSchema(
                 SchemaType.STRING, null, false, List.of("express", "standard"), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
-        var tool = new McpToolDefinition(
+        var tool = new ToolDefinition(
                 "submitAddress", "kma_weather_submit_address", "Submit an address.",
                 List.of(
-                        new McpInputDefinition("postalCode", "postal-code", "Postal code", true, postalCode),
-                        new McpInputDefinition("deliveryMode", "delivery-mode", "Delivery mode", true, deliveryMode)),
-                new HttpExecutionDefinition(
+                        new ToolInput("postalCode", "postal-code", "Postal code", true, postalCode),
+                        new ToolInput("deliveryMode", "delivery-mode", "Delivery mode", true, deliveryMode)),
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/address",
                         List.of(
                                 new ParameterBinding("postalCode", ParameterLocation.BODY, "postal-code"),
                                 new ParameterBinding("deliveryMode", ParameterLocation.BODY, "delivery-mode")),
                         true),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(tool)))
                 .files();
@@ -470,16 +472,16 @@ class GeneratedProjectSmokeTest {
     @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedProjectOmitsOptionalEmptyObjectBodiesAndSendsRequiredEmptyObjectBodies() throws Exception {
-        var optionalTool = new McpToolDefinition(
+        var optionalTool = new ToolDefinition(
                 "submitOptional", "kma_weather_submit_optional", "Submit an optional object.", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/optional", List.of(), true, false),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
-        var requiredTool = new McpToolDefinition(
+                List.of(), OutputKind.GENERIC_JSON);
+        var requiredTool = new ToolDefinition(
                 "submitRequired", "kma_weather_submit_required", "Submit a required object.", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/required", List.of(), true, true),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(optionalTool, requiredTool)))
                 .files();
@@ -494,12 +496,12 @@ class GeneratedProjectSmokeTest {
     @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedProjectKeepsUnderscoreSecretPropertiesServerOnlyAndBuildable() throws Exception {
-        var tool = new McpToolDefinition(
+        var tool = new ToolDefinition(
                 "getCredential", "kma_weather_get_credential", "Get a credential.", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/credential", List.of()),
                 List.of(new SecretBinding("API_KEY", "api_key", ParameterLocation.QUERY, "api_key", true)),
-                McpToolDefinition.OutputKind.GENERIC_JSON);
+                OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
                 .generate(JavaSourceRendererTest.context(List.of(tool)))
                 .files();
@@ -517,7 +519,7 @@ class GeneratedProjectSmokeTest {
         assertProjectBuilds(project, files, null);
     }
 
-    private List<McpToolDefinition> typedOutputTools() {
+    private List<ToolDefinition> typedOutputTools() {
         ApiSchema text = new ApiSchema(
                 SchemaType.STRING, null, false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
@@ -536,22 +538,22 @@ class GeneratedProjectSmokeTest {
                 typedTool("malformedResponse", "/malformed", null, city, city));
     }
 
-    private McpToolDefinition typedTool(
+    private ToolDefinition typedTool(
             String operationId,
             String path,
             ResponseNormalizationPolicy normalization,
             ApiSchema providerSchema,
             ApiSchema resultSchema) {
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 operationId,
                 "weather_" + operationId.replaceAll("([A-Z])", "_$1").toLowerCase(java.util.Locale.ROOT),
                 "Get a typed weather response.",
                 List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), path, List.of(),
                         false, false, normalization),
                 List.of(),
-                new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, providerSchema, resultSchema));
+                new ToolOutput(OutputKind.TYPED_DTO, providerSchema, resultSchema));
     }
 
     private ApiSchema objectSchema(Map<String, ApiSchema> properties, List<String> required) {

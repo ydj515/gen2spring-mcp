@@ -9,11 +9,13 @@ import static java.nio.file.StandardOpenOption.WRITE;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.gen2spring.mcp.application.port.outbound.ManifestWriter;
+import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,7 +23,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-public final class GenerationManifestWriter {
+public final class GenerationManifestWriter implements ManifestWriter {
     public static final String MANIFEST_FILE = "GENERATION_MANIFEST.json";
     private static final String STAGE = "REPORT";
     private static final String GENERATOR_VERSION = "0.1.0";
@@ -41,7 +43,7 @@ public final class GenerationManifestWriter {
             CompatibilityProfile profile,
             OpenApiDocument document,
             String sourceChecksum,
-            List<McpToolDefinition> tools) {
+            List<ToolDefinition> tools) {
         requireInputs(profile, document, sourceChecksum, tools);
         Path target = outputPath(projectRoot);
         ObjectNode manifest = objectMapper.createObjectNode();
@@ -57,7 +59,7 @@ public final class GenerationManifestWriter {
         manifest.put("originalSpecificationChecksum", document.checksum());
         manifest.put("sourceChecksum", sourceChecksum);
         ArrayNode mappings = manifest.putArray("operationMappings");
-        tools.stream().sorted(Comparator.comparing(McpToolDefinition::operationId)).forEach(tool -> {
+        tools.stream().sorted(Comparator.comparing(ToolDefinition::operationId)).forEach(tool -> {
             ObjectNode mapping = mappings.addObject();
             mapping.put("operationId", tool.operationId());
             mapping.put("toolName", tool.name());
@@ -104,7 +106,7 @@ public final class GenerationManifestWriter {
             CompatibilityProfile profile,
             OpenApiDocument document,
             String sourceChecksum,
-            List<McpToolDefinition> tools) {
+            List<ToolDefinition> tools) {
         if (profile == null || document == null || sourceChecksum == null || sourceChecksum.isBlank() || tools == null) {
             throw failure("Generation manifest input is incomplete", null);
         }

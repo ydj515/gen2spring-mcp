@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;

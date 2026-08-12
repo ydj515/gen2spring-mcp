@@ -1,8 +1,9 @@
 package io.gen2spring.mcp.springai1;
 
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolInput;
+import io.gen2spring.mcp.domain.tool.OutputKind;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -11,7 +12,7 @@ final class ToolClassRenderer {
     String render(
             String packageName,
             String domainClass,
-            List<McpToolDefinition> tools) {
+            List<ToolDefinition> tools) {
         Set<String> imports = imports(packageName, domainClass, tools);
         StringBuilder source = new StringBuilder("package ").append(packageName).append(".generated.tool;\n\n");
         imports.forEach(value -> source.append("import ").append(value).append(";\n"));
@@ -21,7 +22,7 @@ final class ToolClassRenderer {
                 .append("        this.executor = executor;\n")
                 .append("    }\n");
 
-        for (McpToolDefinition tool : tools) {
+        for (ToolDefinition tool : tools) {
             appendMethod(source, domainClass, tool);
         }
         return source.append("}\n").toString();
@@ -30,10 +31,10 @@ final class ToolClassRenderer {
     private void appendMethod(
             StringBuilder source,
             String domainClass,
-            McpToolDefinition tool) {
-        List<McpInputDefinition> inputs = InputRecordRenderer.inputs(tool);
+            ToolDefinition tool) {
+        List<ToolInput> inputs = InputRecordRenderer.inputs(tool);
         String operationClass = JavaSourceRenderer.upperCamel(tool.operationId());
-        String resultType = tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO
+        String resultType = tool.outputKind() == OutputKind.TYPED_DTO
                 ? operationClass + "Result" : "JsonNode";
         source.append('\n');
         source.append("    public ").append(resultType).append(' ')
@@ -42,7 +43,7 @@ final class ToolClassRenderer {
             source.append('\n');
         }
         for (int index = 0; index < inputs.size(); index++) {
-            McpInputDefinition input = inputs.get(index);
+            ToolInput input = inputs.get(index);
             source.append("            ");
             String constraints = InputRecordRenderer.validationAnnotations(input);
             if (!constraints.isEmpty()) {
@@ -61,13 +62,13 @@ final class ToolClassRenderer {
             if (index > 0) {
                 source.append(", ");
             }
-            McpInputDefinition input = inputs.get(index);
+            ToolInput input = inputs.get(index);
             source.append(constructorArgument(input, operationClass));
         }
         source.append(");\n")
                 .append("        return executor.execute(").append(domainClass).append("Operations.")
                 .append(JavaSourceRenderer.constantName(tool.operationId())).append(", input.toArguments()")
-                .append(tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO
+                .append(tool.outputKind() == OutputKind.TYPED_DTO
                         ? ", " + operationClass + "Result.class" : "")
                 .append(");\n")
                 .append("    }\n");
@@ -76,21 +77,21 @@ final class ToolClassRenderer {
     private Set<String> imports(
             String packageName,
             String domainClass,
-            List<McpToolDefinition> tools) {
+            List<ToolDefinition> tools) {
         Set<String> imports = new TreeSet<>();
         imports.add(packageName + ".generated.metadata." + domainClass + "Operations");
         imports.add(packageName + ".runtime.OpenApiOperationExecutor");
         imports.add("org.springframework.stereotype.Component");
         imports.add("org.springframework.validation.annotation.Validated");
-        for (McpToolDefinition tool : tools) {
+        for (ToolDefinition tool : tools) {
             String operationClass = JavaSourceRenderer.upperCamel(tool.operationId());
             imports.add(packageName + ".generated.model." + operationClass + "Input");
-            if (tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO) {
+            if (tool.outputKind() == OutputKind.TYPED_DTO) {
                 imports.add(packageName + ".generated.model." + operationClass + "Result");
             } else {
                 imports.add("com.fasterxml.jackson.databind.JsonNode");
             }
-            for (McpInputDefinition input : InputRecordRenderer.inputs(tool)) {
+            for (ToolInput input : InputRecordRenderer.inputs(tool)) {
                 addValidationImports(imports, input);
                 String type = JavaSourceRenderer.javaType(
                         input.schema(), operationClass + JavaSourceRenderer.upperCamel(input.name()));
@@ -100,7 +101,7 @@ final class ToolClassRenderer {
         return imports;
     }
 
-    private void addValidationImports(Set<String> imports, McpInputDefinition input) {
+    private void addValidationImports(Set<String> imports, ToolInput input) {
         ApiSchema schema = input.schema();
         if (input.required()) {
             imports.add("jakarta.validation.constraints.NotNull");
@@ -149,7 +150,7 @@ final class ToolClassRenderer {
         return shortType(schema, suggestedName);
     }
 
-    private String constructorArgument(McpInputDefinition input, String operationClass) {
+    private String constructorArgument(ToolInput input, String operationClass) {
         String variable = JavaSourceRenderer.lowerCamel(input.name());
         if (input.schema().enumValues() != null && !input.schema().enumValues().isEmpty()) {
             return JavaSourceRenderer.javaType(input.schema(), operationClass + JavaSourceRenderer.upperCamel(input.name()))

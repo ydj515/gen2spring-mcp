@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.springai1;
 
-import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.application.validation.ExpectedToolSchemaFactory;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;

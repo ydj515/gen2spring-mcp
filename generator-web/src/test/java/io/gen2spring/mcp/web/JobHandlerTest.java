@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.GeneratorApplication;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus;
+import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.validation.ValidationStatus;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
@@ -55,9 +55,9 @@ class JobHandlerTest {
 
     private GenerationOutcome unverified(
             Path specification,
-            io.gen2spring.mcp.domain.config.GenerationRequest request,
+            io.gen2spring.mcp.application.command.GenerationCommand request,
             Path output,
-            io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgressListener progress)
+            io.gen2spring.mcp.application.usecase.GenerationProgressListener progress)
             throws Exception {
         Files.createDirectory(output);
         Files.writeString(output.resolve("GENERATION_MANIFEST.json"), "{}");

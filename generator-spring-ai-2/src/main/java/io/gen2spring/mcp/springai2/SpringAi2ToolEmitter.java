@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.springai2;
 
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedToolSources;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ToolEmitter;
+import io.gen2spring.mcp.application.port.outbound.GeneratedToolSources;
+import io.gen2spring.mcp.application.usecase.GenerationContext;
+import io.gen2spring.mcp.application.port.outbound.ToolEmitter;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 
 public final class SpringAi2ToolEmitter implements ToolEmitter {

@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.springai1;
 
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -10,22 +12,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
+import io.gen2spring.mcp.application.usecase.GenerationContext;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
-import io.gen2spring.mcp.domain.tool.OutputDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolOutput;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Files;
@@ -108,7 +110,7 @@ class ProjectFileRendererTest {
     @Test
     void rendersDeterministicProviderSecretsAndResponsePolicyMetadata() {
         ProjectFileRenderer renderer = new ProjectFileRenderer(profile(17));
-        McpToolDefinition normalized = normalizedTool();
+        ToolDefinition normalized = normalizedTool();
         GenerationContext context = context(profile(17), List.of(normalized));
 
         String yaml = renderer.applicationYaml(context);
@@ -307,47 +309,47 @@ class ProjectFileRendererTest {
         return new CompatibilityProfile(id, target, module, template, runtime, gradle, image);
     }
 
-    private GenerationRequest.ProjectCoordinates coordinates() {
-        return new GenerationRequest.ProjectCoordinates("com.example", "weather-mcp-server", "com.example.weather");
+    private GenerationCommand.ProjectCoordinates coordinates() {
+        return new GenerationCommand.ProjectCoordinates("com.example", "weather-mcp-server", "com.example.weather");
     }
 
-    private GenerationContext context(CompatibilityProfile profile, List<McpToolDefinition> tools) {
-        GenerationRequest request = new GenerationRequest(
-                coordinates(), "kma", "weather", profile.id(), GenerationRequest.ValidationLevel.MCP_PROTOCOL,
-                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+    private GenerationContext context(CompatibilityProfile profile, List<ToolDefinition> tools) {
+        GenerationCommand request = new GenerationCommand(
+                coordinates(), "kma", "weather", profile.id(), GenerationCommand.ValidationLevel.MCP_PROTOCOL,
+                new GenerationCommand.ValidationConfiguration(new GenerationCommand.ToolCallValidation(
                         "getForecast", Map.of("stationId", "STN01"))),
                 List.of());
         return new GenerationContext(null, tools, request, profile, new byte[0]);
     }
 
-    private McpToolDefinition normalizedTool() {
+    private ToolDefinition normalizedTool() {
         ResponseNormalizationPolicy normalization = new ResponseNormalizationPolicy(
                 "/response/body/items/item", "/response/header/resultCode",
                 List.of("00", new BigDecimal("1.50"), true), "/response/header/resultMsg",
                 "/response/body/totalCount");
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 "getForecast", "kma_weather_get_forecast", "Get forecast", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/forecast", List.of(),
                         false, false, normalization),
                 List.of(new SecretBinding(
                         "KMA_SERVICE_KEY", "service-key", ParameterLocation.QUERY, "serviceKey", true)),
-                McpToolDefinition.OutputKind.GENERIC_JSON);
+                OutputKind.GENERIC_JSON);
     }
 
-    private McpToolDefinition policyTool() {
+    private ToolDefinition policyTool() {
         ApiSchema result = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null, null,
                 Map.of(), List.of(), null, true, List.of());
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 "getForecast", "weather_get_forecast", "Get forecast", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/forecast", List.of(),
                         false, false, null,
                         new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true),
                         new PaginationPolicy(
                                 "cursor", "initial-private-cursor", "/items", "/next", 10, 1_000)),
-                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, result, result));
+                List.of(), new ToolOutput(OutputKind.TYPED_DTO, result, result));
     }
 
     private Path repositoryRoot() {

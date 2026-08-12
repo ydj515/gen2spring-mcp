@@ -9,21 +9,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.gen2spring.mcp.domain.config.GenerationRequest;
-import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
-import io.gen2spring.mcp.domain.config.GenerationRequest.OutputSelection;
+import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.command.GenerationCommand.OutputSelection;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel;
+import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
+import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
+import io.gen2spring.mcp.application.command.GenerationCommand.ToolCallValidation;
+import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfiguration;
+import io.gen2spring.mcp.application.command.GenerationCommand.ValidationLevel;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.OutputKind;
+import io.gen2spring.mcp.domain.tool.ParameterSource;
+import io.gen2spring.mcp.domain.tool.OutputKind;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -117,15 +117,15 @@ public final class GenerationConfigurationParser {
                 .build();
     }
 
-    public GenerationRequest parseYaml(byte[] bytes) {
+    public GenerationCommand parseYaml(byte[] bytes) {
         return parse(bytes, InputFormat.YAML);
     }
 
-    public GenerationRequest parseJson(byte[] bytes) {
+    public GenerationCommand parseJson(byte[] bytes) {
         return parse(bytes, InputFormat.JSON);
     }
 
-    private GenerationRequest parse(byte[] bytes, InputFormat format) {
+    private GenerationCommand parse(byte[] bytes, InputFormat format) {
         if (bytes == null || bytes.length == 0 || bytes.length > MAX_BYTES) {
             throw new GenerationConfigurationException("Generation configuration is invalid");
         }
@@ -465,7 +465,7 @@ public final class GenerationConfigurationParser {
         }
     }
 
-    private GenerationRequest validate(RawConfiguration raw) {
+    private GenerationCommand validate(RawConfiguration raw) {
         if (raw == null || raw.project() == null) {
             throw invalid("Generation project coordinates are required");
         }
@@ -482,7 +482,7 @@ public final class GenerationConfigurationParser {
         }
         ValidationConfiguration validation = validation(raw.validation());
         List<OperationSelection> operations = operations(raw.operations());
-        return new GenerationRequest(new ProjectCoordinates(groupId, artifactId, packageName), provider, domain,
+        return new GenerationCommand(new ProjectCoordinates(groupId, artifactId, packageName), provider, domain,
                 raw.targetProfileId(), raw.validationLevel(), validation, operations);
     }
 

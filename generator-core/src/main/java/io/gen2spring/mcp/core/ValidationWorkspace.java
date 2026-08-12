@@ -4,7 +4,8 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.port.outbound.ProjectWorkspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,7 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
-final class ValidationWorkspace implements AutoCloseable {
+final class ValidationWorkspace implements ProjectWorkspace.ValidationWorkspace {
     private static final String STAGE = "VALIDATION";
 
     private final Path canonicalRoot;
@@ -54,7 +55,7 @@ final class ValidationWorkspace implements AutoCloseable {
                 identity(workspace));
     }
 
-    Path root() {
+    public Path root() {
         return workspaceRoot;
     }
 

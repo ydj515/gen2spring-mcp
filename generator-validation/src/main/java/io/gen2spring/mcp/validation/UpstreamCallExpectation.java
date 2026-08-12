@@ -2,14 +2,14 @@ package io.gen2spring.mcp.validation;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.application.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -112,7 +112,7 @@ public record UpstreamCallExpectation(
     public static List<UpstreamCallExpectation> allFrom(ExpectedToolCall expectedCall) {
         Objects.requireNonNull(expectedCall, "expectedCall");
         var tool = Objects.requireNonNull(expectedCall.tool(), "expectedCall.tool");
-        HttpExecutionDefinition execution = Objects.requireNonNull(
+        HttpExecution execution = Objects.requireNonNull(
                 tool.execution(), "Expected Tool call execution is missing");
         if (execution.method() == null) {
             throw new IllegalArgumentException("Expected Tool call HTTP method is missing");
@@ -274,7 +274,7 @@ public record UpstreamCallExpectation(
     }
 
     private static void validateBodyMethod(
-            HttpExecutionDefinition execution,
+            HttpExecution execution,
             List<ParameterBinding> parameters,
             List<SecretBinding> secrets) {
         boolean hasBodyBinding = parameters.stream()

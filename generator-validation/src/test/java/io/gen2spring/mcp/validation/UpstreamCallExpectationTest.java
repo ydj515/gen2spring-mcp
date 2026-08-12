@@ -1,26 +1,28 @@
 package io.gen2spring.mcp.validation;
 
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod.GET;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod.POST;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.BODY;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.HEADER;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.PATH;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.QUERY;
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.POST;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.BODY;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.PATH;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.application.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.util.AbstractMap;
@@ -43,13 +45,13 @@ class UpstreamCallExpectationTest {
                 false,
                 List.of(),
                 Map.of("city", "seoul"));
-        HttpExecutionDefinition execution = legacy.tool().execution();
-        var tool = new McpToolDefinition(
+        HttpExecution execution = legacy.tool().execution();
+        var tool = new ToolDefinition(
                 legacy.tool().operationId(),
                 legacy.tool().name(),
                 legacy.tool().description(),
                 legacy.tool().inputs(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
                         false, false, null, null,
                         new PaginationPolicy("cursor", "first", "/items", "/next", 2, 10)),
@@ -448,19 +450,19 @@ class UpstreamCallExpectationTest {
     }
 
     private ExpectedToolCall call(
-            io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod method,
+            io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod method,
             String path,
             List<ParameterBinding> bindings,
             boolean objectBody,
             boolean bodyRequired,
             List<SecretBinding> secrets,
             Map<String, Object> arguments) {
-        var tool = new McpToolDefinition(
+        var tool = new ToolDefinition(
                 "getForecast",
                 "weather_get_forecast",
                 "Get a forecast.",
                 List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         method,
                         URI.create("https://api.example.test"),
                         path,
@@ -468,20 +470,20 @@ class UpstreamCallExpectationTest {
                         objectBody,
                         bodyRequired),
                 secrets,
-                McpToolDefinition.OutputKind.GENERIC_JSON);
+                OutputKind.GENERIC_JSON);
         return new ExpectedToolCall(tool, arguments);
     }
 
     private ParameterBinding binding(
             String source,
-            io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation location,
+            io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation location,
             String target) {
         return new ParameterBinding(source, location, target);
     }
 
     private SecretBinding secret(
             String environment,
-            io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation location,
+            io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation location,
             String target,
             boolean required) {
         return new SecretBinding(environment, environment.toLowerCase(), location, target, required);

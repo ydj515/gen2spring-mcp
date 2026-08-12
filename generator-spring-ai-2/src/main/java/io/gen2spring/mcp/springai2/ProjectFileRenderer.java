@@ -7,15 +7,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import io.gen2spring.mcp.domain.config.GenerationRequest;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
+import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
+import io.gen2spring.mcp.application.usecase.GenerationContext;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.tool.OutputKind;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -378,10 +379,10 @@ public final class ProjectFileRenderer {
         return new ProjectCoordinates(groupId, artifactId, packageName);
     }
 
-    private Map<String, String> secretProperties(List<McpToolDefinition> tools) {
+    private Map<String, String> secretProperties(List<ToolDefinition> tools) {
         List<SecretBinding> bindings = new ArrayList<>();
         if (tools != null) {
-            for (McpToolDefinition tool : tools) {
+            for (ToolDefinition tool : tools) {
                 if (tool != null && tool.secretBindings() != null) {
                     bindings.addAll(tool.secretBindings());
                 }
@@ -411,19 +412,19 @@ public final class ProjectFileRenderer {
         return values;
     }
 
-    private String renderedTools(List<McpToolDefinition> tools) {
+    private String renderedTools(List<ToolDefinition> tools) {
         if (tools == null || tools.isEmpty()) {
             return "No tools were generated.";
         }
         return tools.stream()
                 .filter(java.util.Objects::nonNull)
-                .sorted(Comparator.comparing(McpToolDefinition::name))
+                .sorted(Comparator.comparing(ToolDefinition::name))
                 .map(tool -> "- `" + tool.name() + "`: " + markdownText(tool.description()))
                 .reduce("", (left, right) -> left + right + "\n")
                 .stripTrailing();
     }
 
-    private String renderedResponseHandling(List<McpToolDefinition> tools) {
+    private String renderedResponseHandling(List<ToolDefinition> tools) {
         String contract = """
                 ## Response handling
 
@@ -439,7 +440,7 @@ public final class ProjectFileRenderer {
         }
         String policies = tools.stream()
                 .filter(java.util.Objects::nonNull)
-                .sorted(Comparator.comparing(McpToolDefinition::operationId))
+                .sorted(Comparator.comparing(ToolDefinition::operationId))
                 .map(this::renderedResponsePolicy)
                 .reduce("", (left, right) -> left.isEmpty() ? right : left + "\n" + right);
         if (policies.isEmpty()) {
@@ -448,12 +449,12 @@ public final class ProjectFileRenderer {
         return contract + "\n\n### Operation response policies\n\n" + policies;
     }
 
-    private String renderedResponsePolicy(McpToolDefinition tool) {
+    private String renderedResponsePolicy(ToolDefinition tool) {
         StringBuilder rendered = new StringBuilder("- ")
                 .append(markdownCodeSpan(tool.operationId()))
                 .append("\n");
         appendPolicyValue(rendered, "output.mode",
-                tool.outputKind() == McpToolDefinition.OutputKind.TYPED_DTO ? "TYPED" : "GENERIC_JSON");
+                tool.outputKind() == OutputKind.TYPED_DTO ? "TYPED" : "GENERIC_JSON");
         var retry = tool.execution() == null ? null : tool.execution().retryPolicy();
         if (retry == null) {
             appendPolicyValue(rendered, "retry", "disabled (one attempt)");
@@ -552,10 +553,10 @@ public final class ProjectFileRenderer {
         return plain.toString();
     }
 
-    private String dockerEnvironment(List<McpToolDefinition> tools) {
+    private String dockerEnvironment(List<ToolDefinition> tools) {
         java.util.TreeSet<String> values = new java.util.TreeSet<>();
         if (tools != null) {
-            for (McpToolDefinition tool : tools) {
+            for (ToolDefinition tool : tools) {
                 if (tool == null || tool.secretBindings() == null) {
                     continue;
                 }

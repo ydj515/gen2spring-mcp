@@ -1,12 +1,12 @@
 package io.gen2spring.mcp.cli;
 
-import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SERVER_SECRET;
+import static io.gen2spring.mcp.domain.tool.ParameterSource.SERVER_SECRET;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
@@ -104,7 +104,7 @@ class GenerationConfigurationReaderTest {
 
     @Test
     void readsTypedResponseNormalization() throws IOException {
-        GenerationRequest request = reader.read(write("normalization.yaml", validConfiguration().replace(
+        GenerationCommand request = reader.read(write("normalization.yaml", validConfiguration().replace(
                 "    parameters:\n", "    responseNormalization:\n"
                         + "      dataPath: /response/body/items/0\n"
                         + "      successCodePath: /response/header/resultCode\n"
@@ -137,9 +137,9 @@ class GenerationConfigurationReaderTest {
                         "    parameters:\n", "    responseNormalization: {dataPath: \"\"}\n"
                                 + "    parameters:\n"))));
 
-        GenerationRequest absent = reader.read(write("absent-pointer.yaml", validConfiguration().replace(
+        GenerationCommand absent = reader.read(write("absent-pointer.yaml", validConfiguration().replace(
                 "    parameters:\n", "    responseNormalization: {}\n    parameters:\n")));
-        GenerationRequest emptyProperty = reader.read(write(
+        GenerationCommand emptyProperty = reader.read(write(
                 "empty-property-pointer.yaml", validConfiguration().replace(
                         "    parameters:\n", "    responseNormalization: {dataPath: /}\n"
                                 + "    parameters:\n")));

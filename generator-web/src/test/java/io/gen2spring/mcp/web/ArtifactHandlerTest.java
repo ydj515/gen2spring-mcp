@@ -4,12 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.domain.config.GenerationRequest;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus;
+import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
+import io.gen2spring.mcp.application.command.GenerationCommand.ToolCallValidation;
+import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfiguration;
+import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.validation.ValidationStatus;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -47,9 +47,9 @@ class ArtifactHandlerTest {
 
     private GenerationOutcome validated(
             Path specification,
-            GenerationRequest request,
+            GenerationCommand request,
             Path output,
-            io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgressListener progress)
+            io.gen2spring.mcp.application.usecase.GenerationProgressListener progress)
             throws Exception {
         Files.createDirectory(output);
         Files.writeString(output.resolve("GENERATION_MANIFEST.json"), "manifest");
@@ -62,11 +62,11 @@ class ArtifactHandlerTest {
         return Files.writeString(tempDir.resolve("weather.yaml"), "openapi: 3.0.3");
     }
 
-    private GenerationRequest request() {
-        return new GenerationRequest(
+    private GenerationCommand request() {
+        return new GenerationCommand(
                 new ProjectCoordinates("com.example", "weather-mcp", "com.example.weather"),
                 "weather", "forecast", "spring-ai-2.0-java21-mvc-streamable",
-                GenerationRequest.ValidationLevel.MCP_PROTOCOL,
+                GenerationCommand.ValidationLevel.MCP_PROTOCOL,
                 new ValidationConfiguration(new ToolCallValidation("getForecast", Map.of("city", "Seoul"))),
                 List.of());
     }

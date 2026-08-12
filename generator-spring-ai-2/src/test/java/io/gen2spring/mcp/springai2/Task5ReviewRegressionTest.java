@@ -8,12 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.ToolInput;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,7 @@ class Task5ReviewRegressionTest {
     @Test
     void importsThePinnedSpringBootBomForVersionlessBootDependencies() {
         String build = projectRenderer.buildGradle(
-                new io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates(
+                new io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates(
                         "com.example", "weather-mcp-server", "com.example.weather"));
 
         assertTrue(build.contains(
@@ -35,7 +35,7 @@ class Task5ReviewRegressionTest {
     @Test
     void includesTheBootRestClientAutoConfigurationModule() {
         String build = projectRenderer.buildGradle(
-                new io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates(
+                new io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates(
                         "com.example", "weather-mcp-server", "com.example.weather"));
 
         assertTrue(build.contains("implementation(\"org.springframework.boot:spring-boot-restclient\")"));
@@ -87,7 +87,7 @@ class Task5ReviewRegressionTest {
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null,
                 null, null, Map.of("city", city), List.of("city"), null, true, List.of());
         var tool = JavaSourceRendererTest.weatherTool(
-                List.of(new McpInputDefinition("input", "input", "Input", true, object)),
+                List.of(new ToolInput("input", "input", "Input", true, object)),
                 List.of(new ParameterBinding("input", ParameterLocation.BODY, "body")));
 
         assertThrows(GeneratorException.class,
@@ -99,7 +99,7 @@ class Task5ReviewRegressionTest {
         ApiSchema string = JavaSourceRendererTest.schema(
                 SchemaType.STRING, null, null, null, null, null, null, List.of());
         var tool = JavaSourceRendererTest.weatherTool(
-                List.of(new McpInputDefinition("postal-code", "postal-code", "Postal code", true, string)),
+                List.of(new ToolInput("postal-code", "postal-code", "Postal code", true, string)),
                 List.of(new ParameterBinding("postal-code", ParameterLocation.QUERY, "postal-code")));
 
         GeneratorException exception = assertThrows(GeneratorException.class,

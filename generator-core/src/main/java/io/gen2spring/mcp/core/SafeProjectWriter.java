@@ -6,7 +6,8 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.port.outbound.ProjectWorkspace;
 import java.io.IOException;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
@@ -23,7 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-public final class SafeProjectWriter {
+public final class SafeProjectWriter implements ProjectWorkspace {
     private static final String STAGE = "SOURCE_GENERATE";
     private static final Set<PosixFilePermission> EXECUTABLE_PERMISSIONS = Set.of(
             PosixFilePermission.OWNER_READ,
@@ -88,6 +89,11 @@ public final class SafeProjectWriter {
             cleanupAfterFailure(wrapped, stagingOwnership);
             throw wrapped;
         }
+    }
+
+    @Override
+    public ProjectWorkspace.ValidationWorkspace openValidationWorkspace(Path canonicalProjectRoot) {
+        return io.gen2spring.mcp.core.ValidationWorkspace.copyOf(canonicalProjectRoot, this);
     }
 
     private Path requireSafeParent(Path root) {

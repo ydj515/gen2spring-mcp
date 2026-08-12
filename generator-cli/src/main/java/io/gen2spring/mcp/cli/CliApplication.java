@@ -3,8 +3,8 @@ package io.gen2spring.mcp.cli;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_FILE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_TOO_LARGE;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.UNVERIFIED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
@@ -14,14 +14,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
+import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
-import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
@@ -204,7 +204,7 @@ public final class CliApplication {
     }
 
     private int generate(CommandLine.Parsed parsed, PrintWriter stdout) {
-        GenerationRequest request = configurationReader.read(parsed.configuration());
+        GenerationCommand request = configurationReader.read(parsed.configuration());
         ProjectOutput output = newProjectPath(parsed.output());
         GenerationOutcome outcome;
         try (var specification = specificationCopy(parsed.specification())) {
@@ -434,7 +434,7 @@ public final class CliApplication {
 
     @FunctionalInterface
     interface GenerationExecutor {
-        GenerationOutcome generate(Path specification, GenerationRequest request, Path outputRoot);
+        GenerationOutcome generate(Path specification, GenerationCommand request, Path outputRoot);
     }
 
     interface PublicationHook {

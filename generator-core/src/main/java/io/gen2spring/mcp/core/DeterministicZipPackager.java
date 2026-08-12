@@ -7,6 +7,9 @@ import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+import io.gen2spring.mcp.application.port.outbound.ArtifactPackager;
+import io.gen2spring.mcp.application.port.outbound.SourceSnapshot;
+import io.gen2spring.mcp.application.port.outbound.SourceSnapshot.EntryFingerprint;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,7 +33,7 @@ import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-public final class DeterministicZipPackager {
+public final class DeterministicZipPackager implements ArtifactPackager {
     private static final String STAGE = "PACKAGE";
     private static final LocalDateTime DOS_EPOCH_UTC = LocalDateTime.of(1980, 1, 1, 0, 0);
     private static final int CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -94,10 +97,10 @@ public final class DeterministicZipPackager {
         return packageProject(projectRoot, archive, null);
     }
 
-    byte[] packageProject(
+    public byte[] packageProject(
             Path projectRoot,
             Path archive,
-            SourceTreeChecksum.SourceSnapshot expectedSource) {
+            SourceSnapshot expectedSource) {
         Path root = requireProjectRoot(projectRoot);
         Path output = requireArchivePath(root, archive);
         Path staging = null;
@@ -160,7 +163,7 @@ public final class DeterministicZipPackager {
         }
     }
 
-    void requireArchiveAvailable(Path projectRoot, Path archive) {
+    public void requireArchiveAvailable(Path projectRoot, Path archive) {
         Path root = projectRoot.toAbsolutePath().normalize();
         requireArchivePath(root, archive);
     }
@@ -280,7 +283,7 @@ public final class DeterministicZipPackager {
     private void createArchive(
             List<ProjectEntry> entries,
             Path staging,
-            SourceTreeChecksum.SourceSnapshot expectedSource) throws IOException {
+            SourceSnapshot expectedSource) throws IOException {
         try (OutputStream file = Files.newOutputStream(staging, WRITE, TRUNCATE_EXISTING, NOFOLLOW_LINKS);
                 var bounded = new BoundedOutputStream(file, maxArchiveBytes);
                 var zip = new ZipOutputStream(bounded)) {
@@ -300,7 +303,7 @@ public final class DeterministicZipPackager {
     private void copyEntry(
             ProjectEntry entry,
             ZipOutputStream zip,
-            SourceTreeChecksum.EntryFingerprint expectedSource) throws IOException {
+            EntryFingerprint expectedSource) throws IOException {
         verifyProjectEntry(entry);
         if (expectedSource != null && expectedSource.rawBytes() != entry.size()) {
             throw failure("Generated project source content changed after checksum calculation");
@@ -340,7 +343,7 @@ public final class DeterministicZipPackager {
 
     private void validateSourceContract(
             List<ProjectEntry> entries,
-            SourceTreeChecksum.SourceSnapshot expectedSource) {
+            SourceSnapshot expectedSource) {
         if (expectedSource == null) {
             return;
         }
@@ -360,7 +363,7 @@ public final class DeterministicZipPackager {
             if (!SourceTreeChecksum.sourceIncluded(path)) {
                 throw failure("Generated project archive contains excluded process output");
             }
-            SourceTreeChecksum.EntryFingerprint fingerprint = expectedSource.entries().get(path);
+            EntryFingerprint fingerprint = expectedSource.entries().get(path);
             if (fingerprint == null || fingerprint.rawBytes() != entry.size()) {
                 throw failure("Generated project source paths changed after checksum calculation");
             }

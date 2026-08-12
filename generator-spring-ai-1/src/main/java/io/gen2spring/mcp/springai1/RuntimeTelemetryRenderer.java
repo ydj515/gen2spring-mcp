@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.springai1;
 
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -13,14 +13,14 @@ final class RuntimeTelemetryRenderer {
         this.targetProfileId = profile.id();
     }
 
-    String render(String packageName, List<McpToolDefinition> tools) {
+    String render(String packageName, List<ToolDefinition> tools) {
         String operationIds = setLiteral(tools.stream()
-                .sorted(Comparator.comparing(McpToolDefinition::operationId))
-                .map(McpToolDefinition::operationId)
+                .sorted(Comparator.comparing(ToolDefinition::operationId))
+                .map(ToolDefinition::operationId)
                 .toList());
         String toolNames = setLiteral(tools.stream()
-                .sorted(Comparator.comparing(McpToolDefinition::name))
-                .map(McpToolDefinition::name)
+                .sorted(Comparator.comparing(ToolDefinition::name))
+                .map(ToolDefinition::name)
                 .toList());
         return """
                 package %s.runtime;

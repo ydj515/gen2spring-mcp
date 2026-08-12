@@ -9,10 +9,11 @@ import static java.nio.file.StandardOpenOption.WRITE;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.gen2spring.mcp.application.port.outbound.ValidationReportStore;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
+import io.gen2spring.mcp.application.validation.ObservedTool;
+import io.gen2spring.mcp.application.validation.ValidationReport;
+import io.gen2spring.mcp.application.validation.ValidationStageResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +26,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
-public final class ValidationReportWriter {
+public final class ValidationReportWriter implements ValidationReportStore {
     public static final String REPORT_FILE = "VALIDATION_REPORT.json";
     public static final int MAX_SUMMARY_CHARACTERS = 2_048;
     static final int MAX_SCAN_CHARACTERS = 65_536;
@@ -68,7 +69,7 @@ public final class ValidationReportWriter {
         return target;
     }
 
-    Path replaceAfterPipelineFailure(
+    public Path replaceAfterPipelineFailure(
             Path projectRoot,
             ValidationReport report,
             Collection<String> configuredSecretNames) {

@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.web;
 
-import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;

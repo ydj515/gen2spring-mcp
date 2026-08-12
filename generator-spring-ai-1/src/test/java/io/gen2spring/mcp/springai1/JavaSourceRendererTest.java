@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.springai1;
 
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -8,24 +10,24 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
+import io.gen2spring.mcp.application.usecase.GenerationContext;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
-import io.gen2spring.mcp.domain.tool.OutputDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ToolInput;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -89,11 +91,11 @@ class JavaSourceRendererTest {
     void rejectsTypedOutputPropertyNamesThatCollideAfterJavaNormalization() {
         ApiSchema collision = objectSchema(Map.of(
                 "postal-code", textSchema(), "postal_code", textSchema()), List.of());
-        McpToolDefinition base = weatherTool();
-        McpToolDefinition tool = new McpToolDefinition(
+        ToolDefinition base = weatherTool();
+        ToolDefinition tool = new ToolDefinition(
                 base.operationId(), base.name(), base.description(), base.inputs(), base.execution(),
-                base.secretBindings(), new OutputDefinition(
-                        McpToolDefinition.OutputKind.TYPED_DTO, collision, collision));
+                base.secretBindings(), new ToolOutput(
+                        OutputKind.TYPED_DTO, collision, collision));
 
         GeneratorException failure = assertThrows(
                 GeneratorException.class, () -> renderer.render(context(List.of(tool))));
@@ -103,12 +105,12 @@ class JavaSourceRendererTest {
 
     @Test
     void rendersRetryPolicyMetadataAndBoundedRuntimeSeams() {
-        McpToolDefinition base = weatherTool();
+        ToolDefinition base = weatherTool();
         var execution = base.execution();
         RetryPolicy retry = new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true);
-        McpToolDefinition retried = new McpToolDefinition(
+        ToolDefinition retried = new ToolDefinition(
                 base.operationId(), base.name(), base.description(), base.inputs(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
                         execution.objectRequestBody(), execution.requestBodyRequired(),
                         execution.responseNormalization(), retry),
@@ -134,7 +136,7 @@ class JavaSourceRendererTest {
 
     @Test
     void rendersPaginationMetadataAndAccumulatorWithoutAVisibleCursorBinding() {
-        McpToolDefinition base = weatherTool();
+        ToolDefinition base = weatherTool();
         ApiSchema text = textSchema();
         ApiSchema nullableText = new ApiSchema(
                 SchemaType.STRING, null, true, List.of(), null, null, null, null, null,
@@ -145,13 +147,13 @@ class JavaSourceRendererTest {
                         null, Map.of(), List.of(), text, true, List.of()),
                 "next", nullableText), List.of("items"));
         PaginationPolicy pagination = new PaginationPolicy("cursor", "first", "/items", "/next", 4, 100);
-        McpToolDefinition paginated = new McpToolDefinition(
+        ToolDefinition paginated = new ToolDefinition(
                 base.operationId(), base.name(), base.description(), base.inputs(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         base.execution().method(), base.execution().baseUrl(), base.execution().path(),
                         base.execution().bindings(), false, false, null, null, pagination),
-                base.secretBindings(), new OutputDefinition(
-                        McpToolDefinition.OutputKind.GENERIC_JSON, response, null));
+                base.secretBindings(), new ToolOutput(
+                        OutputKind.GENERIC_JSON, response, null));
 
         var files = renderer.render(context(List.of(paginated)));
         String metadata = utf8(files.get(
@@ -328,8 +330,8 @@ class JavaSourceRendererTest {
         ApiSchema body = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null,
                 null, null, Map.of("postal-code", schema), List.of("postal-code"), null, true, List.of());
-        var bodyInput = new McpInputDefinition("body", "body", "Postal request", true, body);
-        McpToolDefinition tool = weatherTool(List.of(bodyInput), List.of(
+        var bodyInput = new ToolInput("body", "body", "Postal request", true, body);
+        ToolDefinition tool = weatherTool(List.of(bodyInput), List.of(
                 new ParameterBinding("body", ParameterLocation.BODY, "body")));
 
         String input = utf8(renderer.render(context(List.of(tool))).get(
@@ -346,8 +348,8 @@ class JavaSourceRendererTest {
     @Test
     void rendersJavaSafeFlatMcpKeysWhilePreservingSpacedUpstreamJsonNames() {
         ApiSchema text = schema(SchemaType.STRING, null, null, null, null, null, null, List.of());
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("displayName", "display name", "Display name", true, text)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("displayName", "display name", "Display name", true, text)),
                 List.of(new ParameterBinding("displayName", ParameterLocation.BODY, "display name")));
 
         var files = assertDoesNotThrow(() -> renderer.render(context(List.of(tool))));
@@ -364,8 +366,8 @@ class JavaSourceRendererTest {
         ApiSchema text = schema(SchemaType.STRING, null, null, null, null, null, null, List.of());
 
         for (String jsonName : List.of(" ", "line\nbreak", "x".repeat(129))) {
-            McpToolDefinition tool = weatherTool(
-                    List.of(new McpInputDefinition("value", jsonName, "Value", true, text)),
+            ToolDefinition tool = weatherTool(
+                    List.of(new ToolInput("value", jsonName, "Value", true, text)),
                     List.of(new ParameterBinding("value", ParameterLocation.QUERY, "value")));
 
             assertThrows(GeneratorException.class, () -> renderer.render(context(List.of(tool))), jsonName);
@@ -379,8 +381,8 @@ class JavaSourceRendererTest {
                 null, null,
                 Map.of("café name", schema(SchemaType.STRING, null, null, null, null, null, null, List.of())),
                 List.of("café name"), null, true, List.of());
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("body", "body", "Body", true, body)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("body", "body", "Body", true, body)),
                 List.of(new ParameterBinding("body", ParameterLocation.BODY, "body")));
 
         String nested = utf8(renderer.render(context(List.of(tool))).get(
@@ -399,8 +401,8 @@ class JavaSourceRendererTest {
                 null, null,
                 Map.of("display-name", text, "display.name", text),
                 List.of(), null, true, List.of());
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("body", "body", "Body", true, body)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("body", "body", "Body", true, body)),
                 List.of(new ParameterBinding("body", ParameterLocation.BODY, "body")));
 
         assertThrows(GeneratorException.class, () -> renderer.render(context(List.of(tool))));
@@ -409,8 +411,8 @@ class JavaSourceRendererTest {
     @Test
     void rendersExplicitToolSchemaForFormattedNumbers() {
         ApiSchema number = schema(SchemaType.NUMBER, "double", null, null, null, null, null, List.of());
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("amount", "amount", "Amount", true, number)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("amount", "amount", "Amount", true, number)),
                 List.of(new ParameterBinding("amount", ParameterLocation.QUERY, "amount")));
 
         var files = renderer.render(context(List.of(tool)));
@@ -422,8 +424,8 @@ class JavaSourceRendererTest {
     @Test
     void registersLowLevelSpecificationsForEveryTool() {
         ApiSchema text = schema(SchemaType.STRING, null, null, null, null, null, null, List.of());
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("city", "city", "City", true, text)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("city", "city", "City", true, text)),
                 List.of(new ParameterBinding("city", ParameterLocation.QUERY, "city")));
 
         var files = renderer.render(context(List.of(tool)));
@@ -447,10 +449,10 @@ class JavaSourceRendererTest {
         ApiSchema integer = schema(
                 SchemaType.INTEGER, "int32", BigDecimal.ONE, BigDecimal.TEN,
                 null, null, null, List.of());
-        McpToolDefinition tool = weatherTool(
+        ToolDefinition tool = weatherTool(
                 List.of(
-                        new McpInputDefinition("limit", "limit", "Maximum results", false, integer),
-                        new McpInputDefinition("city", "city", "Forecast city", true, text)),
+                        new ToolInput("limit", "limit", "Maximum results", false, integer),
+                        new ToolInput("city", "city", "Forecast city", true, text)),
                 List.of(
                         new ParameterBinding("limit", ParameterLocation.QUERY, "limit"),
                         new ParameterBinding("city", ParameterLocation.QUERY, "city")));
@@ -507,10 +509,10 @@ class JavaSourceRendererTest {
                 null, null, Map.of(), List.of(),
                 schema(SchemaType.STRING, null, null, null, null, null, null, List.of()),
                 true, List.of());
-        McpToolDefinition tool = weatherTool(
+        ToolDefinition tool = weatherTool(
                 List.of(
-                        new McpInputDefinition("amount", "amount", "Amount", true, number),
-                        new McpInputDefinition("tags", "tags", "Tags", false, strings)),
+                        new ToolInput("amount", "amount", "Amount", true, number),
+                        new ToolInput("tags", "tags", "Tags", false, strings)),
                 List.of(
                         new ParameterBinding("amount", ParameterLocation.QUERY, "amount"),
                         new ParameterBinding("tags", ParameterLocation.QUERY, "tags")));
@@ -531,8 +533,8 @@ class JavaSourceRendererTest {
                 null, null,
                 Map.of("city", schema(SchemaType.STRING, null, null, null, 1, 80, null, List.of())),
                 List.of("city"), null, true, List.of());
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("body", "body", "Request body", true, body)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("body", "body", "Request body", true, body)),
                 List.of(new ParameterBinding("body", ParameterLocation.BODY, "body")));
         var files = renderer.render(context(List.of(tool)));
 
@@ -555,8 +557,8 @@ class JavaSourceRendererTest {
         ApiSchema conditions = schema(
                 SchemaType.STRING, null, null, null, null, null, null,
                 List.of("clear", "partly cloudy"));
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("condition", "condition", "Condition", true, conditions)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("condition", "condition", "Condition", true, conditions)),
                 List.of(new ParameterBinding("condition", ParameterLocation.QUERY, "condition")));
 
         String enumSource = utf8(renderer.render(context(List.of(tool))).get(
@@ -583,8 +585,8 @@ class JavaSourceRendererTest {
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null,
                 null, null, Map.of("display name", constrainedEnum), List.of("display name"),
                 null, true, List.of());
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("details", "details", "Details", true, details)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("details", "details", "Details", true, details)),
                 List.of(new ParameterBinding("details", ParameterLocation.BODY, "body")));
 
         var files = renderer.render(context(List.of(tool)));
@@ -607,8 +609,8 @@ class JavaSourceRendererTest {
     void rendersExplicitSchemaCallbacksInASeparateConfigurationWithTheProxiedToolBean() {
         ApiSchema mode = schema(SchemaType.STRING, null, null, null, null, null, null,
                 List.of("brief", "full-detail"));
-        McpToolDefinition tool = weatherTool(
-                List.of(new McpInputDefinition("mode", "mode", "Mode", false, mode)),
+        ToolDefinition tool = weatherTool(
+                List.of(new ToolInput("mode", "mode", "Mode", false, mode)),
                 List.of(new ParameterBinding("mode", ParameterLocation.QUERY, "mode")));
 
         var files = renderer.render(context(List.of(tool)));
@@ -628,13 +630,13 @@ class JavaSourceRendererTest {
         ApiSchema body = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null,
                 null, null, Map.of(), List.of(), null, true, List.of());
-        McpToolDefinition tool = new McpToolDefinition(
+        ToolDefinition tool = new ToolDefinition(
                 "inputForecast", "kma_weather_input_forecast", "Input forecast",
-                List.of(new McpInputDefinition("body", "body", "Body", true, body)),
-                new HttpExecutionDefinition(
+                List.of(new ToolInput("body", "body", "Body", true, body)),
+                new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/forecast",
                         List.of(new ParameterBinding("body", ParameterLocation.BODY, "body"))),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
         var files = renderer.render(context(List.of(tool)));
 
         assertTrue(files.containsKey(
@@ -646,11 +648,11 @@ class JavaSourceRendererTest {
 
     @Test
     void rendersByteIdenticalSourcesWhenToolOrderChanges() {
-        McpToolDefinition first = weatherTool();
-        McpToolDefinition second = new McpToolDefinition(
+        ToolDefinition first = weatherTool();
+        ToolDefinition second = new ToolDefinition(
                 "getAlerts", "kma_weather_get_alerts", "Get alerts", List.of(),
-                new HttpExecutionDefinition(HttpMethod.GET, URI.create("https://api.example.test"), "/alerts", List.of()),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                new HttpExecution(HttpMethod.GET, URI.create("https://api.example.test"), "/alerts", List.of()),
+                List.of(), OutputKind.GENERIC_JSON);
 
         var firstOrder = renderer.render(context(List.of(first, second)));
         var secondOrder = renderer.render(context(List.of(second, first)));
@@ -663,11 +665,11 @@ class JavaSourceRendererTest {
 
     @Test
     void rejectsUnsafeOperationPathsBeforeRenderingMetadata() {
-        McpToolDefinition unsafe = new McpToolDefinition(
+        ToolDefinition unsafe = new ToolDefinition(
                 "getForecast", "kma_weather_get_forecast", "Get forecast", List.of(),
-                new HttpExecutionDefinition(HttpMethod.GET, URI.create("https://api.example.test"),
+                new HttpExecution(HttpMethod.GET, URI.create("https://api.example.test"),
                         "/forecast\nInjected: true", List.of()),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                List.of(), OutputKind.GENERIC_JSON);
 
         assertThrows(GeneratorException.class, () -> renderer.render(context(List.of(unsafe))));
     }
@@ -701,17 +703,17 @@ class JavaSourceRendererTest {
         return context(profile, List.of(weatherTool()));
     }
 
-    static GenerationContext context(List<McpToolDefinition> tools) {
+    static GenerationContext context(List<ToolDefinition> tools) {
         return context(profile(21), tools);
     }
 
-    static GenerationContext context(CompatibilityProfile profile, List<McpToolDefinition> tools) {
-        var coordinates = new GenerationRequest.ProjectCoordinates(
+    static GenerationContext context(CompatibilityProfile profile, List<ToolDefinition> tools) {
+        var coordinates = new GenerationCommand.ProjectCoordinates(
                 "com.example", "weather-mcp-server", "com.example.weather");
-        var request = new GenerationRequest(
+        var request = new GenerationCommand(
                 coordinates, "kma", "weather", profile.id(),
-                GenerationRequest.ValidationLevel.MCP_PROTOCOL,
-                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+                GenerationCommand.ValidationLevel.MCP_PROTOCOL,
+                new GenerationCommand.ValidationConfiguration(new GenerationCommand.ToolCallValidation(
                         "getForecast", Map.of("nx", 60, "ny", 127))),
                 List.of());
         return new GenerationContext(null, tools, request, profile, new byte[0]);
@@ -735,25 +737,25 @@ class JavaSourceRendererTest {
                 .orElseThrow();
     }
 
-    static McpToolDefinition weatherTool() {
+    static ToolDefinition weatherTool() {
         ApiSchema integer = schema(SchemaType.INTEGER, "int32", BigDecimal.ZERO,
                 BigDecimal.valueOf(1000), null, null, null, List.of());
         return weatherTool(
                 List.of(
-                        new McpInputDefinition("nx", "nx", "Grid x coordinate", true, integer),
-                        new McpInputDefinition("ny", "ny", "Grid y coordinate", true, integer)),
+                        new ToolInput("nx", "nx", "Grid x coordinate", true, integer),
+                        new ToolInput("ny", "ny", "Grid y coordinate", true, integer)),
                 List.of(
                         new ParameterBinding("nx", ParameterLocation.QUERY, "nx"),
                         new ParameterBinding("ny", ParameterLocation.QUERY, "ny")));
     }
 
-    private static McpToolDefinition typedWeatherTool() {
-        McpToolDefinition base = weatherTool();
+    private static ToolDefinition typedWeatherTool() {
+        ToolDefinition base = weatherTool();
         ApiSchema result = typedResultSchema();
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 base.operationId(), base.name(), base.description(), base.inputs(), base.execution(),
-                base.secretBindings(), new OutputDefinition(
-                        McpToolDefinition.OutputKind.TYPED_DTO, result, result));
+                base.secretBindings(), new ToolOutput(
+                        OutputKind.TYPED_DTO, result, result));
     }
 
     private static ApiSchema typedResultSchema() {
@@ -789,15 +791,15 @@ class JavaSourceRendererTest {
         return schema(SchemaType.STRING, null, null, null, null, null, null, List.of());
     }
 
-    static McpToolDefinition weatherTool(ResponseNormalizationPolicy normalization) {
-        McpToolDefinition tool = weatherTool();
-        HttpExecutionDefinition execution = tool.execution();
-        return new McpToolDefinition(
+    static ToolDefinition weatherTool(ResponseNormalizationPolicy normalization) {
+        ToolDefinition tool = weatherTool();
+        HttpExecution execution = tool.execution();
+        return new ToolDefinition(
                 tool.operationId(),
                 tool.name(),
                 tool.description(),
                 tool.inputs(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         execution.method(),
                         execution.baseUrl(),
                         execution.path(),
@@ -818,22 +820,22 @@ class JavaSourceRendererTest {
                 "/response/body/totalCount");
     }
 
-    static McpToolDefinition weatherTool(
-            List<McpInputDefinition> inputs,
+    static ToolDefinition weatherTool(
+            List<ToolInput> inputs,
             List<ParameterBinding> bindings) {
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 "getForecast",
                 "kma_weather_get_forecast",
                 "Get the public weather forecast for a grid location.",
                 inputs,
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET,
                         URI.create("https://api.example.test"),
                         "/forecast",
                         bindings),
                 List.of(new SecretBinding(
                         "KMA_SERVICE_KEY", "service-key", ParameterLocation.QUERY, "serviceKey", true)),
-                McpToolDefinition.OutputKind.GENERIC_JSON);
+                OutputKind.GENERIC_JSON);
     }
 
     static ApiSchema schema(

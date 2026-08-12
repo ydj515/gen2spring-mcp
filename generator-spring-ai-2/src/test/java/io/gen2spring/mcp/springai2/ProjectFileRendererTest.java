@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.springai2;
 
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -10,21 +12,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext;
+import io.gen2spring.mcp.application.usecase.GenerationContext;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
-import io.gen2spring.mcp.domain.tool.OutputDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.tool.ToolOutput;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -194,7 +196,7 @@ class ProjectFileRendererTest {
 
     @Test
     void rejectsKotlinBuildScriptInjectionThroughArtifactId() {
-        var unsafe = new GenerationRequest.ProjectCoordinates(
+        var unsafe = new GenerationCommand.ProjectCoordinates(
                 "com.example", "weather\")\nprintln(\"injected", "com.example.weather");
 
         assertThrows(GeneratorException.class, () -> renderer.buildGradle(unsafe));
@@ -202,7 +204,7 @@ class ProjectFileRendererTest {
 
     @Test
     void rejectsKotlinDslInterpolationCharactersInGroupId() {
-        var unsafe = new GenerationRequest.ProjectCoordinates(
+        var unsafe = new GenerationCommand.ProjectCoordinates(
                 "com.$bad", "weather-mcp-server", "com.example.weather");
 
         assertThrows(GeneratorException.class, () -> renderer.buildGradle(unsafe));
@@ -373,10 +375,10 @@ class ProjectFileRendererTest {
     void rendersRequiredDockerSecretsDeterministicallyAndEscapesToolDescriptionsAsPlainMarkdown() {
         var first = tool("getZulu", "zulu", "zulu-key", "ZULU_KEY");
         var second = tool("getAlpha", "alpha", "alpha-key", "ALPHA_KEY");
-        var hostile = new McpToolDefinition(
+        var hostile = new ToolDefinition(
                 "getMarkdown", "markdown", "<tag> & `code` \\ [link](url) ~~removed~~", List.of(),
-                new HttpExecutionDefinition(HttpMethod.GET, URI.create("https://api.example.test"), "/markdown", List.of()),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON);
+                new HttpExecution(HttpMethod.GET, URI.create("https://api.example.test"), "/markdown", List.of()),
+                List.of(), OutputKind.GENERIC_JSON);
 
         String readme = renderer.readme(contextWithSecrets(List.of(first, second, hostile)));
 
@@ -419,24 +421,24 @@ class ProjectFileRendererTest {
         }
     }
 
-    private GenerationRequest.ProjectCoordinates projectCoordinates() {
-        return new GenerationRequest.ProjectCoordinates("com.example", "weather-mcp-server", "com.example.weather");
+    private GenerationCommand.ProjectCoordinates projectCoordinates() {
+        return new GenerationCommand.ProjectCoordinates("com.example", "weather-mcp-server", "com.example.weather");
     }
 
     private GenerationContext contextWithSecret(String propertyName) {
         return contextWithSecrets(List.of(tool(propertyName, "KMA_SERVICE_KEY")));
     }
 
-    private GenerationContext contextWithSecrets(List<McpToolDefinition> tools) {
+    private GenerationContext contextWithSecrets(List<ToolDefinition> tools) {
         return contextWithSecrets(CompatibilityProfile.p0(), tools);
     }
 
     private GenerationContext contextWithSecrets(
             CompatibilityProfile profile,
-            List<McpToolDefinition> tools) {
-        var request = new GenerationRequest(projectCoordinates(), "weather", "weather",
-                profile.id(), GenerationRequest.ValidationLevel.MCP_PROTOCOL,
-                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+            List<ToolDefinition> tools) {
+        var request = new GenerationCommand(projectCoordinates(), "weather", "weather",
+                profile.id(), GenerationCommand.ValidationLevel.MCP_PROTOCOL,
+                new GenerationCommand.ValidationConfiguration(new GenerationCommand.ToolCallValidation(
                         "getForecast", Map.of("nx", 60, "ny", 127))),
                 List.of());
         return new GenerationContext(null, tools, request, profile, new byte[0]);
@@ -518,48 +520,48 @@ class ProjectFileRendererTest {
                 exception.safeMessage());
     }
 
-    private McpToolDefinition tool(String propertyName, String environmentVariable) {
+    private ToolDefinition tool(String propertyName, String environmentVariable) {
         return tool("getForecast", "weather_get_forecast", propertyName, environmentVariable);
     }
 
-    private McpToolDefinition tool(
+    private ToolDefinition tool(
             String operationId,
             String toolName,
             String propertyName,
             String environmentVariable) {
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 operationId, toolName, "Get forecast", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/forecast", List.of()),
                 List.of(new SecretBinding(environmentVariable, propertyName, ParameterLocation.QUERY, "serviceKey", true)),
-                McpToolDefinition.OutputKind.GENERIC_JSON);
+                OutputKind.GENERIC_JSON);
     }
 
-    private McpToolDefinition normalized(
-            McpToolDefinition tool,
+    private ToolDefinition normalized(
+            ToolDefinition tool,
             ResponseNormalizationPolicy normalization) {
-        HttpExecutionDefinition execution = tool.execution();
-        return new McpToolDefinition(
+        HttpExecution execution = tool.execution();
+        return new ToolDefinition(
                 tool.operationId(), tool.name(), tool.description(), tool.inputs(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
                         execution.objectRequestBody(), execution.requestBodyRequired(), normalization),
                 tool.secretBindings(), tool.outputKind());
     }
 
-    private McpToolDefinition policyTool() {
+    private ToolDefinition policyTool() {
         ApiSchema result = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null, null,
                 Map.of(), List.of(), null, true, List.of());
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 "getForecast", "weather_get_forecast", "Get forecast", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), "/forecast", List.of(),
                         false, false, null,
                         new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true),
                         new PaginationPolicy(
                                 "cursor", "initial-private-cursor", "/items", "/next", 10, 1_000)),
-                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, result, result));
+                List.of(), new ToolOutput(OutputKind.TYPED_DTO, result, result));
     }
 
     private void assertFilesEqual(java.util.Map<String, byte[]> first, java.util.Map<String, byte[]> second) {

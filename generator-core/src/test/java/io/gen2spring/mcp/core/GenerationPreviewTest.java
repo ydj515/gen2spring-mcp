@@ -1,7 +1,9 @@
 package io.gen2spring.mcp.core;
 
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
-import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SERVER_SECRET;
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
+import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.domain.tool.ParameterSource.SERVER_SECRET;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,28 +11,30 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.config.GenerationRequest;
-import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ToolCallValidation;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ValidationConfiguration;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
+import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
+import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
+import io.gen2spring.mcp.application.command.GenerationCommand.ToolCallValidation;
+import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfiguration;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.usecase.GenerationPipeline;
+import io.gen2spring.mcp.application.usecase.GenerationPreview;
+import io.gen2spring.mcp.application.validation.ValidationReport;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.OutputDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ToolOutput;
 import java.net.URI;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
-import io.gen2spring.mcp.policy.ToolModelFactory;
+import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -49,9 +53,9 @@ class GenerationPreviewTest {
     void rendersAnImmutableSortedPreviewWithoutWritingOrLeakingArguments() throws Exception {
         Path specification = Files.writeString(tempDir.resolve("weather.yaml"), specification(), UTF_8);
         Path absentOutput = tempDir.resolve("must-not-exist");
-        AtomicReference<io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationContext> context =
+        AtomicReference<io.gen2spring.mcp.application.usecase.GenerationContext> context =
                 new AtomicReference<>();
-        var generator = (io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator) generation -> {
+        var generator = (io.gen2spring.mcp.application.port.outbound.ProjectGenerator) generation -> {
             context.set(generation);
             return new GeneratedProjectFiles(Map.of(
                     "z.txt", "z".getBytes(UTF_8),
@@ -97,7 +101,7 @@ class GenerationPreviewTest {
 
     @Test
     void projectsTypedOutputRetryAndPaginationFromFinalToolIrDeterministically() throws Exception {
-        McpToolDefinition tool = policyTool();
+        ToolDefinition tool = policyTool();
         Map<String, Object> inputSchema = Map.of(
                 "type", "object", "properties", Map.of(), "required", List.of());
 
@@ -118,7 +122,7 @@ class GenerationPreviewTest {
         assertFalse(first.toString().contains("initial-private-cursor"));
     }
 
-    private McpToolDefinition policyTool() {
+    private ToolDefinition policyTool() {
         ApiSchema id = new ApiSchema(
                 SchemaType.INTEGER, "int64", false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
@@ -135,15 +139,15 @@ class GenerationPreviewTest {
                 SchemaType.OBJECT, null, false, List.of(), null, null,
                 null, null, null, null, Map.of("next", next, "items", items),
                 List.of("items"), null, true, List.of());
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 "getForecast", "weather_get_forecast", "Get forecast", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://weather.example.test"), "/forecast", List.of(),
                         false, false, null,
                         new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true),
                         new PaginationPolicy(
                                 "cursor", "initial-private-cursor", "/items", "/next", 10, 1_000)),
-                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, output, output));
+                List.of(), new ToolOutput(OutputKind.TYPED_DTO, output, output));
     }
 
     private static String specification() {
@@ -181,11 +185,11 @@ class GenerationPreviewTest {
                 """;
     }
 
-    private static GenerationRequest request() {
-        return new GenerationRequest(
+    private static GenerationCommand request() {
+        return new GenerationCommand(
                 new ProjectCoordinates("com.example", "weather-mcp-server", "com.example.weather"),
                 "weather", "forecast", CompatibilityProfile.p0().id(),
-                GenerationRequest.ValidationLevel.MCP_PROTOCOL,
+                GenerationCommand.ValidationLevel.MCP_PROTOCOL,
                 new ValidationConfiguration(new ToolCallValidation(
                         "getForecast", Map.of("city", PRIVATE_ARGUMENT))),
                 List.of(new OperationSelection(

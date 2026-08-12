@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.validation;
 
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -8,10 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
+import io.gen2spring.mcp.application.validation.ExpectedTool;
+import io.gen2spring.mcp.application.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.validation.McpStreamableHttpClient.McpStage;
 import io.gen2spring.mcp.validation.support.McpTestServer;
 import io.gen2spring.mcp.validation.support.McpTestServer.Scenario;
@@ -41,14 +43,14 @@ class McpStreamableHttpClientTest {
                                     "description", "Grid x coordinate")),
                             "required", List.of("nx"))));
     private static final ExpectedToolCall EXPECTED_CALL = new ExpectedToolCall(
-            new McpToolDefinition(
+            new ToolDefinition(
                     "getForecast",
                     "kma_weather_get_forecast",
                     "Get the public weather forecast for a grid location.",
                     List.of(),
                     null,
                     List.of(),
-                    McpToolDefinition.OutputKind.GENERIC_JSON),
+                    OutputKind.GENERIC_JSON),
             Map.of("nx", 60, "ny", 127));
 
     private final McpStreamableHttpClient client = new McpStreamableHttpClient(Duration.ofSeconds(2), 64 * 1024);

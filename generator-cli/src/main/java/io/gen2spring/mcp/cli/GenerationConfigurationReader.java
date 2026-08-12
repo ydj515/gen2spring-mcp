@@ -2,7 +2,7 @@ package io.gen2spring.mcp.cli;
 
 import io.gen2spring.mcp.application.GenerationConfigurationException;
 import io.gen2spring.mcp.application.GenerationConfigurationParser;
-import io.gen2spring.mcp.domain.config.GenerationRequest;
+import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -40,7 +40,7 @@ public final class GenerationConfigurationReader {
         return new GenerationConfigurationReader(new GenerationConfigurationParser(profiles), pathBoundary);
     }
 
-    public GenerationRequest read(Path configuration) {
+    public GenerationCommand read(Path configuration) {
         byte[] bytes = readBoundedRegularFile(configuration);
         try {
             return parser.parseYaml(bytes);

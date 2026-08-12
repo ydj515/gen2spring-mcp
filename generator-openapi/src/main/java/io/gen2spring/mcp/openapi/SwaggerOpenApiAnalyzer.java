@@ -5,14 +5,15 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_PARSE_FAILE
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_VERSION_UNSUPPORTED;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.AnalysisWarning;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiOperation;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiParameter;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSecurityScheme;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.AnalysisWarning;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiOperation;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiParameter;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSecurityScheme;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;

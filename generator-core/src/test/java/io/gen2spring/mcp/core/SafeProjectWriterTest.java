@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
 import java.io.IOException;
 import java.nio.file.FileStore;
 import java.nio.file.Files;

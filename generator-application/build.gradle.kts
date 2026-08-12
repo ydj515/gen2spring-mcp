@@ -1,7 +1,7 @@
 dependencies {
-    implementation(project(":generator-domain"))
+    implementation(project(":modules:domain"))
+    implementation(project(":modules:application"))
     implementation(project(":generator-openapi"))
-    implementation(project(":generator-policy"))
     implementation(project(":generator-core"))
     implementation(project(":generator-spring-ai-1"))
     implementation(project(":generator-spring-ai-2"))

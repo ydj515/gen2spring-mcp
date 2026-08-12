@@ -1,13 +1,15 @@
 package io.gen2spring.mcp.validation;
 
-import static io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel.MCP_PROTOCOL;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.FAILED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SKIPPED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SUCCESS;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.UNVERIFIED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod.GET;
-import static io.gen2spring.mcp.domain.openapi.OpenApiDocument.ParameterLocation.QUERY;
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
+import static io.gen2spring.mcp.application.command.GenerationCommand.ValidationLevel.MCP_PROTOCOL;
+import static io.gen2spring.mcp.application.validation.StageStatus.FAILED;
+import static io.gen2spring.mcp.application.validation.StageStatus.SKIPPED;
+import static io.gen2spring.mcp.application.validation.StageStatus.SUCCESS;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -15,21 +17,21 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamInteraction;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamOutcome;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedUpstreamResponse;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
+import io.gen2spring.mcp.application.validation.ExpectedTool;
+import io.gen2spring.mcp.application.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.application.validation.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.application.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.validation.ValidationRequest;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
 import io.gen2spring.mcp.validation.support.McpTestApplication;
 import io.gen2spring.mcp.validation.support.McpTestServer;
 import io.gen2spring.mcp.validation.support.PortBindFailureApplication;
@@ -480,10 +482,10 @@ class GradleMcpProjectValidatorTest {
     @Test
     void rejectsAnExpectedToolCallThatIsNotBoundToExpectedToolMetadata() throws Exception {
         Path root = project("#!/bin/sh\nexit 0\n");
-        ExpectedToolCall unbound = new ExpectedToolCall(new McpToolDefinition(
+        ExpectedToolCall unbound = new ExpectedToolCall(new ToolDefinition(
                 "otherOperation", "other_tool", "Other Tool", List.of(),
-                new HttpExecutionDefinition(GET, URI.create("https://api.example.test"), "/forecast", List.of()),
-                List.of(), McpToolDefinition.OutputKind.GENERIC_JSON), Map.of());
+                new HttpExecution(GET, URI.create("https://api.example.test"), "/forecast", List.of()),
+                List.of(), OutputKind.GENERIC_JSON), Map.of());
 
         assertThrows(IllegalArgumentException.class,
                 () -> validator().validate(new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, EXPECTED, unbound)));
@@ -741,7 +743,7 @@ class GradleMcpProjectValidatorTest {
         Path root = runnableProject("");
         TrackingMockFactory mocks = new TrackingMockFactory(
                 false, new RuntimeException("interrupted-secret-like-value"), true);
-        io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport report;
+        io.gen2spring.mcp.application.validation.ValidationReport report;
 
         try {
             report = validator(mocks).validate(request(root, EXPECTED));
@@ -1055,25 +1057,25 @@ class GradleMcpProjectValidatorTest {
     }
 
     private ExpectedToolCall expectedToolCall(Object nx) {
-        return new ExpectedToolCall(new McpToolDefinition(
+        return new ExpectedToolCall(new ToolDefinition(
                 "getForecast", "kma_weather_get_forecast", "Get the public weather forecast.",
                 List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         GET,
                         URI.create("https://api.example.test"),
                         "/forecast",
                         List.of(new ParameterBinding("nx", QUERY, "nx"))),
                 List.of(new SecretBinding(
                         "VALIDATOR_SERVICE_KEY", "service-key", QUERY, "serviceKey", true)),
-                McpToolDefinition.OutputKind.GENERIC_JSON), Map.of("nx", nx));
+                OutputKind.GENERIC_JSON), Map.of("nx", nx));
     }
 
     private ExpectedToolCall paginatedExpectedToolCall() {
         ExpectedToolCall base = expectedToolCall();
-        HttpExecutionDefinition execution = base.tool().execution();
-        var tool = new McpToolDefinition(
+        HttpExecution execution = base.tool().execution();
+        var tool = new ToolDefinition(
                 base.tool().operationId(), base.tool().name(), base.tool().description(), base.tool().inputs(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
                         false, false, null, null,
                         new PaginationPolicy("cursor", "first", "/items", "/next", 2, 10)),
@@ -1134,7 +1136,7 @@ class GradleMcpProjectValidatorTest {
     private record RuntimeFixture(Path home, Path executable) {}
 
     private void assertCallFailureAndCleanup(
-            io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport report,
+            io.gen2spring.mcp.application.validation.ValidationReport report,
             Path root,
             TrackingMockFactory mocks) throws Exception {
         assertEquals(UNVERIFIED, report.status(), report.toString());
@@ -1149,7 +1151,7 @@ class GradleMcpProjectValidatorTest {
     }
 
     private void assertSummariesExclude(
-            io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport report,
+            io.gen2spring.mcp.application.validation.ValidationReport report,
             String... values) {
         for (var stage : report.stages()) {
             for (String value : values) {

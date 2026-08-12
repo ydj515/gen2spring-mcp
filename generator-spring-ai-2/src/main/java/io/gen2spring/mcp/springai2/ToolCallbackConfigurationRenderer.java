@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.springai2;
 
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolInput;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -12,7 +12,7 @@ final class ToolCallbackConfigurationRenderer {
     String render(
             String packageName,
             String domainClass,
-            List<McpToolDefinition> tools,
+            List<ToolDefinition> tools,
             Map<String, String> inputSchemas) {
         Set<String> imports = new TreeSet<>(Set.of(
                 packageName + ".runtime.ProviderErrorException",
@@ -31,8 +31,8 @@ final class ToolCallbackConfigurationRenderer {
                 "org.slf4j.LoggerFactory",
                 "tools.jackson.core.JacksonException",
                 "tools.jackson.databind.json.JsonMapper"));
-        for (McpToolDefinition tool : tools) {
-            for (McpInputDefinition input : InputRecordRenderer.inputs(tool)) {
+        for (ToolDefinition tool : tools) {
+            for (ToolInput input : InputRecordRenderer.inputs(tool)) {
                 String type = JavaSourceRenderer.javaType(
                         input.schema(), JavaSourceRenderer.upperCamel(tool.operationId())
                                 + JavaSourceRenderer.upperCamel(input.name()));
@@ -66,7 +66,7 @@ final class ToolCallbackConfigurationRenderer {
                 .append("            JsonMapper jsonMapper) {\n")
                 .append("        return List.of(\n");
         for (int index = 0; index < tools.size(); index++) {
-            McpToolDefinition tool = tools.get(index);
+            ToolDefinition tool = tools.get(index);
             String schema = inputSchemas.get(tool.name());
             if (schema == null) {
                 throw JavaSourceRenderer.invalid("Explicit MCP Tool schemas must be present for every Tool");
@@ -79,7 +79,7 @@ final class ToolCallbackConfigurationRenderer {
                     .append("                                .build())\n")
                     .append("                        .toolMethod(toolMethod(")
                     .append(JavaStringLiteral.quote(JavaSourceRenderer.lowerCamel(tool.operationId())));
-            for (McpInputDefinition input : InputRecordRenderer.inputs(tool)) {
+            for (ToolInput input : InputRecordRenderer.inputs(tool)) {
                 source.append(", ").append(rawParameterClass(input.schema(),
                         JavaSourceRenderer.upperCamel(tool.operationId())
                                 + JavaSourceRenderer.upperCamel(input.name())));

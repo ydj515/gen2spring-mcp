@@ -17,10 +17,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationOutcome;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus;
+import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.validation.ValidationStatus;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;

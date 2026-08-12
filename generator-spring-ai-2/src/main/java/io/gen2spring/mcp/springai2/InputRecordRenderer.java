@@ -1,10 +1,10 @@
 package io.gen2spring.mcp.springai2;
 
-import io.gen2spring.mcp.domain.generation.ExpectedToolSchemaFactory;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.McpInputDefinition;
+import io.gen2spring.mcp.application.validation.ExpectedToolSchemaFactory;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolInput;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -13,24 +13,24 @@ import java.util.Map;
 import java.util.Set;
 
 final class InputRecordRenderer {
-    Map<String, String> render(String packageName, String packagePath, List<McpToolDefinition> tools) {
+    Map<String, String> render(String packageName, String packagePath, List<ToolDefinition> tools) {
         Map<String, String> sources = new LinkedHashMap<>();
-        for (McpToolDefinition tool : tools) {
+        for (ToolDefinition tool : tools) {
             String className = JavaSourceRenderer.upperCamel(tool.operationId()) + "Input";
             renderInputRecord(sources, packageName, packagePath, className, inputs(tool));
         }
         return sources;
     }
 
-    static List<McpInputDefinition> inputs(McpToolDefinition tool) {
+    static List<ToolInput> inputs(ToolDefinition tool) {
         return tool.inputs() == null ? List.of() : tool.inputs();
     }
 
-    static String annotations(McpInputDefinition input) {
+    static String annotations(ToolInput input) {
         return annotations(input.schema(), input.required(), input.jsonName(), JavaSourceRenderer.lowerCamel(input.name()));
     }
 
-    static String validationAnnotations(McpInputDefinition input) {
+    static String validationAnnotations(ToolInput input) {
         return validationAnnotations(input.schema(), input.required());
     }
 
@@ -39,9 +39,9 @@ final class InputRecordRenderer {
             String packageName,
             String packagePath,
             String className,
-            List<McpInputDefinition> inputs) {
+            List<ToolInput> inputs) {
         String operationClass = className.substring(0, className.length() - "Input".length());
-        for (McpInputDefinition input : inputs) {
+        for (ToolInput input : inputs) {
             renderNestedTypes(sources, packageName, packagePath,
                     JavaSourceRenderer.upperCamel(operationClass + JavaSourceRenderer.upperCamel(input.name())),
                     input.schema(), new HashSet<>());
@@ -55,7 +55,7 @@ final class InputRecordRenderer {
         }
         source.append("public record ").append(className).append("(\n");
         for (int index = 0; index < inputs.size(); index++) {
-            McpInputDefinition input = inputs.get(index);
+            ToolInput input = inputs.get(index);
             source.append("        ").append(annotations(input));
             if (!annotations(input).isEmpty()) {
                 source.append(' ');
@@ -70,7 +70,7 @@ final class InputRecordRenderer {
         }
         source.append("    public Map<String, Object> toArguments() {\n")
                 .append("        Map<String, Object> arguments = new LinkedHashMap<>();\n");
-        for (McpInputDefinition input : inputs) {
+        for (ToolInput input : inputs) {
             String name = JavaSourceRenderer.lowerCamel(input.name());
             if (input.required()) {
                 source.append("        arguments.put(").append(JavaStringLiteral.quote(input.name()))
@@ -109,7 +109,7 @@ final class InputRecordRenderer {
                         JavaSourceRenderer.upperCamel(suggestedName) + "Value", schema.enumValues());
             } else if (schema.type() == SchemaType.OBJECT) {
                 String className = JavaSourceRenderer.upperCamel(suggestedName);
-                List<McpInputDefinition> properties = new ArrayList<>();
+                List<ToolInput> properties = new ArrayList<>();
                 Set<String> javaNames = new HashSet<>();
                 List<String> required = schema.requiredProperties() == null ? List.of() : schema.requiredProperties();
                 schema.properties().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
@@ -118,10 +118,10 @@ final class InputRecordRenderer {
                     if (!javaNames.add(javaName)) {
                         throw JavaSourceRenderer.invalid("Generated nested Java property names must be unique");
                     }
-                    properties.add(new McpInputDefinition(
+                    properties.add(new ToolInput(
                             javaName, jsonName, null, required.contains(jsonName), entry.getValue()));
                 });
-                for (McpInputDefinition property : properties) {
+                for (ToolInput property : properties) {
                     renderNestedTypes(sources, packageName, packagePath,
                             className + JavaSourceRenderer.upperCamel(property.name()), property.schema(), visiting);
                 }
@@ -139,7 +139,7 @@ final class InputRecordRenderer {
             String packageName,
             String packagePath,
             String className,
-            List<McpInputDefinition> properties) {
+            List<ToolInput> properties) {
         Set<String> imports = validationImports(properties);
         if (!properties.isEmpty()) {
             imports.add("org.springframework.ai.mcp.annotation.McpToolParam");
@@ -151,7 +151,7 @@ final class InputRecordRenderer {
         }
         source.append("public record ").append(className).append("(\n");
         for (int index = 0; index < properties.size(); index++) {
-            McpInputDefinition property = properties.get(index);
+            ToolInput property = properties.get(index);
             String annotations = nestedAnnotations(property);
             source.append("        ").append(annotations);
             if (!annotations.isEmpty()) {
@@ -167,7 +167,7 @@ final class InputRecordRenderer {
         putUnique(sources, "src/main/java/" + packagePath + "/generated/model/" + className + ".java", source.toString());
     }
 
-    private String nestedAnnotations(McpInputDefinition input) {
+    private String nestedAnnotations(ToolInput input) {
         String description = input.description() == null || input.description().isBlank()
                 ? input.jsonName() : input.description();
         String schemaAnnotation = "@McpToolParam(description = " + JavaStringLiteral.quote(description)
@@ -227,7 +227,7 @@ final class InputRecordRenderer {
         putUnique(sources, "src/main/java/" + packagePath + "/generated/model/" + className + ".java", source.toString());
     }
 
-    private Set<String> imports(List<McpInputDefinition> inputs) {
+    private Set<String> imports(List<ToolInput> inputs) {
         Set<String> imports = validationImports(inputs);
         imports.add("java.util.Collections");
         imports.add("java.util.LinkedHashMap");
@@ -235,9 +235,9 @@ final class InputRecordRenderer {
         return imports;
     }
 
-    private Set<String> validationImports(List<McpInputDefinition> inputs) {
+    private Set<String> validationImports(List<ToolInput> inputs) {
         Set<String> imports = new java.util.TreeSet<>();
-        for (McpInputDefinition input : inputs) {
+        for (ToolInput input : inputs) {
             if (!input.jsonName().equals(JavaSourceRenderer.lowerCamel(input.name()))) {
                 imports.add("com.fasterxml.jackson.annotation.JsonProperty");
             }

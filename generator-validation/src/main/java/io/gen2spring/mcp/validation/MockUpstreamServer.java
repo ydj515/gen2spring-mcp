@@ -93,8 +93,8 @@ public final class MockUpstreamServer implements AutoCloseable {
                         : canonicalJson(mapper.valueToTree(expectation.body())))
                 .toList();
         this.configuredResponses = this.expectations.stream()
-                .map(expectation -> expectation.outcome() == io.gen2spring.mcp.domain.generation.GenerationContracts
-                        .ExpectedUpstreamOutcome.RESPONSE
+                .map(expectation -> expectation.outcome()
+                        == io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome.RESPONSE
                         ? configuredResponse(expectation.responseBody())
                         : null)
                 .toList();
@@ -205,8 +205,8 @@ public final class MockUpstreamServer implements AutoCloseable {
                     throw new RequestMismatch(413, "Mock upstream request exceeded the size limit");
                 }
                 verifyRequest(expectation, expectedBodies.get(admission.index()), exchange, body);
-                if (expectation.outcome() == io.gen2spring.mcp.domain.generation.GenerationContracts
-                        .ExpectedUpstreamOutcome.DISCONNECT) {
+                if (expectation.outcome()
+                        == io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome.DISCONNECT) {
                     exchange.getResponseHeaders().set("Content-Type", "application/json");
                     exchange.sendResponseHeaders(200, 8);
                     exchange.getResponseBody().write('{');

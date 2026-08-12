@@ -3,14 +3,14 @@ package io.gen2spring.mcp.springai1;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterBinding;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
 import java.util.Comparator;
 import java.util.List;
 
 final class OperationMetadataRenderer {
-    String render(String packageName, String domainClass, List<McpToolDefinition> tools) {
+    String render(String packageName, String domainClass, List<ToolDefinition> tools) {
         boolean normalized = tools.stream().anyMatch(tool -> tool.execution().responseNormalization() != null);
         boolean retried = tools.stream().anyMatch(tool -> tool.execution().retryPolicy() != null);
         boolean paginated = tools.stream().anyMatch(tool -> tool.execution().paginationPolicy() != null);
@@ -36,14 +36,14 @@ final class OperationMetadataRenderer {
         source.append("import java.util.List;\n\n")
                 .append("public final class ").append(domainClass).append("Operations {\n")
                 .append("    private ").append(domainClass).append("Operations() {}\n");
-        for (McpToolDefinition tool : tools) {
+        for (ToolDefinition tool : tools) {
             appendOperation(source, tool, retried || paginated, paginated);
         }
         return source.append("}\n").toString();
     }
 
     private void appendOperation(
-            StringBuilder source, McpToolDefinition tool, boolean retried, boolean paginated) {
+            StringBuilder source, ToolDefinition tool, boolean retried, boolean paginated) {
         source.append("\n    public static final OperationDefinition ")
                 .append(JavaSourceRenderer.constantName(tool.operationId())).append(" = new OperationDefinition(\n")
                 .append("            ").append(JavaStringLiteral.quote(tool.operationId())).append(",\n")

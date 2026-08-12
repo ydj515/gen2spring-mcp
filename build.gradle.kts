@@ -6,6 +6,10 @@ group = "io.gen2spring.mcp"
 version = "0.1.0"
 
 subprojects {
+    if (!buildFile.exists()) {
+        return@subprojects
+    }
+
     apply(plugin = "java-library")
 
     extensions.configure<JavaPluginExtension> {

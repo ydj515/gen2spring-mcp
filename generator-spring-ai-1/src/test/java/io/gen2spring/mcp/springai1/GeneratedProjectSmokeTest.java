@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.springai1;
 
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -8,13 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.OutputDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ToolOutput;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Files;
@@ -125,7 +127,7 @@ class GeneratedProjectSmokeTest {
         assertTrue(result.output().contains("BUILD SUCCESSFUL"), result.output());
     }
 
-    private List<McpToolDefinition> typedOutputTools() {
+    private List<ToolDefinition> typedOutputTools() {
         ApiSchema text = new ApiSchema(
                 SchemaType.STRING, null, false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
@@ -144,22 +146,22 @@ class GeneratedProjectSmokeTest {
                 typedTool("malformedResponse", "/malformed", null, city, city));
     }
 
-    private McpToolDefinition typedTool(
+    private ToolDefinition typedTool(
             String operationId,
             String path,
             ResponseNormalizationPolicy normalization,
             ApiSchema providerSchema,
             ApiSchema resultSchema) {
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 operationId,
                 "weather_" + operationId.replaceAll("([A-Z])", "_$1").toLowerCase(java.util.Locale.ROOT),
                 "Get a typed weather response.",
                 List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://api.example.test"), path, List.of(),
                         false, false, normalization),
                 List.of(),
-                new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, providerSchema, resultSchema));
+                new ToolOutput(OutputKind.TYPED_DTO, providerSchema, resultSchema));
     }
 
     private ApiSchema objectSchema(Map<String, ApiSchema> properties, List<String> required) {

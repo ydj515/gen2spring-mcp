@@ -6,7 +6,10 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardOpenOption.READ;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.port.outbound.SourceSnapshot;
+import io.gen2spring.mcp.application.port.outbound.SourceSnapshot.EntryFingerprint;
+import io.gen2spring.mcp.application.port.outbound.SourceSnapshotter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -27,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public final class SourceTreeChecksum {
+public final class SourceTreeChecksum implements SourceSnapshotter {
     private static final String STAGE = "SOURCE_CHECKSUM";
     private static final String MANIFEST_PATH = "GENERATION_MANIFEST.json";
     private static final String REPORT_PATH = "VALIDATION_REPORT.json";
@@ -84,7 +87,7 @@ public final class SourceTreeChecksum {
         return snapshot(projectRoot).checksum();
     }
 
-    SourceSnapshot snapshot(Path projectRoot) {
+    public SourceSnapshot snapshot(Path projectRoot) {
         if (projectRoot == null || !Files.isDirectory(projectRoot, NOFOLLOW_LINKS)) {
             throw failure("Generated project root is not a directory", null);
         }
@@ -344,14 +347,6 @@ public final class SourceTreeChecksum {
     private record Content(String path, byte[] bytes) {}
 
     private record FileContent(String path, Path file, long rawBytes, StablePathIdentity identity) {}
-
-    record SourceSnapshot(String checksum, Map<String, EntryFingerprint> entries) {
-        SourceSnapshot {
-            entries = Collections.unmodifiableMap(new LinkedHashMap<>(entries));
-        }
-    }
-
-    record EntryFingerprint(long rawBytes, String checksum) {}
 
     private record NormalizedScan(long normalizedBytes, byte[] checksum, byte[] rawChecksum) {
         @Override

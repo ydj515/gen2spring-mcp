@@ -1,14 +1,16 @@
 package io.gen2spring.mcp.core;
 
+import io.gen2spring.mcp.domain.tool.OutputKind;
+
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.ARTIFACT_PACKAGE_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.COMPILE_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_COMBINATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_PROFILE_NOT_FOUND;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.FAILED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SUCCESS;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.UNVERIFIED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
-import static io.gen2spring.mcp.domain.tool.McpToolDefinition.ParameterSource.SERVER_SECRET;
+import static io.gen2spring.mcp.application.validation.StageStatus.FAILED;
+import static io.gen2spring.mcp.application.validation.StageStatus.SUCCESS;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.domain.tool.ParameterSource.SERVER_SECRET;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,35 +25,39 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.domain.config.GenerationRequest;
-import io.gen2spring.mcp.domain.config.GenerationRequest.OperationSelection;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ParameterOverride;
-import io.gen2spring.mcp.domain.config.GenerationRequest.ProjectCoordinates;
+import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
+import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
+import io.gen2spring.mcp.application.planning.ProjectGeneratorRegistry;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectFiles;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ProjectGenerator;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator;
+import io.gen2spring.mcp.application.validation.ObservedTool;
+import io.gen2spring.mcp.application.port.outbound.ProjectGenerator;
+import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.usecase.GenerationPipeline;
+import io.gen2spring.mcp.application.usecase.GenerationPreview;
+import io.gen2spring.mcp.application.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.validation.ValidationReport;
+import io.gen2spring.mcp.application.validation.ValidationRequest;
+import io.gen2spring.mcp.application.validation.ValidationStageResult;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.HttpMethod;
-import io.gen2spring.mcp.domain.openapi.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition;
-import io.gen2spring.mcp.domain.tool.McpToolDefinition.HttpExecutionDefinition;
-import io.gen2spring.mcp.domain.tool.OutputDefinition;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ToolOutput;
 import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
-import io.gen2spring.mcp.openapi.SpecificationAnalyzer;
-import io.gen2spring.mcp.policy.ToolModelFactory;
+import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -142,7 +148,7 @@ class GenerationPipelineTest {
                 List.of());
 
         pipelineWithValidator(request -> report).generate(
-                specification, weatherGenerationRequest(), safeTempDir.resolve("progress-success"), progress::add);
+                specification, weatherGenerationCommand(), safeTempDir.resolve("progress-success"), progress::add);
 
         assertEquals(List.of(
                 event("ANALYZE", ProgressStatus.RUNNING), event("ANALYZE", ProgressStatus.SUCCESS),
@@ -167,7 +173,7 @@ class GenerationPipelineTest {
         };
 
         assertThrows(GeneratorException.class, () -> pipelineWith(failing, request -> validatedReport()).generate(
-                specification, weatherGenerationRequest(), safeTempDir.resolve("progress-failure"), progress::add));
+                specification, weatherGenerationCommand(), safeTempDir.resolve("progress-failure"), progress::add));
 
         assertEquals(List.of(
                 event("ANALYZE", ProgressStatus.RUNNING), event("ANALYZE", ProgressStatus.SUCCESS),
@@ -193,7 +199,7 @@ class GenerationPipelineTest {
                 List.of());
         var pipeline = pipelineWithValidator(validator);
 
-        var outcome = pipeline.generate(specification, weatherGenerationRequest(), safeTempDir.resolve("weather"));
+        var outcome = pipeline.generate(specification, weatherGenerationCommand(), safeTempDir.resolve("weather"));
 
         assertEquals(UNVERIFIED, outcome.validationStatus());
         assertTrue(Files.exists(outcome.projectRoot().resolve("GENERATION_MANIFEST.json")));
@@ -213,7 +219,7 @@ class GenerationPipelineTest {
                 List.of(new ObservedTool(TOOL_NAME, TOOL_DESCRIPTION, true)));
 
         var outcome = pipelineWithValidator(validator)
-                .generate(specification, weatherGenerationRequest(), safeTempDir.resolve("weather"));
+                .generate(specification, weatherGenerationCommand(), safeTempDir.resolve("weather"));
 
         assertEquals(VALIDATED, outcome.validationStatus());
         assertNotNull(outcome.archive());
@@ -251,7 +257,7 @@ class GenerationPipelineTest {
     @Test
     void writesResponseNormalizationOnlyForOperationsThatDeclareIt() throws IOException {
         var outcome = pipelineWithValidator(request -> new ValidationReport(UNVERIFIED, List.of(), List.of()))
-                .generate(specification, normalizationGenerationRequest(), safeTempDir.resolve("normalization"));
+                .generate(specification, normalizationGenerationCommand(), safeTempDir.resolve("normalization"));
 
         JsonNode manifest = objectMapper.readTree(outcome.projectRoot().resolve("GENERATION_MANIFEST.json").toFile());
         JsonNode normalization = manifest.path("operationMappings").get(0).path("responseNormalization");
@@ -272,7 +278,7 @@ class GenerationPipelineTest {
         OpenApiDocument document = new OpenApiDocument(
                 "3.0.3", "a".repeat(64), "yaml", URI.create("https://weather.example.test"),
                 List.of(), Map.of(), List.of());
-        McpToolDefinition tool = policyManifestTool();
+        ToolDefinition tool = policyManifestTool();
         GenerationManifestWriter writer = new GenerationManifestWriter(objectMapper);
 
         Path first = writer.write(firstRoot, CompatibilityProfile.p0(), document, "b".repeat(64), List.of(tool));
@@ -311,7 +317,7 @@ class GenerationPipelineTest {
         assertFalse(Files.readString(first, UTF_8).contains("initial-private-cursor"));
     }
 
-    private McpToolDefinition policyManifestTool() {
+    private ToolDefinition policyManifestTool() {
         ApiSchema id = new ApiSchema(
                 SchemaType.INTEGER, "int64", false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
@@ -328,15 +334,15 @@ class GenerationPipelineTest {
                 SchemaType.OBJECT, null, false, List.of(), null, null,
                 null, null, null, null, Map.of("next", next, "items", items),
                 List.of("items"), null, true, List.of());
-        return new McpToolDefinition(
+        return new ToolDefinition(
                 "getForecast", "weather_get_forecast", "Get forecast", List.of(),
-                new HttpExecutionDefinition(
+                new HttpExecution(
                         HttpMethod.GET, URI.create("https://weather.example.test"), "/forecast", List.of(),
                         false, false, null,
                         new RetryPolicy(List.of(503, 429), true, 2, 100, 1_000, true),
                         new PaginationPolicy(
                                 "cursor", "initial-private-cursor", "/items", "/next", 10, 1_000)),
-                List.of(), new OutputDefinition(McpToolDefinition.OutputKind.TYPED_DTO, result, result));
+                List.of(), new ToolOutput(OutputKind.TYPED_DTO, result, result));
     }
 
     @Test
@@ -362,7 +368,7 @@ class GenerationPipelineTest {
 
         GeneratorException failure = assertThrows(GeneratorException.class,
                 () -> pipelineWithValidator(validator).generate(
-                        specification, weatherGenerationRequest(), root));
+                        specification, weatherGenerationCommand(), root));
 
         assertEquals(ARTIFACT_PACKAGE_FAILED, failure.code());
         assertEquals("Generated project source content changed after checksum calculation", failure.safeMessage());
@@ -386,7 +392,7 @@ class GenerationPipelineTest {
 
         GeneratorException failure = assertThrows(GeneratorException.class,
                 () -> pipelineWithValidator(validator).generate(
-                        specification, weatherGenerationRequest(), root));
+                        specification, weatherGenerationCommand(), root));
 
         assertEquals(ARTIFACT_PACKAGE_FAILED, failure.code());
         assertEquals("Generated project source paths changed after checksum calculation", failure.safeMessage());
@@ -407,7 +413,7 @@ class GenerationPipelineTest {
 
         GeneratorException failure = assertThrows(GeneratorException.class,
                 () -> pipelineWithValidator(validator).generate(
-                        specification, weatherGenerationRequest(), root));
+                        specification, weatherGenerationCommand(), root));
 
         assertEquals(ARTIFACT_PACKAGE_FAILED, failure.code());
         assertEquals("Generated project source paths changed after checksum calculation", failure.safeMessage());
@@ -435,7 +441,7 @@ class GenerationPipelineTest {
             Locale.setDefault(Locale.forLanguageTag("tr"));
             failure = assertThrows(GeneratorException.class,
                     () -> pipelineWithValidator(validator).generate(
-                            specification, weatherGenerationRequest(), root));
+                            specification, weatherGenerationCommand(), root));
         } finally {
             Locale.setDefault(original);
         }
@@ -459,7 +465,7 @@ class GenerationPipelineTest {
 
         GeneratorException failure = assertThrows(GeneratorException.class,
                 () -> pipelineWithValidator(validator).generate(
-                        specification, weatherGenerationRequest(), root));
+                        specification, weatherGenerationCommand(), root));
 
         assertEquals(ARTIFACT_PACKAGE_FAILED, failure.code());
         assertEquals("Generated project archive contains excluded process output", failure.safeMessage());
@@ -480,9 +486,9 @@ class GenerationPipelineTest {
                 List.of());
 
         var first = pipelineWithValidator(firstValidator)
-                .generate(specification, weatherGenerationRequest(), safeTempDir.resolve("first"));
+                .generate(specification, weatherGenerationCommand(), safeTempDir.resolve("first"));
         var second = pipelineWithValidator(secondValidator)
-                .generate(specification, weatherGenerationRequest(), safeTempDir.resolve("second"));
+                .generate(specification, weatherGenerationCommand(), safeTempDir.resolve("second"));
 
         String report = Files.readString(first.projectRoot().resolve("VALIDATION_REPORT.json"), UTF_8);
         assertFalse(report.contains(secret));
@@ -500,7 +506,7 @@ class GenerationPipelineTest {
         Path root = safeTempDir.resolve("weather");
 
         GeneratorException failure = assertThrows(GeneratorException.class,
-                () -> pipelineWithValidator(validator).generate(specification, weatherGenerationRequest(), root));
+                () -> pipelineWithValidator(validator).generate(specification, weatherGenerationCommand(), root));
 
         assertEquals(COMPILE_FAILED, failure.code());
         assertEquals("COMPILE", failure.stage());
@@ -514,8 +520,8 @@ class GenerationPipelineTest {
 
     @Test
     void rejectsARequestForAnythingExceptTheExactPinnedProfileBeforeWritingOutput() {
-        GenerationRequest valid = weatherGenerationRequest();
-        GenerationRequest unsupported = new GenerationRequest(
+        GenerationCommand valid = weatherGenerationCommand();
+        GenerationCommand unsupported = new GenerationCommand(
                 valid.project(), valid.provider(), valid.domain(), "spring-ai-latest", valid.validationLevel(),
                 valid.validation(), valid.operations());
         Path root = safeTempDir.resolve("weather");
@@ -652,7 +658,7 @@ class GenerationPipelineTest {
                 List.of(new ObservedTool(TOOL_NAME, TOOL_DESCRIPTION, true)));
 
         var outcome = pipelineWithValidator(validator)
-                .generate(specification, weatherGenerationRequest(), safeTempDir.resolve("weather"));
+                .generate(specification, weatherGenerationCommand(), safeTempDir.resolve("weather"));
 
         byte[] report = Files.readAllBytes(outcome.projectRoot().resolve("VALIDATION_REPORT.json"));
         assertSecretsAbsent(report, accessToken, parameterSecret, environmentSecret);
@@ -701,7 +707,7 @@ class GenerationPipelineTest {
         };
 
         assertThrows(GeneratorException.class, () -> pipelineWithValidator(validator)
-                .generate(specification, weatherGenerationRequest(), safeTempDir.resolve("weather")));
+                .generate(specification, weatherGenerationCommand(), safeTempDir.resolve("weather")));
 
         assertEquals("keep", Files.readString(replacement.get().resolve("competitor.txt"), UTF_8));
         deleteTestTree(replacement.get());
@@ -725,7 +731,7 @@ class GenerationPipelineTest {
         Path canonicalRoot = safeTempDir.resolve("weather");
 
         var outcome = pipelineWithValidator(validator)
-                .generate(specification, weatherGenerationRequest(), canonicalRoot);
+                .generate(specification, weatherGenerationCommand(), canonicalRoot);
 
         assertEquals(canonicalRoot, outcome.projectRoot());
         assertNotEquals(canonicalRoot, validationRoot.get());
@@ -743,7 +749,7 @@ class GenerationPipelineTest {
         };
 
         pipelineWithValidator(validator)
-                .generate(specification, weatherGenerationRequest(), safeTempDir.resolve("schema-contract"));
+                .generate(specification, weatherGenerationCommand(), safeTempDir.resolve("schema-contract"));
 
         var expected = captured.get().expectedTools().get(TOOL_NAME);
         assertEquals(Map.of(
@@ -770,10 +776,10 @@ class GenerationPipelineTest {
             generated.set(true);
             return new GeneratedProjectFiles(Map.of());
         };
-        GenerationRequest valid = weatherGenerationRequest();
-        GenerationRequest invalid = new GenerationRequest(
+        GenerationCommand valid = weatherGenerationCommand();
+        GenerationCommand invalid = new GenerationCommand(
                 valid.project(), valid.provider(), valid.domain(), valid.targetProfileId(), valid.validationLevel(),
-                new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+                new GenerationCommand.ValidationConfiguration(new GenerationCommand.ToolCallValidation(
                         "getForecast", Map.of("nx", "not-a-number"))),
                 valid.operations());
 
@@ -793,7 +799,7 @@ class GenerationPipelineTest {
 
         GeneratorException failure = assertThrows(GeneratorException.class,
                 () -> pipelineWithValidator(request -> new ValidationReport(VALIDATED, List.of(), List.of()))
-                        .generate(specification, weatherGenerationRequest(), root));
+                        .generate(specification, weatherGenerationCommand(), root));
 
         assertEquals(ARTIFACT_PACKAGE_FAILED, failure.code());
         assertFalse(Files.exists(root));
@@ -817,7 +823,7 @@ class GenerationPipelineTest {
         Path root = safeTempDir.resolve("weather");
 
         GeneratorException failure = assertThrows(GeneratorException.class,
-                () -> pipelineWithValidator(validator).generate(specification, weatherGenerationRequest(), root));
+                () -> pipelineWithValidator(validator).generate(specification, weatherGenerationCommand(), root));
 
         assertEquals(ARTIFACT_PACKAGE_FAILED, failure.code());
         JsonNode report = objectMapper.readTree(root.resolve("VALIDATION_REPORT.json").toFile());
@@ -894,13 +900,13 @@ class GenerationPipelineTest {
                 List.of());
     }
 
-    private GenerationRequest weatherGenerationRequest() {
-        return new GenerationRequest(
+    private GenerationCommand weatherGenerationCommand() {
+        return new GenerationCommand(
                 new ProjectCoordinates("com.example", "weather-mcp-server", "com.example.weather"),
                 "kma",
                 "weather",
                 CompatibilityProfile.p0().id(),
-                GenerationRequest.ValidationLevel.MCP_PROTOCOL,
+                GenerationCommand.ValidationLevel.MCP_PROTOCOL,
                 representativeToolCallValidation(),
                 List.of(new OperationSelection(
                         "getForecast",
@@ -913,16 +919,16 @@ class GenerationPipelineTest {
                                         SERVER_SECRET, "WEATHER_CREDENTIAL_42")))));
     }
 
-    private GenerationRequest requestWithProfile(String profileId) {
-        GenerationRequest request = weatherGenerationRequest();
-        return new GenerationRequest(
+    private GenerationCommand requestWithProfile(String profileId) {
+        GenerationCommand request = weatherGenerationCommand();
+        return new GenerationCommand(
                 request.project(), request.provider(), request.domain(), profileId, request.validationLevel(),
                 request.validation(), request.operations());
     }
 
-    private GenerationRequest normalizationGenerationRequest() {
-        GenerationRequest request = weatherGenerationRequest();
-        return new GenerationRequest(
+    private GenerationCommand normalizationGenerationCommand() {
+        GenerationCommand request = weatherGenerationCommand();
+        return new GenerationCommand(
                 request.project(), request.provider(), request.domain(), request.targetProfileId(), request.validationLevel(),
                 request.validation(), List.of(
                         new OperationSelection(
@@ -937,8 +943,8 @@ class GenerationPipelineTest {
                         new OperationSelection("getHealth", true, null, null, Map.of())));
     }
 
-    private GenerationRequest.ValidationConfiguration representativeToolCallValidation() {
-        return new GenerationRequest.ValidationConfiguration(new GenerationRequest.ToolCallValidation(
+    private GenerationCommand.ValidationConfiguration representativeToolCallValidation() {
+        return new GenerationCommand.ValidationConfiguration(new GenerationCommand.ToolCallValidation(
                 "getForecast", Map.of("nx", new BigDecimal("60.0"))));
     }
 

@@ -1,23 +1,23 @@
 package io.gen2spring.mcp.validation;
 
-import static io.gen2spring.mcp.domain.config.GenerationRequest.ValidationLevel.MCP_PROTOCOL;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.FAILED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SKIPPED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus.SUCCESS;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.UNVERIFIED;
-import static io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.application.command.GenerationCommand.ValidationLevel.MCP_PROTOCOL;
+import static io.gen2spring.mcp.application.validation.StageStatus.FAILED;
+import static io.gen2spring.mcp.application.validation.StageStatus.SKIPPED;
+import static io.gen2spring.mcp.application.validation.StageStatus.SUCCESS;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedTool;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ExpectedToolCall;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GeneratedProjectValidator;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgress;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.GenerationProgressListener;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ObservedTool;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ProgressStatus;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationReport;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationRequest;
-import io.gen2spring.mcp.domain.generation.GenerationContracts.ValidationStageResult;
+import io.gen2spring.mcp.application.validation.ExpectedTool;
+import io.gen2spring.mcp.application.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator;
+import io.gen2spring.mcp.application.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
+import io.gen2spring.mcp.application.validation.ObservedTool;
+import io.gen2spring.mcp.application.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.validation.ValidationReport;
+import io.gen2spring.mcp.application.validation.ValidationRequest;
+import io.gen2spring.mcp.application.validation.ValidationStageResult;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -950,7 +950,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     private static ValidationStageResult stage(
             String name,
-            io.gen2spring.mcp.domain.generation.GenerationContracts.StageStatus status,
+            io.gen2spring.mcp.application.validation.StageStatus status,
             long started,
             int errors,
             String summary) {
