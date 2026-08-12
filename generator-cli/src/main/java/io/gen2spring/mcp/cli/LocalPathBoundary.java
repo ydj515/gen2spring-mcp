@@ -5,7 +5,7 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.WRITE;
 
-import io.gen2spring.mcp.core.StablePathIdentity;
+import io.gen2spring.mcp.adapter.filesystem.StablePathIdentity;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;

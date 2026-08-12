@@ -5,11 +5,11 @@ include(
     ":modules:application",
     ":modules:adapters:configuration",
     ":modules:adapters:openapi",
-    "generator-core",
+    ":modules:adapters:filesystem",
     "generator-application",
     "generator-spring-ai-1",
     "generator-spring-ai-2",
-    "generator-validation",
+    ":modules:adapters:validation",
     "generator-cli",
     "generator-web",
 )

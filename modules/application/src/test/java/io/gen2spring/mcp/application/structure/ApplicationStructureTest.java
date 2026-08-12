@@ -17,7 +17,7 @@ class ApplicationStructureTest {
         assertPresent("io.gen2spring.mcp.application.port.outbound.ToolEmitter");
         assertPresent("io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator");
 
-        assertAbsent("io.gen2spring.mcp.core.GenerationPipeline");
+        assertAbsent("io.gen2spring.mcp.adapter.filesystem.GenerationPipeline");
         assertAbsent("io.gen2spring.mcp.policy.ToolModelFactory");
     }
 

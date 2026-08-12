@@ -21,7 +21,7 @@ dependencies {
     implementation(project(":modules:application"))
     implementation(project(":modules:adapters:configuration"))
     implementation(project(":modules:adapters:openapi"))
-    implementation(project(":generator-core"))
+    implementation(project(":modules:adapters:filesystem"))
     implementation(libs.jackson.databind)
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
