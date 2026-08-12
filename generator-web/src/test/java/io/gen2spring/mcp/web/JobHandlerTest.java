@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.GeneratorApplication;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
 import io.gen2spring.mcp.application.validation.ValidationStatus;
-import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;

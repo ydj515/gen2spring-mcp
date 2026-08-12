@@ -33,7 +33,7 @@ import io.gen2spring.mcp.domain.tool.ToolOutput;
 import java.net.URI;
 import java.security.MessageDigest;
 import java.util.HexFormat;
-import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;

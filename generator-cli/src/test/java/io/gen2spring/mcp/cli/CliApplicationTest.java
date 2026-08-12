@@ -20,7 +20,7 @@ import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
-import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintWriter;
 import java.net.URI;

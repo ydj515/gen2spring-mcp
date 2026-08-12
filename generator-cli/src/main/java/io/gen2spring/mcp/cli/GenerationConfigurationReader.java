@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.cli;
 
-import io.gen2spring.mcp.application.GenerationConfigurationException;
-import io.gen2spring.mcp.application.GenerationConfigurationParser;
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import java.nio.file.Path;

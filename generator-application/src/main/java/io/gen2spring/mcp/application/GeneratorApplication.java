@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 import io.gen2spring.mcp.core.DeterministicZipPackager;
 import io.gen2spring.mcp.core.GenerationManifestWriter;
 import io.gen2spring.mcp.application.usecase.GenerationPipeline;
@@ -11,7 +12,7 @@ import io.gen2spring.mcp.core.SourceTreeChecksum;
 import io.gen2spring.mcp.core.ValidationReportWriter;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
-import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import io.gen2spring.mcp.springai1.SpringAi1ProjectGenerator;
 import io.gen2spring.mcp.springai2.SpringAi2ProjectGenerator;

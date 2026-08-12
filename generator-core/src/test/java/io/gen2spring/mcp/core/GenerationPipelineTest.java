@@ -56,7 +56,7 @@ import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
 import io.gen2spring.mcp.domain.tool.ToolOutput;
-import io.gen2spring.mcp.openapi.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import java.io.IOException;
 import java.math.BigDecimal;

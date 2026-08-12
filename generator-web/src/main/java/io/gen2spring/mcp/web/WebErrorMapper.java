@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.web;
 
-import io.gen2spring.mcp.application.GenerationConfigurationException;
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
