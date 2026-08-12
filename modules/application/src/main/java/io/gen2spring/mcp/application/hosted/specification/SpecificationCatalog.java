@@ -40,7 +40,7 @@ public interface SpecificationCatalog {
                     || !SHA256.matcher(sha256).matches()
                     || byteSize < 1
                     || byteSize > 10 * 1024 * 1024
-                    || !"URL".equals(sourceType)
+                    || !("URL".equals(sourceType) || "UPLOAD".equals(sourceType))
                     || !"READY".equals(parseState)) {
                 throw new IllegalArgumentException("Specification registration is invalid");
             }

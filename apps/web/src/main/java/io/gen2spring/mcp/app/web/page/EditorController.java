@@ -7,6 +7,8 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 
 @Controller
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 final class EditorController {
     @GetMapping("/")
     String editor(HttpServletRequest request, Model model) {

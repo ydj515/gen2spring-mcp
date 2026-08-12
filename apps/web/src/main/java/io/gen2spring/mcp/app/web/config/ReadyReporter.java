@@ -6,6 +6,8 @@ import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 final class ReadyReporter implements ApplicationListener<ApplicationReadyEvent> {
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {

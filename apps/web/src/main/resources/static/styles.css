@@ -6,6 +6,14 @@
   line-height: 1.5;
 }
 
+.hosted-shell { max-width: 72rem; margin: 0 auto; padding: 2rem; display: grid; gap: 1rem; }
+.hosted-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.hosted-actions form { display: grid; grid-template-columns: minmax(12rem, 1fr) auto; gap: .75rem; margin-block: .75rem; }
+.hosted-actions label { grid-column: 1 / -1; }
+.hosted-list { list-style: none; padding: 0; display: grid; gap: .75rem; }
+.hosted-list li { display: flex; flex-wrap: wrap; gap: .75rem; align-items: baseline; }
+@media (max-width: 400px) { .hosted-shell { padding: 1rem; } .hosted-header { align-items: flex-start; } .hosted-actions form { grid-template-columns: 1fr; } }
+
 * { box-sizing: border-box; }
 
 html, body { margin: 0; max-width: 100%; overflow-x: hidden; }

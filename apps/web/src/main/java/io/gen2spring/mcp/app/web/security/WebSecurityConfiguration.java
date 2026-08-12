@@ -14,6 +14,8 @@ import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 
 @Configuration(proxyBeanMethods = false)
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 public class WebSecurityConfiguration {
     public static final String CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; "
             + "style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; "

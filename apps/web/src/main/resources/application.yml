@@ -1,5 +1,5 @@
 server:
-  address: 127.0.0.1
+  address: ${GEN2SPRING_UI_ADDRESS:127.0.0.1}
   port: ${GEN2SPRING_UI_PORT:0}
   forward-headers-strategy: none
   error:
@@ -12,11 +12,31 @@ server:
     encoding:
       enabled: false
     session:
-      timeout: 0
+      timeout: ${GEN2SPRING_SESSION_TIMEOUT:0}
       cookie:
         http-only: true
-        same-site: strict
+        same-site: ${GEN2SPRING_SESSION_COOKIE_SAME_SITE:strict}
+        secure: ${GEN2SPRING_SESSION_COOKIE_SECURE:false}
 spring:
   main:
     banner-mode: "off"
     log-startup-info: false
+gen2spring:
+  mode: ${GEN2SPRING_MODE:local}
+  hosted:
+    work-root: ${GEN2SPRING_HOSTED_WORK_ROOT:/var/lib/gen2spring/web-work}
+    database:
+      url: ${GEN2SPRING_POSTGRES_URL:jdbc:postgresql://postgres:5432/gen2spring}
+      username: ${GEN2SPRING_POSTGRES_USER:gen2spring}
+      password-file: ${GEN2SPRING_POSTGRES_PASSWORD_FILE:/run/secrets/postgres-password}
+    storage:
+      endpoint: ${GEN2SPRING_S3_ENDPOINT:http://minio:9000}
+      region: ${GEN2SPRING_S3_REGION:us-east-1}
+      bucket: ${GEN2SPRING_S3_BUCKET:gen2spring-private}
+      access-key-file: ${GEN2SPRING_S3_ACCESS_KEY_FILE:/run/secrets/minio-access-key}
+      secret-key-file: ${GEN2SPRING_S3_SECRET_KEY_FILE:/run/secrets/minio-secret-key}
+      max-object-bytes: 104857600
+    encryption:
+      active-key-id: key-1
+      key-files:
+        key-1: ${GEN2SPRING_IMPORT_KEY_FILE:/run/secrets/import-target-key}

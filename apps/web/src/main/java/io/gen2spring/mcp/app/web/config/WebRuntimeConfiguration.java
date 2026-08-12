@@ -20,6 +20,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 class WebRuntimeConfiguration {
     @Bean
     GeneratorRuntime generatorApplication() {

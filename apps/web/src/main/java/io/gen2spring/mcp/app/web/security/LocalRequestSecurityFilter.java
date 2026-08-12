@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 final class LocalRequestSecurityFilter extends OncePerRequestFilter {
     private static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "OPTIONS", "TRACE");
     private static final Set<String> FORWARDED_HEADERS = Set.of(
