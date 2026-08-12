@@ -1,0 +1,22 @@
+server:
+  address: 127.0.0.1
+  port: ${GEN2SPRING_UI_PORT:0}
+  forward-headers-strategy: none
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-exception: false
+    whitelabel:
+      enabled: false
+  servlet:
+    encoding:
+      enabled: false
+    session:
+      timeout: 0
+      cookie:
+        http-only: true
+        same-site: strict
+spring:
+  main:
+    banner-mode: "off"
+    log-startup-info: false

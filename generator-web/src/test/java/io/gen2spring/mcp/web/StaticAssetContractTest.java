@@ -10,11 +10,12 @@ import org.junit.jupiter.api.Test;
 class StaticAssetContractTest {
     @Test
     void exposesTheAccessibleFiveStepLocalEditorWithoutExternalInputs() throws Exception {
-        String index = resource("/web/index.html");
-        String styles = resource("/web/styles.css");
-        String app = resource("/web/app.js");
-        String editor = resource("/web/editor.js");
-        String scripts = app + resource("/web/api.js") + resource("/web/state.js") + editor;
+        String index = resource("/templates/editor.html");
+        String styles = resource("/static/styles.css");
+        String app = resource("/static/app.js");
+        String editor = resource("/static/editor.js");
+        String api = resource("/static/api.js");
+        String scripts = app + api + resource("/static/state.js") + editor;
         String all = index + styles + scripts;
 
         assertTrue(index.contains("<h2>1. Specification</h2>"));
@@ -76,9 +77,13 @@ class StaticAssetContractTest {
         assertTrue(editor.contains("...(operation.pagination.enabled ? {pagination:"));
         assertTrue(editor.contains("output: {mode: operation.outputMode}"));
         assertTrue(editor.contains("delete pagination.initialValue"));
-        assertTrue(resource("/web/state.js").contains("outputMode: 'GENERIC_JSON'"));
-        assertTrue(resource("/web/state.js").contains("retry: {"));
-        assertTrue(resource("/web/state.js").contains("pagination: {"));
+        assertTrue(resource("/static/state.js").contains("outputMode: 'GENERIC_JSON'"));
+        assertTrue(resource("/static/state.js").contains("retry: {"));
+        assertTrue(resource("/static/state.js").contains("pagination: {"));
+        assertTrue(index.contains("name=\"csrf-token\""));
+        assertTrue(index.contains("name=\"csrf-header\""));
+        assertTrue(api.contains("SAFE_METHODS"));
+        assertTrue(api.contains("headers.set(csrfHeader, csrfToken)"));
 
         assertFalse(index.contains("type=\"url\""));
         assertFalse(index.matches("(?s).*<(?:script|style)[^>]*>\\s*[^<]+.*"));
@@ -87,6 +92,8 @@ class StaticAssetContractTest {
         assertFalse(all.contains("serviceWorker"));
         assertFalse(scripts.contains("innerHTML"));
         assertFalse(scripts.contains("Authorization"));
+        assertFalse(index.contains("generator-api-token"));
+        assertFalse(api.contains("X-Gen2Spring-Token"));
         assertFalse(editor.contains("SERVER_DEFAULT"));
         assertFalse(index.contains("id=\"tool-description\" maxlength=\"2048\""));
     }

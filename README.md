@@ -50,12 +50,12 @@ probe 출력, 실행 command를 기록하지 않는다.
 
 ## 빌드, 테스트, 설치
 
-전체 단위·통합 검증과 CLI/Web distribution 설치는 다음 명령으로 실행한다.
+전체 단위·통합 검증, CLI distribution과 Web Boot JAR 빌드는 다음 명령으로 실행한다.
 
 ```bash
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
   mise exec -- ./gradlew clean test integrationTest \
-  :generator-cli:installDist :generator-web:installDist \
+  :generator-cli:installDist :generator-web:bootJar \
   --no-daemon --non-interactive
 ```
 
@@ -63,6 +63,7 @@ GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
 
 ```text
 generator-cli/build/install/openapi-mcp/bin/openapi-mcp
+generator-web/build/libs/generator-web.jar
 ```
 
 이하 예시는 편의를 위해 해당 경로를 `OPENAPI_MCP` shell 변수로 둔다.
@@ -74,7 +75,8 @@ OPENAPI_MCP=generator-cli/build/install/openapi-mcp/bin/openapi-mcp
 ## 로컬 operation editor
 
 브라우저에서 operation 선택, project/profile 설정, Tool schema preview, 실제 생성·검증과 artifact
-다운로드를 완료하는 로컬 UI와 Generator API를 제공한다. 상태는 `UI operation editor complete`다.
+다운로드를 완료하는 Spring Boot 3.5 WebMVC + Thymeleaf 기반 로컬 UI와 Generator API를 제공한다.
+상태는 `UI operation editor complete`다.
 Java 17을 한 번 설치한 뒤 mise task로 실행한다.
 
 ```bash
@@ -89,28 +91,44 @@ mise run ui
 GEN2SPRING_UI_PORT=8080 mise run ui
 ```
 
-UI distribution 빌드와 빠른 단위 테스트는 각각 다음 task로 실행한다.
+executable Boot JAR 빌드와 빠른 단위 테스트는 각각 다음 task로 실행한다.
 
 ```bash
 mise run ui:build
 mise run ui:test
 ```
 
-mise 없이 직접 설치하고 실행하려면 다음 명령을 사용한다.
+mise task 없이 개발 서버를 직접 실행하려면 다음 명령을 사용한다.
 
 ```bash
-mise exec -- ./gradlew :generator-web:installDist
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
 GEN2SPRING_JAVA_21_HOME="$(mise where java@21)" \
-generator-web/build/install/gen2spring-mcp-web/bin/gen2spring-mcp-web --port 0
+GEN2SPRING_UI_PORT=0 \
+mise exec -- ./gradlew :generator-web:bootRun --quiet --no-daemon --non-interactive
 ```
 
-`--port 0`은 사용 가능한 ephemeral port를 선택한다. 서버는 준비되면 stdout에
+배포 가능한 단일 Boot JAR을 만들고 직접 실행하려면 다음 명령을 사용한다.
+
+```bash
+mise exec -- ./gradlew :generator-web:bootJar --no-daemon --non-interactive
+GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
+GEN2SPRING_JAVA_21_HOME="$(mise where java@21)" \
+GEN2SPRING_UI_PORT=0 \
+mise exec -- java -jar generator-web/build/libs/generator-web.jar
+```
+
+`GEN2SPRING_UI_PORT=0`은 사용 가능한 ephemeral port를 선택한다. 서버는 준비되면 stdout에
 `{"status":"READY","url":"http://127.0.0.1:<port>/"}` 한 줄만 출력한다. 해당 URL을
 브라우저에서 연다. binding은 `numeric loopback only`이고 hostname, wildcard, remote address를
-허용하지 않는다. startup JSON에는 API token을 출력하지 않으며, token은 no-store HTML에만
-주입된다. API는 remote address, exact `Host`, same-origin `Origin`, per-process token을 모두
-검증한다.
+허용하지 않는다. API는 remote address, exact `Host`, same-origin `Origin`, forbidden forwarded
+header, Spring Security session CSRF를 모두 검증한다. CSRF와 session 값은 no-store HTML/browser
+session 경계 밖으로 출력하지 않는다. local session은 server process 수명 동안 유지되며 browser
+session cookie와 server process가 종료되면 함께 폐기된다.
+
+현재 Boot UI는 public multi-user service가 아니다. 계정과 인증, owner/tenant별 authorization,
+database migration, durable artifact storage, distributed capacity control, trusted reverse proxy,
+rate limit·quota·audit가 구현되고 별도 threat review가 통과하기 전에는 외부 address에 bind하거나
+internet에 배포하지 않는다.
 
 작업 흐름은 다음 다섯 단계다.
 
@@ -130,7 +148,7 @@ generator-web/build/install/gen2spring-mcp-web/bin/gen2spring-mcp-web --port 0
 
 manifest와 report는 terminal artifact로 제공하고, ZIP은 `VALIDATED`일 때만 제공한다. 모든
 download는 생성 시 고정한 owned regular file의 identity, size, digest를 다시 확인한다. 대표 검증
-인자, API token, target JDK 절대 경로는 preview, artifact, process output에 기록하지 않는다.
+인자, CSRF/session 값, target JDK 절대 경로는 preview, artifact, process output에 기록하지 않는다.
 
 UI는 키보드 탐색, 오류 summary/focus, live status를 제공하고 400px viewport까지 가로 overflow 없이
 동작한다. 실제 browser acceptance matrix는 최신 Chromium이다. Firefox와 Safari는 Fetch API,
