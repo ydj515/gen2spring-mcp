@@ -30,6 +30,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 public final class PostgresJobQueue implements JobQueue {
+    private static final int MAX_RUNNING_PER_OWNER = 2;
     private static final String JOB_COLUMNS = """
             id, owner_account_id, kind, status, specification_id, attempt, cancel_requested
             """;
@@ -96,7 +97,7 @@ public final class PostgresJobQueue implements JobQueue {
                            and lease_owner = ?
                            and fencing_token = ?
                            and lease_until >= ?
-                           and ? > ?
+                           and ? > lease_until
                         """,
                         timestamp(leaseUntil),
                         timestamp(now),
@@ -104,8 +105,7 @@ public final class PostgresJobQueue implements JobQueue {
                         lease.worker().value(),
                         lease.fencingToken(),
                         timestamp(now),
-                        timestamp(leaseUntil),
-                        timestamp(now))
+                        timestamp(leaseUntil))
                 == 1;
     }
 
@@ -242,21 +242,40 @@ public final class PostgresJobQueue implements JobQueue {
     private Optional<JobLease> claimInTransaction(WorkerId worker, Instant now, Duration duration) {
         List<ClaimCandidate> candidates = jdbc.query(
                 """
-                select id, kind, request_snapshot::text as request_snapshot
-                  from generation_job
-                 where status = 'QUEUED' and cancel_requested = false
+                select j.id, j.owner_account_id, j.kind, j.request_snapshot::text as request_snapshot
+                  from generation_job j
+                 where j.status = 'QUEUED' and j.cancel_requested = false
+                   and (
+                       select count(*)
+                         from generation_job running
+                        where running.owner_account_id = j.owner_account_id
+                          and running.status = 'RUNNING'
+                   ) < ?
                  order by created_at, id
-                 for update skip locked
+                 for update of j skip locked
                  limit 1
                 """,
                 (resultSet, row) -> new ClaimCandidate(
                         new JobId(resultSet.getObject("id", UUID.class)),
+                        new AccountId(resultSet.getObject("owner_account_id", UUID.class)),
                         JobKind.valueOf(resultSet.getString("kind")),
-                        resultSet.getString("request_snapshot")));
+                        resultSet.getString("request_snapshot")),
+                MAX_RUNNING_PER_OWNER);
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
         ClaimCandidate candidate = candidates.getFirst();
+        jdbc.queryForObject(
+                "select id from account where id = ? for update",
+                UUID.class,
+                candidate.owner().value());
+        Integer running = jdbc.queryForObject(
+                "select count(*) from generation_job where owner_account_id = ? and status = 'RUNNING'",
+                Integer.class,
+                candidate.owner().value());
+        if (running == null || running >= MAX_RUNNING_PER_OWNER) {
+            return Optional.empty();
+        }
         JobTransitionPolicy.requireAllowed(JobStatus.QUEUED, JobStatus.RUNNING);
         Instant leaseUntil = now.plus(duration);
         Long token = jdbc.queryForObject(
@@ -402,7 +421,7 @@ public final class PostgresJobQueue implements JobQueue {
 
     private record ExistingJob(String requestHash, JobView job) {}
 
-    private record ClaimCandidate(JobId id, JobKind kind, String requestSnapshot) {}
+    private record ClaimCandidate(JobId id, AccountId owner, JobKind kind, String requestSnapshot) {}
 
     private record ExpiredJob(JobId id, int attempt) {}
 }
