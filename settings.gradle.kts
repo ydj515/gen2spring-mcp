@@ -1,14 +1,16 @@
 rootProject.name = "gen2spring-mcp"
 
 include(
-    "generator-domain",
-    "generator-openapi",
-    "generator-policy",
-    "generator-core",
-    "generator-application",
-    "generator-spring-ai-1",
-    "generator-spring-ai-2",
-    "generator-validation",
-    "generator-cli",
-    "generator-web",
+    ":modules:domain",
+    ":modules:application",
+    ":modules:adapters:configuration",
+    ":modules:adapters:openapi",
+    ":modules:adapters:filesystem",
+    ":modules:bootstrap",
+    ":modules:adapters:emitters:support",
+    ":modules:adapters:emitters:spring-ai-1",
+    ":modules:adapters:emitters:spring-ai-2",
+    ":modules:adapters:validation",
+    ":apps:cli",
+    ":apps:web",
 )

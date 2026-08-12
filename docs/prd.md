@@ -1455,61 +1455,23 @@ Generator API
 ## 11. 내부 모듈 구조
 
 ```text
-openapi-mcp-generator
-├── generator-domain
-│   ├── OpenApiDocument
-│   ├── ApiOperation
-│   ├── ApiSchema
-│   ├── McpToolDefinition
-│   ├── TargetPlatform
-│   └── CompatibilityProfile
-│
-├── generator-openapi
-│   ├── OpenApiParser
-│   ├── OpenApiNormalizer
-│   ├── SchemaResolver
-│   └── OperationAnalyzer
-│
-├── generator-policy
-│   ├── ToolNamingPolicy
-│   ├── ToolDescriptionPolicy
-│   ├── ParameterClassificationPolicy
-│   ├── SecurityParameterPolicy
-│   ├── ResponseNormalizationPolicy
-│   └── ErrorMappingPolicy
-│
-├── generator-core
-│   ├── GenerationPipeline
-│   ├── CompatibilityValidator
-│   ├── ProjectModelFactory
-│   └── ArtifactPackager
-│
-├── generator-spring-ai-1
-│   ├── SpringAi1ProjectGenerator
-│   ├── SpringAi1ToolEmitter
-│   └── templates
-│
-├── generator-spring-ai-2
-│   ├── SpringAi2ProjectGenerator
-│   ├── SpringAi2ToolEmitter
-│   └── templates
-│
-├── generated-runtime
-│   ├── OpenApiOperationExecutor
-│   ├── CredentialResolver
-│   ├── ParameterBinder
-│   ├── ResponseNormalizer
-│   └── McpErrorMapper
-│
-├── generator-validation
-│   ├── CompilationVerifier
-│   ├── SpringContextVerifier
-│   ├── McpProtocolVerifier
-│   └── ValidationReportWriter
-│
-├── generator-api
-├── generator-worker
-└── generator-cli
+gen2spring-mcp
+├── modules
+│   ├── domain
+│   ├── application
+│   ├── adapters
+│   │   ├── configuration
+│   │   ├── openapi
+│   │   ├── filesystem
+│   │   ├── validation
+│   │   └── emitters
+│   │       ├── support
+│   │       ├── spring-ai-1
+│   │       └── spring-ai-2
+│   └── bootstrap
+└── apps
+    ├── cli
+    └── web
 ```
 
 ---
@@ -1519,14 +1481,14 @@ openapi-mcp-generator
 ### 12.1 Tool IR
 
 ```java
-public record McpToolDefinition(
+public record ToolDefinition(
     ToolId id,
     String name,
     String title,
     String description,
-    List<McpInputDefinition> inputs,
-    McpOutputDefinition output,
-    HttpExecutionDefinition execution,
+    List<ToolInput> inputs,
+    ToolOutput output,
+    HttpExecution execution,
     SecurityDefinition security,
     ResponseNormalizationDefinition responseNormalization,
     ErrorMappingDefinition errorMapping
