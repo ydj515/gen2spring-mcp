@@ -309,6 +309,10 @@ public final class PostgresJobQueue implements JobQueue {
                 """
                 update generation_job
                    set status = ?, lease_owner = null, lease_until = null,
+                       request_snapshot = case
+                           when kind = 'SPEC_IMPORT' then '{}'::jsonb
+                           else request_snapshot
+                       end,
                        safe_error_code = ?, safe_error_summary = ?,
                        updated_at = ?, version = version + 1
                  where id = ? and status = 'RUNNING'

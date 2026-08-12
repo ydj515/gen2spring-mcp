@@ -10,6 +10,8 @@ import io.gen2spring.mcp.application.hosted.job.CreateJob;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.job.JobQuota;
+import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
+import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
@@ -91,6 +93,27 @@ class PostgresJobQueueTest {
 
         assertTrue(specifications.belongsTo(owner, specification));
         assertFalse(specifications.belongsTo(other, specification));
+    }
+
+    @Test
+    void registersUrlSpecificationsIdempotentlyAndRejectsConflictingReplay() {
+        AccountId owner = account("https://issuer.example", "subject-1");
+        SpecificationId id = new SpecificationId(UUID.randomUUID());
+        ObjectKey key = ObjectKey.parse("specifications/" + id.value() + "/" + HASH_A);
+        SpecificationCatalog.Registration registration = new SpecificationCatalog.Registration(
+                id, owner, key, HASH_A, 10, "URL", "READY", NOW);
+
+        assertEquals(SpecificationCatalog.RegistrationResult.CREATED, specifications.register(registration));
+        assertEquals(SpecificationCatalog.RegistrationResult.REPLAYED, specifications.register(registration));
+
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from specification where id = ?", Integer.class, id.value()));
+        assertTrue(specifications.belongsTo(owner, id));
+        IllegalStateException conflict = assertThrows(
+                IllegalStateException.class,
+                () -> specifications.register(new SpecificationCatalog.Registration(
+                        id, owner, key, HASH_B, 10, "URL", "READY", NOW)));
+        assertEquals("Specification registration failed", conflict.getMessage());
     }
 
     @Test

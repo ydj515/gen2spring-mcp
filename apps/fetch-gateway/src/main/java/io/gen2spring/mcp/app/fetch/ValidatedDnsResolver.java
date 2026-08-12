@@ -21,8 +21,15 @@ public final class ValidatedDnsResolver implements DnsResolver {
 
     @Override
     public InetAddress[] resolve(String host) throws UnknownHostException {
+        InetAddress[] resolved;
         try {
-            InetAddress[] resolved = lookup.resolve(host);
+            resolved = lookup.resolve(host);
+        } catch (UnknownHostException failure) {
+            throw new ResolutionUnavailable();
+        } catch (Exception failure) {
+            throw rejected();
+        }
+        try {
             InetAddress[] snapshot = Arrays.copyOf(resolved, resolved.length);
             NetworkAddressPolicy.requirePublicDestination(ListSupport.copy(snapshot));
             return snapshot;
@@ -46,7 +53,19 @@ public final class ValidatedDnsResolver implements DnsResolver {
     }
 
     private UnknownHostException rejected() {
-        return new UnknownHostException("Import destination is not public");
+        return new DestinationRejected();
+    }
+
+    static final class DestinationRejected extends UnknownHostException {
+        private DestinationRejected() {
+            super("Import destination is not public");
+        }
+    }
+
+    static final class ResolutionUnavailable extends UnknownHostException {
+        private ResolutionUnavailable() {
+            super("Import destination resolution failed");
+        }
     }
 
     private static final class ListSupport {

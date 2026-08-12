@@ -137,6 +137,54 @@ class FetchGatewaySecurityTest {
     }
 
     @Test
+    void retriesOnlyBoundedTransportAndServerFailures() {
+        ScriptedTransport serverFailure = new ScriptedTransport(
+                new FetchTransport.Response(
+                        503,
+                        Map.of("content-type", List.of("text/plain")),
+                        new ByteArrayInputStream(new byte[0])),
+                success("openapi: 3.0.3\n"));
+        BoundedFetcher.FetchResult recovered = new BoundedFetcher(
+                        serverFailure, 128, 128, 3, Duration.ofSeconds(30))
+                .fetch(ImportTarget.parse("https://api.example.com/openapi.yaml"));
+        assertEquals(2, serverFailure.requests.size());
+        assertEquals(200, recovered.status());
+
+        AtomicInteger transientCalls = new AtomicInteger();
+        FetchTransport transientFailure = (target, timeout) -> {
+            if (transientCalls.getAndIncrement() == 0) {
+                throw new FetchFailure(true);
+            }
+            return success("openapi: 3.0.3\n");
+        };
+        new BoundedFetcher(transientFailure, 128, 128, 3, Duration.ofSeconds(30))
+                .fetch(ImportTarget.parse("https://api.example.com/openapi.yaml"));
+        assertEquals(2, transientCalls.get());
+
+        AtomicInteger rejectedCalls = new AtomicInteger();
+        assertFetchFailure(() -> new BoundedFetcher(
+                        (target, timeout) -> {
+                            rejectedCalls.incrementAndGet();
+                            throw new FetchFailure(false);
+                        },
+                        128,
+                        128,
+                        3,
+                        Duration.ofSeconds(30))
+                .fetch(ImportTarget.parse("https://api.example.com/openapi.yaml")));
+        assertEquals(1, rejectedCalls.get());
+
+        ScriptedTransport clientFailure = new ScriptedTransport(new FetchTransport.Response(
+                404,
+                Map.of("content-type", List.of("text/plain")),
+                new ByteArrayInputStream(new byte[0])));
+        assertFetchFailure(() -> new BoundedFetcher(
+                        clientFailure, 128, 128, 3, Duration.ofSeconds(30))
+                .fetch(ImportTarget.parse("https://api.example.com/openapi.yaml")));
+        assertEquals(1, clientFailure.requests.size());
+    }
+
+    @Test
     void enforcesTheTotalTimeoutBeforeTransportExecution() {
         AtomicInteger executions = new AtomicInteger();
         BoundedFetcher fetcher = new BoundedFetcher(

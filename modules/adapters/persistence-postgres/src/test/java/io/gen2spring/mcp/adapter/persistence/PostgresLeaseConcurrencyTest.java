@@ -112,6 +112,23 @@ class PostgresLeaseConcurrencyTest {
     }
 
     @Test
+    void removesEncryptedImportPayloadOnlyAfterTerminalCompletion() {
+        PostgresJobQueue jobs = queueAt(NOW);
+        jobs.create(importJob("job-1", hash(1)));
+        JobLease lease = jobs.claim(new WorkerId("worker-1"), NOW, LEASE).orElseThrow();
+
+        assertTrue(jdbc.queryForObject(
+                "select request_snapshot::text <> '{}' from generation_job where id = ?",
+                Boolean.class,
+                lease.jobId().value()));
+        assertTrue(jobs.complete(lease, JobCompletion.success()));
+        assertEquals("{}", jdbc.queryForObject(
+                "select request_snapshot::text from generation_job where id = ?",
+                String.class,
+                lease.jobId().value()));
+    }
+
+    @Test
     void failsTheJobOnceTheLeaseRetryLimitIsExhausted() {
         PostgresJobQueue firstQueue = queueAt(NOW);
         firstQueue.create(importJob("job-1", hash(1)));

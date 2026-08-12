@@ -91,7 +91,8 @@ final class ApacheFetchTransport implements FetchTransport, AutoCloseable {
                     new ResponseBody(content, response));
         } catch (IOException | RuntimeException failure) {
             closeQuietly(response);
-            throw new FetchFailure();
+            throw new FetchFailure(failure instanceof IOException
+                    && !contains(failure, ValidatedDnsResolver.DestinationRejected.class));
         }
     }
 
@@ -109,6 +110,17 @@ final class ApacheFetchTransport implements FetchTransport, AutoCloseable {
         } catch (IOException ignored) {
             // The fixed fetch failure remains authoritative.
         }
+    }
+
+    private boolean contains(Throwable failure, Class<? extends Throwable> type) {
+        Throwable current = failure;
+        for (int depth = 0; current != null && depth < 16; depth++) {
+            if (type.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private Map<String, List<String>> headers(Header[] headers) {

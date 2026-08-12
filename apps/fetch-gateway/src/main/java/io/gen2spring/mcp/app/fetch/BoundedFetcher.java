@@ -17,6 +17,7 @@ import java.util.zip.GZIPInputStream;
 public final class BoundedFetcher {
     private static final int MAX_HEADER_BYTES = 16_384;
     private static final int MAX_HEADER_COUNT = 64;
+    private static final int MAX_RETRY_ATTEMPTS = 2;
 
     private final FetchTransport transport;
     private final int maxWireBytes;
@@ -53,10 +54,20 @@ public final class BoundedFetcher {
         long deadline = System.nanoTime() + totalTimeout.toNanos();
         ImportTarget target = initialTarget;
         int redirects = 0;
+        int attempts = 0;
         try {
             while (true) {
                 Duration remaining = remaining(deadline);
-                try (FetchTransport.Response response = transport.execute(target, remaining)) {
+                FetchTransport.Response executed;
+                try {
+                    executed = transport.execute(target, remaining);
+                } catch (FetchFailure failure) {
+                    if (failure.retryable() && ++attempts < MAX_RETRY_ATTEMPTS) {
+                        continue;
+                    }
+                    throw failure;
+                }
+                try (FetchTransport.Response response = executed) {
                     requireBoundedHeaders(response.headers());
                     if (redirectStatus(response.status())) {
                         if (redirects >= maxRedirects) {
@@ -69,6 +80,11 @@ public final class BoundedFetcher {
                         URI redirected = target.uri().resolve(location);
                         target = ImportTarget.parse(redirected.toString());
                         redirects++;
+                        attempts = 0;
+                        continue;
+                    }
+                    if (response.status() >= 500 && response.status() < 600
+                            && ++attempts < MAX_RETRY_ATTEMPTS) {
                         continue;
                     }
                     if (response.status() < 200 || response.status() >= 300) {

@@ -9,6 +9,7 @@ include(
     ":modules:adapters:filesystem",
     ":modules:adapters:object-storage-s3",
     ":modules:adapters:persistence-postgres",
+    ":modules:adapters:url-fetch",
     ":modules:bootstrap",
     ":modules:adapters:emitters:support",
     ":modules:adapters:emitters:spring-ai-1",
