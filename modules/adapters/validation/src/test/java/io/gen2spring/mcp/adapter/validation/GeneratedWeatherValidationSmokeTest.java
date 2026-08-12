@@ -30,7 +30,7 @@ import io.gen2spring.mcp.domain.tool.HttpExecution;
 import io.gen2spring.mcp.domain.tool.ToolInput;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.SecretBinding;
-import io.gen2spring.mcp.springai2.SpringAi2ProjectGenerator;
+import io.gen2spring.mcp.adapter.emitter.springai2.SpringAi2ProjectGenerator;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Files;

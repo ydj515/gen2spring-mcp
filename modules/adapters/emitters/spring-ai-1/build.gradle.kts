@@ -1,6 +1,7 @@
 dependencies {
     implementation(project(":modules:domain"))
     implementation(project(":modules:application"))
+    implementation(project(":modules:adapters:emitters:support"))
     implementation(libs.jackson.databind)
-    testImplementation(project(":modules:adapters:emitters:spring-ai-2"))
+    implementation(libs.jackson.yaml)
 }
