@@ -70,6 +70,15 @@ class DockerCliSandboxRuntimeTest {
         assertContainsPair(create, "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=268435456");
         assertTrue(create.stream().anyMatch(value -> value.startsWith("type=bind,src=")
                 && value.endsWith(",dst=/job/output")));
+        assertContainsPair(create, "--tmpfs", "/job/work:rw,exec,nosuid,nodev,size=1073741824");
+        String inputMount = create.stream()
+                .filter(value -> value.startsWith("type=bind,src=") && value.endsWith(",dst=/job/input,readonly"))
+                .findFirst()
+                .orElseThrow();
+        Path inputDirectory = Path.of(inputMount.substring(
+                "type=bind,src=".length(), inputMount.length() - ",dst=/job/input,readonly".length()));
+        assertTrue(Files.isRegularFile(inputDirectory.resolve("specification.yaml")));
+        assertFalse(Files.exists(inputDirectory.resolve("specification.openapi")));
         assertTrue(create.contains("io.gen2spring.job=1a803410-a22a-4bc6-b951-7dbc301ae800"));
         assertTrue(create.contains("io.gen2spring.fencing-token=11"));
         assertTrue(create.contains("--read-only"));
@@ -157,7 +166,7 @@ class DockerCliSandboxRuntimeTest {
     private SandboxInput input() {
         return new SandboxInput(
                 ObjectKey.parse("specifications/80782e7c-337d-4d4d-bd4d-ad478359563c/source"),
-                "{\"profile\":\"java21\"}",
+                "{\"targetProfileId\":\"spring-ai-2.0-java21-mvc-streamable\"}",
                 "spring-ai-2.0-java21-mvc-streamable");
     }
 

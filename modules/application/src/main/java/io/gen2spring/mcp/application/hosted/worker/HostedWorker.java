@@ -3,6 +3,7 @@ package io.gen2spring.mcp.application.hosted.worker;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
 import io.gen2spring.mcp.application.hosted.job.JobCompletion;
 import io.gen2spring.mcp.application.hosted.job.JobLease;
@@ -131,12 +132,17 @@ public final class HostedWorker {
     private SandboxResult execute(JobLease lease) throws InterruptedException {
         if (lease.kind() == JobKind.GENERATION) {
             GenerationRequest request = parse(lease.requestSnapshot(), GenerationRequest.class);
+            if (request.configuration() == null
+                    || !request.configuration().isObject()
+                    || !request.configuration().path("targetProfileId").isTextual()) {
+                throw new IllegalArgumentException("Hosted worker request is invalid");
+            }
             return sandbox.run(
                     lease,
                     new SandboxInput(
                             ObjectKey.parse(request.specificationObjectKey()),
-                            lease.requestSnapshot(),
-                            request.targetProfileId()),
+                            serializeConfiguration(request.configuration()),
+                            request.configuration().path("targetProfileId").textValue()),
                     limits);
         }
         return imports.run(lease, parse(lease.requestSnapshot(), EncryptedImportTarget.class), limits);
@@ -229,6 +235,14 @@ public final class HostedWorker {
         }
     }
 
+    private String serializeConfiguration(JsonNode configuration) {
+        try {
+            return REQUESTS.writeValueAsString(configuration);
+        } catch (Exception failure) {
+            throw new IllegalArgumentException("Hosted worker request is invalid");
+        }
+    }
+
     private void deleteAll(List<ObjectKey> keys) {
         for (ObjectKey key : keys) {
             try {
@@ -258,7 +272,7 @@ public final class HostedWorker {
         void cancel();
     }
 
-    private record GenerationRequest(String specificationObjectKey, String targetProfileId) {}
+    private record GenerationRequest(String specificationObjectKey, JsonNode configuration) {}
 
     private final class LeaseMonitor implements AutoCloseable {
         private final JobLease lease;

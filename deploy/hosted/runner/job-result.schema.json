@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gen2spring.io/schemas/hosted/job-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["outcome", "exitCode"],
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILED", "TIMED_OUT"]
+    },
+    "exitCode": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    }
+  }
+}

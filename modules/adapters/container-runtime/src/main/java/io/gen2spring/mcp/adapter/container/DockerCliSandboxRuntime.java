@@ -80,8 +80,9 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
         try {
             Path inputDirectory = createPrivateDirectory(workspace.resolve("input"));
             Path outputDirectory = createPrivateDirectory(workspace.resolve("output"));
-            writeSpecification(inputDirectory.resolve("specification.openapi"), input);
-            writePrivateFile(inputDirectory.resolve("request.json"), input.requestSnapshot().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            writeSpecification(inputDirectory, input);
+            writePrivateFile(inputDirectory.resolve("generation-config.json"),
+                    input.generationConfiguration().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             writePrivateFile(inputDirectory.resolve("target-profile.txt"), input.targetProfileId().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
             requireSuccess(createCommand(container, lease, inputDirectory, outputDirectory, limits), CONTROL_TIMEOUT);
@@ -166,6 +167,7 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
         add(values, "--memory", Long.toString(limits.memoryBytes()));
         add(values, "--pids-limit", Integer.toString(limits.pids()));
         add(values, "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=268435456");
+        add(values, "--tmpfs", "/job/work:rw,exec,nosuid,nodev,size=1073741824");
         add(values, "--mount", "type=bind,src=" + inputDirectory + ",dst=/job/input,readonly");
         add(values, "--mount", "type=bind,src=" + outputDirectory + ",dst=/job/output");
         values.add(image);
@@ -217,35 +219,37 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
         values.add(value);
     }
 
-    private void writeSpecification(Path target, SandboxInput input) {
+    private void writeSpecification(Path inputDirectory, SandboxInput input) {
         try (StoredObjectContent content = storage.get(input.specification());
-                InputStream source = content.body();
-                OutputStream destination = Files.newOutputStream(target, CREATE_NEW, WRITE, NOFOLLOW_LINKS)) {
+                InputStream source = content.body()) {
             if (content.size() < 1 || content.size() > MAX_SPECIFICATION_BYTES) {
                 throw failed();
             }
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] buffer = new byte[8192];
-            long total = 0;
-            while (true) {
-                int read = source.read(buffer);
-                if (read < 0) {
-                    break;
+            Path target = inputDirectory.resolve(specificationName(content.contentType()));
+            try (OutputStream destination = Files.newOutputStream(target, CREATE_NEW, WRITE, NOFOLLOW_LINKS)) {
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] buffer = new byte[8192];
+                long total = 0;
+                while (true) {
+                    int read = source.read(buffer);
+                    if (read < 0) {
+                        break;
+                    }
+                    total += read;
+                    if (total > content.size() || total > MAX_SPECIFICATION_BYTES) {
+                        throw failed();
+                    }
+                    digest.update(buffer, 0, read);
+                    destination.write(buffer, 0, read);
                 }
-                total += read;
-                if (total > content.size() || total > MAX_SPECIFICATION_BYTES) {
+                String actual = HexFormat.of().formatHex(digest.digest());
+                if (total != content.size() || !MessageDigest.isEqual(
+                        actual.getBytes(java.nio.charset.StandardCharsets.US_ASCII),
+                        content.sha256().getBytes(java.nio.charset.StandardCharsets.US_ASCII))) {
                     throw failed();
                 }
-                digest.update(buffer, 0, read);
-                destination.write(buffer, 0, read);
+                setOwnerFile(target);
             }
-            String actual = HexFormat.of().formatHex(digest.digest());
-            if (total != content.size() || !MessageDigest.isEqual(
-                    actual.getBytes(java.nio.charset.StandardCharsets.US_ASCII),
-                    content.sha256().getBytes(java.nio.charset.StandardCharsets.US_ASCII))) {
-                throw failed();
-            }
-            setOwnerFile(target);
         } catch (Error fatal) {
             throw fatal;
         } catch (SandboxRuntimeFailure failure) {
@@ -253,6 +257,16 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
         } catch (Exception failure) {
             throw failed();
         }
+    }
+
+    private String specificationName(String contentType) {
+        if ("application/json".equals(contentType) || (contentType != null && contentType.endsWith("+json"))) {
+            return "specification.json";
+        }
+        if (Set.of("application/yaml", "application/x-yaml", "text/yaml").contains(contentType)) {
+            return "specification.yaml";
+        }
+        throw failed();
     }
 
     private void writePrivateFile(Path target, byte[] value) {

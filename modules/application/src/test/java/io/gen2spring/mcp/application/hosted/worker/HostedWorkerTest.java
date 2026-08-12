@@ -64,6 +64,13 @@ class HostedWorkerTest {
 
         assertEquals(HostedWorker.PollResult.COMPLETED, result);
         assertEquals(1, sandbox.calls);
+        assertEquals("spring-ai-2.0-java21-mvc-streamable", sandbox.input.targetProfileId());
+        assertEquals(
+                "{\"project\":{\"groupId\":\"com.example\",\"artifactId\":\"weather\",\"packageName\":\"com.example.weather\"},"
+                        + "\"provider\":\"kma\",\"domain\":\"weather\","
+                        + "\"targetProfileId\":\"spring-ai-2.0-java21-mvc-streamable\","
+                        + "\"validationLevel\":\"COMPILE\",\"operations\":[]}",
+                sandbox.input.generationConfiguration());
         assertEquals(ObjectKey.parse("artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/archive"), storage.keys.getFirst());
         assertEquals(JobStatus.SUCCEEDED, queue.completion.status());
         assertEquals(1, queue.completions);
@@ -186,7 +193,12 @@ class HostedWorkerTest {
         queue.lease = new JobLease(
                 JOB, WORKER, 11, NOW.plusSeconds(30), JobKind.GENERATION,
                 "{\"specificationObjectKey\":\"specifications/80782e7c-337d-4d4d-bd4d-ad478359563c/source\","
-                        + "\"targetProfileId\":\"spring-ai-2.0-java21-mvc-streamable\"}");
+                        + "\"configuration\":{"
+                        + "\"project\":{\"groupId\":\"com.example\",\"artifactId\":\"weather\","
+                        + "\"packageName\":\"com.example.weather\"},"
+                        + "\"provider\":\"kma\",\"domain\":\"weather\","
+                        + "\"targetProfileId\":\"spring-ai-2.0-java21-mvc-streamable\","
+                        + "\"validationLevel\":\"COMPILE\",\"operations\":[]}}");
         return queue;
     }
 
@@ -227,11 +239,13 @@ class HostedWorkerTest {
         private SandboxResult result = new SandboxResult(List.of(), "FAILED");
         private Throwable failure;
         private boolean interrupted;
+        private SandboxInput input;
 
         @Override
         public SandboxResult run(JobLease lease, SandboxInput input, SandboxLimits limits)
                 throws InterruptedException {
             calls++;
+            this.input = input;
             if (interrupted) {
                 throw new InterruptedException("private interruption marker");
             }
