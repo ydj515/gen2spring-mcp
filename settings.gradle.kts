@@ -4,6 +4,7 @@ include(
     ":modules:domain",
     ":modules:application",
     ":modules:adapters:configuration",
+    ":modules:adapters:cryptography",
     ":modules:adapters:openapi",
     ":modules:adapters:filesystem",
     ":modules:adapters:object-storage-s3",
