@@ -6,6 +6,7 @@ include(
     ":modules:adapters:configuration",
     ":modules:adapters:openapi",
     ":modules:adapters:filesystem",
+    ":modules:adapters:object-storage-s3",
     ":modules:adapters:persistence-postgres",
     ":modules:bootstrap",
     ":modules:adapters:emitters:support",
