@@ -104,7 +104,7 @@ mise task 없이 개발 서버를 직접 실행하려면 다음 명령을 사용
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
 GEN2SPRING_JAVA_21_HOME="$(mise where java@21)" \
 GEN2SPRING_UI_PORT=0 \
-mise exec -- ./gradlew :generator-web:bootRun --no-daemon --non-interactive
+mise exec -- ./gradlew :generator-web:bootRun --quiet --no-daemon --non-interactive
 ```
 
 배포 가능한 단일 Boot JAR을 만들고 직접 실행하려면 다음 명령을 사용한다.
@@ -122,7 +122,8 @@ mise exec -- java -jar generator-web/build/libs/generator-web.jar
 브라우저에서 연다. binding은 `numeric loopback only`이고 hostname, wildcard, remote address를
 허용하지 않는다. API는 remote address, exact `Host`, same-origin `Origin`, forbidden forwarded
 header, Spring Security session CSRF를 모두 검증한다. CSRF와 session 값은 no-store HTML/browser
-session 경계 밖으로 출력하지 않는다.
+session 경계 밖으로 출력하지 않는다. local session은 server process 수명 동안 유지되며 browser
+session cookie와 server process가 종료되면 함께 폐기된다.
 
 현재 Boot UI는 public multi-user service가 아니다. 계정과 인증, owner/tenant별 authorization,
 database migration, durable artifact storage, distributed capacity control, trusted reverse proxy,

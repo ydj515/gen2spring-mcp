@@ -14,7 +14,8 @@ class ReadmeContractTest {
         String readme = Files.readString(root.resolve("README.md"));
         String mise = Files.readString(root.resolve("mise.toml"));
 
-        assertTrue(readme.contains("./gradlew :generator-web:bootRun"));
+        assertTrue(readme.contains(
+                "./gradlew :generator-web:bootRun --quiet --no-daemon --non-interactive"));
         assertTrue(readme.contains("./gradlew :generator-web:bootJar"));
         assertTrue(readme.contains("java -jar generator-web/build/libs/generator-web.jar"));
         assertTrue(readme.contains("mise run ui"));
@@ -37,7 +38,8 @@ class ReadmeContractTest {
         assertFalse(readme.contains("per-process token"));
 
         assertTrue(mise.contains("[tasks.ui]"));
-        assertTrue(mise.contains(":generator-web:bootRun"));
+        assertTrue(mise.contains(
+                ":generator-web:bootRun --quiet --no-daemon --non-interactive"));
         assertTrue(mise.contains("[tasks.\"ui:build\"]"));
         assertTrue(mise.contains(":generator-web:bootJar"));
         assertTrue(mise.contains("[tasks.\"ui:test\"]"));

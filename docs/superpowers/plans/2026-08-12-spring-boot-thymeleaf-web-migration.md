@@ -681,12 +681,12 @@ description = "Run the local Spring Boot operation editor"
 run = '''
 export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
 export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
-exec ./gradlew :generator-web:bootRun --no-daemon --non-interactive
+exec ./gradlew :generator-web:bootRun --quiet --no-daemon --non-interactive
 '''
 run_windows = '''
 for /f "delims=" %i in ('mise where java@17') do @set "GEN2SPRING_JAVA_17_HOME=%i"
 for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%i"
-call gradlew.bat :generator-web:bootRun --no-daemon --non-interactive
+call gradlew.bat :generator-web:bootRun --quiet --no-daemon --non-interactive
 '''
 
 [tasks."ui:build"]

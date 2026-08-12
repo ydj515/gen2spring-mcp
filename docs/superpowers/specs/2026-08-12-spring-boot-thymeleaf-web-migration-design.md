@@ -171,6 +171,7 @@ server:
     encoding:
       enabled: false
     session:
+      timeout: 0
       cookie:
         http-only: true
         same-site: strict
@@ -195,6 +196,10 @@ socket test로 고정한다. `OncePerRequestFilter`는 request body를 읽기 �
 기존 process capability token은 제거하고 Spring Security session CSRF로 교체한다. `EditorController`는
 CSRF token/header name을 Thymeleaf meta element에 렌더링하고 `api.js`가 state-changing request에 exact
 header를 보낸다. missing/invalid token은 fixed `403 REQUEST_FORBIDDEN` envelope로 응답한다.
+
+local session timeout은 `0`으로 두어 실행 중인 단일 사용자 workflow가 idle timeout으로 끊기지 않게 한다.
+session cookie는 비영속이고 server-side session도 process 종료와 함께 사라진다. hosted mode에서는 이
+정책을 재사용하지 않고 인증·session expiry·state 복구 정책을 별도로 설계한다.
 
 Spring Security는 local mode에서 모든 route를 `permitAll`로 두되 CSRF, session fixation protection,
 security headers를 활성화한다. login page와 generated password는 만들지 않는다. 이는 인증을 구현한 것이
@@ -238,7 +243,7 @@ response, application log에 기록하지 않는다. `sessionStorage`에는 기�
 `generator-web`은 Spring Boot executable `bootJar`를 만든다. 기존 `application` distribution과
 `installDist` start script는 제거한다.
 
-- development: `mise run ui` -> `:generator-web:bootRun`
+- development: `mise run ui` -> `:generator-web:bootRun --quiet` (READY 외 Gradle stdout 억제)
 - package: `mise run ui:build` -> `:generator-web:bootJar`
 - test: `mise run ui:test` -> `:generator-web:test`
 - direct package run: `java -jar generator-web/build/libs/<boot-jar>.jar`

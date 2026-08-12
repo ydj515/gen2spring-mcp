@@ -12,6 +12,7 @@ server:
     encoding:
       enabled: false
     session:
+      timeout: 0
       cookie:
         http-only: true
         same-site: strict

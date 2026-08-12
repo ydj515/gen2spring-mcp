@@ -8,10 +8,12 @@ import io.gen2spring.mcp.application.GeneratorApplication;
 import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import org.apache.coyote.AbstractProtocol;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
 import org.springframework.boot.web.embedded.tomcat.TomcatWebServer;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,6 +44,9 @@ class WebApplicationContextTest {
     GenerationJobManager jobs;
 
     @Autowired
+    ServerProperties serverProperties;
+
+    @Autowired
     WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> loopbackOnly;
 
     @LocalServerPort
@@ -51,6 +56,9 @@ class WebApplicationContextTest {
     void startsWithCanonicalOwnedServicesOnAnEphemeralPort() throws Exception {
         assertSame(application, context.getBean(GeneratorApplication.class));
         assertTrue(port > 0 && port <= 65535);
+        assertEquals(Duration.ZERO,
+                serverProperties.getServlet().getSession().getTimeout());
+        assertEquals(-1, serverContext.getServletContext().getSessionTimeout());
         Path temporaryParent = Path.of(System.getProperty("java.io.tmpdir")).toRealPath();
         assertTrue(specifications.root().startsWith(temporaryParent));
         assertTrue(jobs.root().startsWith(temporaryParent));
