@@ -1,6 +1,9 @@
 package io.gen2spring.mcp.app.cli;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.app.cli.command.CliApplication;
+import io.gen2spring.mcp.app.cli.command.CommandLine;
+import io.gen2spring.mcp.app.cli.command.GenerationConfigurationReader;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 
 public final class ApplicationFactory {

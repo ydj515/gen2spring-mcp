@@ -17,6 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.app.web.job.GenerationJobManager;
+import io.gen2spring.mcp.app.web.security.WebSecurityConfiguration;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
 import io.gen2spring.mcp.application.usecase.GenerationProgress;
 import io.gen2spring.mcp.application.usecase.ProgressStatus;

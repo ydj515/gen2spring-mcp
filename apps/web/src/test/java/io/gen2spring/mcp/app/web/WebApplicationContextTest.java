@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
+import io.gen2spring.mcp.app.web.api.SpecificationStore;
+import io.gen2spring.mcp.app.web.job.GenerationJobManager;
 import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
