@@ -1,0 +1,21 @@
+server:
+  port: 8443
+  ssl:
+    enabled: true
+    client-auth: NEED
+    key-store: ${GEN2SPRING_FETCH_TLS_KEYSTORE}
+    key-store-password: ${GEN2SPRING_FETCH_TLS_KEYSTORE_PASSWORD}
+    trust-store: ${GEN2SPRING_FETCH_TLS_TRUSTSTORE}
+    trust-store-password: ${GEN2SPRING_FETCH_TLS_TRUSTSTORE_PASSWORD}
+  tomcat:
+    accesslog:
+      enabled: false
+
+spring:
+  main:
+    banner-mode: "off"
+
+logging:
+  level:
+    root: WARN
+    org.apache.hc.client5: ERROR

@@ -30,6 +30,7 @@ testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
 aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
 aws-s3 = { module = "software.amazon.awssdk:s3" }
 aws-url-connection-client = { module = "software.amazon.awssdk:url-connection-client" }
+httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5" }
 
 [bundles]
 jackson = ["jackson-databind", "jackson-yaml"]

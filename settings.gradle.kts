@@ -15,5 +15,7 @@ include(
     ":modules:adapters:emitters:spring-ai-2",
     ":modules:adapters:validation",
     ":apps:cli",
+    ":apps:fetch-gateway",
+    ":apps:import-runner",
     ":apps:web",
 )
