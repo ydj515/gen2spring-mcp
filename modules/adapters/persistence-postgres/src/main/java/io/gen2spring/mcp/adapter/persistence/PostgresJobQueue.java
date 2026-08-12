@@ -2,6 +2,7 @@ package io.gen2spring.mcp.adapter.persistence;
 
 import io.gen2spring.mcp.application.hosted.job.CreateJob;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
+import io.gen2spring.mcp.application.hosted.job.JobArtifact;
 import io.gen2spring.mcp.application.hosted.job.JobCompletion;
 import io.gen2spring.mcp.application.hosted.job.JobLease;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
@@ -130,9 +131,21 @@ public final class PostgresJobQueue implements JobQueue {
 
     @Override
     public boolean complete(JobLease lease, JobCompletion completion) {
+        return complete(lease, completion, List.of());
+    }
+
+    @Override
+    public boolean complete(JobLease lease, JobCompletion completion, List<JobArtifact> artifacts) {
         Objects.requireNonNull(lease, "lease");
         Objects.requireNonNull(completion, "completion");
-        return Boolean.TRUE.equals(transactions.execute(status -> completeInTransaction(lease, completion)));
+        Objects.requireNonNull(artifacts, "artifacts");
+        List<JobArtifact> immutableArtifacts = List.copyOf(artifacts);
+        if (immutableArtifacts.size() > 16
+                || (!immutableArtifacts.isEmpty() && completion.status() != JobStatus.SUCCEEDED)) {
+            throw new IllegalArgumentException("Hosted job artifact publication is invalid");
+        }
+        return Boolean.TRUE.equals(transactions.execute(
+                status -> completeInTransaction(lease, completion, immutableArtifacts)));
     }
 
     @Override
@@ -321,13 +334,69 @@ public final class PostgresJobQueue implements JobQueue {
                 candidate.requestSnapshot()));
     }
 
-    private boolean completeInTransaction(JobLease lease, JobCompletion completion) {
+    private boolean completeInTransaction(
+            JobLease lease,
+            JobCompletion completion,
+            List<JobArtifact> artifacts) {
         JobTransitionPolicy.requireAllowed(JobStatus.RUNNING, completion.status());
         Instant now = clock.instant();
+        Optional<CompletionTarget> candidate = jdbc.query(
+                        """
+                        select owner_account_id, kind
+                          from generation_job
+                         where id = ? and status = 'RUNNING'
+                           and lease_owner = ? and fencing_token = ? and lease_until >= ?
+                         for update
+                        """,
+                        (resultSet, row) -> new CompletionTarget(
+                                new AccountId(resultSet.getObject("owner_account_id", UUID.class)),
+                                JobKind.valueOf(resultSet.getString("kind"))),
+                        lease.jobId().value(),
+                        lease.worker().value(),
+                        lease.fencingToken(),
+                        timestamp(now))
+                .stream()
+                .findFirst();
+        if (candidate.isEmpty()) {
+            return false;
+        }
+        CompletionTarget target = candidate.get();
+        for (JobArtifact artifact : artifacts) {
+            if (!artifact.expiresAt().isAfter(now)) {
+                throw new IllegalArgumentException("Hosted job artifact publication is invalid");
+            }
+            int inserted = jdbc.update(
+                    """
+                    insert into artifact(
+                        id, job_id, owner_account_id, type, object_key, sha256,
+                        byte_size, content_type, created_at, expires_at)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    UUID.randomUUID(),
+                    lease.jobId().value(),
+                    target.owner().value(),
+                    artifact.type(),
+                    artifact.objectKey().value(),
+                    artifact.sha256(),
+                    artifact.byteSize(),
+                    artifact.contentType(),
+                    timestamp(now),
+                    timestamp(artifact.expiresAt()));
+            if (inserted != 1) {
+                throw new IllegalStateException("Hosted job artifact publication failed");
+            }
+        }
+        if (target.kind() == JobKind.SPEC_IMPORT && completion.status() == JobStatus.SUCCEEDED) {
+            publishImportedSpecification(lease, target.owner(), artifacts, now);
+        }
         int updated = jdbc.update(
                 """
                 update generation_job
                    set status = ?, lease_owner = null, lease_until = null,
+                       specification_id = case
+                           when kind = 'SPEC_IMPORT' and ? = 'SUCCEEDED' then id
+                           else specification_id
+                       end,
                        request_snapshot = case
                            when kind = 'SPEC_IMPORT' then '{}'::jsonb
                            else request_snapshot
@@ -338,6 +407,7 @@ public final class PostgresJobQueue implements JobQueue {
                    and lease_owner = ? and fencing_token = ? and lease_until >= ?
                 """,
                 completion.status().name(),
+                completion.status().name(),
                 completion.safeCode(),
                 completion.safeSummary(),
                 timestamp(now),
@@ -346,7 +416,7 @@ public final class PostgresJobQueue implements JobQueue {
                 lease.fencingToken(),
                 timestamp(now));
         if (updated != 1) {
-            return false;
+            throw new IllegalStateException("Hosted job artifact publication failed");
         }
         appendEvent(
                 lease.jobId(),
@@ -357,6 +427,37 @@ public final class PostgresJobQueue implements JobQueue {
                 completion.safeSummary(),
                 now);
         return true;
+    }
+
+    private void publishImportedSpecification(
+            JobLease lease,
+            AccountId owner,
+            List<JobArtifact> artifacts,
+            Instant now) {
+        String expectedPrefix = "specifications/" + lease.jobId().value() + "/" + lease.fencingToken() + "-";
+        if (artifacts.size() != 1
+                || !"SOURCE".equals(artifacts.getFirst().type())
+                || !artifacts.getFirst().objectKey().value().startsWith(expectedPrefix)) {
+            throw new IllegalArgumentException("Hosted job artifact publication is invalid");
+        }
+        JobArtifact source = artifacts.getFirst();
+        int inserted = jdbc.update(
+                """
+                insert into specification(
+                    id, owner_account_id, source_type, object_key, sha256, byte_size,
+                    display_label, parse_state, created_at, updated_at)
+                values (?, ?, 'URL', ?, ?, ?, 'Imported OpenAPI', 'READY', ?, ?)
+                """,
+                lease.jobId().value(),
+                owner.value(),
+                source.objectKey().value(),
+                source.sha256(),
+                source.byteSize(),
+                timestamp(now),
+                timestamp(now));
+        if (inserted != 1) {
+            throw new IllegalStateException("Hosted job artifact publication failed");
+        }
     }
 
     private int recoverInTransaction(Instant now, int maxAttempts) {
@@ -443,6 +544,8 @@ public final class PostgresJobQueue implements JobQueue {
     }
 
     private record ExistingJob(String requestHash, JobView job) {}
+
+    private record CompletionTarget(AccountId owner, JobKind kind) {}
 
     private record ClaimCandidate(JobId id, AccountId owner, JobKind kind, String requestSnapshot) {}
 

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
@@ -23,8 +24,34 @@ class ImportRunnerTest {
     private Path temporaryDirectory;
 
     @Test
-    void unwiredApplicationEntryPointFailsClosed() {
-        assertRunnerFailure(() -> ImportRunnerApplication.main(new String[0]));
+    void jobProtocolPublishesOneSourceAndStrictResultWithoutPrivateData() throws Exception {
+        Path target = readOnlyTarget("https://api.example.com/private/openapi.yaml?marker=secret");
+        Path output = Files.createDirectory(temporaryDirectory.resolve("output"));
+        Path work = temporaryDirectory.resolve("protocol-work");
+        byte[] source = validOpenApi();
+        ImportJobProtocol protocol = new ImportJobProtocol(runner(source));
+
+        assertEquals(0, protocol.run(target, output, work));
+
+        assertEquals(java.util.Set.of("source.yaml", "result.json"),
+                Files.list(output).map(path -> path.getFileName().toString()).collect(java.util.stream.Collectors.toSet()));
+        String result = Files.readString(output.resolve("result.json"));
+        assertTrue(result.contains("\"outcome\":\"SUCCESS\""));
+        assertTrue(result.contains("\"mediaType\":\"application/yaml\""));
+        assertFalse(result.contains("api.example.com"));
+        assertFalse(result.contains("marker=secret"));
+        assertFalse(Files.exists(work));
+    }
+
+    @Test
+    void applicationRejectsMissingGatewayConfigurationWithOneFixedFailure() {
+        ImportRunnerFailure failure = assertThrows(
+                ImportRunnerFailure.class,
+                () -> ImportRunnerApplication.run(java.util.Map.of()));
+        assertEquals("Specification import runner failed", failure.getMessage());
+        assertNull(failure.getCause());
+        assertEquals(5, ImportRunnerApplication.execute(new String[0], java.util.Map.of()));
+        assertEquals(5, ImportRunnerApplication.execute(new String[] {"private-marker"}, java.util.Map.of()));
     }
 
     @Test

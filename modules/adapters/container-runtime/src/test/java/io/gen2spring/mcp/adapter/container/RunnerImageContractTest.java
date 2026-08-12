@@ -65,6 +65,11 @@ class RunnerImageContractTest {
                 !apps/cli/src/integrationTest/
                 !apps/cli/src/integrationTest/resources/
                 !apps/cli/src/integrationTest/resources/**
+                !apps/import-runner/
+                !apps/import-runner/build.gradle.kts
+                !apps/import-runner/src/
+                !apps/import-runner/src/main/
+                !apps/import-runner/src/main/**
                 !modules/
                 !modules/domain/
                 !modules/domain/build.gradle.kts
@@ -113,6 +118,11 @@ class RunnerImageContractTest {
                 !modules/adapters/validation/src/
                 !modules/adapters/validation/src/main/
                 !modules/adapters/validation/src/main/**
+                !modules/adapters/url-fetch/
+                !modules/adapters/url-fetch/build.gradle.kts
+                !modules/adapters/url-fetch/src/
+                !modules/adapters/url-fetch/src/main/
+                !modules/adapters/url-fetch/src/main/**
                 !modules/bootstrap/
                 !modules/bootstrap/build.gradle.kts
                 !modules/bootstrap/src/
@@ -123,6 +133,8 @@ class RunnerImageContractTest {
                 !deploy/hosted/runner/
                 !deploy/hosted/runner/job-entrypoint.sh
                 !deploy/hosted/runner/job-result.schema.json
+                **/build/
+                **/.gradle/
                 """, dockerignore);
         assertTrue(Files.readString(repository.resolve("deploy/hosted/runner/job-entrypoint.sh"))
                 .contains("chmod -R u+rwX \"${work}/gradle-home\""));
@@ -133,6 +145,15 @@ class RunnerImageContractTest {
         assertEquals(Set.of("outcome", "exitCode"), new ObjectMapper().convertValue(
                 schema.path("required"), new com.fasterxml.jackson.core.type.TypeReference<Set<String>>() {}));
         assertFalse(schema.path("additionalProperties").asBoolean(true));
+
+        String importDockerfile = Files.readString(
+                repository.resolve("deploy/hosted/import-runner/Dockerfile"));
+        assertTrue(importDockerfile.contains("ARG JDK21_IMAGE=" + JDK_21));
+        assertTrue(importDockerfile.contains(":apps:import-runner:installDist"));
+        assertTrue(importDockerfile.contains("LABEL io.gen2spring.runner.protocol=\"1\""));
+        assertTrue(importDockerfile.contains("USER 10001:10001"));
+        assertTrue(importDockerfile.contains(
+                "rm -f /usr/bin/apt /usr/bin/apt-* /usr/bin/dpkg /usr/bin/dpkg-*;"));
     }
 
     @Test

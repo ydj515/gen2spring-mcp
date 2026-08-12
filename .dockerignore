@@ -17,6 +17,11 @@
 !apps/cli/src/integrationTest/
 !apps/cli/src/integrationTest/resources/
 !apps/cli/src/integrationTest/resources/**
+!apps/import-runner/
+!apps/import-runner/build.gradle.kts
+!apps/import-runner/src/
+!apps/import-runner/src/main/
+!apps/import-runner/src/main/**
 !modules/
 !modules/domain/
 !modules/domain/build.gradle.kts
@@ -65,6 +70,11 @@
 !modules/adapters/validation/src/
 !modules/adapters/validation/src/main/
 !modules/adapters/validation/src/main/**
+!modules/adapters/url-fetch/
+!modules/adapters/url-fetch/build.gradle.kts
+!modules/adapters/url-fetch/src/
+!modules/adapters/url-fetch/src/main/
+!modules/adapters/url-fetch/src/main/**
 !modules/bootstrap/
 !modules/bootstrap/build.gradle.kts
 !modules/bootstrap/src/
@@ -75,3 +85,5 @@
 !deploy/hosted/runner/
 !deploy/hosted/runner/job-entrypoint.sh
 !deploy/hosted/runner/job-result.schema.json
+**/build/
+**/.gradle/

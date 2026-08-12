@@ -10,4 +10,6 @@ dependencies {
     implementation(project(":modules:domain"))
     implementation(project(":modules:application"))
     implementation(project(":modules:adapters:openapi"))
+    implementation(project(":modules:adapters:url-fetch"))
+    implementation(libs.jackson.databind)
 }

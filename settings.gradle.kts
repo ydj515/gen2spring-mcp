@@ -19,5 +19,6 @@ include(
     ":apps:cli",
     ":apps:fetch-gateway",
     ":apps:import-runner",
+    ":apps:worker",
     ":apps:web",
 )

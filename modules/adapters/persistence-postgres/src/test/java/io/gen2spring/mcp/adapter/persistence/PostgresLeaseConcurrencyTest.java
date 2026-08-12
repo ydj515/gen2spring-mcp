@@ -5,10 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.application.hosted.job.CreateJob;
+import io.gen2spring.mcp.application.hosted.job.JobArtifact;
 import io.gen2spring.mcp.application.hosted.job.JobCompletion;
 import io.gen2spring.mcp.application.hosted.job.JobLease;
 import io.gen2spring.mcp.application.hosted.job.JobQuota;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
+import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
@@ -105,7 +107,7 @@ class PostgresLeaseConcurrencyTest {
 
         assertTrue(second.fencingToken() > first.fencingToken());
         assertFalse(later.complete(first, JobCompletion.success()));
-        assertTrue(later.complete(second, JobCompletion.success()));
+        assertTrue(later.complete(second, JobCompletion.success(), importArtifacts(second, NOW.plusSeconds(61))));
         assertFalse(later.complete(second, JobCompletion.success()));
         assertEquals(JobStatus.SUCCEEDED, later.find(owner, second.jobId()).orElseThrow().status());
         assertEquals(5, eventCount(second));
@@ -121,7 +123,7 @@ class PostgresLeaseConcurrencyTest {
                 "select request_snapshot::text <> '{}' from generation_job where id = ?",
                 Boolean.class,
                 lease.jobId().value()));
-        assertTrue(jobs.complete(lease, JobCompletion.success()));
+        assertTrue(jobs.complete(lease, JobCompletion.success(), importArtifacts(lease, NOW)));
         assertEquals("{}", jdbc.queryForObject(
                 "select request_snapshot::text from generation_job where id = ?",
                 String.class,
@@ -200,6 +202,17 @@ class PostgresLeaseConcurrencyTest {
                 "{\"target\":\"encrypted\"}",
                 Optional.empty(),
                 QUOTA);
+    }
+
+    private List<JobArtifact> importArtifacts(JobLease lease, Instant completedAt) {
+        return List.of(new JobArtifact(
+                "SOURCE",
+                ObjectKey.parse("specifications/" + lease.jobId().value()
+                        + "/" + lease.fencingToken() + "-source"),
+                "b".repeat(64),
+                10,
+                "application/yaml",
+                completedAt.plus(Duration.ofDays(30))));
     }
 
     private int eventCount(JobLease lease) {

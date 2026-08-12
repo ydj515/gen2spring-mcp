@@ -9,6 +9,7 @@ import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
 import io.gen2spring.mcp.application.hosted.job.CreateJob;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
 import io.gen2spring.mcp.application.hosted.job.JobCompletion;
+import io.gen2spring.mcp.application.hosted.job.JobArtifact;
 import io.gen2spring.mcp.application.hosted.job.JobLease;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.job.JobView;
@@ -71,7 +72,14 @@ class HostedWorkerTest {
                         + "\"targetProfileId\":\"spring-ai-2.0-java21-mvc-streamable\","
                         + "\"validationLevel\":\"COMPILE\",\"operations\":[]}",
                 sandbox.input.generationConfiguration());
-        assertEquals(ObjectKey.parse("artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/archive"), storage.keys.getFirst());
+        assertEquals(ObjectKey.parse("artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/11-archive"), storage.keys.getFirst());
+        assertEquals(List.of(new JobArtifact(
+                "ARCHIVE",
+                storage.keys.getFirst(),
+                sandbox.result.artifacts().getFirst().sha256(),
+                7,
+                "application/zip",
+                NOW.plus(Duration.ofDays(30)))), queue.artifacts);
         assertEquals(JobStatus.SUCCEEDED, queue.completion.status());
         assertEquals(1, queue.completions);
         assertTrue(queue.heartbeats.get() >= 1);
@@ -91,7 +99,7 @@ class HostedWorkerTest {
         assertEquals(HostedWorker.PollResult.COMPLETED,
                 worker(queue, new StubSandbox(), importsRuntime, storage).pollOnce());
         assertEquals(1, imports.get());
-        assertEquals(ObjectKey.parse("specifications/1a803410-a22a-4bc6-b951-7dbc301ae800/source"),
+        assertEquals(ObjectKey.parse("specifications/1a803410-a22a-4bc6-b951-7dbc301ae800/11-source"),
                 storage.keys.getFirst());
         assertFalse(queue.lease.toString().contains("wrappedKey"));
         assertFalse(queue.lease.toString().contains("ciphertext"));
@@ -132,7 +140,7 @@ class HostedWorkerTest {
                 worker(storageQueue, succeeds, (lease, target, limits) -> { throw new AssertionError(); }, storage)
                         .pollOnce());
         assertEquals(List.of(ObjectKey.parse(
-                "artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/archive")), storage.deleted);
+                "artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/11-archive")), storage.deleted);
         assertEquals("ARTIFACT_PUBLICATION_FAILED", storageQueue.completion.safeCode());
     }
 
@@ -289,6 +297,7 @@ class HostedWorkerTest {
         private boolean cancelled;
         private boolean acceptCompletion = true;
         private JobCompletion completion;
+        private List<JobArtifact> artifacts = List.of();
         private int completions;
         private final AtomicInteger heartbeats = new AtomicInteger();
 
@@ -313,6 +322,12 @@ class HostedWorkerTest {
             completions++;
             this.completion = completion;
             return acceptCompletion;
+        }
+
+        @Override
+        public boolean complete(JobLease lease, JobCompletion completion, List<JobArtifact> artifacts) {
+            this.artifacts = List.copyOf(artifacts);
+            return complete(lease, completion);
         }
 
         @Override public CreateJobResult create(CreateJob command) { throw new UnsupportedOperationException(); }

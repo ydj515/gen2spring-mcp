@@ -4,6 +4,8 @@ import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 public interface JobQueue {
@@ -22,6 +24,14 @@ public interface JobQueue {
     }
 
     boolean complete(JobLease lease, JobCompletion completion);
+
+    default boolean complete(JobLease lease, JobCompletion completion, List<JobArtifact> artifacts) {
+        Objects.requireNonNull(artifacts, "artifacts");
+        if (!artifacts.isEmpty()) {
+            throw new UnsupportedOperationException("Hosted artifact publication is unavailable");
+        }
+        return complete(lease, completion);
+    }
 
     int recoverExpired(Instant now, int maxAttempts);
 

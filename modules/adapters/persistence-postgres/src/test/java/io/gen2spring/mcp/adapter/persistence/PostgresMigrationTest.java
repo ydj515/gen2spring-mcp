@@ -37,7 +37,7 @@ class PostgresMigrationTest {
 
     @Test
     void createsTheHostedSchemaExactlyOnce() {
-        assertEquals(1, flyway.migrate().migrationsExecuted);
+        assertEquals(2, flyway.migrate().migrationsExecuted);
 
         Set<String> tables = jdbc.queryForList(
                         """

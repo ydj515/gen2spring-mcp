@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
+import io.gen2spring.mcp.application.hosted.job.JobArtifact;
 import io.gen2spring.mcp.application.hosted.job.JobCompletion;
 import io.gen2spring.mcp.application.hosted.job.JobLease;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
@@ -40,6 +41,7 @@ public final class HostedWorker {
     private final SandboxLimits limits;
     private final Clock clock;
     private final Duration leaseDuration;
+    private final Duration artifactRetention;
 
     public HostedWorker(
             JobQueue jobs,
@@ -50,6 +52,19 @@ public final class HostedWorker {
             SandboxLimits limits,
             Clock clock,
             Duration leaseDuration) {
+        this(jobs, sandbox, imports, storage, worker, limits, clock, leaseDuration, Duration.ofDays(30));
+    }
+
+    public HostedWorker(
+            JobQueue jobs,
+            SandboxRuntime sandbox,
+            ImportRuntime imports,
+            ObjectStorage storage,
+            WorkerId worker,
+            SandboxLimits limits,
+            Clock clock,
+            Duration leaseDuration,
+            Duration artifactRetention) {
         this.jobs = Objects.requireNonNull(jobs, "jobs");
         this.sandbox = Objects.requireNonNull(sandbox, "sandbox");
         this.imports = Objects.requireNonNull(imports, "imports");
@@ -58,9 +73,12 @@ public final class HostedWorker {
         this.limits = Objects.requireNonNull(limits, "limits");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.leaseDuration = Objects.requireNonNull(leaseDuration, "leaseDuration");
+        this.artifactRetention = Objects.requireNonNull(artifactRetention, "artifactRetention");
         if (leaseDuration.isZero()
                 || leaseDuration.isNegative()
-                || leaseDuration.compareTo(Duration.ofMinutes(5)) > 0) {
+                || leaseDuration.compareTo(Duration.ofMinutes(5)) > 0
+                || artifactRetention.compareTo(Duration.ofHours(1)) < 0
+                || artifactRetention.compareTo(Duration.ofDays(365)) > 0) {
             throw new IllegalArgumentException("Hosted worker configuration is invalid");
         }
     }
@@ -150,6 +168,7 @@ public final class HostedWorker {
 
     private PollResult publish(JobLease lease, SandboxResult result) {
         List<ObjectKey> published = new ArrayList<>();
+        List<JobArtifact> artifacts = new ArrayList<>();
         try {
             for (SandboxArtifact artifact : result.artifacts()) {
                 ObjectKey key = artifactKey(lease, artifact.name());
@@ -166,6 +185,13 @@ public final class HostedWorker {
                     throw new IllegalStateException("Sandbox artifact publication failed");
                 }
                 published.add(key);
+                artifacts.add(new JobArtifact(
+                        artifact.name().toUpperCase(java.util.Locale.ROOT).replace('-', '_'),
+                        key,
+                        stored.sha256(),
+                        stored.size(),
+                        stored.contentType(),
+                        clock.instant().plus(artifactRetention)));
             }
         } catch (Error fatal) {
             deleteAll(published);
@@ -183,7 +209,7 @@ public final class HostedWorker {
                 deleteAll(published);
                 return completeCancellation(lease);
             }
-            if (jobs.complete(lease, JobCompletion.success())) {
+            if (jobs.complete(lease, JobCompletion.success(), List.copyOf(artifacts))) {
                 return PollResult.COMPLETED;
             }
         } catch (Error fatal) {
@@ -199,7 +225,8 @@ public final class HostedWorker {
 
     private ObjectKey artifactKey(JobLease lease, String name) {
         String prefix = lease.kind() == JobKind.SPEC_IMPORT ? "specifications" : "artifacts";
-        return ObjectKey.parse(prefix + "/" + lease.jobId().value() + "/" + name);
+        return ObjectKey.parse(
+                prefix + "/" + lease.jobId().value() + "/" + lease.fencingToken() + "-" + name);
     }
 
     private PollResult completeFailure(JobLease lease, String code, String summary) {

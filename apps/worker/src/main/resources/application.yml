@@ -1,0 +1,55 @@
+spring:
+  main:
+    banner-mode: "off"
+    web-application-type: none
+  datasource:
+    url: ${GEN2SPRING_POSTGRES_URL}
+    username: ${GEN2SPRING_POSTGRES_USER}
+    password: ${GEN2SPRING_POSTGRES_PASSWORD}
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    enabled-by-default: false
+
+gen2spring:
+  worker:
+    worker-id: ${GEN2SPRING_WORKER_ID}
+    poll-interval: 250ms
+    lease-duration: 30s
+    artifact-retention: ${GEN2SPRING_ARTIFACT_RETENTION:30d}
+    docker:
+      executable: ${GEN2SPRING_DOCKER_EXECUTABLE:/usr/bin/docker}
+      socket: ${GEN2SPRING_ROOTLESS_DOCKER_SOCKET}
+      generation-image: ${GEN2SPRING_GENERATION_IMAGE}
+      import-image: ${GEN2SPRING_IMPORT_IMAGE}
+      import-network: ${GEN2SPRING_IMPORT_NETWORK}
+      workspace-root: ${GEN2SPRING_WORKSPACE_ROOT}
+      secret-root: ${GEN2SPRING_SECRET_ROOT:/dev/shm/gen2spring}
+    storage:
+      endpoint: ${GEN2SPRING_S3_ENDPOINT}
+      region: ${GEN2SPRING_S3_REGION:us-east-1}
+      bucket: ${GEN2SPRING_S3_BUCKET}
+      access-key-file: ${GEN2SPRING_S3_ACCESS_KEY_FILE}
+      secret-key-file: ${GEN2SPRING_S3_SECRET_KEY_FILE}
+      max-object-bytes: 104857600
+    gateway:
+      endpoint: ${GEN2SPRING_FETCH_GATEWAY_ENDPOINT}
+      key-store: ${GEN2SPRING_FETCH_CLIENT_KEYSTORE}
+      key-store-password-file: ${GEN2SPRING_FETCH_CLIENT_PASSWORD_FILE}
+      trust-store: ${GEN2SPRING_FETCH_TRUSTSTORE}
+      trust-store-password-file: ${GEN2SPRING_FETCH_TRUSTSTORE_PASSWORD_FILE}
+    encryption:
+      active-key-id: key-1
+      key-files:
+        key-1: ${GEN2SPRING_IMPORT_KEY_FILE}
+    limits:
+      cpus: 2.0
+      memory-bytes: 4294967296
+      pids: 256
+      timeout: 10m
+
+logging:
+  level:
+    root: WARN

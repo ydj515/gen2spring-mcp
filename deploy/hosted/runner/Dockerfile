@@ -26,6 +26,7 @@ RUN set -eu; \
     done
 
 FROM ${JDK21_IMAGE}
+LABEL io.gen2spring.runner.protocol="1"
 COPY --from=jdk17 /opt/java/openjdk /opt/java/openjdk17
 COPY --from=builder /workspace/apps/cli/build/install/openapi-mcp /opt/gen2spring/openapi-mcp
 COPY --from=builder /root/.gradle/caches /opt/gen2spring/gradle-seed/caches
