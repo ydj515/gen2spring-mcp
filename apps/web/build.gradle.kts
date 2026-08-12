@@ -5,7 +5,7 @@ val java17Home = providers.environmentVariable("GEN2SPRING_JAVA_17_HOME")
 val java21Home = providers.environmentVariable("GEN2SPRING_JAVA_21_HOME")
 
 plugins {
-    id("org.springframework.boot") version "3.5.16"
+    alias(libs.plugins.spring.boot)
 }
 
 val bootJar = tasks.named<BootJar>("bootJar")
@@ -15,15 +15,15 @@ configurations.configureEach {
 }
 
 dependencies {
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.16"))
+    implementation(platform(libs.spring.boot.bom))
     implementation(project(":modules:bootstrap"))
     implementation(libs.jackson.databind)
-    implementation("org.springframework.boot:spring-boot-starter-web")
-    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
-    implementation("org.springframework.boot:spring-boot-starter-security")
-    implementation("org.springframework.boot:spring-boot-starter-validation")
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.springframework.security:spring-security-test")
+    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.thymeleaf)
+    implementation(libs.spring.boot.starter.security)
+    implementation(libs.spring.boot.starter.validation)
+    testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.security.test)
 }
 
 springBoot {
@@ -33,7 +33,7 @@ springBoot {
 testing {
     suites {
         register<JvmTestSuite>("integrationTest") {
-            useJUnitJupiter("5.13.4")
+            useJUnitJupiter(libs.versions.junit.get())
             dependencies {
                 implementation(project())
                 implementation(libs.jackson.databind)

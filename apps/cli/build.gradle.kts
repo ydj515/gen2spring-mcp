@@ -15,10 +15,9 @@ plugins {
 
 dependencies {
     implementation(project(":modules:bootstrap"))
-    implementation(libs.jackson.databind)
-    implementation(libs.jackson.yaml)
-    compileOnly("org.slf4j:slf4j-api:2.0.9")
-    testCompileOnly("org.slf4j:slf4j-api:2.0.9")
+    implementation(libs.bundles.jackson)
+    compileOnly(libs.slf4j.api)
+    testCompileOnly(libs.slf4j.api)
 }
 
 application {
@@ -41,7 +40,7 @@ tasks.named<Test>("test") {
 testing {
     suites {
         register<JvmTestSuite>("integrationTest") {
-            useJUnitJupiter("5.13.4")
+            useJUnitJupiter(libs.versions.junit.get())
             dependencies {
                 implementation(project())
                 implementation(project(":modules:adapters:validation"))

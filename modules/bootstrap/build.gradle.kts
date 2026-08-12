@@ -7,6 +7,5 @@ dependencies {
     api(project(":modules:adapters:emitters:spring-ai-1"))
     api(project(":modules:adapters:emitters:spring-ai-2"))
     api(project(":modules:adapters:validation"))
-    implementation(libs.jackson.databind)
-    implementation(libs.jackson.yaml)
+    implementation(libs.bundles.jackson)
 }

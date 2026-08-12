@@ -5,6 +5,10 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 group = "io.gen2spring.mcp"
 version = "0.1.0"
 
+val junitBom = libs.junit.bom
+val junitJupiter = libs.junit.jupiter
+val junitPlatformLauncher = libs.junit.platform.launcher
+
 subprojects {
     if (!buildFile.exists()) {
         return@subprojects
@@ -23,9 +27,9 @@ subprojects {
     }
 
     dependencies {
-        add("testImplementation", platform("org.junit:junit-bom:5.13.4"))
-        add("testImplementation", "org.junit.jupiter:junit-jupiter")
-        add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
+        add("testImplementation", platform(junitBom))
+        add("testImplementation", junitJupiter)
+        add("testRuntimeOnly", junitPlatformLauncher)
     }
 
     tasks.withType<Test>().configureEach {
