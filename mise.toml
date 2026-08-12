@@ -65,8 +65,10 @@ docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d 
 [tasks."hosted:acceptance"]
 description = "Run hosted persistence, worker, sandbox, and Web acceptance tests"
 run = '''
-./gradlew :modules:adapters:persistence-postgres:test :modules:adapters:object-storage-s3:test \
-  :apps:worker:test :apps:worker:integrationTest :apps:web:test \
+./gradlew :modules:domain:test :modules:application:test \
+  :modules:adapters:persistence-postgres:test :modules:adapters:object-storage-s3:test \
+  :modules:adapters:url-fetch:test :modules:adapters:container-runtime:test \
+  :apps:fetch-gateway:test :apps:worker:test :apps:worker:integrationTest :apps:web:test \
   --no-daemon --non-interactive --rerun-tasks
 '''
 

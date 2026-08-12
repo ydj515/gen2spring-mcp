@@ -70,6 +70,21 @@ class RunnerImageContractTest {
                 !apps/import-runner/src/
                 !apps/import-runner/src/main/
                 !apps/import-runner/src/main/**
+                !apps/web/
+                !apps/web/build.gradle.kts
+                !apps/web/src/
+                !apps/web/src/main/
+                !apps/web/src/main/**
+                !apps/worker/
+                !apps/worker/build.gradle.kts
+                !apps/worker/src/
+                !apps/worker/src/main/
+                !apps/worker/src/main/**
+                !apps/fetch-gateway/
+                !apps/fetch-gateway/build.gradle.kts
+                !apps/fetch-gateway/src/
+                !apps/fetch-gateway/src/main/
+                !apps/fetch-gateway/src/main/**
                 !modules/
                 !modules/domain/
                 !modules/domain/build.gradle.kts
@@ -123,6 +138,26 @@ class RunnerImageContractTest {
                 !modules/adapters/url-fetch/src/
                 !modules/adapters/url-fetch/src/main/
                 !modules/adapters/url-fetch/src/main/**
+                !modules/adapters/persistence-postgres/
+                !modules/adapters/persistence-postgres/build.gradle.kts
+                !modules/adapters/persistence-postgres/src/
+                !modules/adapters/persistence-postgres/src/main/
+                !modules/adapters/persistence-postgres/src/main/**
+                !modules/adapters/object-storage-s3/
+                !modules/adapters/object-storage-s3/build.gradle.kts
+                !modules/adapters/object-storage-s3/src/
+                !modules/adapters/object-storage-s3/src/main/
+                !modules/adapters/object-storage-s3/src/main/**
+                !modules/adapters/cryptography/
+                !modules/adapters/cryptography/build.gradle.kts
+                !modules/adapters/cryptography/src/
+                !modules/adapters/cryptography/src/main/
+                !modules/adapters/cryptography/src/main/**
+                !modules/adapters/container-runtime/
+                !modules/adapters/container-runtime/build.gradle.kts
+                !modules/adapters/container-runtime/src/
+                !modules/adapters/container-runtime/src/main/
+                !modules/adapters/container-runtime/src/main/**
                 !modules/bootstrap/
                 !modules/bootstrap/build.gradle.kts
                 !modules/bootstrap/src/

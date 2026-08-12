@@ -522,8 +522,9 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
   parameter, path/header array, nested array/object item은 operation 생성에서 제외한다.
 - enum은 `tools/list`, JSON body, path/query/header 직렬화에서 원본 OpenAPI wire 값
   (예: `full-detail`)을 일관되게 사용한다.
-- remote `$ref`, URL import, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator,
-  recursive schema는 지원하지 않는다.
+- remote `$ref`, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator, recursive schema는
+  지원하지 않는다. CLI와 local UI는 로컬 파일만 받으며, hosted mode의 URL import는 격리된
+  fetch gateway를 통해 문서 자체만 가져온다. 가져온 문서 안의 remote `$ref`는 계속 거부한다.
 - Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다.
 - Windows validation host는 host별 adapter로 지원한다. Windows에서는 repository wrapper를
   `gradlew.bat`로 선택하고 trusted `%SystemRoot%\System32\cmd.exe`의 고정 `/d /s /c` argument로 실행하며,
@@ -533,5 +534,6 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
   `Files.isSameFile`로 확인한다. Linux와 `windows-latest` CI가 Java 17·21 전체
   compile/test/ApplicationContext/MCP journey를 실행하며 [Windows 지원 issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)의
   구현 경계를 검증한다.
-- P0의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
-  OCI sandbox, dependency proxy, CPU/memory limit, network egress 통제는 제공하지 않는다.
+- CLI와 local UI의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
+  Hosted generation은 별도 Worker의 rootless OCI sandbox에서 network-none, read-only rootfs,
+  non-root identity, CPU/memory/PID/time limit과 offline dependency cache를 적용한다.
