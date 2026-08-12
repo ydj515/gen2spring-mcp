@@ -1,0 +1,222 @@
+name: gen2spring-hosted
+
+services:
+  postgres:
+    image: postgres:17.9-alpine@sha256:c7526c0f6c3f30260a563d7bcf8ad778effac59a44f8ffa86678c35418338609
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gen2spring
+      POSTGRES_USER: gen2spring
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+    secrets: [postgres-password]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [platform]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gen2spring -d gen2spring"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt: [no-new-privileges:true]
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z@sha256:d249d1fb6966de4d8ad26c04754b545205ff15a62e4fd19ebd0f26fa5baacbc0
+    command: server /data
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio-root-user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio-root-password
+    secrets: [minio-root-user, minio-root-password]
+    volumes:
+      - minio-data:/data
+    networks: [platform]
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt: [no-new-privileges:true]
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-07-21T05-28-08Z@sha256:fb8f773eac8ef9d6da0486d5dec2f42f219358bcb8de579d1623d518c9ebd4cc
+    depends_on:
+      minio: {condition: service_healthy}
+    entrypoint: /bin/sh
+    command:
+      - -euc
+      - |
+        mc alias set local http://minio:9000 "$$(cat /run/secrets/minio-root-user)" "$$(cat /run/secrets/minio-root-password)" >/dev/null
+        mc mb --ignore-existing local/gen2spring-private >/dev/null
+        mc anonymous set none local/gen2spring-private >/dev/null
+        mc admin policy create local gen2spring-private /policy/gen2spring-policy.json >/dev/null
+        mc admin user add local "$$(cat /run/secrets/minio-app-access-key)" "$$(cat /run/secrets/minio-app-secret-key)" >/dev/null 2>&1 || true
+        mc admin policy attach local gen2spring-private --user "$$(cat /run/secrets/minio-app-access-key)" >/dev/null
+    secrets: [minio-root-user, minio-root-password, minio-app-access-key, minio-app-secret-key]
+    volumes:
+      - ./minio/gen2spring-policy.json:/policy/gen2spring-policy.json:ro
+    networks: [platform]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  fetch-gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/hosted/fetch-gateway/Dockerfile
+    restart: unless-stopped
+    environment:
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      GEN2SPRING_FETCH_TLS_KEYSTORE: /run/secrets/fetch-server.p12
+      GEN2SPRING_FETCH_TLS_TRUSTSTORE: /run/secrets/fetch-server-trust.p12
+    secrets:
+      - fetch-server.p12
+      - fetch-server-trust.p12
+      - server.ssl.key-store-password
+      - server.ssl.trust-store-password
+    networks: [fetch, egress]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/hosted/worker/Dockerfile
+    restart: unless-stopped
+    user: "${GEN2SPRING_ROOTLESS_DOCKER_UID:?set GEN2SPRING_ROOTLESS_DOCKER_UID}:${GEN2SPRING_ROOTLESS_DOCKER_GID:?set GEN2SPRING_ROOTLESS_DOCKER_GID}"
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+      fetch-gateway: {condition: service_started}
+    environment:
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      GEN2SPRING_POSTGRES_URL: jdbc:postgresql://postgres:5432/gen2spring
+      GEN2SPRING_POSTGRES_USER: gen2spring
+      GEN2SPRING_WORKER_ID: ${GEN2SPRING_WORKER_ID:-worker-1}
+      GEN2SPRING_DOCKER_EXECUTABLE: /usr/local/bin/docker
+      GEN2SPRING_ROOTLESS_DOCKER_SOCKET: /run/user/${GEN2SPRING_ROOTLESS_DOCKER_UID}/docker.sock
+      GEN2SPRING_GENERATION_IMAGE: ${GEN2SPRING_GENERATION_IMAGE:?set a digest-pinned generation runner image}
+      GEN2SPRING_IMPORT_IMAGE: ${GEN2SPRING_IMPORT_IMAGE:?set a digest-pinned import runner image}
+      GEN2SPRING_IMPORT_NETWORK: gen2spring-fetch
+      GEN2SPRING_WORKSPACE_ROOT: ${GEN2SPRING_HOST_WORKSPACE_ROOT:?set GEN2SPRING_HOST_WORKSPACE_ROOT}
+      GEN2SPRING_SECRET_ROOT: ${GEN2SPRING_HOST_SANDBOX_SECRET_ROOT:?set GEN2SPRING_HOST_SANDBOX_SECRET_ROOT}
+      GEN2SPRING_S3_ENDPOINT: http://minio:9000
+      GEN2SPRING_S3_BUCKET: gen2spring-private
+      GEN2SPRING_S3_ACCESS_KEY_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/minio-app-access-key
+      GEN2SPRING_S3_SECRET_KEY_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/minio-app-secret-key
+      GEN2SPRING_FETCH_GATEWAY_ENDPOINT: https://fetch-gateway:8443/internal/fetch
+      GEN2SPRING_FETCH_CLIENT_KEYSTORE: ${GEN2SPRING_HOST_SECRET_DIR}/fetch-client.p12
+      GEN2SPRING_FETCH_CLIENT_PASSWORD_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/fetch-client-password
+      GEN2SPRING_FETCH_TRUSTSTORE: ${GEN2SPRING_HOST_SECRET_DIR}/fetch-client-trust.p12
+      GEN2SPRING_FETCH_TRUSTSTORE_PASSWORD_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/fetch-client-trust-password
+      GEN2SPRING_IMPORT_KEY_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/import-target-key
+    volumes:
+      - ${GEN2SPRING_ROOTLESS_DOCKER_SOCKET:?set GEN2SPRING_ROOTLESS_DOCKER_SOCKET}:/run/user/${GEN2SPRING_ROOTLESS_DOCKER_UID}/docker.sock
+      - ${GEN2SPRING_HOST_SECRET_DIR}:${GEN2SPRING_HOST_SECRET_DIR}:ro
+      - ${GEN2SPRING_HOST_WORKSPACE_ROOT}:${GEN2SPRING_HOST_WORKSPACE_ROOT}
+      - ${GEN2SPRING_HOST_SANDBOX_SECRET_ROOT}:${GEN2SPRING_HOST_SANDBOX_SECRET_ROOT}
+    secrets: [spring.datasource.password]
+    networks: [platform]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/hosted/web/Dockerfile
+    restart: on-failure
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+      worker: {condition: service_started}
+    environment:
+      GEN2SPRING_MODE: hosted
+      GEN2SPRING_UI_ADDRESS: 0.0.0.0
+      GEN2SPRING_UI_PORT: 8080
+      GEN2SPRING_SESSION_TIMEOUT: 30m
+      GEN2SPRING_SESSION_COOKIE_SAME_SITE: lax
+      GEN2SPRING_SESSION_COOKIE_SECURE: "true"
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GEN2SPRING_PROVIDER: gen2spring
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GEN2SPRING_CLIENT_ID: ${GEN2SPRING_OIDC_CLIENT_ID:?set GEN2SPRING_OIDC_CLIENT_ID}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GEN2SPRING_AUTHORIZATION_GRANT_TYPE: authorization_code
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GEN2SPRING_REDIRECT_URI: "{baseUrl}/login/oauth2/code/{registrationId}"
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GEN2SPRING_SCOPE: openid,profile,email
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_GEN2SPRING_ISSUER_URI: ${GEN2SPRING_OIDC_ISSUER_URI:?set GEN2SPRING_OIDC_ISSUER_URI}
+      GEN2SPRING_POSTGRES_URL: jdbc:postgresql://postgres:5432/gen2spring
+      GEN2SPRING_POSTGRES_USER: gen2spring
+      GEN2SPRING_POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+      GEN2SPRING_S3_ENDPOINT: http://minio:9000
+      GEN2SPRING_S3_BUCKET: gen2spring-private
+      GEN2SPRING_S3_ACCESS_KEY_FILE: /run/secrets/minio-app-access-key
+      GEN2SPRING_S3_SECRET_KEY_FILE: /run/secrets/minio-app-secret-key
+      GEN2SPRING_IMPORT_KEY_FILE: /run/secrets/import-target-key
+    secrets:
+      - postgres-password
+      - minio-app-access-key
+      - minio-app-secret-key
+      - import-target-key
+      - spring.security.oauth2.client.registration.gen2spring.client-secret
+    networks: [platform, proxy, egress]
+    read_only: true
+    tmpfs: [/tmp, /var/lib/gen2spring/web-work]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  proxy:
+    image: nginxinc/nginx-unprivileged:1.29.5-alpine@sha256:42a7d7f2ee23e9f5a1dcdf3647ba5c585bbd18f79e79cd817e70e8cd61c55779
+    restart: unless-stopped
+    depends_on: [web]
+    ports:
+      - "${GEN2SPRING_HTTPS_BIND:-127.0.0.1}:8443:8443"
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${GEN2SPRING_TLS_DIR:?set GEN2SPRING_TLS_DIR}:/run/secrets/tls:ro
+    networks: [proxy]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  platform: {internal: true}
+  proxy: {internal: true}
+  fetch:
+    name: gen2spring-fetch
+    internal: true
+  egress: {}
+
+volumes:
+  postgres-data: {}
+  minio-data: {}
+
+secrets:
+  postgres-password:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/postgres-password
+  minio-root-user:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/minio-root-user
+  minio-root-password:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/minio-root-password
+  minio-app-access-key:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/minio-app-access-key
+  minio-app-secret-key:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/minio-app-secret-key
+  import-target-key:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/import-target-key
+  fetch-server.p12:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/fetch-server.p12
+  fetch-server-trust.p12:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/fetch-server-trust.p12
+  server.ssl.key-store-password:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/fetch-server-password
+  server.ssl.trust-store-password:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/fetch-server-trust-password
+  spring.security.oauth2.client.registration.gen2spring.client-secret:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/oidc-client-secret
+  spring.datasource.password:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/postgres-password

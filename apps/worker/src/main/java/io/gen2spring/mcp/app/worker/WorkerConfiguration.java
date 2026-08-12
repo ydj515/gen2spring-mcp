@@ -6,6 +6,7 @@ import io.gen2spring.mcp.adapter.container.DockerCliImportRuntime;
 import io.gen2spring.mcp.adapter.container.DockerCommandRunner;
 import io.gen2spring.mcp.adapter.cryptography.AesGcmImportTargetProtector;
 import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
+import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
@@ -14,6 +15,7 @@ import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.worker.HostedWorker;
 import io.gen2spring.mcp.application.hosted.worker.ImportRuntime;
 import io.gen2spring.mcp.application.hosted.worker.SandboxRuntime;
+import io.gen2spring.mcp.application.hosted.worker.WorkerHeartbeatStore;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -41,6 +43,11 @@ class WorkerConfiguration {
     @Bean
     JobQueue jobQueue(DataSource dataSource, Clock workerClock) {
         return new PostgresJobQueue(dataSource, workerClock);
+    }
+
+    @Bean
+    WorkerHeartbeatStore workerHeartbeatStore(DataSource dataSource) {
+        return new PostgresWorkerHeartbeatStore(dataSource);
     }
 
     @Bean(destroyMethod = "close")
@@ -144,10 +151,18 @@ class WorkerConfiguration {
     WorkerLoop workerLoop(
             WorkerReadiness workerReadiness,
             HostedWorker hostedWorker,
+            WorkerHeartbeatStore workerHeartbeatStore,
+            Clock workerClock,
             WorkerProperties properties) {
+        WorkerId workerId = new WorkerId(properties.workerId());
+        WorkerHeartbeatPublisher heartbeats = new WorkerHeartbeatPublisher(
+                workerHeartbeatStore, workerId, workerClock, java.time.Duration.ofSeconds(10));
         return new WorkerLoop(
                 workerReadiness,
-                () -> hostedWorker.pollOnce() != HostedWorker.PollResult.EMPTY,
+                () -> {
+                    heartbeats.publishIfDue();
+                    return hostedWorker.pollOnce() != HostedWorker.PollResult.EMPTY;
+                },
                 properties.pollInterval());
     }
 

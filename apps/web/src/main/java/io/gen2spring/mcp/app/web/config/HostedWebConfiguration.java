@@ -5,6 +5,7 @@ import io.gen2spring.mcp.adapter.persistence.PostgresAccountStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresHostedResourceStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
 import io.gen2spring.mcp.adapter.persistence.PostgresSpecificationCatalog;
+import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
 import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
@@ -13,6 +14,7 @@ import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
+import io.gen2spring.mcp.application.hosted.worker.WorkerHeartbeatStore;
 import io.gen2spring.mcp.app.web.hosted.HostedSubmissionService;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import java.nio.charset.StandardCharsets;
@@ -36,6 +38,8 @@ import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.model.GetBucketAclRequest;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "gen2spring.mode", havingValue = "hosted")
@@ -114,6 +118,11 @@ public class HostedWebConfiguration {
     }
 
     @Bean
+    WorkerHeartbeatStore hostedWorkerHeartbeatStore(DataSource dataSource) {
+        return new PostgresWorkerHeartbeatStore(dataSource);
+    }
+
+    @Bean
     HostedJobService hostedJobService(JobQueue queue, SpecificationCatalog catalog) {
         return new HostedJobService(queue, catalog);
     }
@@ -141,6 +150,34 @@ public class HostedWebConfiguration {
     ObjectStorage hostedObjectStorage(S3Client hostedS3Client, HostedWebProperties properties) {
         return new S3ObjectStorage(
                 hostedS3Client, properties.storage().bucket(), properties.storage().maxObjectBytes());
+    }
+
+    @Bean
+    HostedPlatformReadiness hostedPlatformReadiness(
+            Flyway hostedFlyway,
+            S3Client hostedS3Client,
+            WorkerHeartbeatStore hostedWorkerHeartbeatStore,
+            HostedWebProperties properties,
+            Clock hostedClock) {
+        try {
+            if (hostedFlyway.info().current() == null
+                    || !hostedWorkerHeartbeatStore.hasRecentHeartbeat(
+                            hostedClock.instant().minus(properties.workerStaleAfter()))) {
+                throw invalid();
+            }
+            hostedS3Client.headBucket(HeadBucketRequest.builder().bucket(properties.storage().bucket()).build());
+            var grants = hostedS3Client.getBucketAcl(
+                    GetBucketAclRequest.builder().bucket(properties.storage().bucket()).build()).grants();
+            if (grants == null || grants.stream().anyMatch(grant ->
+                    grant == null || grant.grantee() == null || grant.grantee().uri() != null)) {
+                throw invalid();
+            }
+            return new HostedPlatformReadiness();
+        } catch (Error fatal) {
+            throw fatal;
+        } catch (RuntimeException failure) {
+            throw invalid();
+        }
     }
 
     @Bean
@@ -191,4 +228,5 @@ public class HostedWebConfiguration {
     }
 
     static final class HostedRuntimeInvariant {}
+    static final class HostedPlatformReadiness {}
 }

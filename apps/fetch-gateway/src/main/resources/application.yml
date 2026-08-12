@@ -4,9 +4,7 @@ server:
     enabled: true
     client-auth: NEED
     key-store: ${GEN2SPRING_FETCH_TLS_KEYSTORE}
-    key-store-password: ${GEN2SPRING_FETCH_TLS_KEYSTORE_PASSWORD}
     trust-store: ${GEN2SPRING_FETCH_TLS_TRUSTSTORE}
-    trust-store-password: ${GEN2SPRING_FETCH_TLS_TRUSTSTORE_PASSWORD}
   tomcat:
     accesslog:
       enabled: false

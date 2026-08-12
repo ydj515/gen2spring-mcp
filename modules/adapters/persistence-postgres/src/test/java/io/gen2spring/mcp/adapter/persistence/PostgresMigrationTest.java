@@ -37,7 +37,7 @@ class PostgresMigrationTest {
 
     @Test
     void createsTheHostedSchemaExactlyOnce() {
-        assertEquals(2, flyway.migrate().migrationsExecuted);
+        assertEquals(3, flyway.migrate().migrationsExecuted);
 
         Set<String> tables = jdbc.queryForList(
                         """
@@ -54,7 +54,8 @@ class PostgresMigrationTest {
                 "specification",
                 "generation_job",
                 "generation_job_event",
-                "artifact"), tables);
+                "artifact",
+                "worker_heartbeat"), tables);
 
         assertEquals(0, flyway.migrate().migrationsExecuted);
     }

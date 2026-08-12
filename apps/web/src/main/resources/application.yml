@@ -25,6 +25,7 @@ gen2spring:
   mode: ${GEN2SPRING_MODE:local}
   hosted:
     work-root: ${GEN2SPRING_HOSTED_WORK_ROOT:/var/lib/gen2spring/web-work}
+    worker-stale-after: ${GEN2SPRING_WORKER_STALE_AFTER:2m}
     database:
       url: ${GEN2SPRING_POSTGRES_URL:jdbc:postgresql://postgres:5432/gen2spring}
       username: ${GEN2SPRING_POSTGRES_USER:gen2spring}

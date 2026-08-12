@@ -2,6 +2,7 @@ package io.gen2spring.mcp.app.web.config;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -9,13 +10,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("gen2spring.hosted")
 public record HostedWebProperties(
         Path workRoot,
+        Duration workerStaleAfter,
         Database database,
         Storage storage,
         Encryption encryption) {
     private static final Pattern ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
 
     public HostedWebProperties {
-        if (!absolute(workRoot) || database == null || storage == null || encryption == null) throw invalid();
+        if (!absolute(workRoot) || workerStaleAfter == null
+                || workerStaleAfter.compareTo(Duration.ofSeconds(10)) < 0
+                || workerStaleAfter.compareTo(Duration.ofMinutes(10)) > 0
+                || database == null || storage == null || encryption == null) throw invalid();
     }
 
     public record Database(String url, String username, Path passwordFile) {

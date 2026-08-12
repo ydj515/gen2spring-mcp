@@ -28,6 +28,7 @@ public class HostedSecurityConfiguration {
                         .requestMatchers("/actuator/health", "/login/**", "/oauth2/**", "/error").permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(Customizer.withDefaults())
+                .sessionManagement(session -> session.sessionFixation(fixation -> fixation.migrateSession()))
                 .logout(logout -> logout.logoutSuccessUrl("/"))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .csrf(Customizer.withDefaults())

@@ -25,3 +25,55 @@ run_windows = ".\\gradlew.bat :apps:web:bootJar --no-daemon --non-interactive"
 description = "Run the local operation editor unit tests"
 run = "./gradlew :apps:web:test --no-daemon --non-interactive --rerun-tasks"
 run_windows = ".\\gradlew.bat :apps:web:test --no-daemon --non-interactive --rerun-tasks"
+
+[tasks."hosted:config"]
+description = "Validate the Linux hosted Compose configuration"
+run = "deploy/hosted/bin/validate.sh"
+
+[tasks."hosted:build"]
+description = "Build hosted Web, Worker, and fetch gateway images"
+run = '''
+deploy/hosted/bin/validate.sh
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml build web worker fetch-gateway
+'''
+
+[tasks."hosted:deps"]
+description = "Start private PostgreSQL, MinIO, and fetch gateway dependencies"
+run = '''
+deploy/hosted/bin/validate.sh
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d postgres minio minio-init fetch-gateway
+'''
+
+[tasks."hosted:up"]
+description = "Start the fail-closed hosted single-host platform"
+run = '''
+deploy/hosted/bin/validate.sh
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d --build
+'''
+
+[tasks."hosted:down"]
+description = "Stop hosted services without deleting persistent volumes"
+run = "docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml down --remove-orphans"
+
+[tasks."hosted:worker"]
+description = "Start or restart the dedicated hosted Worker"
+run = '''
+deploy/hosted/bin/validate.sh
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d --build worker
+'''
+
+[tasks."hosted:acceptance"]
+description = "Run hosted persistence, worker, sandbox, and Web acceptance tests"
+run = '''
+./gradlew :modules:adapters:persistence-postgres:test :modules:adapters:object-storage-s3:test \
+  :apps:worker:test :apps:worker:integrationTest :apps:web:test \
+  --no-daemon --non-interactive --rerun-tasks
+'''
+
+[tasks."hosted:backup"]
+description = "Create a PostgreSQL backup in a private caller-selected directory"
+run = "deploy/hosted/bin/backup.sh"
+
+[tasks."hosted:restore-rehearsal"]
+description = "Verify a hosted PostgreSQL backup in an isolated PostgreSQL 17.9 container"
+run = "deploy/hosted/bin/restore-rehearsal.sh"
