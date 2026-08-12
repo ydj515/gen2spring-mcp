@@ -1,23 +1,36 @@
 import org.gradle.api.plugins.jvm.JvmTestSuite
+import org.springframework.boot.gradle.tasks.bundling.BootJar
 
 val java17Home = providers.environmentVariable("GEN2SPRING_JAVA_17_HOME")
 val java21Home = providers.environmentVariable("GEN2SPRING_JAVA_21_HOME")
 
 plugins {
-    application
+    id("org.springframework.boot") version "3.5.16"
+}
+
+val bootJar = tasks.named<BootJar>("bootJar")
+
+configurations.configureEach {
+    exclude(group = "commons-logging", module = "commons-logging")
 }
 
 dependencies {
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.16"))
     implementation(project(":generator-application"))
     implementation(project(":generator-domain"))
     implementation(project(":generator-openapi"))
     implementation(project(":generator-core"))
     implementation(libs.jackson.databind)
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.security:spring-security-test")
 }
 
-application {
-    mainClass.set("io.gen2spring.mcp.web.Main")
-    applicationName = "gen2spring-mcp-web"
+springBoot {
+    mainClass.set("io.gen2spring.mcp.web.Gen2SpringWebApplication")
 }
 
 testing {
@@ -30,13 +43,11 @@ testing {
             }
             targets.all {
                 testTask.configure {
-                    dependsOn(tasks.named("installDist"))
+                    dependsOn(bootJar)
                     shouldRunAfter(tasks.test)
                     systemProperty(
-                        "gen2springWeb.executable",
-                        layout.buildDirectory.file(
-                            "install/gen2spring-mcp-web/bin/gen2spring-mcp-web",
-                        ).get().asFile.absolutePath,
+                        "gen2springWeb.bootJar",
+                        bootJar.flatMap { it.archiveFile }.get().asFile.absolutePath,
                     )
                     if (java17Home.isPresent) {
                         environment("GEN2SPRING_JAVA_17_HOME", java17Home.get())

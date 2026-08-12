@@ -1,9 +1,12 @@
-const token = document.querySelector('meta[name="generator-api-token"]')?.content ?? '';
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+const csrfHeader = document.querySelector('meta[name="csrf-header"]')?.content ?? '';
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE']);
 
 async function request(path, options = {}) {
+  const method = (options.method ?? 'GET').toUpperCase();
   const headers = new Headers(options.headers ?? {});
-  headers.set('X-Gen2Spring-Token', token);
-  const response = await fetch(path, {...options, headers, cache: 'no-store'});
+  if (!SAFE_METHODS.has(method)) headers.set(csrfHeader, csrfToken);
+  const response = await fetch(path, {...options, method, headers, cache: 'no-store'});
   if (!response.ok) {
     let failure = {code: 'REQUEST_FAILED', stage: 'WEB', message: 'The local request failed.'};
     try {
