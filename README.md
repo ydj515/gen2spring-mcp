@@ -50,26 +50,31 @@ probe 출력, 실행 command를 기록하지 않는다.
 
 ## 빌드, 테스트, 설치
 
+저장소는 `modules/domain`과 `modules/application`을 중심으로 configuration, OpenAPI,
+filesystem, validation, Spring AI emitter adapter를 분리하고, `modules/bootstrap`에서 조립한 뒤
+`apps/cli`와 `apps/web`으로 제공하는 계층형 modular monolith다. 중간 Gradle 경로는 집계용이며
+Java plugin은 실제 leaf project에만 적용한다.
+
 전체 단위·통합 검증, CLI distribution과 Web Boot JAR 빌드는 다음 명령으로 실행한다.
 
 ```bash
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
   mise exec -- ./gradlew clean test integrationTest \
-  :generator-cli:installDist :generator-web:bootJar \
+  :apps:cli:installDist :apps:web:bootJar \
   --no-daemon --non-interactive
 ```
 
 설치된 실행 파일은 다음 경로에 생성된다.
 
 ```text
-generator-cli/build/install/openapi-mcp/bin/openapi-mcp
-generator-web/build/libs/generator-web.jar
+apps/cli/build/install/openapi-mcp/bin/openapi-mcp
+apps/web/build/libs/web.jar
 ```
 
 이하 예시는 편의를 위해 해당 경로를 `OPENAPI_MCP` shell 변수로 둔다.
 
 ```bash
-OPENAPI_MCP=generator-cli/build/install/openapi-mcp/bin/openapi-mcp
+OPENAPI_MCP=apps/cli/build/install/openapi-mcp/bin/openapi-mcp
 ```
 
 ## 로컬 operation editor
@@ -104,17 +109,17 @@ mise task 없이 개발 서버를 직접 실행하려면 다음 명령을 사용
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
 GEN2SPRING_JAVA_21_HOME="$(mise where java@21)" \
 GEN2SPRING_UI_PORT=0 \
-mise exec -- ./gradlew :generator-web:bootRun --quiet --no-daemon --non-interactive
+mise exec -- ./gradlew :apps:web:bootRun --quiet --no-daemon --non-interactive
 ```
 
 배포 가능한 단일 Boot JAR을 만들고 직접 실행하려면 다음 명령을 사용한다.
 
 ```bash
-mise exec -- ./gradlew :generator-web:bootJar --no-daemon --non-interactive
+mise exec -- ./gradlew :apps:web:bootJar --no-daemon --non-interactive
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
 GEN2SPRING_JAVA_21_HOME="$(mise where java@21)" \
 GEN2SPRING_UI_PORT=0 \
-mise exec -- java -jar generator-web/build/libs/generator-web.jar
+mise exec -- java -jar apps/web/build/libs/web.jar
 ```
 
 `GEN2SPRING_UI_PORT=0`은 사용 가능한 ephemeral port를 선택한다. 서버는 준비되면 stdout에
@@ -182,7 +187,7 @@ Java 21 기본 profile은 `spring-ai-2.0-java21-mvc-streamable`이다. 기존 �
 
 ```bash
 "$OPENAPI_MCP" inspect \
-  --spec generator-cli/src/integrationTest/resources/openapi/weather-api.yaml \
+  --spec apps/cli/src/integrationTest/resources/openapi/weather-api.yaml \
   --output /private/tmp/gen2spring-weather-analysis.json
 ```
 
@@ -193,8 +198,8 @@ Java 21 기본 profile은 `spring-ai-2.0-java21-mvc-streamable`이다. 기존 �
 
 ```bash
 "$OPENAPI_MCP" generate \
-  --spec generator-cli/src/integrationTest/resources/openapi/weather-api.yaml \
-  --config generator-cli/src/integrationTest/resources/config/weather-generation.yaml \
+  --spec apps/cli/src/integrationTest/resources/openapi/weather-api.yaml \
+  --config apps/cli/src/integrationTest/resources/config/weather-generation.yaml \
   --output /private/tmp/gen2spring-weather-mcp
 ```
 

@@ -17,11 +17,6 @@ configurations.configureEach {
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.16"))
     implementation(project(":modules:bootstrap"))
-    implementation(project(":modules:domain"))
-    implementation(project(":modules:application"))
-    implementation(project(":modules:adapters:configuration"))
-    implementation(project(":modules:adapters:openapi"))
-    implementation(project(":modules:adapters:filesystem"))
     implementation(libs.jackson.databind)
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
