@@ -98,4 +98,3 @@
 - [ ] Verify migration SQL contains no broad grants, public schema surprises, or raw OIDC/URL fields.
 - [ ] Verify local Web tests remain GREEN without PostgreSQL environment variables.
 - [ ] Record exact test counts and PostgreSQL image identity before starting the URL/storage plan.
-
