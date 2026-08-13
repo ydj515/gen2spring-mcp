@@ -36,7 +36,11 @@ public final class ExternalReferenceGuard {
                 throw GeneratorException.user(SPEC_PARSE_FAILED, SOURCE_LOAD, "Specification is empty");
             }
             verifyNode(root);
-            return new Preflight(recursiveSchemaOperations(root));
+            return new Preflight(
+                    recursiveSchemaOperations(root),
+                    textualValue(root, "openapi"),
+                    root.has("jsonSchemaDialect"),
+                    textualValue(root, "jsonSchemaDialect"));
         } catch (JsonProcessingException exception) {
             throw GeneratorException.user(SPEC_PARSE_FAILED, SOURCE_LOAD,
                     "Specification is not valid " + extension.toUpperCase() + "", exception);
@@ -47,6 +51,11 @@ public final class ExternalReferenceGuard {
 
     private ObjectMapper mapperFor(String extension) {
         return extension.equals("json") ? jsonMapper : yamlMapper;
+    }
+
+    private String textualValue(JsonNode root, String fieldName) {
+        JsonNode value = root.get(fieldName);
+        return value != null && value.isTextual() ? value.textValue() : null;
     }
 
     private void verifyNode(JsonNode node) {
@@ -160,7 +169,11 @@ public final class ExternalReferenceGuard {
         return method.toUpperCase(Locale.ROOT) + " " + path;
     }
 
-    public record Preflight(Set<String> operationsWithRecursiveSchemas) {
+    public record Preflight(
+            Set<String> operationsWithRecursiveSchemas,
+            String openApiVersion,
+            boolean jsonSchemaDialectPresent,
+            String jsonSchemaDialect) {
         public boolean hasRecursiveSchema(String path, String method) {
             return operationsWithRecursiveSchemas.contains(method + " " + path);
         }

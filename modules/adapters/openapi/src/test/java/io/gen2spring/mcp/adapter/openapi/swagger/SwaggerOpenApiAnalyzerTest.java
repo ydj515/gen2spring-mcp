@@ -3,6 +3,7 @@ package io.gen2spring.mcp.adapter.openapi.swagger;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_REFERENCE_UNRESOLVED;
+import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_VERSION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.HTTP_METHOD_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_DUPLICATED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_MISSING;
@@ -11,6 +12,7 @@ import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_COMPOSITION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_MULTI_TYPE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.Status.UNSUPPORTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,9 +27,110 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class SwaggerOpenApiAnalyzerTest {
     private final SpecificationAnalyzer analyzer = new SwaggerOpenApiAnalyzer();
+
+    @ParameterizedTest
+    @ValueSource(strings = {"3.0.0", "3.0.999", "3.1.0", "3.1.2"})
+    void acceptsOnlyTheApprovedNumericPatchVersionFamilies(String version) throws Exception {
+        Path specification = Files.createTempFile("accepted-openapi-version", ".yaml");
+        Files.writeString(specification, """
+                openapi: %s
+                info: { title: Version API, version: '1.0' }
+                paths: {}
+                """.formatted(version));
+
+        assertEquals(version, analyzer.analyze(specification, 1024).document().openApiVersion());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"2.0", "3.0", "3.0.3-beta", "3.1", "3.1.0-rc1", "3.2.0"})
+    void rejectsEveryOtherVersionFormWithOneSafeFailure(String version) throws Exception {
+        Path specification = Files.createTempFile("rejected-openapi-version", ".yaml");
+        Files.writeString(specification, """
+                openapi: %s
+                info: { title: Version API, version: '1.0' }
+                paths: {}
+                """.formatted(version));
+
+        GeneratorException failure = assertThrows(
+                GeneratorException.class, () -> analyzer.analyze(specification, 1024));
+
+        assertEquals(SPEC_VERSION_UNSUPPORTED, failure.code());
+        assertEquals("The OpenAPI version or JSON Schema dialect is unsupported", failure.safeMessage());
+        assertFalse(failure.safeMessage().contains(version));
+    }
+
+    @Test
+    void acceptsOnlyTheOpenApi31BaseDialect() throws Exception {
+        var supported = analyzer.analyze(resource("openapi/openapi-31-supported.yaml"), 10 * 1024 * 1024);
+        Path unsupported = Files.createTempFile("unsupported-openapi-dialect", ".yaml");
+        Files.writeString(unsupported, """
+                openapi: 3.1.2
+                jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+                info: { title: Dialect API, version: '1.0' }
+                paths: {}
+                """);
+
+        GeneratorException failure = assertThrows(
+                GeneratorException.class, () -> analyzer.analyze(unsupported, 1024));
+
+        assertEquals("3.1.2", supported.document().openApiVersion());
+        assertEquals(SPEC_VERSION_UNSUPPORTED, failure.code());
+        assertEquals("The OpenAPI version or JSON Schema dialect is unsupported", failure.safeMessage());
+        assertFalse(failure.safeMessage().contains("json-schema.org"));
+    }
+
+    @Test
+    void normalizesOpenApi31SingleNullUnionsAndRejectsOtherTypeSets() throws Exception {
+        var supported = analyzer.analyze(
+                resource("openapi/openapi-31-supported.yaml"), 10 * 1024 * 1024).document();
+        var nullable = supported.operations().getFirst().successResponse().properties().get("label");
+        var unsupported = analyzer.analyze(
+                        resource("openapi/openapi-31-unsupported.yaml"), 10 * 1024 * 1024)
+                .document().operations().stream()
+                .collect(java.util.stream.Collectors.toMap(operation -> operation.operationId(), operation -> operation));
+
+        assertEquals(SchemaType.STRING, nullable.type());
+        assertTrue(nullable.nullable());
+        assertTrue(supported.operations().getFirst().supported());
+        assertTrue(unsupported.get("multiTypeInput").support().issueCodes()
+                .contains(SCHEMA_MULTI_TYPE_UNSUPPORTED));
+        assertTrue(unsupported.get("nullOnlyInput").support().issueCodes()
+                .contains(SCHEMA_MULTI_TYPE_UNSUPPORTED));
+        assertTrue(unsupported.get("conditionalResult").support().issueCodes()
+                .contains(SCHEMA_CONSTRAINT_UNSUPPORTED),
+                unsupported.get("conditionalResult").support().issueCodes().toString());
+        assertTrue(unsupported.get("tupleResult").support().issueCodes()
+                .contains(SCHEMA_CONSTRAINT_UNSUPPORTED),
+                unsupported.get("tupleResult").support().issueCodes().toString());
+    }
+
+    @Test
+    void keepsInputNullabilityFailClosedForOpenApi31() throws Exception {
+        Path specification = Files.createTempFile("nullable-openapi31-input", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Nullable Input API, version: '1.0' }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      parameters:
+                        - name: revision
+                          in: query
+                          schema: { type: [string, 'null'] }
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertTrue(operation.parameters().getFirst().schema().nullable());
+        assertEquals(java.util.List.of(SCHEMA_NULLABILITY_UNSUPPORTED), operation.support().issueCodes());
+    }
 
     @Test
     void rejectsDuplicateKeysAndTrailingJsonTokens() throws Exception {

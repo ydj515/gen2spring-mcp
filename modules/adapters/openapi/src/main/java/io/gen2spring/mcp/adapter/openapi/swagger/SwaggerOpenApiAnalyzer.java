@@ -48,6 +48,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
     private static final String SPEC_ANALYSIS = "SPEC_ANALYSIS";
@@ -56,6 +57,10 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             HttpMethod.HEAD, HttpMethod.OPTIONS, HttpMethod.TRACE);
     private static final Set<HttpMethod> SUPPORTED_METHODS = Set.of(
             HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH, HttpMethod.DELETE);
+    private static final Pattern SUPPORTED_VERSION = Pattern.compile("3\\.[01]\\.\\d+");
+    private static final String OPENAPI_31_BASE_DIALECT = "https://spec.openapis.org/oas/3.1/dialect/base";
+    private static final String UNSUPPORTED_VERSION_MESSAGE =
+            "The OpenAPI version or JSON Schema dialect is unsupported";
 
     private final LocalSpecificationLoader loader;
     private final ExternalReferenceGuard referenceGuard;
@@ -78,8 +83,8 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
     public AnalysisResult analyze(Path specification, long maxBytes) {
         LocalSpecificationLoader.LoadedSpecification loaded = loader.load(specification, maxBytes);
         ExternalReferenceGuard.Preflight preflight = referenceGuard.verify(loaded.bytes(), loaded.extension());
+        validateVersion(preflight);
         io.swagger.v3.oas.models.OpenAPI openApi = parse(loaded);
-        validateVersion(openApi.getOpenapi());
 
         List<AnalysisWarning> documentWarnings = new ArrayList<>();
         Map<String, ApiSecurityScheme> securitySchemes = normalizeSecuritySchemes(openApi.getComponents());
@@ -109,10 +114,15 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         return result.getOpenAPI();
     }
 
-    private void validateVersion(String version) {
-        if (version == null || !version.startsWith("3.0.")) {
-            throw GeneratorException.user(SPEC_VERSION_UNSUPPORTED, SPEC_ANALYSIS,
-                    "Only OpenAPI 3.0 specifications are supported");
+    private void validateVersion(ExternalReferenceGuard.Preflight preflight) {
+        String version = preflight.openApiVersion();
+        boolean supportedVersion = version != null && SUPPORTED_VERSION.matcher(version).matches();
+        boolean supportedDialect = !preflight.jsonSchemaDialectPresent()
+                || version != null && version.startsWith("3.1.")
+                && OPENAPI_31_BASE_DIALECT.equals(preflight.jsonSchemaDialect());
+        if (!supportedVersion || !supportedDialect) {
+            throw GeneratorException.user(
+                    SPEC_VERSION_UNSUPPORTED, SPEC_ANALYSIS, UNSUPPORTED_VERSION_MESSAGE);
         }
     }
 
@@ -235,7 +245,9 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 missingSchema = true;
                 continue;
             }
-            schemas.add(schemaNormalizer.normalizeResponse(mediaType.getSchema(), componentSchemas));
+            ApiSchema schema = schemaNormalizer.normalizeResponse(mediaType.getSchema(), componentSchemas);
+            addSchemaIssues(issues, schema);
+            schemas.add(schema);
         }
         if (missingSchema) {
             issues.add(SUCCESS_SCHEMA_UNSUPPORTED);

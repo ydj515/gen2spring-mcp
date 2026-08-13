@@ -5,6 +5,7 @@ import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_COMPOSITION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_MISSING;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_MULTI_TYPE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NESTED_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_TYPE_UNSUPPORTED;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 public final class SwaggerSchemaNormalizer {
     public ApiSchema normalize(Schema<?> schema, Map<String, Schema> componentSchemas) {
@@ -73,11 +75,15 @@ public final class SwaggerSchemaNormalizer {
             return unsupported(RECURSIVE_SCHEMA_UNSUPPORTED.message());
         }
         try {
+            TypeResolution typeResolution = resolveType(schema);
             List<String> warnings = unsupportedCompositionWarnings(schema);
-            warnings.addAll(unsupportedSemanticWarnings(schema, allowNullable));
-            SchemaType type = mapType(schema.getType(), schema.getProperties());
+            warnings.addAll(unsupportedSemanticWarnings(schema, allowNullable, typeResolution.nullable()));
+            if (typeResolution.multipleTypesUnsupported()) {
+                warnings.add(SCHEMA_MULTI_TYPE_UNSUPPORTED.message());
+            }
+            SchemaType type = typeResolution.type();
             List<String> enumValues = enumValues(schema.getEnum());
-            if (type == null) {
+            if (type == null && !typeResolution.multipleTypesUnsupported()) {
                 warnings.add(SCHEMA_TYPE_UNSUPPORTED.message());
             }
             if (!enumValues.isEmpty() && type != SchemaType.STRING) {
@@ -111,7 +117,7 @@ public final class SwaggerSchemaNormalizer {
             return new ApiSchema(
                     type == null ? SchemaType.OBJECT : type,
                     schema.getFormat(),
-                    Boolean.TRUE.equals(schema.getNullable()),
+                    typeResolution.nullable(),
                     enumValues,
                     schema.getMinimum(),
                     schema.getMaximum(),
@@ -148,19 +154,70 @@ public final class SwaggerSchemaNormalizer {
         return warnings;
     }
 
-    private List<String> unsupportedSemanticWarnings(Schema<?> schema, boolean allowNullable) {
+    private List<String> unsupportedSemanticWarnings(
+            Schema<?> schema,
+            boolean allowNullable,
+            boolean nullable) {
         List<String> warnings = new ArrayList<>();
         Object additionalProperties = schema.getAdditionalProperties();
         if (additionalProperties != null && !Boolean.FALSE.equals(additionalProperties)) {
             warnings.add(SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED.message());
         }
-        if (!allowNullable && Boolean.TRUE.equals(schema.getNullable())) {
+        if (!allowNullable && nullable) {
             warnings.add(SCHEMA_NULLABILITY_UNSUPPORTED.message());
         }
-        if (Boolean.TRUE.equals(schema.getExclusiveMinimum()) || Boolean.TRUE.equals(schema.getExclusiveMaximum())) {
+        if (Boolean.TRUE.equals(schema.getExclusiveMinimum())
+                || Boolean.TRUE.equals(schema.getExclusiveMaximum())
+                || schema.getExclusiveMinimumValue() != null
+                || schema.getExclusiveMaximumValue() != null
+                || schema.getMultipleOf() != null
+                || schema.getMinItems() != null
+                || schema.getMaxItems() != null
+                || Boolean.TRUE.equals(schema.getUniqueItems())
+                || schema.getMinProperties() != null
+                || schema.getMaxProperties() != null
+                || schema.getIf() != null
+                || schema.getThen() != null
+                || schema.getElse() != null
+                || schema.getNot() != null
+                || schema.getContains() != null
+                || schema.getMinContains() != null
+                || schema.getMaxContains() != null
+                || schema.getPrefixItems() != null && !schema.getPrefixItems().isEmpty()
+                || schema.getPatternProperties() != null && !schema.getPatternProperties().isEmpty()
+                || schema.getDependentSchemas() != null && !schema.getDependentSchemas().isEmpty()
+                || schema.getDependentRequired() != null && !schema.getDependentRequired().isEmpty()
+                || schema.getPropertyNames() != null
+                || schema.getUnevaluatedProperties() != null
+                || schema.getUnevaluatedItems() != null
+                || schema.getContentEncoding() != null
+                || schema.getContentMediaType() != null
+                || schema.getConst() != null) {
             warnings.add(SCHEMA_CONSTRAINT_UNSUPPORTED.message());
         }
         return warnings;
+    }
+
+    private TypeResolution resolveType(Schema<?> schema) {
+        Set<String> declaredTypes = schema.getTypes();
+        if (declaredTypes == null || declaredTypes.isEmpty()) {
+            return new TypeResolution(
+                    mapType(schema.getType(), schema.getProperties()),
+                    Boolean.TRUE.equals(schema.getNullable()),
+                    false);
+        }
+
+        Set<String> normalizedTypes = new TreeSet<>();
+        declaredTypes.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(type -> type.toLowerCase(Locale.ROOT))
+                .forEach(normalizedTypes::add);
+        boolean nullable = normalizedTypes.remove("null") || Boolean.TRUE.equals(schema.getNullable());
+        if (normalizedTypes.size() != 1) {
+            return new TypeResolution(null, nullable, true);
+        }
+        String type = normalizedTypes.iterator().next();
+        return new TypeResolution(mapType(type, schema.getProperties()), nullable, false);
     }
 
     private SchemaType mapType(String type, Map<String, Schema> properties) {
@@ -188,5 +245,8 @@ public final class SwaggerSchemaNormalizer {
     private ApiSchema unsupported(String warning) {
         return new ApiSchema(SchemaType.OBJECT, null, false, List.of(), (BigDecimal) null, null,
                 null, null, null, null, Map.of(), List.of(), null, false, List.of(warning));
+    }
+
+    private record TypeResolution(SchemaType type, boolean nullable, boolean multipleTypesUnsupported) {
     }
 }
