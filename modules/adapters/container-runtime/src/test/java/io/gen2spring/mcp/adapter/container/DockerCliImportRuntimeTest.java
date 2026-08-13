@@ -19,6 +19,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -93,9 +94,20 @@ class DockerCliImportRuntimeTest {
         assertTrue(create.stream().anyMatch(value -> value.endsWith(",dst=/run/secrets/fetch-client-password,readonly")));
         assertTrue(create.stream().anyMatch(value -> value.endsWith(",dst=/run/secrets/fetch-ca.p12,readonly")));
         assertTrue(create.stream().anyMatch(value -> value.endsWith(",dst=/run/secrets/fetch-ca-password,readonly")));
+        if (Files.getFileStore(temporaryDirectory).supportsFileAttributeView("posix")) {
+            for (String mount : create.stream().filter(value -> value.startsWith("type=bind,src=")).toList()) {
+                var permissions = commands.mountPermissions.get(mount);
+                if (mount.endsWith(",dst=/job/output")) {
+                    assertTrue(permissions.contains(PosixFilePermission.OTHERS_WRITE));
+                    assertTrue(permissions.contains(PosixFilePermission.OTHERS_EXECUTE));
+                } else {
+                    assertTrue(permissions.contains(PosixFilePermission.OTHERS_READ));
+                }
+            }
+        }
         assertEquals(List.of("create", "start", "wait", "inspect", "rm"), commands.operations());
         assertFalse(Files.exists(temporaryDirectory.resolve("secrets")
-                .resolve("gen2spring-1a803410-a22a-4bc6-b951-7dbc301ae800-11.target")));
+                .resolve("gen2spring-1a803410-a22a-4bc6-b951-7dbc301ae800-11")));
     }
 
     @Test
@@ -122,7 +134,7 @@ class DockerCliImportRuntimeTest {
         assertThrows(SandboxRuntimeFailure.class, () -> runtime.run(LEASE, encrypted(), LIMITS));
 
         String name = "gen2spring-1a803410-a22a-4bc6-b951-7dbc301ae800-11";
-        assertTrue(Files.exists(temporaryDirectory.resolve("secrets").resolve(name + ".target")));
+        assertTrue(Files.exists(temporaryDirectory.resolve("secrets").resolve(name).resolve("target")));
         assertTrue(Files.exists(temporaryDirectory.resolve("work").resolve(name)));
         assertEquals(List.of("create", "start", "wait", "inspect", "rm", "rm"), commands.operations());
     }
@@ -175,6 +187,8 @@ class DockerCliImportRuntimeTest {
 
     private static final class FakeRunner implements DockerCommandRunner {
         private final List<List<String>> invocations = new ArrayList<>();
+        private final java.util.Map<String, java.util.Set<PosixFilePermission>> mountPermissions =
+                new java.util.HashMap<>();
         private Path output;
         private int rmExitCode;
 
@@ -183,6 +197,16 @@ class DockerCliImportRuntimeTest {
             invocations.add(List.copyOf(argv));
             String operation = argv.get(3);
             if (operation.equals("create")) {
+                argv.stream().filter(value -> value.startsWith("type=bind,src=")).forEach(mount -> {
+                    try {
+                        Path source = Path.of(mount.substring("type=bind,src=".length(), mount.indexOf(",dst=")));
+                        mountPermissions.put(mount, Files.getPosixFilePermissions(source));
+                    } catch (UnsupportedOperationException ignored) {
+                        // Windows has no POSIX permissions.
+                    } catch (IOException failure) {
+                        throw new IllegalStateException(failure);
+                    }
+                });
                 String mount = argv.stream()
                         .filter(value -> value.startsWith("type=bind,src=") && value.endsWith(",dst=/job/output"))
                         .findFirst()

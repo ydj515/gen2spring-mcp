@@ -51,9 +51,13 @@ public final class DockerCliImportRuntime implements ImportRuntime {
             PosixFilePermission.OWNER_READ,
             PosixFilePermission.OWNER_WRITE,
             PosixFilePermission.OWNER_EXECUTE);
-    private static final Set<PosixFilePermission> PRIVATE_FILE = EnumSet.of(
-            PosixFilePermission.OWNER_READ,
-            PosixFilePermission.OWNER_WRITE);
+    private static final Set<PosixFilePermission> SANDBOX_FILE = EnumSet.of(
+            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
+            PosixFilePermission.GROUP_READ, PosixFilePermission.OTHERS_READ);
+    private static final Set<PosixFilePermission> SANDBOX_OUTPUT_DIRECTORY = EnumSet.of(
+            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE,
+            PosixFilePermission.GROUP_READ, PosixFilePermission.GROUP_EXECUTE,
+            PosixFilePermission.OTHERS_READ, PosixFilePermission.OTHERS_WRITE, PosixFilePermission.OTHERS_EXECUTE);
 
     private final Path docker;
     private final Path socket;
@@ -106,13 +110,18 @@ public final class DockerCliImportRuntime implements ImportRuntime {
         Objects.requireNonNull(limits, "limits");
         String container = containerName(lease);
         Path workspace = createDirectory(workspaceRoot.resolve(container));
-        Path output = createDirectory(workspace.resolve("output"));
-        Path target = secretRoot.resolve(container + ".target");
+        Path output = createDirectory(workspace.resolve("output"), SANDBOX_OUTPUT_DIRECTORY);
+        StagedSecrets secrets = stagedSecrets(container);
         boolean created = false;
         SandboxResult result = null;
         try {
-            writeTarget(target, protector.reveal(encrypted).uri().toString());
-            requireSuccess(createCommand(container, lease, target, output, limits), CONTROL_TIMEOUT);
+            createDirectory(secrets.directory());
+            writeTarget(secrets.target(), protector.reveal(encrypted).uri().toString());
+            stageSecret(keyStore, secrets.keyStore());
+            stageSecret(keyStorePassword, secrets.keyStorePassword());
+            stageSecret(trustStore, secrets.trustStore());
+            stageSecret(trustStorePassword, secrets.trustStorePassword());
+            requireSuccess(createCommand(container, lease, secrets, output, limits), CONTROL_TIMEOUT);
             created = true;
             requireSuccess(command("start", container), CONTROL_TIMEOUT);
             int waited = waitFor(container, limits.timeout().plusSeconds(5));
@@ -151,7 +160,7 @@ public final class DockerCliImportRuntime implements ImportRuntime {
             throw failure instanceof SandboxRuntimeFailure ? failure : failed();
         } finally {
             if (!created) {
-                deleteFile(target);
+                deleteStaged(secrets);
             }
         }
     }
@@ -170,7 +179,7 @@ public final class DockerCliImportRuntime implements ImportRuntime {
         String container = containerName(Objects.requireNonNull(lease, "lease"));
         try {
             requireSuccess(command("rm", "-f", "--volumes", container), CONTROL_TIMEOUT);
-            deleteFile(secretRoot.resolve(container + ".target"));
+            deleteStaged(stagedSecrets(container));
             deleteTree(workspaceRoot.resolve(container));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -181,7 +190,7 @@ public final class DockerCliImportRuntime implements ImportRuntime {
     private List<String> createCommand(
             String container,
             JobLease lease,
-            Path target,
+            StagedSecrets secrets,
             Path output,
             SandboxLimits limits) {
         List<String> values = new ArrayList<>(command("create"));
@@ -200,13 +209,13 @@ public final class DockerCliImportRuntime implements ImportRuntime {
         add(values, "--pids-limit", Integer.toString(limits.pids()));
         add(values, "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=268435456");
         add(values, "--tmpfs", "/job/work:rw,noexec,nosuid,nodev,size=67108864");
-        add(values, "--mount", "type=bind,src=" + target + ",dst=/job/input/target.txt,readonly");
+        add(values, "--mount", "type=bind,src=" + secrets.target() + ",dst=/job/input/target.txt,readonly");
         add(values, "--mount", "type=bind,src=" + output + ",dst=/job/output");
-        add(values, "--mount", "type=bind,src=" + keyStore + ",dst=/run/secrets/fetch-client.p12,readonly");
-        add(values, "--mount", "type=bind,src=" + keyStorePassword
+        add(values, "--mount", "type=bind,src=" + secrets.keyStore() + ",dst=/run/secrets/fetch-client.p12,readonly");
+        add(values, "--mount", "type=bind,src=" + secrets.keyStorePassword()
                 + ",dst=/run/secrets/fetch-client-password,readonly");
-        add(values, "--mount", "type=bind,src=" + trustStore + ",dst=/run/secrets/fetch-ca.p12,readonly");
-        add(values, "--mount", "type=bind,src=" + trustStorePassword
+        add(values, "--mount", "type=bind,src=" + secrets.trustStore() + ",dst=/run/secrets/fetch-ca.p12,readonly");
+        add(values, "--mount", "type=bind,src=" + secrets.trustStorePassword()
                 + ",dst=/run/secrets/fetch-ca-password,readonly");
         values.add(image);
         return List.copyOf(values);
@@ -331,7 +340,7 @@ public final class DockerCliImportRuntime implements ImportRuntime {
                 throw failed();
             }
             Files.write(target, bytes, CREATE_NEW, WRITE, NOFOLLOW_LINKS);
-            permissions(target, PRIVATE_FILE);
+            permissions(target, SANDBOX_FILE);
         } catch (RuntimeException failure) {
             throw failure instanceof SandboxRuntimeFailure ? failure : failed();
         } catch (Exception failure) {
@@ -342,13 +351,41 @@ public final class DockerCliImportRuntime implements ImportRuntime {
     }
 
     private Path createDirectory(Path path) {
+        return createDirectory(path, PRIVATE_DIRECTORY);
+    }
+
+    private Path createDirectory(Path path, Set<PosixFilePermission> permissions) {
         try {
             Path created = Files.createDirectory(path);
-            permissions(created, PRIVATE_DIRECTORY);
+            permissions(created, permissions);
             return created;
         } catch (Exception failure) {
             throw failed();
         }
+    }
+
+    private void stageSecret(Path source, Path target) {
+        try {
+            Files.copy(source, target);
+            permissions(target, SANDBOX_FILE);
+        } catch (Exception failure) {
+            throw failed();
+        }
+    }
+
+    private StagedSecrets stagedSecrets(String container) {
+        Path directory = secretRoot.resolve(container);
+        return new StagedSecrets(
+                directory,
+                directory.resolve("target"),
+                directory.resolve("client"),
+                directory.resolve("client-password"),
+                directory.resolve("ca"),
+                directory.resolve("ca-password"));
+    }
+
+    private void deleteStaged(StagedSecrets secrets) {
+        deleteTree(secrets.directory());
     }
 
     private boolean cleanup(String container, Throwable primary) {
@@ -511,6 +548,14 @@ public final class DockerCliImportRuntime implements ImportRuntime {
     private static IllegalArgumentException invalid() {
         return new IllegalArgumentException("Docker import runtime configuration is invalid");
     }
+
+    private record StagedSecrets(
+            Path directory,
+            Path target,
+            Path keyStore,
+            Path keyStorePassword,
+            Path trustStore,
+            Path trustStorePassword) {}
 
     private SandboxRuntimeFailure failed() {
         return new SandboxRuntimeFailure();

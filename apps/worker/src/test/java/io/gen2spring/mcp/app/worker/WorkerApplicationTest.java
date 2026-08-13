@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -114,6 +115,64 @@ class WorkerApplicationTest {
                 Duration.ofMillis(10));
         assertThrows(WorkerStartupFailure.class, rejected::start);
         assertFalse(rejected.running());
+    }
+
+    @Test
+    void heartbeatContinuesWhileJobPollingIsBlocked() throws Exception {
+        CountDownLatch polling = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger maintenanceCalls = new AtomicInteger();
+        WorkerLoop loop = new WorkerLoop(
+                new WorkerReadiness(List.of(() -> {})),
+                () -> {
+                    polling.countDown();
+                    release.await();
+                    return true;
+                },
+                Duration.ofMillis(10),
+                maintenanceCalls::incrementAndGet,
+                Duration.ofMillis(10));
+
+        loop.start();
+        assertTrue(polling.await(1, java.util.concurrent.TimeUnit.SECONDS));
+        long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
+        while (maintenanceCalls.get() < 2 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        release.countDown();
+        loop.close();
+
+        assertTrue(maintenanceCalls.get() >= 2);
+    }
+
+    @Test
+    void heartbeatContinuesWhileRetentionMaintenanceIsBlocked() throws Exception {
+        CountDownLatch maintenanceStarted = new CountDownLatch(1);
+        CountDownLatch releaseMaintenance = new CountDownLatch(1);
+        AtomicInteger heartbeatCalls = new AtomicInteger();
+        WorkerLoop loop = new WorkerLoop(
+                new WorkerReadiness(List.of(() -> {})),
+                () -> false,
+                Duration.ofMillis(10),
+                heartbeatCalls::incrementAndGet,
+                Duration.ofMillis(10),
+                () -> {
+                    maintenanceStarted.countDown();
+                    try { releaseMaintenance.await(); }
+                    catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+                },
+                Duration.ofMillis(10));
+
+        loop.start();
+        assertTrue(maintenanceStarted.await(1, java.util.concurrent.TimeUnit.SECONDS));
+        long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
+        while (heartbeatCalls.get() < 2 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        releaseMaintenance.countDown();
+        loop.close();
+
+        assertTrue(heartbeatCalls.get() >= 2);
     }
 
     @Test

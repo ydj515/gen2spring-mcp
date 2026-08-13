@@ -22,6 +22,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -78,6 +79,17 @@ class DockerCliSandboxRuntimeTest {
         Path inputDirectory = Path.of(inputMount.substring(
                 "type=bind,src=".length(), inputMount.length() - ",dst=/job/input,readonly".length()));
         assertTrue(Files.isRegularFile(inputDirectory.resolve("specification.yaml")));
+        if (Files.getFileStore(inputDirectory).supportsFileAttributeView("posix")) {
+            assertTrue(Files.getPosixFilePermissions(inputDirectory)
+                    .contains(PosixFilePermission.OTHERS_EXECUTE));
+            assertTrue(Files.getPosixFilePermissions(inputDirectory.resolve("specification.yaml"))
+                    .contains(PosixFilePermission.OTHERS_READ));
+            Path outputDirectory = commands.workspace.resolve("output");
+            assertTrue(Files.getPosixFilePermissions(outputDirectory)
+                    .contains(PosixFilePermission.OTHERS_WRITE));
+            assertTrue(Files.getPosixFilePermissions(outputDirectory)
+                    .contains(PosixFilePermission.OTHERS_EXECUTE));
+        }
         assertFalse(Files.exists(inputDirectory.resolve("specification.openapi")));
         assertTrue(create.contains("io.gen2spring.job=1a803410-a22a-4bc6-b951-7dbc301ae800"));
         assertTrue(create.contains("io.gen2spring.fencing-token=11"));
@@ -87,6 +99,27 @@ class DockerCliSandboxRuntimeTest {
 
         result.close();
         assertFalse(Files.exists(commands.workspace));
+    }
+
+    @Test
+    void acceptsEveryYamlMediaTypeAcceptedByHostedImports() throws Exception {
+        for (String contentType : List.of("text/x-yaml", "application/vnd.openapi+yaml")) {
+            FakeRunner commands = new FakeRunner();
+            DockerCliSandboxRuntime runtime = new DockerCliSandboxRuntime(
+                    executable(), Path.of("/run/user/10001/docker.sock"), IMAGE,
+                    temporaryDirectory, new StubStorage(contentType), commands);
+
+            try (SandboxResult ignored = runtime.run(LEASE, input(), LIMITS)) {
+                String mount = commands.invocations.getFirst().stream()
+                        .filter(value -> value.startsWith("type=bind,src=")
+                                && value.endsWith(",dst=/job/input,readonly"))
+                        .findFirst()
+                        .orElseThrow();
+                Path directory = Path.of(mount.substring(
+                        "type=bind,src=".length(), mount.length() - ",dst=/job/input,readonly".length()));
+                assertTrue(Files.isRegularFile(directory.resolve("specification.yaml")));
+            }
+        }
     }
 
     @Test
@@ -246,6 +279,15 @@ class DockerCliSandboxRuntimeTest {
 
     private static final class StubStorage implements ObjectStorage {
         private final byte[] source = "openapi: 3.0.3\ninfo: {}\npaths: {}\n".getBytes(StandardCharsets.UTF_8);
+        private final String contentType;
+
+        private StubStorage() {
+            this("application/yaml");
+        }
+
+        private StubStorage(String contentType) {
+            this.contentType = contentType;
+        }
 
         @Override public StoredObject put(ObjectKey key, InputStream body, long size, String sha256, String type) {
             throw new UnsupportedOperationException();
@@ -257,7 +299,7 @@ class DockerCliSandboxRuntimeTest {
                 @Override public InputStream body() { return new ByteArrayInputStream(source); }
                 @Override public long size() { return source.length; }
                 @Override public String sha256() { return StubStorage.this.sha256(source); }
-                @Override public String contentType() { return "application/yaml"; }
+                @Override public String contentType() { return contentType; }
                 @Override public void close() {}
             };
         }

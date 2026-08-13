@@ -242,6 +242,10 @@ public final class PostgresJobQueue implements JobQueue {
                     """
                     update generation_job
                        set status = 'CANCELLED', cancel_requested = true,
+                           request_snapshot = case
+                               when kind = 'SPEC_IMPORT' then '{}'::jsonb
+                               else request_snapshot
+                           end,
                            safe_error_code = 'CANCELLED', safe_error_summary = 'The hosted job was cancelled',
                            updated_at = ?, version = version + 1
                      where owner_account_id = ? and id = ? and status = 'QUEUED'
@@ -342,7 +346,7 @@ public final class PostgresJobQueue implements JobQueue {
         Instant now = clock.instant();
         Optional<CompletionTarget> candidate = jdbc.query(
                         """
-                        select owner_account_id, kind
+                        select owner_account_id, kind, cancel_requested
                           from generation_job
                          where id = ? and status = 'RUNNING'
                            and lease_owner = ? and fencing_token = ? and lease_until >= ?
@@ -350,7 +354,8 @@ public final class PostgresJobQueue implements JobQueue {
                         """,
                         (resultSet, row) -> new CompletionTarget(
                                 new AccountId(resultSet.getObject("owner_account_id", UUID.class)),
-                                JobKind.valueOf(resultSet.getString("kind"))),
+                                JobKind.valueOf(resultSet.getString("kind")),
+                                resultSet.getBoolean("cancel_requested")),
                         lease.jobId().value(),
                         lease.worker().value(),
                         lease.fencingToken(),
@@ -361,6 +366,9 @@ public final class PostgresJobQueue implements JobQueue {
             return false;
         }
         CompletionTarget target = candidate.get();
+        if (target.cancellationRequested() && completion.status() != JobStatus.CANCELLED) {
+            return false;
+        }
         for (JobArtifact artifact : artifacts) {
             if (!artifact.expiresAt().isAfter(now)) {
                 throw new IllegalArgumentException("Hosted job artifact publication is invalid");
@@ -463,7 +471,7 @@ public final class PostgresJobQueue implements JobQueue {
     private int recoverInTransaction(Instant now, int maxAttempts) {
         List<ExpiredJob> expired = jdbc.query(
                 """
-                select id, attempt
+                select id, attempt, cancel_requested
                   from generation_job
                  where status = 'RUNNING' and lease_until < ?
                  order by lease_until, id
@@ -471,23 +479,35 @@ public final class PostgresJobQueue implements JobQueue {
                 """,
                 (resultSet, row) -> new ExpiredJob(
                         new JobId(resultSet.getObject("id", UUID.class)),
-                        resultSet.getInt("attempt")),
+                        resultSet.getInt("attempt"),
+                        resultSet.getBoolean("cancel_requested")),
                 timestamp(now));
         for (ExpiredJob job : expired) {
-            boolean retry = job.attempt() < maxAttempts;
-            JobStatus target = retry ? JobStatus.QUEUED : JobStatus.FAILED;
+            boolean retry = !job.cancellationRequested() && job.attempt() < maxAttempts;
+            JobStatus target = job.cancellationRequested()
+                    ? JobStatus.CANCELLED
+                    : retry ? JobStatus.QUEUED : JobStatus.FAILED;
             JobTransitionPolicy.requireAllowed(JobStatus.RUNNING, target);
-            String code = retry ? null : "LEASE_EXHAUSTED";
-            String summary = retry ? null : "The hosted job retry limit was exhausted";
+            String code = retry ? null : target == JobStatus.CANCELLED ? "CANCELLED" : "LEASE_EXHAUSTED";
+            String summary = retry
+                    ? null
+                    : target == JobStatus.CANCELLED
+                            ? "The hosted job was cancelled"
+                            : "The hosted job retry limit was exhausted";
             jdbc.update(
                     """
                     update generation_job
                        set status = ?, lease_owner = null, lease_until = null,
+                           request_snapshot = case
+                               when kind = 'SPEC_IMPORT' and ? then '{}'::jsonb
+                               else request_snapshot
+                           end,
                            safe_error_code = ?, safe_error_summary = ?,
                            updated_at = ?, version = version + 1
                      where id = ? and status = 'RUNNING'
                     """,
                     target.name(),
+                    !retry,
                     code,
                     summary,
                     timestamp(now),
@@ -545,9 +565,9 @@ public final class PostgresJobQueue implements JobQueue {
 
     private record ExistingJob(String requestHash, JobView job) {}
 
-    private record CompletionTarget(AccountId owner, JobKind kind) {}
+    private record CompletionTarget(AccountId owner, JobKind kind, boolean cancellationRequested) {}
 
     private record ClaimCandidate(JobId id, AccountId owner, JobKind kind, String requestSnapshot) {}
 
-    private record ExpiredJob(JobId id, int attempt) {}
+    private record ExpiredJob(JobId id, int attempt, boolean cancellationRequested) {}
 }

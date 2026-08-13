@@ -6,12 +6,16 @@ import io.gen2spring.mcp.adapter.container.DockerCliImportRuntime;
 import io.gen2spring.mcp.adapter.container.DockerCommandRunner;
 import io.gen2spring.mcp.adapter.cryptography.AesGcmImportTargetProtector;
 import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
+import io.gen2spring.mcp.adapter.persistence.PostgresArtifactRetentionStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
+import io.gen2spring.mcp.application.hosted.job.WorkerLeaseService;
 import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
+import io.gen2spring.mcp.application.hosted.storage.ArtifactRetentionStore;
+import io.gen2spring.mcp.application.hosted.worker.ArtifactRetentionService;
 import io.gen2spring.mcp.application.hosted.worker.HostedWorker;
 import io.gen2spring.mcp.application.hosted.worker.ImportRuntime;
 import io.gen2spring.mcp.application.hosted.worker.SandboxRuntime;
@@ -48,6 +52,19 @@ class WorkerConfiguration {
     @Bean
     WorkerHeartbeatStore workerHeartbeatStore(DataSource dataSource) {
         return new PostgresWorkerHeartbeatStore(dataSource);
+    }
+
+    @Bean
+    ArtifactRetentionStore artifactRetentionStore(DataSource dataSource) {
+        return new PostgresArtifactRetentionStore(dataSource);
+    }
+
+    @Bean
+    ArtifactRetentionService artifactRetentionService(
+            ArtifactRetentionStore artifactRetentionStore,
+            ObjectStorage objectStorage,
+            Clock workerClock) {
+        return new ArtifactRetentionService(artifactRetentionStore, objectStorage, workerClock);
     }
 
     @Bean(destroyMethod = "close")
@@ -152,18 +169,26 @@ class WorkerConfiguration {
             WorkerReadiness workerReadiness,
             HostedWorker hostedWorker,
             WorkerHeartbeatStore workerHeartbeatStore,
+            JobQueue jobQueue,
+            ArtifactRetentionService artifactRetentionService,
             Clock workerClock,
             WorkerProperties properties) {
         WorkerId workerId = new WorkerId(properties.workerId());
         WorkerHeartbeatPublisher heartbeats = new WorkerHeartbeatPublisher(
                 workerHeartbeatStore, workerId, workerClock, java.time.Duration.ofSeconds(10));
+        WorkerLeaseService leases = new WorkerLeaseService(
+                jobQueue, workerClock, properties.leaseDuration(), 3);
         return new WorkerLoop(
                 workerReadiness,
+                () -> hostedWorker.pollOnce() != HostedWorker.PollResult.EMPTY,
+                properties.pollInterval(),
+                heartbeats::publishIfDue,
+                java.time.Duration.ofSeconds(10),
                 () -> {
-                    heartbeats.publishIfDue();
-                    return hostedWorker.pollOnce() != HostedWorker.PollResult.EMPTY;
+                    leases.recoverExpired();
+                    artifactRetentionService.sweep(100);
                 },
-                properties.pollInterval());
+                java.time.Duration.ofSeconds(10));
     }
 
     private char[] secret(Path file) {

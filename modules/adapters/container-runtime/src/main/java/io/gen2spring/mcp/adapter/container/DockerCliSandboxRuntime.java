@@ -39,9 +39,17 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
             PosixFilePermission.OWNER_READ,
             PosixFilePermission.OWNER_WRITE,
             PosixFilePermission.OWNER_EXECUTE);
-    private static final Set<PosixFilePermission> OWNER_FILE = EnumSet.of(
-            PosixFilePermission.OWNER_READ,
-            PosixFilePermission.OWNER_WRITE);
+    private static final Set<PosixFilePermission> SANDBOX_INPUT_DIRECTORY = EnumSet.of(
+            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE,
+            PosixFilePermission.GROUP_READ, PosixFilePermission.GROUP_EXECUTE,
+            PosixFilePermission.OTHERS_READ, PosixFilePermission.OTHERS_EXECUTE);
+    private static final Set<PosixFilePermission> SANDBOX_OUTPUT_DIRECTORY = EnumSet.of(
+            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE,
+            PosixFilePermission.GROUP_READ, PosixFilePermission.GROUP_EXECUTE,
+            PosixFilePermission.OTHERS_READ, PosixFilePermission.OTHERS_WRITE, PosixFilePermission.OTHERS_EXECUTE);
+    private static final Set<PosixFilePermission> SANDBOX_FILE = EnumSet.of(
+            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
+            PosixFilePermission.GROUP_READ, PosixFilePermission.OTHERS_READ);
 
     private final Path docker;
     private final Path socket;
@@ -78,8 +86,8 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
         SandboxResult result = null;
         boolean created = false;
         try {
-            Path inputDirectory = createPrivateDirectory(workspace.resolve("input"));
-            Path outputDirectory = createPrivateDirectory(workspace.resolve("output"));
+            Path inputDirectory = createDirectory(workspace.resolve("input"), SANDBOX_INPUT_DIRECTORY);
+            Path outputDirectory = createDirectory(workspace.resolve("output"), SANDBOX_OUTPUT_DIRECTORY);
             writeSpecification(inputDirectory, input);
             writePrivateFile(inputDirectory.resolve("generation-config.json"),
                     input.generationConfiguration().getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -248,7 +256,7 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
                         content.sha256().getBytes(java.nio.charset.StandardCharsets.US_ASCII))) {
                     throw failed();
                 }
-                setOwnerFile(target);
+                setPermissions(target, SANDBOX_FILE);
             }
         } catch (Error fatal) {
             throw fatal;
@@ -263,7 +271,8 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
         if ("application/json".equals(contentType) || (contentType != null && contentType.endsWith("+json"))) {
             return "specification.json";
         }
-        if (Set.of("application/yaml", "application/x-yaml", "text/yaml").contains(contentType)) {
+        if (Set.of("application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml").contains(contentType)
+                || (contentType != null && contentType.endsWith("+yaml"))) {
             return "specification.yaml";
         }
         throw failed();
@@ -272,7 +281,7 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
     private void writePrivateFile(Path target, byte[] value) {
         try {
             Files.write(target, value, CREATE_NEW, WRITE, NOFOLLOW_LINKS);
-            setOwnerFile(target);
+            setPermissions(target, SANDBOX_FILE);
         } catch (Exception failure) {
             throw failed();
         }
@@ -288,10 +297,10 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
         }
     }
 
-    private Path createPrivateDirectory(Path path) {
+    private Path createDirectory(Path path, Set<PosixFilePermission> permissions) {
         try {
             Path directory = Files.createDirectory(path);
-            setOwnerDirectory(directory);
+            setPermissions(directory, permissions);
             return directory;
         } catch (Exception failure) {
             throw failed();
@@ -388,9 +397,10 @@ public final class DockerCliSandboxRuntime implements SandboxRuntime {
         }
     }
 
-    private static void setOwnerFile(Path path) throws java.io.IOException {
+    private static void setPermissions(Path path, Set<PosixFilePermission> permissions)
+            throws java.io.IOException {
         try {
-            Files.setPosixFilePermissions(path, OWNER_FILE);
+            Files.setPosixFilePermissions(path, permissions);
         } catch (UnsupportedOperationException ignored) {
             // Windows tests rely on the platform ACL inherited from the private workspace root.
         }

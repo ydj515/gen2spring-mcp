@@ -140,6 +140,26 @@ class PostgresLeaseConcurrencyTest {
         assertFalse(jobs.cancellationRequested(lease));
         assertTrue(jobs.requestCancellation(owner, created.job().id()));
         assertTrue(jobs.cancellationRequested(lease));
+        assertFalse(jobs.complete(lease, JobCompletion.success(), importArtifacts(lease, NOW)));
+        assertTrue(jobs.complete(lease, JobCompletion.cancelled()));
+        assertEquals(JobStatus.CANCELLED, jobs.find(owner, lease.jobId()).orElseThrow().status());
+        assertEquals("{}", jdbc.queryForObject(
+                "select request_snapshot::text from generation_job where id = ?",
+                String.class,
+                lease.jobId().value()));
+    }
+
+    @Test
+    void scrubsEncryptedImportPayloadOnQueuedCancellation() {
+        PostgresJobQueue jobs = queueAt(NOW);
+        var created = jobs.create(importJob("job-1", hash(1)));
+
+        assertTrue(jobs.requestCancellation(owner, created.job().id()));
+
+        assertEquals("{}", jdbc.queryForObject(
+                "select request_snapshot::text from generation_job where id = ?",
+                String.class,
+                created.job().id().value()));
     }
 
     @Test
@@ -161,6 +181,10 @@ class PostgresLeaseConcurrencyTest {
         assertEquals(5, eventCount(second));
         assertEquals("LEASE_EXHAUSTED", jdbc.queryForObject(
                 "select safe_error_code from generation_job where id = ?",
+                String.class,
+                second.jobId().value()));
+        assertEquals("{}", jdbc.queryForObject(
+                "select request_snapshot::text from generation_job where id = ?",
                 String.class,
                 second.jobId().value()));
     }

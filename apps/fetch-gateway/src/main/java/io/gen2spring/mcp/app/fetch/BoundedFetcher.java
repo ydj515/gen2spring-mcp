@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.LongSupplier;
 import java.util.zip.GZIPInputStream;
 
 public final class BoundedFetcher {
@@ -24,6 +25,7 @@ public final class BoundedFetcher {
     private final int maxDecodedBytes;
     private final int maxRedirects;
     private final Duration totalTimeout;
+    private final LongSupplier ticker;
 
     BoundedFetcher(
             FetchTransport transport,
@@ -31,8 +33,19 @@ public final class BoundedFetcher {
             int maxDecodedBytes,
             int maxRedirects,
             Duration totalTimeout) {
+        this(transport, maxWireBytes, maxDecodedBytes, maxRedirects, totalTimeout, System::nanoTime);
+    }
+
+    BoundedFetcher(
+            FetchTransport transport,
+            int maxWireBytes,
+            int maxDecodedBytes,
+            int maxRedirects,
+            Duration totalTimeout,
+            LongSupplier ticker) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.totalTimeout = Objects.requireNonNull(totalTimeout, "totalTimeout");
+        this.ticker = Objects.requireNonNull(ticker, "ticker");
         if (maxWireBytes < 1
                 || maxDecodedBytes < 1
                 || maxRedirects < 0
@@ -51,7 +64,7 @@ public final class BoundedFetcher {
         if (initialTarget == null) {
             throw failed();
         }
-        long deadline = System.nanoTime() + totalTimeout.toNanos();
+        long deadline = ticker.getAsLong() + totalTimeout.toNanos();
         ImportTarget target = initialTarget;
         int redirects = 0;
         int attempts = 0;
@@ -90,8 +103,8 @@ public final class BoundedFetcher {
                     if (response.status() < 200 || response.status() >= 300) {
                         throw failed();
                     }
-                    byte[] wire = readBounded(response.body(), maxWireBytes);
-                    byte[] decoded = decode(wire, singleHeader(response.headers(), "content-encoding"));
+                    byte[] wire = readBounded(response.body(), maxWireBytes, deadline);
+                    byte[] decoded = decode(wire, singleHeader(response.headers(), "content-encoding"), deadline);
                     String contentType = singleHeader(response.headers(), "content-type");
                     if (contentType == null || contentType.isBlank() || contentType.length() > 128) {
                         throw failed();
@@ -106,7 +119,8 @@ public final class BoundedFetcher {
         }
     }
 
-    private byte[] decode(byte[] wire, String contentEncoding) throws IOException {
+    private byte[] decode(byte[] wire, String contentEncoding, long deadline) throws IOException {
+        requireBefore(deadline);
         if (contentEncoding == null || contentEncoding.isBlank() || "identity".equalsIgnoreCase(contentEncoding)) {
             if (wire.length > maxDecodedBytes) {
                 throw failed();
@@ -117,16 +131,18 @@ public final class BoundedFetcher {
             throw failed();
         }
         try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(wire))) {
-            return readBounded(gzip, maxDecodedBytes);
+            return readBounded(gzip, maxDecodedBytes, deadline);
         }
     }
 
-    private byte[] readBounded(InputStream input, int limit) throws IOException {
+    private byte[] readBounded(InputStream input, int limit, long deadline) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(limit, 8192));
         byte[] buffer = new byte[8192];
         int total = 0;
         while (true) {
+            requireBefore(deadline);
             int read = input.read(buffer);
+            requireBefore(deadline);
             if (read == -1) {
                 return output.toByteArray();
             }
@@ -177,11 +193,17 @@ public final class BoundedFetcher {
     }
 
     private Duration remaining(long deadline) {
-        long remaining = deadline - System.nanoTime();
+        long remaining = deadline - ticker.getAsLong();
         if (remaining <= 0) {
             throw failed();
         }
         return Duration.ofNanos(remaining);
+    }
+
+    private void requireBefore(long deadline) {
+        if (deadline - ticker.getAsLong() <= 0) {
+            throw failed();
+        }
     }
 
     private boolean redirectStatus(int status) {

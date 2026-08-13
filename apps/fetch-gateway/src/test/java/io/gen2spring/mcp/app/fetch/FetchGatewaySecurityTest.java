@@ -9,6 +9,7 @@ import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPOutputStream;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
@@ -200,6 +202,40 @@ class FetchGatewaySecurityTest {
         assertFetchFailure(() -> fetcher.fetch(
                 ImportTarget.parse("https://api.example.com/openapi.yaml")));
         assertEquals(0, executions.get());
+    }
+
+    @Test
+    void enforcesTheTotalTimeoutWhileReadingAndDecodingTheBody() throws Exception {
+        AtomicLong ticker = new AtomicLong();
+        InputStream body = new ByteArrayInputStream("openapi: 3.1.0\n".getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public synchronized int read(byte[] buffer, int offset, int length) {
+                ticker.addAndGet(Duration.ofSeconds(31).toNanos());
+                return super.read(buffer, offset, length);
+            }
+        };
+        BoundedFetcher fetcher = new BoundedFetcher(
+                new ScriptedTransport(new FetchTransport.Response(
+                        200, Map.of("content-type", List.of("application/yaml")), body)),
+                128, 128, 3, Duration.ofSeconds(30), ticker::get);
+
+        assertFetchFailure(() -> fetcher.fetch(
+                ImportTarget.parse("https://api.example.com/openapi.yaml")));
+
+        AtomicInteger ticks = new AtomicInteger();
+        long expired = Duration.ofSeconds(31).toNanos();
+        BoundedFetcher decoding = new BoundedFetcher(
+                new ScriptedTransport(new FetchTransport.Response(
+                        200,
+                        Map.of(
+                                "content-type", List.of("application/yaml"),
+                                "content-encoding", List.of("gzip")),
+                        new ByteArrayInputStream(gzip("openapi: 3.1.0\n".getBytes(StandardCharsets.UTF_8))))),
+                128, 128, 3, Duration.ofSeconds(30),
+                () -> ticks.incrementAndGet() <= 7 ? 0 : expired);
+
+        assertFetchFailure(() -> decoding.fetch(
+                ImportTarget.parse("https://api.example.com/openapi.yaml")));
     }
 
     @Test

@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.app.web.hosted;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -11,6 +12,7 @@ import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
+import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
 import io.gen2spring.mcp.app.web.security.HostedAccountPrincipal;
 import io.gen2spring.mcp.app.web.security.HostedAccountResolver;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
@@ -22,8 +24,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.io.ByteArrayInputStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 class HostedControllerContractTest {
     private static final AccountId OWNER = new AccountId(UUID.fromString("41dd3b69-589c-4466-a78e-d448407d17b9"));
@@ -69,6 +73,35 @@ class HostedControllerContractTest {
                 HostedJobController.HostedResourceNotFound.class,
                 () -> controller.download(authentication, artifact.toString(), mock(jakarta.servlet.http.HttpServletResponse.class)));
         verifyNoInteractions(storage);
+    }
+
+    @Test
+    void verifiesArtifactBytesBeforeCommittingTheDownloadResponse() {
+        HostedAccountResolver accounts = mock(HostedAccountResolver.class);
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        ObjectStorage storage = mock(ObjectStorage.class);
+        Authentication authentication = mock(Authentication.class);
+        UUID artifactId = UUID.randomUUID();
+        ObjectKey key = ObjectKey.parse("artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/result");
+        when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
+        when(resources.artifact(OWNER, artifactId)).thenReturn(Optional.of(
+                new HostedResourceStore.ArtifactView(
+                        artifactId, JOB, "ZIP", key, "a".repeat(64), 4,
+                        "application/zip", Instant.EPOCH, Instant.EPOCH.plusSeconds(60))));
+        when(storage.get(key)).thenReturn(new StoredObjectContent() {
+            @Override public java.io.InputStream body() { return new ByteArrayInputStream("evil".getBytes()); }
+            @Override public long size() { return 4; }
+            @Override public String sha256() { return "a".repeat(64); }
+            @Override public String contentType() { return "application/zip"; }
+            @Override public void close() {}
+        });
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        HostedArtifactController controller = new HostedArtifactController(accounts, resources, storage);
+
+        assertThrows(HostedArtifactController.HostedArtifactFailure.class,
+                () -> controller.download(authentication, artifactId.toString(), response));
+        assertEquals(0, response.getContentAsByteArray().length);
+        assertFalse(response.containsHeader(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION));
     }
 
     @Test
