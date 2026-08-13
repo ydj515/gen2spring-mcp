@@ -13,7 +13,7 @@ public record OpenApiDocument(
         List<ApiOperation> operations,
         Map<String, ApiSecurityScheme> securitySchemes,
         List<AnalysisWarning> warnings) {
-    public enum HttpMethod { GET, POST, PUT, PATCH, DELETE }
+    public enum HttpMethod { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, TRACE }
     public enum ParameterLocation { PATH, QUERY, HEADER, BODY }
     public enum SchemaType { STRING, INTEGER, NUMBER, BOOLEAN, ARRAY, OBJECT }
 
@@ -27,8 +27,7 @@ public record OpenApiDocument(
             ApiSchema requestBody,
             boolean requestBodyRequired,
             List<String> securityRequirements,
-            boolean supported,
-            List<String> warnings,
+            OperationSupport support,
             ApiSchema successResponse) {
         public ApiOperation(
                 String operationId,
@@ -40,10 +39,17 @@ public record OpenApiDocument(
                 ApiSchema requestBody,
                 boolean requestBodyRequired,
                 List<String> securityRequirements,
-                boolean supported,
-                List<String> warnings) {
+                OperationSupport support) {
             this(operationId, method, path, summary, description, parameters, requestBody, requestBodyRequired,
-                    securityRequirements, supported, warnings, null);
+                    securityRequirements, support, null);
+        }
+
+        public boolean supported() {
+            return support.selectable();
+        }
+
+        public List<String> warnings() {
+            return support.issues().stream().map(OperationSupport.Issue::message).toList();
         }
     }
 

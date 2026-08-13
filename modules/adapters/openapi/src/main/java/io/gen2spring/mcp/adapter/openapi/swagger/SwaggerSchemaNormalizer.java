@@ -1,5 +1,14 @@
 package io.gen2spring.mcp.adapter.openapi.swagger;
 
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.RECURSIVE_SCHEMA_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_COMPOSITION_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_MISSING;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NESTED_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_TYPE_UNSUPPORTED;
+
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.swagger.v3.oas.models.media.Schema;
@@ -28,7 +37,7 @@ public final class SwaggerSchemaNormalizer {
             boolean allowNullable,
             boolean responseSchema) {
         if (schema == null) {
-            return unsupported("Schema is missing");
+            return unsupported(SCHEMA_MISSING.message());
         }
         return normalize(schema, componentSchemas == null ? Map.of() : componentSchemas,
                 Collections.newSetFromMap(new IdentityHashMap<>()), new java.util.HashSet<>(),
@@ -45,15 +54,15 @@ public final class SwaggerSchemaNormalizer {
         String reference = schema.get$ref();
         if (reference != null) {
             if (!reference.startsWith("#/components/schemas/")) {
-                return unsupported("Local schema reference " + reference + " is not supported");
+                return unsupported(SCHEMA_TYPE_UNSUPPORTED.message());
             }
             if (!ancestorReferences.add(reference)) {
-                return unsupported("Recursive schemas are not supported");
+                return unsupported(RECURSIVE_SCHEMA_UNSUPPORTED.message());
             }
             try {
                 Schema<?> referencedSchema = componentSchemas.get(reference.substring("#/components/schemas/".length()));
                 return referencedSchema == null
-                        ? unsupported("Local schema reference " + reference + " could not be resolved")
+                        ? unsupported(SCHEMA_MISSING.message())
                         : normalize(referencedSchema, componentSchemas, ancestors, ancestorReferences,
                                 allowNullable, responseSchema);
             } finally {
@@ -61,7 +70,7 @@ public final class SwaggerSchemaNormalizer {
             }
         }
         if (!ancestors.add(schema)) {
-            return unsupported("Recursive schemas are not supported");
+            return unsupported(RECURSIVE_SCHEMA_UNSUPPORTED.message());
         }
         try {
             List<String> warnings = unsupportedCompositionWarnings(schema);
@@ -69,10 +78,10 @@ public final class SwaggerSchemaNormalizer {
             SchemaType type = mapType(schema.getType(), schema.getProperties());
             List<String> enumValues = enumValues(schema.getEnum());
             if (type == null) {
-                warnings.add("Schema type " + schema.getType() + " is not supported");
+                warnings.add(SCHEMA_TYPE_UNSUPPORTED.message());
             }
             if (!enumValues.isEmpty() && type != SchemaType.STRING) {
-                warnings.add("Only string enum schemas are supported");
+                warnings.add(SCHEMA_CONSTRAINT_UNSUPPORTED.message());
             }
 
             Map<String, ApiSchema> properties = new LinkedHashMap<>();
@@ -92,11 +101,11 @@ public final class SwaggerSchemaNormalizer {
                     : normalize(schema.getItems(), componentSchemas, ancestors, ancestorReferences,
                             allowNullable, responseSchema);
             if (type == SchemaType.ARRAY && items == null) {
-                warnings.add("Array schemas must declare items");
+                warnings.add(SCHEMA_CONSTRAINT_UNSUPPORTED.message());
             }
             if (properties.values().stream().anyMatch(property -> !property.supported())
                     || items != null && !items.supported()) {
-                warnings.add("Schema contains an unsupported nested schema");
+                warnings.add(SCHEMA_NESTED_UNSUPPORTED.message());
             }
 
             return new ApiSchema(
@@ -125,16 +134,16 @@ public final class SwaggerSchemaNormalizer {
     private List<String> unsupportedCompositionWarnings(Schema<?> schema) {
         List<String> warnings = new ArrayList<>();
         if (schema.getOneOf() != null && !schema.getOneOf().isEmpty()) {
-            warnings.add("oneOf schemas are not supported");
+            warnings.add(SCHEMA_COMPOSITION_UNSUPPORTED.message());
         }
         if (schema.getAnyOf() != null && !schema.getAnyOf().isEmpty()) {
-            warnings.add("anyOf schemas are not supported");
+            warnings.add(SCHEMA_COMPOSITION_UNSUPPORTED.message());
         }
         if (schema.getAllOf() != null && !schema.getAllOf().isEmpty()) {
-            warnings.add("allOf schemas are not supported");
+            warnings.add(SCHEMA_COMPOSITION_UNSUPPORTED.message());
         }
         if (schema.getDiscriminator() != null) {
-            warnings.add("Discriminator schemas are not supported");
+            warnings.add(SCHEMA_COMPOSITION_UNSUPPORTED.message());
         }
         return warnings;
     }
@@ -143,13 +152,13 @@ public final class SwaggerSchemaNormalizer {
         List<String> warnings = new ArrayList<>();
         Object additionalProperties = schema.getAdditionalProperties();
         if (additionalProperties != null && !Boolean.FALSE.equals(additionalProperties)) {
-            warnings.add("Schemas with additionalProperties are not supported");
+            warnings.add(SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED.message());
         }
         if (!allowNullable && Boolean.TRUE.equals(schema.getNullable())) {
-            warnings.add("Nullable schemas are not supported");
+            warnings.add(SCHEMA_NULLABILITY_UNSUPPORTED.message());
         }
         if (Boolean.TRUE.equals(schema.getExclusiveMinimum()) || Boolean.TRUE.equals(schema.getExclusiveMaximum())) {
-            warnings.add("Schemas with exclusive numeric bounds are not supported");
+            warnings.add(SCHEMA_CONSTRAINT_UNSUPPORTED.message());
         }
         return warnings;
     }

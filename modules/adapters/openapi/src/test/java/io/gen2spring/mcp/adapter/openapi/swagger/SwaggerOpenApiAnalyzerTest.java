@@ -2,8 +2,17 @@ package io.gen2spring.mcp.adapter.openapi.swagger;
 
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 
-import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.OPERATION_ID_DUPLICATED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_REFERENCE_UNRESOLVED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.HTTP_METHOD_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_DUPLICATED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_MISSING;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_COMPOSITION_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.Status.UNSUPPORTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -180,8 +189,8 @@ class SwaggerOpenApiAnalyzerTest {
         for (String operationId : java.util.List.of("conflicting", "missingSchema", "composed")) {
             assertFalse(operations.get(operationId).supported(), operationId);
             assertNull(operations.get(operationId).successResponse(), operationId);
-            assertTrue(operations.get(operationId).warnings().stream()
-                    .anyMatch(warning -> warning.contains("Success response schemas")), operationId);
+            assertTrue(operations.get(operationId).support().issueCodes().contains(SUCCESS_SCHEMA_UNSUPPORTED),
+                    operationId);
         }
     }
 
@@ -248,18 +257,60 @@ class SwaggerOpenApiAnalyzerTest {
                 operations.get("stringEnum").parameters().getFirst().schema().enumValues());
         assertFalse(operations.get("integerEnum").supported());
         assertFalse(operations.get("booleanEnum").supported());
-        assertTrue(operations.get("integerEnum").warnings().stream()
-                .anyMatch(warning -> warning.contains("Only string enum schemas")));
-        assertTrue(operations.get("booleanEnum").warnings().stream()
-                .anyMatch(warning -> warning.contains("Only string enum schemas")));
+        assertEquals(java.util.List.of(SCHEMA_CONSTRAINT_UNSUPPORTED),
+                operations.get("integerEnum").support().issueCodes());
+        assertEquals(java.util.List.of(SCHEMA_CONSTRAINT_UNSUPPORTED),
+                operations.get("booleanEnum").support().issueCodes());
+        assertEquals(java.util.List.of(SCHEMA_CONSTRAINT_UNSUPPORTED.message()),
+                operations.get("integerEnum").parameters().getFirst().schema().warnings());
+        assertEquals(java.util.List.of(SCHEMA_CONSTRAINT_UNSUPPORTED.message()),
+                operations.get("booleanEnum").parameters().getFirst().schema().warnings());
     }
 
     @Test
-    void rejectsDuplicateOperationIds() throws Exception {
-        var exception = assertThrows(GeneratorException.class,
-                () -> analyzer.analyze(resource("openapi/duplicate-operation-id.yaml"), 10 * 1024 * 1024));
+    void marksEveryDuplicateOperationIdWithoutRejectingTheDocument() throws Exception {
+        var document = analyzer.analyze(resource("openapi/duplicate-operation-id.yaml"), 10 * 1024 * 1024).document();
 
-        assertEquals(OPERATION_ID_DUPLICATED, exception.code());
+        assertEquals(2, document.operations().size());
+        document.operations().forEach(operation -> {
+            assertEquals(UNSUPPORTED, operation.support().status());
+            assertEquals(java.util.List.of(OPERATION_ID_DUPLICATED), operation.support().issueCodes());
+        });
+    }
+
+    @Test
+    void preservesMissingIdsAndUnsupportedHttpMethodsAsVisibleOperations() throws Exception {
+        Path specification = Files.createTempFile("visible-unsupported-operations", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Visible API, version: '1.0' }
+                paths:
+                  /missing:
+                    get:
+                      responses: { '204': { description: Accepted } }
+                  /head:
+                    head:
+                      operationId: headResource
+                      responses: { '204': { description: Accepted } }
+                  /options:
+                    options:
+                      operationId: optionsResource
+                      responses: { '204': { description: Accepted } }
+                  /trace:
+                    trace:
+                      operationId: traceResource
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operations = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations();
+
+        assertEquals(4, operations.size());
+        var missing = operations.stream().filter(operation -> operation.operationId() == null).findFirst().orElseThrow();
+        assertEquals(java.util.List.of(OPERATION_ID_MISSING), missing.support().issueCodes());
+        operations.stream().filter(operation -> operation.operationId() != null).forEach(operation -> {
+            assertEquals(UNSUPPORTED, operation.support().status());
+            assertEquals(java.util.List.of(HTTP_METHOD_UNSUPPORTED), operation.support().issueCodes());
+        });
     }
 
     @Test
@@ -268,8 +319,9 @@ class SwaggerOpenApiAnalyzerTest {
 
         var operation = document.operations().getFirst();
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("allOf")));
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("Recursive schemas")));
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_COMPOSITION_UNSUPPORTED));
+        assertTrue(operation.support().issueCodes().contains(
+                io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.RECURSIVE_SCHEMA_UNSUPPORTED));
     }
 
     @Test
@@ -295,7 +347,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("additionalProperties")));
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED));
     }
 
     @Test
@@ -319,7 +371,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("Nullable")));
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_NULLABILITY_UNSUPPORTED));
     }
 
     @Test
@@ -437,7 +489,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("exclusive numeric bounds")));
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_CONSTRAINT_UNSUPPORTED));
     }
 
     @Test
@@ -462,7 +514,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("application/json")));
+        assertTrue(operation.support().issueCodes().contains(REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED));
     }
 
     @Test
@@ -488,7 +540,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("application/json")));
+        assertTrue(operation.support().issueCodes().contains(REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED));
     }
 
     @Test

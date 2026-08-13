@@ -151,7 +151,7 @@ public final class ExternalReferenceGuard {
 
     private boolean isHttpMethod(String method) {
         return switch (method) {
-            case "get", "post", "put", "patch", "delete" -> true;
+            case "get", "post", "put", "patch", "delete", "head", "options", "trace" -> true;
             default -> false;
         };
     }

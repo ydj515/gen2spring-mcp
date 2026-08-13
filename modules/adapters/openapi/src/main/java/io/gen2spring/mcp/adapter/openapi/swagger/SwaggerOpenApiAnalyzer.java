@@ -1,8 +1,17 @@
 package io.gen2spring.mcp.adapter.openapi.swagger;
 
-import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.OPERATION_ID_DUPLICATED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_PARSE_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_VERSION_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.GET_REQUEST_BODY_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.HTTP_METHOD_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_DUPLICATED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_MISSING;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_LOCATION_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_SERIALIZATION_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SECURITY_REQUIREMENT_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
@@ -14,6 +23,8 @@ import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSecurityScheme;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.specification.OperationSupport;
+import io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
@@ -41,6 +52,9 @@ import java.util.Set;
 public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
     private static final String SPEC_ANALYSIS = "SPEC_ANALYSIS";
     private static final List<HttpMethod> METHOD_ORDER = List.of(
+            HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH, HttpMethod.DELETE,
+            HttpMethod.HEAD, HttpMethod.OPTIONS, HttpMethod.TRACE);
+    private static final Set<HttpMethod> SUPPORTED_METHODS = Set.of(
             HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH, HttpMethod.DELETE);
 
     private final LocalSpecificationLoader loader;
@@ -111,7 +125,6 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             return List.of();
         }
         List<ApiOperation> operations = new ArrayList<>();
-        Set<String> operationIds = new java.util.HashSet<>();
         openApi.getPaths().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(pathEntry -> {
             Map<HttpMethod, Operation> methods = methods(pathEntry.getValue());
             METHOD_ORDER.forEach(method -> {
@@ -120,18 +133,22 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                     ApiOperation normalized = normalizeOperation(openApi, pathEntry.getKey(), method,
                             pathEntry.getValue().getParameters(), operation,
                             preflight.hasRecursiveSchema(pathEntry.getKey(), method.name()), securitySchemes);
-                    if (normalized.operationId() != null && !normalized.operationId().isBlank()
-                            && !operationIds.add(normalized.operationId())) {
-                        throw GeneratorException.user(OPERATION_ID_DUPLICATED, SPEC_ANALYSIS,
-                                "Duplicate operationId: " + normalized.operationId());
-                    }
                     operations.add(normalized);
-                    normalized.warnings().forEach(warning -> documentWarnings.add(
-                            new AnalysisWarning("OPERATION_UNSUPPORTED", warning, normalized.operationId())));
                 }
             });
         });
-        return operations;
+        Map<String, Long> counts = operations.stream()
+                .filter(operation -> operation.operationId() != null && !operation.operationId().isBlank())
+                .collect(java.util.stream.Collectors.groupingBy(
+                        ApiOperation::operationId, java.util.TreeMap::new, java.util.stream.Collectors.counting()));
+        List<ApiOperation> resolved = operations.stream()
+                .map(operation -> operation.operationId() != null
+                        && counts.getOrDefault(operation.operationId(), 0L) > 1
+                        ? withIssue(operation, OPERATION_ID_DUPLICATED) : operation)
+                .toList();
+        resolved.forEach(operation -> operation.support().issues().forEach(issue -> documentWarnings.add(
+                new AnalysisWarning(issue.code().name(), issue.message(), operation.operationId()))));
+        return resolved;
     }
 
     private Map<HttpMethod, Operation> methods(PathItem pathItem) {
@@ -141,6 +158,9 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         operations.put(HttpMethod.PUT, pathItem.getPut());
         operations.put(HttpMethod.PATCH, pathItem.getPatch());
         operations.put(HttpMethod.DELETE, pathItem.getDelete());
+        operations.put(HttpMethod.HEAD, pathItem.getHead());
+        operations.put(HttpMethod.OPTIONS, pathItem.getOptions());
+        operations.put(HttpMethod.TRACE, pathItem.getTrace());
         return operations;
     }
 
@@ -152,44 +172,43 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             Operation operation,
             boolean hasRecursiveSchema,
             Map<String, ApiSecurityScheme> securitySchemes) {
-        List<String> warnings = new ArrayList<>();
+        List<IssueCode> issues = new ArrayList<>();
         String operationId = operation.getOperationId();
         if (operationId == null || operationId.isBlank()) {
-            warnings.add("Operations must declare operationId");
+            issues.add(OPERATION_ID_MISSING);
+        }
+        if (!SUPPORTED_METHODS.contains(method)) {
+            issues.add(HTTP_METHOD_UNSUPPORTED);
         }
         if (hasRecursiveSchema) {
-            warnings.add("Recursive schemas are not supported");
+            issues.add(IssueCode.RECURSIVE_SCHEMA_UNSUPPORTED);
         }
 
         Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas = openApi.getComponents() == null
                 ? Map.of() : openApi.getComponents().getSchemas();
         List<ApiParameter> parameters = normalizeParameters(
-                pathParameters, operation.getParameters(), componentSchemas, warnings);
-        ApiSchema requestBody = normalizeRequestBody(operation.getRequestBody(), componentSchemas, warnings);
+                pathParameters, operation.getParameters(), componentSchemas, issues);
+        ApiSchema requestBody = normalizeRequestBody(operation.getRequestBody(), componentSchemas, issues);
         if (method == HttpMethod.GET && operation.getRequestBody() != null) {
-            warnings.add("GET operations with request bodies are not supported");
+            issues.add(GET_REQUEST_BODY_UNSUPPORTED);
         }
-        validateSuccessResponseMediaTypes(operation, warnings);
-        ApiSchema successResponse = normalizeSuccessResponse(operation, componentSchemas, warnings);
-        parameters.forEach(parameter -> addSchemaWarnings(warnings, parameter.schema()));
-        addSchemaWarnings(warnings, requestBody);
-        if (parameters.stream().anyMatch(parameter -> !parameter.schema().supported())
-                || requestBody != null && !requestBody.supported()) {
-            warnings.add("Operation contains an unsupported schema");
-        }
+        validateSuccessResponseMediaTypes(operation, issues);
+        ApiSchema successResponse = normalizeSuccessResponse(operation, componentSchemas, issues);
+        parameters.forEach(parameter -> addSchemaIssues(issues, parameter.schema()));
+        addSchemaIssues(issues, requestBody);
 
         return new ApiOperation(operationId, method, path, operation.getSummary(), operation.getDescription(),
                 parameters, requestBody, operation.getRequestBody() != null
                         && Boolean.TRUE.equals(operation.getRequestBody().getRequired()),
                 securityRequirements(operation.getSecurity() == null ? openApi.getSecurity() : operation.getSecurity(),
-                        securitySchemes, warnings),
-                warnings.isEmpty(), List.copyOf(warnings), successResponse);
+                        securitySchemes, issues),
+                OperationSupport.fromIssues(issues), successResponse);
     }
 
     private ApiSchema normalizeSuccessResponse(
             Operation operation,
             Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas,
-            List<String> warnings) {
+            List<IssueCode> issues) {
         if (operation.getResponses() == null) {
             return null;
         }
@@ -219,7 +238,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             schemas.add(schemaNormalizer.normalizeResponse(mediaType.getSchema(), componentSchemas));
         }
         if (missingSchema) {
-            warnings.add("Success response schemas must be supported and structurally identical");
+            issues.add(SUCCESS_SCHEMA_UNSUPPORTED);
             return null;
         }
         if (schemas.isEmpty()) {
@@ -230,13 +249,13 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         }
         ApiSchema first = schemas.getFirst();
         if (!first.supported() || schemas.stream().anyMatch(schema -> !first.equals(schema))) {
-            warnings.add("Success response schemas must be supported and structurally identical");
+            issues.add(SUCCESS_SCHEMA_UNSUPPORTED);
             return null;
         }
         return first;
     }
 
-    private void validateSuccessResponseMediaTypes(Operation operation, List<String> warnings) {
+    private void validateSuccessResponseMediaTypes(Operation operation, List<IssueCode> issues) {
         if (operation.getResponses() == null) {
             return;
         }
@@ -246,7 +265,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 return;
             }
             if (response.getContent().size() != 1 || response.getContent().get("application/json") == null) {
-                warnings.add("Success responses with bodies must declare an application/json media type");
+                issues.add(SUCCESS_MEDIA_TYPE_UNSUPPORTED);
             }
         });
     }
@@ -266,17 +285,29 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         }
     }
 
-    private void addSchemaWarnings(List<String> operationWarnings, ApiSchema schema) {
-        if (schema != null && !schema.supported()) {
-            operationWarnings.addAll(schema.warnings());
+    private void addSchemaIssues(List<IssueCode> operationIssues, ApiSchema schema) {
+        if (schema == null) {
+            return;
         }
+        schema.warnings().stream().map(this::schemaIssue).forEach(operationIssues::add);
+        schema.properties().values().forEach(property -> addSchemaIssues(operationIssues, property));
+        if (schema.items() != null) {
+            addSchemaIssues(operationIssues, schema.items());
+        }
+    }
+
+    private IssueCode schemaIssue(String warning) {
+        return java.util.Arrays.stream(IssueCode.values())
+                .filter(issue -> issue.message().equals(warning))
+                .findFirst()
+                .orElse(IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED);
     }
 
     private List<ApiParameter> normalizeParameters(
             List<Parameter> pathParameters,
             List<Parameter> operationParameters,
             Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas,
-            List<String> warnings) {
+            List<IssueCode> issues) {
         Map<String, Parameter> byLocationAndName = new LinkedHashMap<>();
         addParameters(byLocationAndName, pathParameters);
         addParameters(byLocationAndName, operationParameters);
@@ -284,13 +315,12 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         byLocationAndName.values().forEach(parameter -> {
             ParameterLocation location = location(parameter.getIn());
             if (location == null) {
-                warnings.add("Parameter " + parameter.getName() + " uses unsupported location " + parameter.getIn());
+                issues.add(PARAMETER_LOCATION_UNSUPPORTED);
                 return;
             }
             ApiSchema schema = schemaNormalizer.normalize(parameter.getSchema(), componentSchemas);
             if (!supportsParameterSerialization(parameter, location, schema)) {
-                warnings.add("Parameter " + parameter.getName()
-                        + " uses an unsupported P0 parameter serialization style or schema shape");
+                issues.add(PARAMETER_SERIALIZATION_UNSUPPORTED);
             }
             normalized.add(new ApiParameter(parameter.getName(), location, Boolean.TRUE.equals(parameter.getRequired()),
                     parameter.getDescription(), schema));
@@ -349,13 +379,13 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
     private ApiSchema normalizeRequestBody(
             RequestBody requestBody,
             Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas,
-            List<String> warnings) {
+            List<IssueCode> issues) {
         if (requestBody == null) {
             return null;
         }
         MediaType mediaType = preferredApplicationJsonMediaType(requestBody.getContent());
         if (mediaType == null || mediaType.getSchema() == null) {
-            warnings.add("Request body must declare an application/json schema");
+            issues.add(REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED);
             return schemaNormalizer.normalize(null, componentSchemas);
         }
         return schemaNormalizer.normalize(mediaType.getSchema(), componentSchemas);
@@ -374,12 +404,12 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
     private List<String> securityRequirements(
             List<SecurityRequirement> requirements,
             Map<String, ApiSecurityScheme> securitySchemes,
-            List<String> warnings) {
+            List<IssueCode> issues) {
         if (requirements == null || requirements.isEmpty()) {
             return List.of();
         }
         if (requirements.size() != 1 || requirements.getFirst() == null || requirements.getFirst().isEmpty()) {
-            warnings.add("Security must use exactly one non-empty API key requirement alternative");
+            issues.add(SECURITY_REQUIREMENT_UNSUPPORTED);
             return List.of();
         }
         List<String> names = requirements.getFirst().keySet().stream().sorted().toList();
@@ -388,11 +418,21 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             if (scheme == null || !"apiKey".equalsIgnoreCase(scheme.type())
                     || scheme.location() != ParameterLocation.HEADER && scheme.location() != ParameterLocation.QUERY
                     || scheme.parameterName() == null || scheme.parameterName().isBlank()) {
-                warnings.add("Security scheme " + name + " is not a supported API key header or query scheme");
+                issues.add(SECURITY_REQUIREMENT_UNSUPPORTED);
                 return List.of();
             }
         }
         return names;
+    }
+
+    private ApiOperation withIssue(ApiOperation operation, IssueCode issue) {
+        List<IssueCode> issues = new ArrayList<>(operation.support().issueCodes());
+        issues.add(issue);
+        return new ApiOperation(
+                operation.operationId(), operation.method(), operation.path(), operation.summary(),
+                operation.description(), operation.parameters(), operation.requestBody(),
+                operation.requestBodyRequired(), operation.securityRequirements(),
+                OperationSupport.fromIssues(issues), operation.successResponse());
     }
 
     private Map<String, ApiSecurityScheme> normalizeSecuritySchemes(Components components) {
