@@ -87,6 +87,17 @@ class WebMvcContractTest {
                         .content(bytes(specification())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.operations[0].operationId").value("getForecast"))
+                .andExpect(jsonPath("$.operations[0].status").value("SUPPORTED"))
+                .andExpect(jsonPath("$.operations[0].supported").value(true))
+                .andExpect(jsonPath("$.operations[0].issues.length()").value(0))
+                .andExpect(jsonPath("$.counts.total").value(1))
+                .andExpect(jsonPath("$.counts.supported").value(1))
+                .andExpect(jsonPath("$.counts.supportedWithWarning").value(0))
+                .andExpect(jsonPath("$.counts.unsupported").value(0))
+                .andExpect(jsonPath("$.file.name").value("weather.yaml"))
+                .andExpect(jsonPath("$.file.byteSize").value(
+                        specification().getBytes(StandardCharsets.UTF_8).length))
+                .andExpect(jsonPath("$.securitySchemes").isMap())
                 .andReturn().getResponse().getContentAsByteArray());
         String specificationId = uploaded.path("id").textValue();
         assertTrue(specificationId.matches("[a-f0-9]{64}"));

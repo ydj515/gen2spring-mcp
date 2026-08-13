@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
-import io.gen2spring.mcp.domain.specification.OpenApiDocument;
+import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.io.InputStream;
 import java.util.Objects;
@@ -17,6 +17,7 @@ public final class PreviewHandler {
     private final GeneratorRuntime application;
     private final SpecificationStore specifications;
     private final ObjectMapper json;
+    private final SpecificationAnalysisPresenter analysisPresenter;
     private final BoundedBodyReader configurationReader;
 
     public PreviewHandler(
@@ -26,6 +27,7 @@ public final class PreviewHandler {
         this.application = Objects.requireNonNull(application, "application");
         this.specifications = Objects.requireNonNull(specifications, "specifications");
         this.json = Objects.requireNonNull(json, "json");
+        this.analysisPresenter = new SpecificationAnalysisPresenter(this.json);
         this.configurationReader = new BoundedBodyReader(
                 io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser.MAX_BYTES);
     }
@@ -39,23 +41,11 @@ public final class PreviewHandler {
 
     ObjectNode upload(String specificationName, InputStream body) {
         SpecificationStore.StoredSpecification stored = specifications.store(specificationName, body);
-        OpenApiDocument document = stored.analysis().document();
-        ObjectNode root = json.createObjectNode();
-        root.put("id", stored.id());
-        root.put("checksum", document.checksum());
-        root.put("openApiVersion", document.openApiVersion());
-        root.put("sourceExtension", document.sourceExtension());
-        if (document.baseUrl() == null) {
-            root.putNull("baseUrl");
-        } else {
-            root.put("baseUrl", document.baseUrl().toString());
-        }
-        root.put("operationCount", document.operations().size());
-        root.put("warningCount", document.warnings().size());
-        ArrayNode operations = root.putArray("operations");
-        document.operations().forEach(operation -> operations.add(operation(operation)));
-        root.set("warnings", warnings(document.warnings()));
-        return root;
+        return analysisPresenter.present(
+                stored.id(),
+                stored.displayName(),
+                stored.size(),
+                SpecificationAnalysisView.from(stored.analysis().document()));
     }
 
     ObjectNode preview(String specificationId, InputStream body) {
@@ -96,29 +86,6 @@ public final class PreviewHandler {
         node.put("runtimeVersion", profile.runtimeVersion());
         node.put("gradleVersion", profile.gradleVersion());
         node.put("containerImage", profile.containerImage());
-        return node;
-    }
-
-    private ObjectNode operation(OpenApiDocument.ApiOperation operation) {
-        ObjectNode node = json.createObjectNode();
-        node.put("operationId", operation.operationId());
-        node.put("method", operation.method().name());
-        node.put("path", operation.path());
-        putNullable(node, "summary", operation.summary());
-        putNullable(node, "description", operation.description());
-        node.put("supported", operation.supported());
-        ArrayNode warnings = node.putArray("warnings");
-        operation.warnings().forEach(warnings::add);
-        ArrayNode parameters = node.putArray("parameters");
-        operation.parameters().forEach(parameter -> {
-            ObjectNode value = parameters.addObject();
-            value.put("name", parameter.name());
-            value.put("location", parameter.location().name());
-            value.put("required", parameter.required());
-            putNullable(value, "description", parameter.description());
-            value.put("type", parameter.schema().type().name());
-            putNullable(value, "format", parameter.schema().format());
-        });
         return node;
     }
 
@@ -168,7 +135,8 @@ public final class PreviewHandler {
         }
     }
 
-    private ArrayNode warnings(java.util.List<OpenApiDocument.AnalysisWarning> warnings) {
+    private ArrayNode warnings(java.util.List<io.gen2spring.mcp.domain.specification.OpenApiDocument.AnalysisWarning>
+            warnings) {
         ArrayNode values = json.createArrayNode();
         warnings.forEach(warning -> {
             ObjectNode node = values.addObject();

@@ -282,7 +282,7 @@ public record UpstreamCallExpectation(
                 || secrets.stream().anyMatch(binding -> binding.targetLocation() == ParameterLocation.BODY);
         boolean hasBody = hasBodyBinding || execution.objectRequestBody() && execution.requestBodyRequired();
         if (hasBody && switch (execution.method()) {
-            case GET -> true;
+            case GET, HEAD, OPTIONS, TRACE -> true;
             case POST, PUT, PATCH, DELETE -> false;
         }) {
             throw new IllegalArgumentException("Expected Tool call body is unsupported for the HTTP method");

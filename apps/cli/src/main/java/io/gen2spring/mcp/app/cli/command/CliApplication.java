@@ -18,10 +18,10 @@ import io.gen2spring.mcp.app.cli.error.CliConfigurationException;
 import io.gen2spring.mcp.app.cli.error.CliUsageException;
 import io.gen2spring.mcp.app.cli.output.CliOutput;
 import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
-import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
@@ -198,7 +198,7 @@ public final class CliApplication {
                         INTERNAL_ERROR, "SPEC_ANALYSIS", "Specification analysis returned no result", null);
             }
         }
-        ObjectNode analysis = analysisJson(result.document());
+        ObjectNode analysis = analysisJson(SpecificationAnalysisView.from(result.document()));
         publishNewJson(output, analysis);
 
         ObjectNode response = json.createObjectNode();
@@ -233,20 +233,8 @@ public final class CliApplication {
         return outcome.validationStatus() == UNVERIFIED ? 5 : 0;
     }
 
-    private ObjectNode analysisJson(OpenApiDocument document) {
-        ObjectNode result = json.createObjectNode();
-        result.put("checksum", document.checksum());
-        result.put("openApiVersion", document.openApiVersion());
-        result.put("sourceExtension", document.sourceExtension());
-        if (document.baseUrl() == null) {
-            result.putNull("baseUrl");
-        } else {
-            result.put("baseUrl", document.baseUrl().toString());
-        }
-        result.set("operations", json.valueToTree(document.operations()));
-        result.set("securitySchemes", json.valueToTree(document.securitySchemes()));
-        result.set("warnings", json.valueToTree(document.warnings()));
-        return result;
+    private ObjectNode analysisJson(SpecificationAnalysisView analysis) {
+        return json.valueToTree(analysis);
     }
 
     private LocalPathBoundary.VerifiedCopy specificationCopy(Path requested) {

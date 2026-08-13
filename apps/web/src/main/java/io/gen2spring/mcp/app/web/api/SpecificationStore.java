@@ -74,7 +74,7 @@ public final class SpecificationStore implements AutoCloseable {
             }
             SpecificationAnalyzer.AnalysisResult analysis = analyzer.analyze(path, MAX_SPECIFICATION_BYTES);
             StoredSpecification stored = new StoredSpecification(
-                    identifier, path, attributes.fileKey(), attributes.size(), analysis);
+                    identifier, name, path, attributes.fileKey(), attributes.size(), analysis);
             evictForCapacity();
             specifications.put(identifier, new StoredEntry(stored, ++accessSequence));
             published = true;
@@ -214,12 +214,14 @@ public final class SpecificationStore implements AutoCloseable {
 
     record StoredSpecification(
             String id,
+            String displayName,
             Path path,
             Object fileKey,
             long size,
             SpecificationAnalyzer.AnalysisResult analysis) {
         StoredSpecification {
             Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(displayName, "displayName");
             Objects.requireNonNull(path, "path");
             Objects.requireNonNull(analysis, "analysis");
         }

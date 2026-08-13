@@ -128,6 +128,16 @@ class CliApplicationTest {
         JsonNode analysis = JSON.readTree(Files.readString(output));
         assertEquals("3.0.3", analysis.path("openApiVersion").asText());
         assertEquals("getForecast", analysis.path("operations").get(0).path("operationId").asText());
+        assertEquals("SUPPORTED", analysis.path("operations").get(0).path("status").asText());
+        assertEquals("SUPPORTED", analysis.path("operations").get(0).path("support").path("status").asText());
+        assertTrue(analysis.path("operations").get(0).path("supported").asBoolean());
+        assertTrue(analysis.path("operations").get(0).path("issues").isEmpty());
+        assertEquals(1, analysis.path("counts").path("total").asInt());
+        assertEquals(1, analysis.path("counts").path("supported").asInt());
+        assertEquals(0, analysis.path("counts").path("supportedWithWarning").asInt());
+        assertEquals(0, analysis.path("counts").path("unsupported").asInt());
+        assertTrue(analysis.has("securitySchemes"));
+        assertTrue(analysis.has("warnings"));
 
         String original = Files.readString(output);
         var second = run(app, "inspect", "--spec", specification.toString(), "--output", output.toString());

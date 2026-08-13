@@ -23,6 +23,7 @@ import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.util.AbstractMap;
@@ -31,6 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class UpstreamCallExpectationTest {
     private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -230,6 +233,23 @@ class UpstreamCallExpectationTest {
         var call = call(POST, "/events", List.of(), true, false, List.of(), Map.of());
 
         assertEquals(null, UpstreamCallExpectation.from(call).body());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = HttpMethod.class, names = {"GET", "HEAD", "OPTIONS", "TRACE"})
+    void rejectsBodiesForEveryNonBodyHttpMethod(HttpMethod method) {
+        var call = call(
+                method,
+                "/events",
+                List.of(binding("payload", BODY, "payload")),
+                false,
+                false,
+                List.of(),
+                Map.of("payload", "value"));
+
+        var failure = assertThrows(IllegalArgumentException.class, () -> UpstreamCallExpectation.from(call));
+
+        assertEquals("Expected Tool call body is unsupported for the HTTP method", failure.getMessage());
     }
 
     @Test
