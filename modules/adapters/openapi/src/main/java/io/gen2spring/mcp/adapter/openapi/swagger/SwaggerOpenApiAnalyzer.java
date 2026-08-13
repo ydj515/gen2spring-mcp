@@ -10,6 +10,7 @@ import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_SERIALIZATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SECURITY_REQUIREMENT_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_INFERRED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
 
@@ -202,7 +203,6 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         if (method == HttpMethod.GET && operation.getRequestBody() != null) {
             issues.add(GET_REQUEST_BODY_UNSUPPORTED);
         }
-        validateSuccessResponseMediaTypes(operation, issues);
         ApiSchema successResponse = normalizeSuccessResponse(operation, componentSchemas, issues);
         parameters.forEach(parameter -> addSchemaIssues(issues, parameter.schema()));
         addSchemaIssues(issues, requestBody);
@@ -223,7 +223,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             return null;
         }
         List<ApiSchema> schemas = new ArrayList<>();
-        boolean missingSchema = false;
+        boolean invalidBodyDeclaration = false;
         boolean bodylessSuccess = false;
         for (Map.Entry<String, io.swagger.v3.oas.models.responses.ApiResponse> entry
                 : operation.getResponses().entrySet()) {
@@ -236,21 +236,26 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 bodylessSuccess = true;
                 continue;
             }
-            MediaType mediaType = response.getContent().size() == 1
-                    ? response.getContent().get("application/json") : null;
-            if (mediaType == null) {
+            SuccessMediaSelection selection = selectSuccessMedia(response.getContent());
+            if (selection.decision() == SuccessMediaDecision.UNSUPPORTED_MEDIA) {
+                issues.add(SUCCESS_MEDIA_TYPE_UNSUPPORTED);
+                invalidBodyDeclaration = true;
                 continue;
             }
-            if (mediaType.getSchema() == null) {
-                missingSchema = true;
+            if (selection.decision() == SuccessMediaDecision.MISSING_SCHEMA) {
+                issues.add(SUCCESS_SCHEMA_UNSUPPORTED);
+                invalidBodyDeclaration = true;
                 continue;
             }
-            ApiSchema schema = schemaNormalizer.normalizeResponse(mediaType.getSchema(), componentSchemas);
+            if (selection.decision() == SuccessMediaDecision.INFERRED_JSON) {
+                issues.add(SUCCESS_MEDIA_TYPE_INFERRED);
+            }
+            ApiSchema schema = schemaNormalizer.normalizeResponse(
+                    selection.mediaType().getSchema(), componentSchemas);
             addSchemaIssues(issues, schema);
             schemas.add(schema);
         }
-        if (missingSchema) {
-            issues.add(SUCCESS_SCHEMA_UNSUPPORTED);
+        if (invalidBodyDeclaration) {
             return null;
         }
         if (schemas.isEmpty()) {
@@ -267,19 +272,39 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         return first;
     }
 
-    private void validateSuccessResponseMediaTypes(Operation operation, List<IssueCode> issues) {
-        if (operation.getResponses() == null) {
-            return;
+    private SuccessMediaSelection selectSuccessMedia(Content content) {
+        if (content.size() != 1) {
+            return new SuccessMediaSelection(null, SuccessMediaDecision.UNSUPPORTED_MEDIA);
         }
-        operation.getResponses().forEach((statusCode, response) -> {
-            if (!isSuccessStatus(statusCode) || response == null || response.getContent() == null
-                    || response.getContent().isEmpty()) {
-                return;
-            }
-            if (response.getContent().size() != 1 || response.getContent().get("application/json") == null) {
-                issues.add(SUCCESS_MEDIA_TYPE_UNSUPPORTED);
-            }
-        });
+        Map.Entry<String, MediaType> declaration = content.entrySet().iterator().next();
+        String mediaTypeName = declaration.getKey();
+        MediaType mediaType = declaration.getValue();
+        if (mediaTypeName == null) {
+            return new SuccessMediaSelection(null, SuccessMediaDecision.UNSUPPORTED_MEDIA);
+        }
+        String declaredMediaType = mediaTypeName.toLowerCase(java.util.Locale.ROOT);
+        SuccessMediaDecision decision;
+        if (declaredMediaType.equals("application/json")
+                || declaredMediaType.matches("application/[a-z0-9!#$&^_.+-]+\\+json")) {
+            decision = SuccessMediaDecision.EXPLICIT_JSON;
+        } else if (declaredMediaType.equals("*/*")) {
+            decision = SuccessMediaDecision.INFERRED_JSON;
+        } else {
+            return new SuccessMediaSelection(null, SuccessMediaDecision.UNSUPPORTED_MEDIA);
+        }
+        return mediaType == null || mediaType.getSchema() == null
+                ? new SuccessMediaSelection(null, SuccessMediaDecision.MISSING_SCHEMA)
+                : new SuccessMediaSelection(mediaType, decision);
+    }
+
+    private enum SuccessMediaDecision {
+        EXPLICIT_JSON,
+        INFERRED_JSON,
+        MISSING_SCHEMA,
+        UNSUPPORTED_MEDIA
+    }
+
+    private record SuccessMediaSelection(MediaType mediaType, SuccessMediaDecision decision) {
     }
 
     private boolean isSuccessStatus(String statusCode) {

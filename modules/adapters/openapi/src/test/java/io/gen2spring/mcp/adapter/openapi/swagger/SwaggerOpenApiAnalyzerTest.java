@@ -13,7 +13,10 @@ import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_MULTI_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_INFERRED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.Status.SUPPORTED_WITH_WARNING;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.Status.UNSUPPORTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -647,7 +650,7 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
-    void supportsOnlyExactJsonSuccessBodiesWhileAllowingAnEmptyNoContentResponse() throws Exception {
+    void appliesTheBoundedSuccessMediaDecisionTable() throws Exception {
         Path specification = Files.createTempFile("response-media-types", ".yaml");
         Files.writeString(specification, """
                 openapi: 3.0.3
@@ -677,6 +680,30 @@ class SwaggerOpenApiAnalyzerTest {
                           description: JSON response
                           content:
                             application/json: { schema: { type: object } }
+                  /vendor-json:
+                    get:
+                      operationId: getVendorJson
+                      responses:
+                        '200':
+                          description: Vendor JSON response
+                          content:
+                            application/problem+json: { schema: { type: object } }
+                  /wildcard:
+                    get:
+                      operationId: getWildcardJson
+                      responses:
+                        '200':
+                          description: Inferred JSON response
+                          content:
+                            '*/*': { schema: { type: object } }
+                  /wildcard-missing-schema:
+                    get:
+                      operationId: getWildcardWithoutSchema
+                      responses:
+                        '200':
+                          description: Missing inferred schema
+                          content:
+                            '*/*': {}
                   /accepted:
                     get:
                       operationId: getAccepted
@@ -695,16 +722,24 @@ class SwaggerOpenApiAnalyzerTest {
 
         var operations = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations();
 
-        assertFalse(operations.stream().filter(operation -> operation.operationId().equals("getPlain"))
-                .findFirst().orElseThrow().supported());
-        assertFalse(operations.stream().filter(operation -> operation.operationId().equals("getXml"))
-                .findFirst().orElseThrow().supported());
-        assertTrue(operations.stream().filter(operation -> operation.operationId().equals("getJson"))
-                .findFirst().orElseThrow().supported());
-        assertTrue(operations.stream().filter(operation -> operation.operationId().equals("getAccepted"))
-                .findFirst().orElseThrow().supported());
-        assertFalse(operations.stream().filter(operation -> operation.operationId().equals("getMixed"))
-                .findFirst().orElseThrow().supported());
+        var byId = operations.stream().collect(
+                java.util.stream.Collectors.toMap(operation -> operation.operationId(), operation -> operation));
+
+        assertEquals(java.util.List.of(SUCCESS_MEDIA_TYPE_UNSUPPORTED),
+                byId.get("getPlain").support().issueCodes());
+        assertEquals(java.util.List.of(SUCCESS_MEDIA_TYPE_UNSUPPORTED),
+                byId.get("getXml").support().issueCodes());
+        assertTrue(byId.get("getJson").supported());
+        assertTrue(byId.get("getVendorJson").supported());
+        assertEquals(SUPPORTED_WITH_WARNING, byId.get("getWildcardJson").support().status());
+        assertEquals(java.util.List.of(SUCCESS_MEDIA_TYPE_INFERRED),
+                byId.get("getWildcardJson").support().issueCodes());
+        assertEquals(SchemaType.OBJECT, byId.get("getWildcardJson").successResponse().type());
+        assertEquals(java.util.List.of(SUCCESS_SCHEMA_UNSUPPORTED),
+                byId.get("getWildcardWithoutSchema").support().issueCodes());
+        assertTrue(byId.get("getAccepted").supported());
+        assertEquals(java.util.List.of(SUCCESS_MEDIA_TYPE_UNSUPPORTED),
+                byId.get("getMixed").support().issueCodes());
     }
 
     @Test
