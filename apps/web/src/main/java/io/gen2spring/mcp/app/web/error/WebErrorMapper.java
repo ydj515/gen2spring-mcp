@@ -4,6 +4,11 @@ import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.app.web.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.job.JobWorkspace;
+import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
+import io.gen2spring.mcp.app.web.hosted.HostedArtifactController;
+import io.gen2spring.mcp.app.web.hosted.HostedJobController;
+import io.gen2spring.mcp.app.web.hosted.HostedSubmissionService;
+import io.gen2spring.mcp.app.web.security.HostedAccountResolver;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingRequestHeaderException;
@@ -14,6 +19,26 @@ public final class WebErrorMapper {
     public WebFailure map(Throwable failure) {
         if (failure instanceof WebException exception) {
             return exception.failure();
+        }
+        if (failure instanceof HostedJobController.HostedResourceNotFound) {
+            return new WebFailure(404, "RESOURCE_NOT_FOUND", "HOSTED_LOOKUP", "The hosted resource was not found");
+        }
+        if (failure instanceof HostedJobFailure hosted) {
+            return switch (hosted.code()) {
+                case NOT_FOUND -> new WebFailure(404, "RESOURCE_NOT_FOUND", "HOSTED_LOOKUP", hosted.getMessage());
+                case IDEMPOTENCY_CONFLICT -> new WebFailure(409, hosted.code().name(), "JOB_CREATE", hosted.getMessage());
+                case CAPACITY_EXCEEDED -> new WebFailure(429, hosted.code().name(), "JOB_CREATE", hosted.getMessage());
+                case INVALID_REQUEST -> new WebFailure(400, hosted.code().name(), "JOB_CREATE", hosted.getMessage());
+            };
+        }
+        if (failure instanceof HostedSubmissionService.HostedSubmissionFailure) {
+            return new WebFailure(400, "HOSTED_SUBMISSION_INVALID", "HOSTED_SUBMIT", "The hosted request is invalid");
+        }
+        if (failure instanceof HostedAccountResolver.HostedAuthenticationFailure) {
+            return new WebFailure(401, "AUTHENTICATION_REQUIRED", "OIDC", "Hosted authentication is required");
+        }
+        if (failure instanceof HostedArtifactController.HostedArtifactFailure) {
+            return new WebFailure(409, "ARTIFACT_UNAVAILABLE", "ARTIFACT_READ", "The requested artifact is unavailable");
         }
         if (failure instanceof HttpMediaTypeNotSupportedException) {
             return new WebFailure(415, "CONTENT_TYPE_UNSUPPORTED", "HTTP",

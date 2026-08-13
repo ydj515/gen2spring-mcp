@@ -21,6 +21,27 @@ class SwaggerOpenApiAnalyzerTest {
     private final SpecificationAnalyzer analyzer = new SwaggerOpenApiAnalyzer();
 
     @Test
+    void rejectsDuplicateKeysAndTrailingJsonTokens() throws Exception {
+        Path duplicateYaml = Files.createTempFile("duplicate-openapi", ".yaml");
+        Files.writeString(duplicateYaml, """
+                openapi: 3.0.3
+                openapi: 3.0.3
+                info: { title: Weather, version: '1.0' }
+                paths: {}
+                """);
+        Path duplicateJson = Files.createTempFile("duplicate-openapi", ".json");
+        Files.writeString(duplicateJson,
+                "{\"openapi\":\"3.0.3\",\"openapi\":\"3.0.3\",\"info\":{},\"paths\":{}}");
+        Path trailingJson = Files.createTempFile("trailing-openapi", ".json");
+        Files.writeString(trailingJson,
+                "{\"openapi\":\"3.0.3\",\"info\":{},\"paths\":{}} {}");
+
+        assertThrows(GeneratorException.class, () -> analyzer.analyze(duplicateYaml, 1024));
+        assertThrows(GeneratorException.class, () -> analyzer.analyze(duplicateJson, 1024));
+        assertThrows(GeneratorException.class, () -> analyzer.analyze(trailingJson, 1024));
+    }
+
+    @Test
     void normalizesStructurallyIdenticalJsonSuccessResponseSchemas() throws Exception {
         Path specification = Files.createTempFile("success-response", ".yaml");
         Files.writeString(specification, """

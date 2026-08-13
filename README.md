@@ -130,10 +130,8 @@ header, Spring Security session CSRF를 모두 검증한다. CSRF와 session 값
 session 경계 밖으로 출력하지 않는다. local session은 server process 수명 동안 유지되며 browser
 session cookie와 server process가 종료되면 함께 폐기된다.
 
-현재 Boot UI는 public multi-user service가 아니다. 계정과 인증, owner/tenant별 authorization,
-database migration, durable artifact storage, distributed capacity control, trusted reverse proxy,
-rate limit·quota·audit가 구현되고 별도 threat review가 통과하기 전에는 외부 address에 bind하거나
-internet에 배포하지 않는다.
+기본 `local` mode는 public multi-user service가 아니다. 외부 address에 bind하거나 internet에
+배포하지 않는다. 별도 `hosted` mode는 아래 운영 경계가 모두 준비된 Linux 단일 host에서만 활성화한다.
 
 작업 흐름은 다음 다섯 단계다.
 
@@ -159,6 +157,28 @@ UI는 키보드 탐색, 오류 summary/focus, live status를 제공하고 400px 
 동작한다. 실제 browser acceptance matrix는 최신 Chromium이다. Firefox와 Safari는 Fetch API,
 ES modules, CSS Grid 지원이 필요하며 현재 자동 acceptance matrix에는 포함하지 않는다. 브라우저
 extension이나 remote deployment는 신뢰 경계에 포함하지 않는다.
+
+## Hosted multi-user platform
+
+Hosted mode는 외부 OIDC `(issuer, subject)`를 내부 account UUID에 매핑하고, PostgreSQL 17.9에
+specification/job/event/lease metadata를 저장하며, private MinIO에 원본과 artifact를 보관한다. URL import는
+Web이 직접 fetch하지 않고 mTLS fetch gateway와 전용 import runner를 통과한다. 생성은 Worker가 rootless
+Docker의 non-root/read-only/network-none sandbox에서 실행한다.
+
+TLS proxy만 host port를 publish하며 Web, PostgreSQL, MinIO, fetch gateway는 private network에 둔다. Hosted
+Web은 migration, private bucket policy, 최근 Worker heartbeat, secure session/OIDC 설정이 모두 유효하지
+않으면 시작하지 않는다. 구성과 운영 절차는 [deploy/hosted/README.md](deploy/hosted/README.md)를 따른다.
+
+```bash
+cp deploy/hosted/compose.env.example deploy/hosted/.env
+# Provision private secret files and digest-pinned runner image references first.
+mise run hosted:config
+mise run hosted:up
+mise run hosted:acceptance
+```
+
+`hosted:down`은 persistent volume을 삭제하지 않는다. 백업과 isolated restore rehearsal은 각각
+`hosted:backup`, `hosted:restore-rehearsal` task로 실행한다.
 
 ## CLI 사용법
 
@@ -502,8 +522,9 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
   parameter, path/header array, nested array/object item은 operation 생성에서 제외한다.
 - enum은 `tools/list`, JSON body, path/query/header 직렬화에서 원본 OpenAPI wire 값
   (예: `full-detail`)을 일관되게 사용한다.
-- remote `$ref`, URL import, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator,
-  recursive schema는 지원하지 않는다.
+- remote `$ref`, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator, recursive schema는
+  지원하지 않는다. CLI와 local UI는 로컬 파일만 받으며, hosted mode의 URL import는 격리된
+  fetch gateway를 통해 문서 자체만 가져온다. 가져온 문서 안의 remote `$ref`는 계속 거부한다.
 - Maven, WebFlux, async, SSE transport, STDIO는 지원하지 않는다.
 - Windows validation host는 host별 adapter로 지원한다. Windows에서는 repository wrapper를
   `gradlew.bat`로 선택하고 trusted `%SystemRoot%\System32\cmd.exe`의 고정 `/d /s /c` argument로 실행하며,
@@ -513,5 +534,6 @@ profile별 Dockerfile은 위 표의 digest-pinned image를 사용하고 `USER 10
   `Files.isSameFile`로 확인한다. Linux와 `windows-latest` CI가 Java 17·21 전체
   compile/test/ApplicationContext/MCP journey를 실행하며 [Windows 지원 issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)의
   구현 경계를 검증한다.
-- P0의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
-  OCI sandbox, dependency proxy, CPU/memory limit, network egress 통제는 제공하지 않는다.
+- CLI와 local UI의 process isolation은 전용 임시 workspace, timeout, bounded output에 한정된다.
+  Hosted generation은 별도 Worker의 rootless OCI sandbox에서 network-none, read-only rootfs,
+  non-root identity, CPU/memory/PID/time limit과 offline dependency cache를 적용한다.

@@ -4,6 +4,8 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_PARSE_FAILE
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_REFERENCE_UNRESOLVED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -18,8 +20,14 @@ import java.util.Set;
 
 public final class ExternalReferenceGuard {
     private static final String SOURCE_LOAD = "SOURCE_LOAD";
-    private final ObjectMapper jsonMapper = JsonMapper.builder().build();
-    private final ObjectMapper yamlMapper = YAMLMapper.builder().build();
+    private final ObjectMapper jsonMapper = JsonMapper.builder()
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .build();
+    private final ObjectMapper yamlMapper = YAMLMapper.builder()
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .build();
 
     public Preflight verify(byte[] bytes, String extension) {
         try {

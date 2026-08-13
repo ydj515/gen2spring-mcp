@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gen2Spring MCP Hosted Generation Platform</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23111a2e'/%3E%3Ctext x='50' y='67' text-anchor='middle' font-size='54' fill='white'%3EG%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #667085;
+      --paper: #f6f8fb;
+      --surface: #ffffff;
+      --line: #dce2ec;
+      --blue: #4263a9;
+      --green: #238263;
+      --orange: #b6692b;
+      --red: #a94747;
+      --navy: #111a2e;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font-family: Inter, Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; }
+    a { color: var(--blue); }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .9em; background: #eef2f8; padding: .1em .35em; border-radius: 4px; }
+    .hero { color: white; background: radial-gradient(circle at 85% 10%, #36558f 0, var(--navy) 42%, #0c1323 100%); padding: 70px 24px 60px; }
+    .hero-inner { max-width: 1180px; margin: 0 auto; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .18em; font-size: 12px; opacity: .72; }
+    h1 { max-width: 820px; margin: 12px 0 14px; font-size: clamp(34px, 6vw, 64px); line-height: 1.04; letter-spacing: -.04em; }
+    .hero p { max-width: 760px; color: #ccd6e8; font-size: 17px; }
+    .meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+    .pill { border: 1px solid rgba(255,255,255,.24); border-radius: 999px; padding: 7px 11px; color: #e8edf7; font-size: 12px; }
+    nav { position: sticky; top: 0; z-index: 4; overflow-x: auto; white-space: nowrap; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+    nav .nav-inner { max-width: 1180px; margin: 0 auto; padding: 12px 18px; display: flex; gap: 18px; }
+    nav a { color: var(--muted); font-size: 12px; font-weight: 650; text-decoration: none; }
+    nav a:hover { color: var(--ink); }
+    main { max-width: 1180px; margin: 0 auto; padding: 32px 20px 90px; }
+    section { scroll-margin-top: 60px; }
+    .section { margin-top: 52px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 22px; }
+    .section h2 { margin: 0; font-size: 27px; letter-spacing: -.025em; }
+    .section-head p { max-width: 600px; margin: 0; color: var(--muted); font-size: 13px; text-align: right; }
+    .grid { display: grid; gap: 14px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .card { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 16px; box-shadow: 0 5px 16px rgba(17,26,46,.035); }
+    .card h3 { margin: 0 0 7px; font-size: 14px; }
+    .card p, .card li { color: var(--muted); font-size: 12px; }
+    .card ul { margin: 0; padding-left: 18px; }
+    .accent-blue { border-left: 4px solid var(--blue); }
+    .accent-green { border-left: 4px solid var(--green); }
+    .accent-orange { border-left: 4px solid var(--orange); }
+    .accent-red { border-left: 4px solid var(--red); }
+    .arch { display: grid; grid-template-columns: 1fr 48px 1.2fr 48px 1fr; gap: 12px; align-items: stretch; }
+    .zone { border: 1px solid var(--line); border-radius: 16px; padding: 17px; background: var(--surface); }
+    .zone-title { font-size: 15px; font-weight: 750; }
+    .zone-note { color: var(--muted); font-size: 11px; margin: 2px 0 14px; }
+    .node { border: 1px solid var(--line); border-radius: 10px; padding: 11px; margin-top: 9px; background: var(--paper); }
+    .node strong { display: block; font-size: 12px; margin-bottom: 3px; }
+    .node span { color: var(--muted); font-size: 11px; }
+    .flow { align-self: center; color: var(--muted); text-align: center; font-size: 24px; }
+    .callout { margin: 18px 0; border-left: 4px solid var(--green); border-radius: 9px; padding: 13px 15px; background: #edf8f4; font-size: 12px; }
+    .warning { border-left-color: var(--orange); background: #fff6ec; }
+    .danger { border-left-color: var(--red); background: #fff0f0; }
+    .entity h3 { margin: -16px -16px 11px; padding: 11px 16px; border-bottom: 1px solid var(--line); background: #f1f4fa; }
+    .state-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 14px; padding: 18px; background: var(--surface); }
+    .state { border: 1px solid var(--blue); border-radius: 999px; padding: 7px 12px; font-size: 11px; font-weight: 750; }
+    .state.good { border-color: var(--green); }
+    .state.bad { border-color: var(--red); }
+    .state-note { flex: 1 1 320px; border-left: 3px solid var(--orange); padding-left: 12px; color: var(--muted); font-size: 11px; }
+    .pipeline { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 8px; align-items: center; }
+    .step { min-height: 126px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 12px; }
+    .step-num { display: inline-flex; width: 23px; height: 23px; align-items: center; justify-content: center; border-radius: 50%; color: white; background: var(--blue); font-size: 10px; font-weight: 750; }
+    .step h3 { margin: 8px 0 5px; font-size: 12px; }
+    .step p { margin: 0; color: var(--muted); font-size: 10.5px; }
+    .layers { max-width: 960px; margin: 0 auto; }
+    .layer { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 13px 15px; margin: 9px 0; }
+    .layer h3 { margin: 0 0 4px; font-size: 13px; }
+    .layer p { margin: 0; color: var(--muted); font-size: 11px; }
+    .layer:nth-child(2) { margin-left: 30px; margin-right: 30px; border-color: var(--green); }
+    .layer:nth-child(3) { margin-left: 60px; margin-right: 60px; border-color: var(--orange); }
+    .layer:nth-child(4) { margin-left: 90px; margin-right: 90px; border-color: var(--red); }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 11px; }
+    th { background: #f1f4fa; color: var(--muted); font-weight: 700; }
+    tr:last-child td { border-bottom: 0; }
+    .tag { display: inline-block; border-radius: 999px; padding: 3px 8px; color: white; background: var(--blue); font-size: 9px; letter-spacing: .04em; text-transform: uppercase; }
+    .footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+    @media (max-width: 960px) {
+      .grid-4, .grid-3, .grid-2, .arch, .pipeline { grid-template-columns: 1fr; }
+      .flow { transform: rotate(90deg); min-height: 32px; }
+      .layer:nth-child(n) { margin-left: 0; margin-right: 0; }
+      .section-head { display: block; }
+      .section-head p { margin-top: 6px; text-align: left; }
+    }
+    @media print {
+      nav { display: none; }
+      .hero { padding: 36px 20px; }
+      .section { break-inside: avoid; }
+      body { background: white; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">Gen2Spring MCP · Implemented architecture</div>
+      <h1>Hosted Generation Platform</h1>
+      <p>URL import, persistent jobs, multi-user ownership, private artifacts, and sandboxed project generation on a single Linux host.</p>
+      <div class="meta">
+        <span class="pill">Implemented 2026-08-13</span>
+        <span class="pill">PostgreSQL 17.9 Alpine</span>
+        <span class="pill">OIDC</span>
+        <span class="pill">Rootless Docker</span>
+        <span class="pill">Private MinIO</span>
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="문서 목차">
+    <div class="nav-inner">
+      <a href="#architecture">Architecture</a>
+      <a href="#data">Data &amp; State</a>
+      <a href="#import">URL Import</a>
+      <a href="#sandbox">Sandbox</a>
+      <a href="#web">Hosted Web</a>
+      <a href="#deployment">Deployment</a>
+      <a href="#acceptance">Acceptance</a>
+    </div>
+  </nav>
+
+  <main>
+    <section class="section" id="architecture">
+      <div class="section-head">
+        <h2>1. Architecture and trust boundaries</h2>
+        <p>Web은 control plane, Worker는 execution plane이다. 공개 요청, 영속 저장소, 외부 fetch, 생성 실행을 각각 별도 경계로 둔다.</p>
+      </div>
+      <div class="arch">
+        <div class="zone">
+          <div class="zone-title">Public / user zone</div>
+          <div class="zone-note">브라우저와 외부 identity</div>
+          <div class="node accent-green"><strong>Browser</strong><span>upload, URL import, generation, status, download</span></div>
+          <div class="node accent-green"><strong>OIDC Provider</strong><span>issuer + subject → internal account UUID</span></div>
+          <div class="node accent-blue"><strong>TLS Reverse Proxy</strong><span>유일한 공개 endpoint와 trusted forwarding boundary</span></div>
+        </div>
+        <div class="flow">→</div>
+        <div class="zone">
+          <div class="zone-title">Control plane</div>
+          <div class="zone-note">Docker 권한이 없는 Web</div>
+          <div class="node accent-green"><strong>apps/web</strong><span>OIDC, Thymeleaf/API, owner authorization, idempotency</span></div>
+          <div class="node accent-blue"><strong>PostgreSQL 17.9 Alpine</strong><span>account, specification, job, event, lease, artifact metadata</span></div>
+          <div class="node accent-blue"><strong>Private MinIO</strong><span>OpenAPI source와 artifact. Public bucket 없음</span></div>
+          <div class="node accent-orange"><strong>URL Fetch Gateway</strong><span>DNS/CIDR/redirect/size 제한을 적용한 유일한 egress</span></div>
+        </div>
+        <div class="flow">→</div>
+        <div class="zone">
+          <div class="zone-title">Execution plane</div>
+          <div class="zone-note">Dedicated rootless Docker user</div>
+          <div class="node accent-green"><strong>apps/worker</strong><span>lease claim, heartbeat, fencing, recovery</span></div>
+          <div class="node accent-orange"><strong>One job, one container</strong><span>network none, non-root, read-only, resource bound</span></div>
+          <div class="node accent-orange"><strong>Pinned runner image</strong><span>JDK 17/21, Gradle 9.6.1, offline dependency cache</span></div>
+        </div>
+      </div>
+      <div class="callout"><strong>핵심 invariant:</strong> Web은 Docker socket을 보지 못하고, generation container는 URL fetch egress network에 연결되지 않는다.</div>
+      <div class="grid grid-2">
+        <div class="card accent-blue"><h3>local mode</h3><p>기존 loopback-only, 임시 저장소, 단일 process, 익명 개발 UX를 보존한다. 외부 bind와 forwarded headers를 계속 거부한다.</p></div>
+        <div class="card accent-green"><h3>hosted mode</h3><p>OIDC, PostgreSQL migration, private storage, Worker heartbeat, trusted proxy가 모두 유효해야 시작한다. Fallback은 없다.</p></div>
+      </div>
+    </section>
+
+    <section class="section" id="data">
+      <div class="section-head">
+        <h2>2. Persistent data and job state</h2>
+        <p>소유권은 internal account UUID로 고정하고, lease와 fencing token으로 retry와 stale worker를 제어한다.</p>
+      </div>
+      <div class="grid grid-3">
+        <div class="card entity"><h3>account</h3><ul><li>UUID primary key</li><li>unique issuer + subject</li><li>created / last seen</li><li>email/name은 권한·저장에 미사용</li></ul></div>
+        <div class="card entity"><h3>specification</h3><ul><li>owner account FK</li><li>UPLOAD or URL</li><li>object key / checksum / size</li><li>sanitized source label</li></ul></div>
+        <div class="card entity"><h3>generation_job</h3><ul><li>SPEC_IMPORT or GENERATION</li><li>immutable request snapshot</li><li>lease / attempt / fencing token</li><li>idempotency key / request hash</li></ul></div>
+        <div class="card entity"><h3>job_event</h3><ul><li>append-only sequence</li><li>from / to / stage</li><li>safe code and summary</li><li>no input, secret, path, output</li></ul></div>
+        <div class="card entity"><h3>artifact</h3><ul><li>job + owner FK</li><li>private object key</li><li>type / checksum / size</li><li>authorized app streaming only</li></ul></div>
+        <div class="card entity"><h3>ephemeral URL secret</h3><ul><li>userinfo prohibited</li><li>canonical target 전체를 envelope encryption</li><li>terminal transition cleanup</li><li>never log raw URL</li></ul></div>
+      </div>
+      <h3>Canonical state</h3>
+      <div class="state-flow">
+        <span class="state">QUEUED</span><span>→</span><span class="state">RUNNING</span><span>→</span>
+        <span class="state good">SUCCEEDED</span><span>or</span><span class="state bad">FAILED</span><span>or</span><span class="state bad">CANCELLED</span>
+        <div class="state-note">RUNNING lease expiry는 attempt가 남으면 QUEUED, 소진되면 FAILED. Terminal state는 다시 열리지 않는다.</div>
+      </div>
+      <div class="grid grid-4" style="margin-top:14px">
+        <div class="card"><h3>Idempotency</h3><p>unique(owner, operation, key). 같은 request hash는 기존 job, 다른 payload는 409.</p></div>
+        <div class="card"><h3>Lease claim</h3><p><code>FOR UPDATE SKIP LOCKED</code>와 bounded heartbeat.</p></div>
+        <div class="card"><h3>Fencing</h3><p>모든 event, terminal update, artifact publish에 current token 요구.</p></div>
+        <div class="card"><h3>Owner scope</h3><p>모든 조회·취소·다운로드 query에 owner predicate 요구.</p></div>
+      </div>
+      <div class="callout danger"><strong>Fail-closed:</strong> 만료된 worker가 늦게 성공해도 stale fencing token으로 결과 상태나 artifact를 공개할 수 없다.</div>
+    </section>
+
+    <section class="section" id="import">
+      <div class="section-head">
+        <h2>3. URL import security boundary</h2>
+        <p>Web은 URL을 직접 fetch하지 않는다. DNS resolve와 검증 주소 connect를 같은 gateway 경계에서 수행한다.</p>
+      </div>
+      <div class="pipeline">
+        <div class="step"><span class="step-num">1</span><h3>Web intake</h3><p>http/https, bounded length, no userinfo/fragment. Import job만 저장.</p></div>
+        <div class="flow">→</div>
+        <div class="step"><span class="step-num">2</span><h3>Fetch container</h3><p>Rootless, read-only, bounded. Gateway 외 route 없음.</p></div>
+        <div class="flow">→</div>
+        <div class="step"><span class="step-num">3</span><h3>Egress gateway</h3><p>Resolve, CIDR 검사, 검증 IP connect. Redirect마다 반복.</p></div>
+        <div class="flow">→</div>
+        <div class="step"><span class="step-num">4</span><h3>Private object</h3><p>Strict JSON/YAML OpenAPI만 MinIO에 저장.</p></div>
+      </div>
+      <div class="callout warning"><strong>DNS rebinding 방어:</strong> 사전 resolve 후 hostname으로 다시 접속하지 않는다. Gateway가 resolve한 주소로 직접 연결하고 fetch container의 우회 route를 제거한다.</div>
+      <table>
+        <thead><tr><th>Policy</th><th>Initial hosted rule</th><th>Failure behavior</th></tr></thead>
+        <tbody>
+          <tr><td>Scheme / port</td><td>HTTP/HTTPS, 80/443 only</td><td>Fixed safe reject</td></tr>
+          <tr><td>Destination</td><td>Block loopback, private, link-local, multicast, reserved, IPv6 ULA, metadata</td><td>No host or address leak</td></tr>
+          <tr><td>Redirect</td><td>Maximum 3, full validation per hop, no credential forwarding</td><td>Discard partial body</td></tr>
+          <tr><td>Timeout / size</td><td>Connect 5s, total 30s, wire and decompressed body 10 MiB each</td><td>Stop stream immediately</td></tr>
+          <tr><td>Content</td><td>JSON/YAML media family plus strict bounded OpenAPI parse</td><td>Reject before object storage</td></tr>
+          <tr><td>Retry</td><td>DNS/connect/5xx only, bounded</td><td>No retry for policy/4xx/invalid document</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section" id="sandbox">
+      <div class="section-head">
+        <h2>4. Generation sandbox and recovery</h2>
+        <p>OpenAPI parse부터 generated application/MCP validation까지 하나의 임시 job container에서 수행한다.</p>
+      </div>
+      <div class="layers">
+        <div class="layer"><h3>Linux single host</h3><p>Control plane과 execution plane의 OS user, socket, volume을 분리.</p></div>
+        <div class="layer"><h3>apps/worker + rootless Docker socket</h3><p>DB lease, container lifecycle, heartbeat, bounded result collection.</p></div>
+        <div class="layer"><h3>Digest-pinned runner image</h3><p>CLI, JDK 17/21, Gradle 9.6.1, approved profile cache.</p></div>
+        <div class="layer"><h3>Ephemeral workspace</h3><p>Generate, compile/test, app/MCP validation, artifact allowlist, complete cleanup.</p></div>
+      </div>
+      <div class="grid grid-3" style="margin-top:18px">
+        <div class="card"><h3>Network</h3><p><code>network=none</code>. Mock upstream은 container loopback.</p></div>
+        <div class="card"><h3>Identity</h3><p>Numeric non-root, cap drop all, no new privileges, no Docker socket.</p></div>
+        <div class="card"><h3>Filesystem</h3><p>Read-only rootfs, bounded tmpfs/workspace, controlled copy.</p></div>
+        <div class="card"><h3>Resources</h3><p>CPU 2, memory 4 GiB, PID 256, wall timeout 10 minutes.</p></div>
+        <div class="card"><h3>Dependencies</h3><p>Gradle offline. Cache miss는 runner provisioning failure.</p></div>
+        <div class="card"><h3>Output</h3><p>Path/type/symlink/size/checksum allowlist 후 private upload.</p></div>
+      </div>
+      <h3>Crash recovery</h3>
+      <div class="grid grid-3">
+        <div class="card accent-blue"><h3>1. Claim</h3><p>새 fencing token과 container job/attempt/token labels.</p></div>
+        <div class="card accent-orange"><h3>2. Lease expiry</h3><p>잔존 labeled container를 bounded stop/remove하고 retry 후보로 복구.</p></div>
+        <div class="card accent-green"><h3>3. Retry / fence</h3><p>새 token으로 재시도. 이전 worker terminal write와 publish는 거부.</p></div>
+      </div>
+    </section>
+
+    <section class="section" id="web">
+      <div class="section-head">
+        <h2>5. Hosted API/UI and compatibility</h2>
+        <p>Thymeleaf UI와 same-origin API를 Spring Security OIDC, CSRF, owner-scoped repository 위에 구성한다.</p>
+      </div>
+      <div class="grid grid-3">
+        <div class="card accent-blue"><h3>TLS reverse proxy</h3><p>유일한 public endpoint. 외부 forwarding headers 제거 후 trusted values 생성.</p></div>
+        <div class="card accent-green"><h3>OIDC login</h3><p>Issuer + subject를 account UUID로 매핑. Session rotation과 CSRF.</p></div>
+        <div class="card accent-green"><h3>Owner-scoped Web</h3><p>Dashboard, import, generation, job history, authorized artifact stream.</p></div>
+      </div>
+      <table style="margin-top:18px">
+        <thead><tr><th>Endpoint</th><th>Contract</th><th>Authorization boundary</th></tr></thead>
+        <tbody>
+          <tr><td>POST /api/specifications/uploads</td><td>Raw JSON/YAML document body</td><td>10 MiB bound, strict parse, owner fixed</td></tr>
+          <tr><td>POST /api/specifications/imports</td><td>URL to async import job</td><td>Web never fetches</td></tr>
+          <tr><td>GET /api/specifications</td><td>Cursor pagination</td><td>Owner predicate</td></tr>
+          <tr><td>POST /api/jobs</td><td>Idempotency-Key required</td><td>Specification owner recheck</td></tr>
+          <tr><td>GET /api/jobs/{id}</td><td>State, events, artifact metadata</td><td>Consistent 404 on owner miss</td></tr>
+          <tr><td>POST /api/jobs/{id}/cancellation</td><td>Set cancel request</td><td>Terminal state immutable</td></tr>
+          <tr><td>GET /api/artifacts/{id}/content</td><td>Authorized streaming</td><td>No public or presigned URL</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><strong>Public exposure gate:</strong> local filter를 느슨하게 바꾸지 않는다. hosted configuration은 OIDC, DB, private storage, Worker, trusted proxy 검증이 하나라도 실패하면 startup을 거부한다.</div>
+    </section>
+
+    <section class="section" id="deployment">
+      <div class="section-head">
+        <h2>6. Single-host deployment topology</h2>
+        <p>Compose는 control plane을 관리하고, Worker만 전용 OS 사용자의 rootless Docker socket을 통해 일회성 runner를 실행한다.</p>
+      </div>
+      <div class="arch">
+        <div class="zone">
+          <div class="zone-title">Published boundary</div>
+          <div class="zone-note">Host bind는 proxy 하나뿐</div>
+          <div class="node accent-blue"><strong>nginx-unprivileged</strong><span>TLS 8443, trusted forwarding headers, read-only rootfs</span></div>
+          <div class="node accent-green"><strong>OIDC provider</strong><span>Web만 authorization/token/JWK egress 사용</span></div>
+        </div>
+        <div class="flow">→</div>
+        <div class="zone">
+          <div class="zone-title">Private Compose networks</div>
+          <div class="zone-note">platform · proxy · fetch는 internal</div>
+          <div class="node accent-green"><strong>Web</strong><span>platform + proxy + OIDC egress; Docker socket 없음</span></div>
+          <div class="node accent-blue"><strong>PostgreSQL + MinIO</strong><span>named volumes, secret files, host port 미공개</span></div>
+          <div class="node accent-orange"><strong>Fetch gateway</strong><span>mTLS, fetch + egress만 연결</span></div>
+        </div>
+        <div class="flow">→</div>
+        <div class="zone">
+          <div class="zone-title">Rootless execution boundary</div>
+          <div class="zone-note">전용 host UID/GID와 socket</div>
+          <div class="node accent-green"><strong>Worker</strong><span>platform network에서 lease와 private objects 처리</span></div>
+          <div class="node accent-orange"><strong>Import runner</strong><span>fetch-only network, gateway 이외 egress 없음</span></div>
+          <div class="node accent-red"><strong>Generation runner</strong><span>network none, read-only, non-root, CPU/memory/PID/time bound</span></div>
+        </div>
+      </div>
+      <div class="grid grid-3" style="margin-top:18px">
+        <div class="card"><h3>Immutable supply chain</h3><p>PostgreSQL 17.9-alpine과 외부 service image는 multi-architecture digest로 고정한다.</p></div>
+        <div class="card"><h3>Secrets</h3><p>Compose secret/configtree와 host read-only secret directory를 사용하고 환경 변수에 secret 값을 넣지 않는다.</p></div>
+        <div class="card"><h3>Operations</h3><p><code>mise hosted:*</code> task가 config, build, lifecycle, acceptance, backup, isolated restore rehearsal을 제공한다.</p></div>
+      </div>
+    </section>
+
+    <section class="section" id="acceptance">
+      <div class="section-head">
+        <h2>7. Verification and rollout</h2>
+        <p>네 구현 단계는 완료했다. 공개 전에는 Linux rootless-host에서 전체 Compose vertical gate를 별도로 통과해야 한다.</p>
+      </div>
+      <div class="grid grid-4">
+        <div class="card"><span class="tag">Implemented</span><h3>Persistence core</h3><p>Migration, ownership, idempotency, lease, fencing.</p></div>
+        <div class="card"><span class="tag">Implemented</span><h3>Storage &amp; import</h3><p>Private MinIO and adversarial URL gateway.</p></div>
+        <div class="card"><span class="tag">Implemented</span><h3>Worker &amp; sandbox</h3><p>Rootless runner, offline build, crash recovery.</p></div>
+        <div class="card"><span class="tag">Implemented</span><h3>Hosted Web</h3><p>OIDC, UI/API, startup gates, proxy and Compose definition.</p></div>
+      </div>
+      <table style="margin-top:18px">
+        <thead><tr><th>Layer</th><th>Required evidence</th><th>Environment</th></tr></thead>
+        <tbody>
+          <tr><td>Unit / contract</td><td>State, fencing, idempotency, CIDR, redaction, owner predicates</td><td>Fast CI</td></tr>
+          <tr><td>Persistence</td><td>PostgreSQL 17.9 migration, concurrent claim, expiry, stale-token rejection</td><td>Linux Testcontainers</td></tr>
+          <tr><td>Storage / auth</td><td>Private MinIO, restart persistence, cross-owner 404</td><td>Linux integration</td></tr>
+          <tr><td>URL import</td><td>Redirect-to-private, rebinding, dual stack, oversize, timeout</td><td>Isolated integration</td></tr>
+          <tr><td>Sandbox</td><td>No egress, non-root, read-only, limits, offline miss, cleanup</td><td>Rootless Docker acceptance</td></tr>
+          <tr><td>Web security</td><td>Real filter chain, OIDC issuer+subject, CSRF, owner-scoped 404</td><td>MockMvc contract</td></tr>
+          <tr><td>Release gate</td><td>Two OIDC users, import, generation, crash/retry, exact-one artifact, denial</td><td>Linux rootless Hosted Compose</td></tr>
+          <tr><td>Compatibility</td><td>Current local workflow and Java 17/21 × Spring AI 1/2 matrix</td><td>Existing acceptance</td></tr>
+        </tbody>
+      </table>
+      <div class="grid grid-3" style="margin-top:18px">
+        <div class="card"><h3>Initial quota</h3><p>Per account RUNNING 2, QUEUED 10. Exceeding requests return 429.</p></div>
+        <div class="card"><h3>Retention</h3><p>Source/artifact 30 days, job/event metadata 90 days by default.</p></div>
+        <div class="card"><h3>Scale transition</h3><p>More than 8 workers or queue p95 over 60 seconds triggers broker/Kubernetes review.</p></div>
+      </div>
+      <div class="callout warning"><strong>Deployment boundary:</strong> Compose manages proxy, Web, PostgreSQL 17.9-alpine, MinIO, and the private fetch gateway. Worker uses a dedicated OS user and rootless Docker socket; each import launches a trusted import-runner container on the gateway-only network. Production implementation pins the exact multi-architecture PostgreSQL image digest.</div>
+    </section>
+
+    <footer class="footer">
+      Implemented architecture companion for <strong>docs/superpowers/specs/2026-08-13-hosted-generation-platform-design.md</strong>.
+      This file is self-contained and uses no external script, font, or CDN.
+    </footer>
+  </main>
+</body>
+</html>

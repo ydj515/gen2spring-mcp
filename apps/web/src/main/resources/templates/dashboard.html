@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" th:content="${csrfToken}">
+  <meta name="csrf-header" th:content="${csrfHeader}">
+  <title>Gen2Spring MCP Hosted</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="shell hosted-shell">
+  <header class="hosted-header"><div><p class="eyebrow">Hosted workspace</p><h1>Gen2Spring MCP</h1></div>
+    <form method="post" action="/logout"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><button type="submit">Sign out</button></form>
+  </header>
+  <section class="panel hosted-actions" aria-labelledby="import-title">
+    <h2 id="import-title">Import OpenAPI</h2>
+    <form id="hosted-import-form"><label for="import-url">Public HTTP(S) URL</label><input id="import-url" name="url" type="url" required><button type="submit">Queue import</button></form>
+    <form id="hosted-upload-form"><label for="upload-file">OpenAPI file</label><input id="upload-file" name="file" type="file" accept=".json,.yaml,.yml" required><button type="submit">Upload</button></form>
+    <p id="hosted-feedback" role="status" aria-live="polite"></p>
+  </section>
+  <section class="panel"><h2>Specifications</h2><ul class="hosted-list"><li th:each="spec : ${specifications}"><strong th:text="${spec.label}">Spec</strong><span th:text="${spec.sourceType}">UPLOAD</span><code th:text="${spec.id.value}">id</code></li><li th:if="${#lists.isEmpty(specifications)}">No specifications yet.</li></ul></section>
+  <section class="panel hosted-actions" aria-labelledby="generation-title">
+    <h2 id="generation-title">Generate project</h2>
+    <form id="hosted-generation-form">
+      <label for="generation-specification">Specification</label>
+      <select id="generation-specification" name="specificationId" required><option value="">Select a specification</option><option th:each="spec : ${specifications}" th:value="${spec.id.value}" th:text="${spec.label}">Specification</option></select>
+      <label for="generation-configuration">Generation configuration JSON</label>
+      <textarea id="generation-configuration" name="configuration" rows="12" required placeholder='{"project":{"groupId":"com.example","artifactId":"weather-mcp","packageName":"com.example.weather"},"provider":"weather","domain":"forecast","targetProfileId":"spring-ai-2.0-java21-mvc-streamable","validationLevel":"MCP_PROTOCOL","operations":[]}'></textarea>
+      <button type="submit">Queue generation</button>
+    </form>
+  </section>
+  <section class="panel"><h2>Jobs</h2><ul class="hosted-list"><li th:each="job : ${jobs}"><a th:href="@{/jobs/{id}(id=${job.id.value})}" th:text="${job.kind + ' · ' + job.status}">Job</a><time th:text="${job.createdAt}">time</time></li><li th:if="${#lists.isEmpty(jobs)}">No jobs yet.</li></ul></section>
+</main>
+<script src="/hosted.js" defer></script>
+</body>
+</html>
