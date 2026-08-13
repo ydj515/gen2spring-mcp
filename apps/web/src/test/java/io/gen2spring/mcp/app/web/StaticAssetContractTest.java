@@ -30,6 +30,15 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"select-all-operations\""));
         assertTrue(index.contains("id=\"operation-counts\""));
         assertTrue(index.contains("id=\"operation-list\""));
+        assertTrue(index.contains("id=\"selected-tool-list\""));
+        assertTrue(index.contains("id=\"operation-editor-home\""));
+        assertTrue(index.contains("id=\"generation-summary\""));
+        for (String id : new String[] {
+                "summary-version", "summary-selected", "summary-excluded",
+                "summary-warnings", "summary-profile", "summary-validation"
+        }) {
+            assertTrue(index.contains("id=\"" + id + "\""), id);
+        }
         assertTrue(index.contains("id=\"target-profile\""));
         assertTrue(index.contains("id=\"preview-button\" type=\"button\" disabled"));
         assertTrue(index.contains("id=\"generate-button\""));
@@ -45,6 +54,10 @@ class StaticAssetContractTest {
         assertTrue(styles.contains("min-height: 44px"));
         assertTrue(styles.contains("@media (max-width: 400px)"));
         assertTrue(styles.contains(".endpoint-toolbar .grow { flex-basis: auto; }"));
+        assertTrue(styles.contains(".generation-summary { position: sticky;"));
+        assertTrue(styles.contains(".generation-layout { grid-template-columns:"));
+        assertTrue(styles.contains(".generation-summary { position: static; }"));
+        assertTrue(styles.contains(".selected-tool-summary-content { display: grid;"));
     }
 
     @Test
@@ -76,6 +89,13 @@ class StaticAssetContractTest {
         assertTrue(operations.contains("operation-search"));
         assertTrue(operations.contains("select-all-operations"));
         assertTrue(operations.contains("preservedSelection"));
+        assertTrue(editor.contains("document.createElement('details')"));
+        assertTrue(editor.contains("기본값"));
+        assertTrue(editor.contains("사용자 설정"));
+        assertTrue(editor.contains("operation-editor-home"));
+        assertTrue(editor.contains("selected-tool-list"));
+        assertTrue(editor.contains("selected-tool-summary-content"));
+        assertTrue(editor.contains("if (!openOperationId) return;"));
         assertTrue(state.contains("resetSpecificationState"));
         assertTrue(state.contains("operation.supported"));
         assertTrue(api.contains("X-Specification-Name"));
@@ -85,6 +105,14 @@ class StaticAssetContractTest {
         assertTrue(app.contains("initializeOperations"));
         assertTrue(app.contains("onAnalysis: analysis => {\n    ui['preview-button'].disabled = false;"));
         assertTrue(app.contains("function resetSpecificationPresentation() {\n  ui['preview-button'].disabled = true;"));
+        assertTrue(app.contains("renderGenerationSummary"));
+        assertTrue(app.contains("['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED']"));
+        assertTrue(app.contains("ui['delete-job-button'].disabled = api.hostedMode;"));
+        assertTrue(api.contains("crypto.randomUUID()"));
+        assertTrue(api.contains("Idempotency-Key"));
+        assertTrue(api.contains("'/api/jobs'"));
+        assertTrue(api.contains("/cancellation"));
+        assertTrue(api.contains("/api/artifacts/"));
 
         assertFalse(scripts.contains("innerHTML"));
         assertFalse(scripts.contains("Authorization"));

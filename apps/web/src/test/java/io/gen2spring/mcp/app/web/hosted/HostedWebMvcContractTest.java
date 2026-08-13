@@ -152,6 +152,28 @@ class HostedWebMvcContractTest {
     }
 
     @Test
+    void startsOneIdempotentHostedGenerationFromTheGuidedEditor() throws Exception {
+        SpecificationId specificationId = new SpecificationId(UUID.randomUUID());
+        JobView job = new JobView(
+                new JobId(UUID.randomUUID()), OWNER, JobKind.GENERATION, JobStatus.QUEUED,
+                Optional.of(specificationId), 0, false);
+        when(submissions.generate(eq(OWNER), eq(specificationId), eq("editor-request-1"), any()))
+                .thenReturn(new CreateJobResult(job, false));
+
+        mvc.perform(post("/api/jobs")
+                        .with(user()).with(csrf())
+                        .header("Idempotency-Key", "editor-request-1")
+                        .contentType("application/json")
+                        .content("""
+                                {"specificationId":"%s","configuration":{"operations":[]}}
+                                """.formatted(specificationId.value())))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value(job.id().value().toString()))
+                .andExpect(jsonPath("$.status").value("QUEUED"))
+                .andExpect(jsonPath("$.replayed").value(false));
+    }
+
+    @Test
     void returnsOneSafe404ForCrossOwnerSpecificationAnalysis() throws Exception {
         String id = UUID.randomUUID().toString();
         when(submissions.analysis(OWNER, new SpecificationId(UUID.fromString(id))))

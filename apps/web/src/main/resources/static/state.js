@@ -48,30 +48,36 @@ export function resetSpecificationState() {
 }
 
 export function analyzedOperations(operations) {
-  return operations.map((operation, index) => ({
-    ...operation,
-    sourceIndex: index,
-    enabled: operation.supported,
-    toolName: operation.operationId ? safeToolName(operation.operationId) : '',
-    toolDescription: operation.summary || operation.description
-      || (operation.operationId ? `Call ${operation.operationId}` : 'Unsupported endpoint'),
-    outputMode: 'GENERIC_JSON',
-    retry: {
-      enabled: false, statusCodes: [], statusCodesText: '', networkErrors: false,
-      maxRetries: 1, initialBackoffMillis: 100, maxBackoffMillis: 1000, respectRetryAfter: true
-    },
-    pagination: {
-      enabled: false, requestParameter: '', initialValue: null, initialValueText: '',
-      itemsPath: '/items', nextValuePath: '/next', maxPages: 10, maxItems: 1000
-    },
-    parameters: operation.parameters.map(parameter => ({
-      ...parameter, source: 'USER_INPUT', environmentVariable: ''
-    })),
-    responseNormalization: {
-      dataPath: '', successCodePath: '', successValues: [], successValuesText: '[]',
-      errorMessagePath: '', totalCountPath: ''
-    }
-  }));
+  return operations.map((operation, index) => {
+    const defaultToolName = operation.operationId ? safeToolName(operation.operationId) : '';
+    const defaultToolDescription = operation.summary || operation.description
+      || (operation.operationId ? `Call ${operation.operationId}` : 'Unsupported endpoint');
+    return {
+      ...operation,
+      sourceIndex: index,
+      enabled: operation.supported,
+      defaultToolName,
+      defaultToolDescription,
+      toolName: defaultToolName,
+      toolDescription: defaultToolDescription,
+      outputMode: 'GENERIC_JSON',
+      retry: {
+        enabled: false, statusCodes: [], statusCodesText: '', networkErrors: false,
+        maxRetries: 1, initialBackoffMillis: 100, maxBackoffMillis: 1000, respectRetryAfter: true
+      },
+      pagination: {
+        enabled: false, requestParameter: '', initialValue: null, initialValueText: '',
+        itemsPath: '/items', nextValuePath: '/next', maxPages: 10, maxItems: 1000
+      },
+      parameters: operation.parameters.map(parameter => ({
+        ...parameter, source: 'USER_INPUT', environmentVariable: ''
+      })),
+      responseNormalization: {
+        dataPath: '', successCodePath: '', successValues: [], successValuesText: '[]',
+        errorMessagePath: '', totalCountPath: ''
+      }
+    };
+  });
 }
 
 function safeToolName(operationId) {

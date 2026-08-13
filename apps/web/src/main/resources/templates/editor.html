@@ -95,19 +95,29 @@
         <p>프로젝트와 Tool 세부 설정을 확인한 뒤 미리보기합니다.</p>
       </div>
 
-      <div class="field-grid">
-        <div class="field"><label for="group-id">Group ID</label><input id="group-id" value="com.example" required></div>
-        <div class="field"><label for="artifact-id">Artifact ID</label><input id="artifact-id" value="openapi-mcp-server" required></div>
-        <div class="field"><label for="package-name">Package name</label><input id="package-name" value="com.example.mcp" required></div>
-        <div class="field"><label for="provider-name">Provider</label><input id="provider-name" value="provider" required></div>
-        <div class="field"><label for="domain-name">Domain</label><input id="domain-name" value="api" required></div>
-        <div class="field"><label for="target-profile">Compatibility profile</label><select id="target-profile" required></select></div>
-      </div>
-      <p id="profile-description" class="status" aria-live="polite">호환 프로필을 불러오는 중입니다.</p>
+      <div class="generation-layout">
+        <div class="generation-main">
+          <div class="field-grid">
+            <div class="field"><label for="group-id">Group ID</label><input id="group-id" value="com.example" required></div>
+            <div class="field"><label for="artifact-id">Artifact ID</label><input id="artifact-id" value="openapi-mcp-server" required></div>
+            <div class="field"><label for="package-name">Package name</label><input id="package-name" value="com.example.mcp" required></div>
+            <div class="field"><label for="provider-name">Provider</label><input id="provider-name" value="provider" required></div>
+            <div class="field"><label for="domain-name">Domain</label><input id="domain-name" value="api" required></div>
+            <div class="field"><label for="target-profile">Compatibility profile</label><select id="target-profile" required></select></div>
+          </div>
+          <p id="profile-description" class="status" aria-live="polite">호환 프로필을 불러오는 중입니다.</p>
 
-      <details class="advanced-settings">
-        <summary>선택한 Tool 고급 설정</summary>
-        <fieldset id="operation-editor" disabled>
+          <div class="selected-tools-section">
+            <div class="selected-tools-heading">
+              <h3>선택한 MCP Tool</h3>
+              <p>행을 펼쳐 기본 이름과 고급 정책을 조정할 수 있습니다.</p>
+            </div>
+            <div id="selected-tool-list" class="selected-tool-list" aria-live="polite"></div>
+            <p id="selected-tool-empty" class="empty-state">Step 2에서 endpoint를 하나 이상 선택해 주세요.</p>
+          </div>
+
+          <div id="operation-editor-home" hidden>
+            <fieldset id="operation-editor" disabled>
           <legend>Tool 설정</legend>
           <label class="checkbox" for="operation-enabled"><input id="operation-enabled" type="checkbox"> 이 Tool 생성</label>
           <div class="field-grid">
@@ -115,40 +125,45 @@
             <div class="field"><label for="tool-description">Tool description</label><textarea id="tool-description" maxlength="1024" rows="3"></textarea></div>
             <div class="field"><label for="output-mode">Output mode</label><select id="output-mode"><option value="GENERIC_JSON">Generic JSON</option><option value="TYPED">Typed DTO</option></select></div>
           </div>
-          <h3>Retry policy</h3>
-          <label class="checkbox" for="retry-enabled"><input id="retry-enabled" type="checkbox"> bounded retry 사용</label>
-          <div class="field-grid policy-fields">
-            <div class="field"><label for="retry-status-codes">HTTP error status codes</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
-            <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> network error retry</label>
-            <div class="field"><label for="retry-max-retries">Maximum retries</label><input id="retry-max-retries" type="number" min="1" max="3" value="1"></div>
-            <div class="field"><label for="retry-initial-backoff">Initial backoff milliseconds</label><input id="retry-initial-backoff" type="number" min="1" max="5000" value="100"></div>
-            <div class="field"><label for="retry-max-backoff">Maximum backoff milliseconds</label><input id="retry-max-backoff" type="number" min="1" max="10000" value="1000"></div>
-            <label class="checkbox" for="retry-respect-retry-after"><input id="retry-respect-retry-after" type="checkbox" checked> Retry-After 반영</label>
+              <details class="advanced-settings tool-advanced-settings">
+                <summary>고급 Tool 정책</summary>
+                <div class="advanced-settings-body">
+                  <h3>Retry policy</h3>
+                  <label class="checkbox" for="retry-enabled"><input id="retry-enabled" type="checkbox"> bounded retry 사용</label>
+                  <div class="field-grid policy-fields">
+                    <div class="field"><label for="retry-status-codes">HTTP error status codes</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
+                    <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> network error retry</label>
+                    <div class="field"><label for="retry-max-retries">Maximum retries</label><input id="retry-max-retries" type="number" min="1" max="3" value="1"></div>
+                    <div class="field"><label for="retry-initial-backoff">Initial backoff milliseconds</label><input id="retry-initial-backoff" type="number" min="1" max="5000" value="100"></div>
+                    <div class="field"><label for="retry-max-backoff">Maximum backoff milliseconds</label><input id="retry-max-backoff" type="number" min="1" max="10000" value="1000"></div>
+                    <label class="checkbox" for="retry-respect-retry-after"><input id="retry-respect-retry-after" type="checkbox" checked> Retry-After 반영</label>
+                  </div>
+                  <h3>Pagination policy</h3>
+                  <label class="checkbox" for="pagination-enabled"><input id="pagination-enabled" type="checkbox"> cursor pagination 사용</label>
+                  <div class="field-grid policy-fields">
+                    <div class="field"><label for="pagination-request-parameter">Cursor query parameter</label><input id="pagination-request-parameter" type="text" maxlength="128"></div>
+                    <div class="field"><label for="pagination-initial-value">Initial value as JSON string or integer</label><textarea id="pagination-initial-value" rows="2"></textarea></div>
+                    <div class="field"><label for="pagination-items-path">Items JSON Pointer</label><input id="pagination-items-path" type="text" value="/items"></div>
+                    <div class="field"><label for="pagination-next-value-path">Next value JSON Pointer</label><input id="pagination-next-value-path" type="text" value="/next"></div>
+                    <div class="field"><label for="pagination-max-pages">Maximum pages</label><input id="pagination-max-pages" type="number" min="2" max="20" value="10"></div>
+                    <div class="field"><label for="pagination-max-items">Maximum items</label><input id="pagination-max-items" type="number" min="1" max="2000" value="1000"></div>
+                  </div>
+                  <h3>Parameter sources</h3>
+                  <div id="parameter-editor"></div>
+                  <h3>Response normalization</h3>
+                  <div class="field-grid">
+                    <div class="field"><label for="data-path">Data JSON Pointer</label><input id="data-path" type="text"></div>
+                    <div class="field"><label for="success-code-path">Success code JSON Pointer</label><input id="success-code-path" type="text"></div>
+                    <div class="field"><label for="success-values">Success values JSON array</label><textarea id="success-values" rows="2">[]</textarea></div>
+                    <div class="field"><label for="error-message-path">Error message JSON Pointer</label><input id="error-message-path" type="text"></div>
+                    <div class="field"><label for="total-count-path">Total count JSON Pointer</label><input id="total-count-path" type="text"></div>
+                  </div>
+                </div>
+              </details>
+            </fieldset>
           </div>
-          <h3>Pagination policy</h3>
-          <label class="checkbox" for="pagination-enabled"><input id="pagination-enabled" type="checkbox"> cursor pagination 사용</label>
-          <div class="field-grid policy-fields">
-            <div class="field"><label for="pagination-request-parameter">Cursor query parameter</label><input id="pagination-request-parameter" type="text" maxlength="128"></div>
-            <div class="field"><label for="pagination-initial-value">Initial value as JSON string or integer</label><textarea id="pagination-initial-value" rows="2"></textarea></div>
-            <div class="field"><label for="pagination-items-path">Items JSON Pointer</label><input id="pagination-items-path" type="text" value="/items"></div>
-            <div class="field"><label for="pagination-next-value-path">Next value JSON Pointer</label><input id="pagination-next-value-path" type="text" value="/next"></div>
-            <div class="field"><label for="pagination-max-pages">Maximum pages</label><input id="pagination-max-pages" type="number" min="2" max="20" value="10"></div>
-            <div class="field"><label for="pagination-max-items">Maximum items</label><input id="pagination-max-items" type="number" min="1" max="2000" value="1000"></div>
-          </div>
-          <h3>Parameter sources</h3>
-          <div id="parameter-editor"></div>
-          <h3>Response normalization</h3>
-          <div class="field-grid">
-            <div class="field"><label for="data-path">Data JSON Pointer</label><input id="data-path" type="text"></div>
-            <div class="field"><label for="success-code-path">Success code JSON Pointer</label><input id="success-code-path" type="text"></div>
-            <div class="field"><label for="success-values">Success values JSON array</label><textarea id="success-values" rows="2">[]</textarea></div>
-            <div class="field"><label for="error-message-path">Error message JSON Pointer</label><input id="error-message-path" type="text"></div>
-            <div class="field"><label for="total-count-path">Total count JSON Pointer</label><input id="total-count-path" type="text"></div>
-          </div>
-        </fieldset>
-      </details>
 
-      <div class="preview-section">
+          <div class="preview-section">
         <h3>대표 호출과 미리보기</h3>
         <div class="field-grid">
           <div class="field"><label for="validation-operation">Representative operation</label><select id="validation-operation"></select></div>
@@ -164,6 +179,19 @@
         <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
         <ol id="progress-list" class="progress-list"></ol>
         <div id="downloads" class="downloads"></div>
+          </div>
+        </div>
+        <aside id="generation-summary" class="generation-summary" aria-labelledby="generation-summary-title">
+          <h3 id="generation-summary-title">생성 요약</h3>
+          <dl>
+            <div><dt>OpenAPI</dt><dd id="summary-version">—</dd></div>
+            <div><dt>선택 Tool</dt><dd id="summary-selected">0</dd></div>
+            <div><dt>제외 endpoint</dt><dd id="summary-excluded">0</dd></div>
+            <div><dt>경고</dt><dd id="summary-warnings">0</dd></div>
+            <div><dt>프로필</dt><dd id="summary-profile">—</dd></div>
+            <div><dt>대표 검증</dt><dd id="summary-validation">미선택</dd></div>
+          </dl>
+        </aside>
       </div>
     </section>
   </main>

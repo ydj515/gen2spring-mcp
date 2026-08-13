@@ -64,6 +64,8 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString(">1. OpenAPI 파일</h2>")))
                 .andExpect(content().string(containsString(">2. API endpoint 선택</h2>")))
                 .andExpect(content().string(containsString(">3. 생성 설정</h2>")))
+                .andExpect(content().string(containsString("id=\"selected-tool-list\"")))
+                .andExpect(content().string(containsString("id=\"generation-summary\"")))
                 .andExpect(content().string(not(containsString("<h2>4."))))
                 .andExpect(content().string(not(containsString("<h2>5."))))
                 .andExpect(content().string(containsString("name=\"app-mode\" content=\"local\"")))

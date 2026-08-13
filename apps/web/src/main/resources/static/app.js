@@ -8,8 +8,11 @@ const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
   'error-summary', 'error-message', 'analysis-summary', 'target-profile', 'profile-description',
   'preview-button', 'preview-status',
-  'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'progress-list', 'downloads'
+  'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'progress-list', 'downloads',
+  'summary-version', 'summary-selected', 'summary-excluded', 'summary-warnings',
+  'summary-profile', 'summary-validation', 'validation-operation'
 ].map(id => [id, byId(id)]));
+const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
 
 initializeEditor(invalidatePreview);
 initializeOperations({
@@ -32,6 +35,7 @@ initializeUpload({
 ui['preview-button'].addEventListener('click', runPreview);
 ui['generate-button'].addEventListener('click', startGeneration);
 ui['delete-job-button'].addEventListener('click', removeJob);
+if (api.hostedMode) ui['delete-job-button'].textContent = '작업 취소';
 for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name',
   'target-profile', 'validation-operation', 'validation-arguments']) {
   byId(id).addEventListener('change', invalidatePreview);
@@ -39,6 +43,7 @@ for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'd
 
 loadProfiles();
 resumeRetainedJob();
+renderGenerationSummary();
 
 async function loadProfiles() {
   try {
@@ -53,6 +58,7 @@ async function loadProfiles() {
     const preferred = payload.profiles.find(profile => profile.id === 'spring-ai-2.0-java21-mvc-streamable');
     if (preferred) ui['target-profile'].value = preferred.id;
     describeProfile();
+    renderGenerationSummary();
     ui['target-profile'].addEventListener('change', describeProfile);
   } catch (failure) {
     showFailure(failure);
@@ -87,7 +93,7 @@ async function runPreview() {
     invalidatePreview();
     showFailure(failure);
   } finally {
-    ui['preview-button'].disabled = false;
+    updatePreviewGate();
   }
 }
 
@@ -102,7 +108,7 @@ async function startGeneration() {
     ui['generate-button'].disabled = true;
     const accepted = await api.startJob(getState().specificationId, configuration);
     updateState({jobId: accepted.id, job: accepted});
-    ui['delete-job-button'].disabled = true;
+    ui['delete-job-button'].disabled = !api.hostedMode;
     await pollJob(accepted.id);
   } catch (failure) {
     showFailure(failure);
@@ -116,8 +122,8 @@ async function pollJob(jobId) {
     const snapshot = await api.job(jobId);
     updateState({job: snapshot});
     renderJob(snapshot);
-    if (['VALIDATED', 'UNVERIFIED', 'FAILED'].includes(snapshot.state)) {
-      ui['delete-job-button'].disabled = false;
+    if (TERMINAL_STATES.includes(snapshot.state)) {
+      ui['delete-job-button'].disabled = api.hostedMode;
       return;
     }
     await new Promise(resolve => setTimeout(resolve, delay));
@@ -131,6 +137,11 @@ async function removeJob() {
   if (!jobId) return;
   try {
     await api.deleteJob(jobId);
+    if (api.hostedMode) {
+      ui['job-status'].textContent = 'Cancellation requested.';
+      ui['delete-job-button'].disabled = true;
+      return;
+    }
     updateState({jobId: null, job: null});
     ui['job-status'].textContent = 'Generation job deleted.';
     ui['progress-list'].replaceChildren();
@@ -147,6 +158,8 @@ function invalidatePreview() {
   ui['generate-button'].disabled = true;
   ui['preview-status'].textContent = '생성 전 미리보기가 필요합니다.';
   ui['preview-output'].replaceChildren();
+  renderGenerationSummary();
+  updatePreviewGate();
 }
 
 function describeProfile() {
@@ -154,6 +167,7 @@ function describeProfile() {
   ui['profile-description'].textContent = profile
     ? `Java ${profile.javaVersion}, Spring Boot ${profile.springBootVersion}, Spring AI ${profile.springAiVersion}.`
     : 'Select one compatibility profile.';
+  renderGenerationSummary();
 }
 
 function renderAnalysis(analysis) {
@@ -170,6 +184,7 @@ function renderAnalysis(analysis) {
     dd.textContent = description;
     return [dt, dd];
   }));
+  renderGenerationSummary();
 }
 
 function resetSpecificationPresentation() {
@@ -183,6 +198,30 @@ function resetSpecificationPresentation() {
   ui['delete-job-button'].disabled = true;
   invalidatePreview();
   renderOperations();
+  renderGenerationSummary();
+}
+
+function renderGenerationSummary() {
+  const state = getState();
+  const selected = state.operations.filter(operation => operation.enabled);
+  const warnings = selected.filter(operation => operation.status === 'SUPPORTED_WITH_WARNING').length;
+  ui['summary-version'].textContent = state.analysis?.openApiVersion ?? '—';
+  ui['summary-selected'].textContent = String(selected.length);
+  ui['summary-excluded'].textContent = String(Math.max(0, state.operations.length - selected.length));
+  ui['summary-warnings'].textContent = String(warnings);
+  ui['summary-profile'].textContent = ui['target-profile'].value || '—';
+  ui['summary-validation'].textContent = ui['validation-operation'].value
+    ? `${ui['validation-operation'].value} · MCP protocol`
+    : '미선택';
+}
+
+function updatePreviewGate() {
+  const required = ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name', 'target-profile'];
+  const state = getState();
+  ui['preview-button'].disabled = !state.specificationId
+    || !state.operations.some(operation => operation.enabled)
+    || !ui['validation-operation'].value
+    || required.some(id => !byId(id).value.trim());
 }
 
 function renderPreview(preview) {
@@ -216,18 +255,20 @@ function renderJob(snapshot) {
     item.textContent = `${stage.stage}: ${stage.status}`;
     return item;
   }));
-  ui['downloads'].replaceChildren(...snapshot.downloads.map(name => {
+  ui['downloads'].replaceChildren(...snapshot.downloads.map(artifact => {
+    const name = typeof artifact === 'string' ? artifact : artifact.name;
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = `Download ${name}`;
-    button.addEventListener('click', () => downloadArtifact(snapshot.id, name));
+    button.addEventListener('click', () => downloadArtifact(snapshot.id, artifact));
     return button;
   }));
 }
 
-async function downloadArtifact(jobId, name) {
+async function downloadArtifact(jobId, artifact) {
   try {
-    const response = await api.download(jobId, name);
+    const name = typeof artifact === 'string' ? artifact : artifact.name;
+    const response = await api.download(jobId, artifact);
     const blobUrl = URL.createObjectURL(await response.blob());
     const link = document.createElement('a');
     link.href = blobUrl;
@@ -241,7 +282,7 @@ async function downloadArtifact(jobId, name) {
 
 function filename(response, fallback) {
   const disposition = response.headers.get('Content-Disposition') ?? '';
-  const match = disposition.match(/filename="([a-f0-9.-]+)"/);
+  const match = disposition.match(/filename="([A-Za-z0-9._-]+)"/);
   return match?.[1] ?? fallback;
 }
 

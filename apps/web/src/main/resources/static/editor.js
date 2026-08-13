@@ -5,11 +5,13 @@ const elements = ids([
   'operation-editor', 'operation-enabled', 'tool-name',
   'tool-description', 'parameter-editor', 'data-path', 'success-code-path', 'success-values',
   'error-message-path', 'total-count-path', 'validation-operation', 'output-mode',
+  'selected-tool-list', 'selected-tool-empty', 'operation-editor-home',
   'retry-enabled', 'retry-status-codes', 'retry-network-errors', 'retry-max-retries',
   'retry-initial-backoff', 'retry-max-backoff', 'retry-respect-retry-after',
   'pagination-enabled', 'pagination-request-parameter', 'pagination-initial-value',
   'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items'
 ]);
+let openOperationId = null;
 
 export function initializeEditor(onDirty) {
   for (const id of ['operation-enabled', 'tool-name', 'tool-description', 'data-path',
@@ -20,7 +22,12 @@ export function initializeEditor(onDirty) {
     'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items']) {
     elements[id].addEventListener('change', () => {
       saveSelectedOperation();
-      if (id === 'operation-enabled') renderValidationOperations();
+      if (id === 'operation-enabled') {
+        renderToolRows();
+        renderValidationOperations();
+      } else {
+        updateToolSummary(getState().selectedOperationId);
+      }
       onDirty();
     });
   }
@@ -29,20 +36,124 @@ export function initializeEditor(onDirty) {
     if (!control) return;
     saveSelectedOperation();
     renderSelectedOperation();
+    updateToolSummary(getState().selectedOperationId);
     onDirty();
   });
 }
 
 export function renderOperations() {
-  renderSelectedOperation();
+  renderToolRows();
   renderValidationOperations();
 }
 
 export function selectOperation(operationId) {
-  saveSelectedOperation();
+  if (openOperationId) saveSelectedOperation();
+  openOperationId = operationId;
   updateState({selectedOperationId: operationId});
   renderOperations();
-  document.querySelector('#operation-editor')?.scrollIntoView({block: 'nearest'});
+  elements['selected-tool-list'].querySelector(`details[open]`)?.scrollIntoView({block: 'nearest'});
+}
+
+function renderToolRows() {
+  moveEditorHome();
+  const enabled = getState().operations.filter(operation => operation.enabled);
+  if (!enabled.some(operation => operation.operationId === openOperationId)) openOperationId = null;
+  elements['selected-tool-empty'].hidden = enabled.length !== 0;
+  elements['selected-tool-list'].replaceChildren(...enabled.map(toolRow));
+  if (!openOperationId) {
+    elements['operation-editor'].disabled = true;
+    return;
+  }
+  const active = [...elements['selected-tool-list'].querySelectorAll('details')]
+    .find(details => details.dataset.operationId === openOperationId);
+  if (!active) return;
+  active.open = true;
+  active.querySelector('[data-role="editor-slot"]').append(elements['operation-editor']);
+  updateState({selectedOperationId: openOperationId});
+  renderSelectedOperation();
+}
+
+function toolRow(operation) {
+  const details = document.createElement('details');
+  details.className = 'selected-tool-row';
+  details.dataset.operationId = operation.operationId;
+  const summary = document.createElement('summary');
+  const summaryContent = document.createElement('span');
+  summaryContent.className = 'selected-tool-summary-content';
+  const identity = document.createElement('span');
+  identity.className = 'selected-tool-identity';
+  const method = document.createElement('span');
+  method.className = 'method-badge';
+  method.dataset.method = operation.method;
+  method.textContent = operation.method;
+  const path = document.createElement('code');
+  path.textContent = operation.path;
+  const operationId = document.createElement('span');
+  operationId.className = 'selected-operation-id';
+  operationId.textContent = operation.operationId;
+  identity.append(method, path, operationId);
+  const tool = document.createElement('span');
+  tool.className = 'selected-tool-name';
+  tool.textContent = operation.toolName;
+  const state = document.createElement('span');
+  state.className = 'configuration-state';
+  state.dataset.role = 'configuration-state';
+  state.textContent = hasOverrides(operation) ? '사용자 설정' : '기본값';
+  summaryContent.append(identity, tool, state);
+  summary.append(summaryContent);
+  const slot = document.createElement('div');
+  slot.className = 'selected-tool-editor';
+  slot.dataset.role = 'editor-slot';
+  details.append(summary, slot);
+  details.addEventListener('toggle', () => toggleToolRow(details));
+  return details;
+}
+
+function toggleToolRow(details) {
+  const operationId = details.dataset.operationId;
+  if (!details.open) {
+    if (openOperationId === operationId) {
+      moveEditorHome();
+      openOperationId = null;
+    }
+    return;
+  }
+  if (openOperationId && openOperationId !== operationId) saveSelectedOperation();
+  openOperationId = operationId;
+  [...elements['selected-tool-list'].querySelectorAll('details')].forEach(candidate => {
+    if (candidate !== details) candidate.open = false;
+  });
+  updateState({selectedOperationId: operationId});
+  details.querySelector('[data-role="editor-slot"]').append(elements['operation-editor']);
+  renderSelectedOperation();
+}
+
+function moveEditorHome() {
+  if (elements['operation-editor'].parentElement !== elements['operation-editor-home']) {
+    elements['operation-editor-home'].append(elements['operation-editor']);
+  }
+}
+
+function updateToolSummary(operationId) {
+  const operation = getState().operations.find(candidate => candidate.operationId === operationId);
+  const row = [...elements['selected-tool-list'].querySelectorAll('details')]
+    .find(candidate => candidate.dataset.operationId === operationId);
+  if (!operation || !row) return;
+  row.querySelector('.selected-tool-name').textContent = operation.toolName;
+  row.querySelector('[data-role="configuration-state"]').textContent = hasOverrides(operation)
+    ? '사용자 설정' : '기본값';
+}
+
+function hasOverrides(operation) {
+  const normalization = operation.responseNormalization;
+  return operation.toolName !== operation.defaultToolName
+    || operation.toolDescription !== operation.defaultToolDescription
+    || operation.outputMode !== 'GENERIC_JSON'
+    || operation.retry.enabled || operation.pagination.enabled
+    || operation.parameters.some(parameter => parameter.source !== 'USER_INPUT')
+    || normalization.dataPath !== '' || normalization.successCodePath !== ''
+    || normalization.successValuesText !== '[]' || normalization.errorMessagePath !== ''
+    || normalization.totalCountPath !== '';
 }
 
 function renderSelectedOperation() {
@@ -113,8 +224,9 @@ function parameterRow(parameter) {
 }
 
 function saveSelectedOperation() {
+  if (!openOperationId) return;
   const state = getState();
-  const selected = selectedOperation();
+  const selected = state.operations.find(operation => operation.operationId === openOperationId) ?? null;
   if (!selected) return;
   const parameterControls = [...elements['parameter-editor'].querySelectorAll('[data-parameter-name]')];
   const parameters = selected.parameters.map(parameter => {
@@ -176,8 +288,15 @@ function saveSelectedOperation() {
       totalCountPath: elements['total-count-path'].value.trim()
     }
   };
-  updateState({operations: state.operations.map(operation =>
-    operation.operationId === replacement.operationId ? replacement : operation)});
+  const operations = state.operations.map(operation =>
+    operation.operationId === replacement.operationId ? replacement : operation);
+  if (!replacement.enabled) openOperationId = null;
+  updateState({
+    operations,
+    selectedOperationId: replacement.enabled
+      ? state.selectedOperationId
+      : operations.find(operation => operation.enabled)?.operationId ?? null
+  });
   setPolicyControls('retry', replacement.retry.enabled);
   setPolicyControls('pagination', replacement.pagination.enabled);
 }
