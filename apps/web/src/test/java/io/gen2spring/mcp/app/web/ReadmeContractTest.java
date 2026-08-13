@@ -12,30 +12,33 @@ class ReadmeContractTest {
     void documentsTheInstalledLocalEditorAndItsBoundaries() throws Exception {
         Path root = repositoryRoot();
         String readme = Files.readString(root.resolve("README.md"));
+        String userGuide = Files.readString(root.resolve("docs/user-guide.md"));
         String mise = Files.readString(root.resolve("mise.toml"));
 
-        assertTrue(readme.contains(
+        assertTrue(readme.lines().count() <= 200, "Root README should remain a concise landing page");
+        assertTrue(readme.contains("[사용자 가이드](docs/user-guide.md)"));
+        assertTrue(userGuide.contains(
                 "./gradlew :apps:web:bootRun --quiet --no-daemon --non-interactive"));
-        assertTrue(readme.contains("./gradlew :apps:web:bootJar"));
-        assertTrue(readme.contains("java -jar apps/web/build/libs/web.jar"));
-        assertTrue(readme.contains("mise run ui"));
-        assertTrue(readme.contains("mise run ui:build"));
-        assertTrue(readme.contains("mise run ui:test"));
-        assertTrue(readme.contains("public multi-user service가 아니다"));
-        assertTrue(readme.contains("numeric loopback only"));
-        assertTrue(readme.contains("local files only; no URL import"));
-        assertTrue(readme.contains("one running plus one queued job"));
-        assertTrue(readme.contains("UI operation editor complete"));
-        assertTrue(readme.contains("supported JSON object response에서 typed output DTO를 생성한다"));
-        assertTrue(readme.contains("GET operation에 bounded retry를 실행한다"));
-        assertTrue(readme.contains("GET operation에 bounded pagination을 실행한다"));
-        assertTrue(readme.contains("https://github.com/ydj515/gen2spring-mcp/issues/2"));
-        assertFalse(readme.contains("Windows validation host remains follow-up P1"));
-        assertFalse(readme.contains(
+        assertTrue(userGuide.contains("./gradlew :apps:web:bootJar"));
+        assertTrue(userGuide.contains("java -jar apps/web/build/libs/web.jar"));
+        assertTrue(userGuide.contains("mise run ui"));
+        assertTrue(userGuide.contains("mise run ui:build"));
+        assertTrue(userGuide.contains("mise run ui:test"));
+        assertTrue(userGuide.contains("public multi-user service가 아니다"));
+        assertTrue(userGuide.contains("numeric loopback only"));
+        assertTrue(userGuide.contains("local files only; no URL import"));
+        assertTrue(userGuide.contains("one running plus one queued job"));
+        assertTrue(userGuide.contains("UI operation editor complete"));
+        assertTrue(userGuide.contains("supported JSON object response에서 typed output DTO를 생성한다"));
+        assertTrue(userGuide.contains("GET operation에 bounded retry를 실행"));
+        assertTrue(userGuide.contains("GET operation에 bounded pagination을 실행"));
+        assertTrue(userGuide.contains("https://github.com/ydj515/gen2spring-mcp/issues/2"));
+        assertFalse(userGuide.contains("Windows validation host remains follow-up P1"));
+        assertFalse(userGuide.contains(
                 "Generator API와 UI operation editor, Windows validation host 지원은 후속 P1 범위다"));
-        assertFalse(readme.contains(":apps:web:installDist"));
-        assertFalse(readme.contains("X-Gen2Spring-Token"));
-        assertFalse(readme.contains("per-process token"));
+        assertFalse(userGuide.contains(":apps:web:installDist"));
+        assertFalse(userGuide.contains("X-Gen2Spring-Token"));
+        assertFalse(userGuide.contains("per-process token"));
 
         assertTrue(mise.contains("[tasks.ui]"));
         assertTrue(mise.contains(
