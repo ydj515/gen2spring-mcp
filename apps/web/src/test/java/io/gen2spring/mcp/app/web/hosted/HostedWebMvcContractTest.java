@@ -19,6 +19,8 @@ import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.job.JobView;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
+import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
 import io.gen2spring.mcp.app.web.error.WebErrorResponseWriter;
 import io.gen2spring.mcp.app.web.security.HostedSecurityConfiguration;
@@ -26,6 +28,9 @@ import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
+import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -100,6 +105,59 @@ class HostedWebMvcContractTest {
         when(resources.job(OWNER, new JobId(UUID.fromString(id)))).thenReturn(Optional.empty());
 
         mvc.perform(get("/api/jobs/{id}", id).with(user()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(content().string(not(containsString(OWNER.value().toString()))));
+    }
+
+    @Test
+    void exposesOwnerAuthorizedUploadAnalysisAndPlanningPreview() throws Exception {
+        SpecificationId id = new SpecificationId(UUID.randomUUID());
+        var analysis = new SpecificationAnalysisView(
+                "a".repeat(64), "3.1.1", "yaml", URI.create("https://weather.example.test"),
+                new SpecificationAnalysisView.Counts(0, 0, 0, 0),
+                List.of(), java.util.Map.of(), List.of());
+        var hosted = new HostedSubmissionService.HostedSpecificationAnalysis(
+                id, "weather.yml", 123, analysis);
+        when(submissions.upload(eq(OWNER), any(), eq("application/yaml"), eq("weather.yml")))
+                .thenReturn(hosted);
+        when(submissions.analysis(OWNER, id)).thenReturn(hosted);
+        when(submissions.preview(eq(OWNER), eq(id), any())).thenReturn(new GenerationPreview(
+                CompatibilityProfileRegistry.defaults()
+                        .find("spring-ai-2.0-java21-mvc-streamable").orElseThrow(),
+                List.of(), List.of(), List.of(), List.of("README.md")));
+
+        mvc.perform(post("/api/specifications/uploads")
+                        .with(user()).with(csrf())
+                        .header("X-Specification-Name", "weather.yml")
+                        .contentType("application/yaml")
+                        .content("openapi: 3.1.1"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(id.value().toString()))
+                .andExpect(jsonPath("$.openApiVersion").value("3.1.1"))
+                .andExpect(jsonPath("$.file.name").value("weather.yml"));
+
+        mvc.perform(get("/api/specifications/{id}/analysis", id.value()).with(user()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.counts.total").value(0));
+
+        mvc.perform(post("/api/specifications/{id}/preview", id.value())
+                        .with(user()).contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/specifications/{id}/preview", id.value())
+                        .with(user()).with(csrf()).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile.id")
+                        .value("spring-ai-2.0-java21-mvc-streamable"));
+    }
+
+    @Test
+    void returnsOneSafe404ForCrossOwnerSpecificationAnalysis() throws Exception {
+        String id = UUID.randomUUID().toString();
+        when(submissions.analysis(OWNER, new SpecificationId(UUID.fromString(id))))
+                .thenThrow(new HostedSubmissionService.HostedSpecificationNotFound());
+
+        mvc.perform(get("/api/specifications/{id}/analysis", id).with(user()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(content().string(not(containsString(OWNER.value().toString()))));

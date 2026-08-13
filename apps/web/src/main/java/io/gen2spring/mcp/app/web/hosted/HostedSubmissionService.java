@@ -12,6 +12,10 @@ import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.storage.StoredObject;
+import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
+import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer.AnalysisResult;
+import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
@@ -21,15 +25,20 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 public final class HostedSubmissionService {
     private static final int MAX_SPECIFICATION_BYTES = 10 * 1024 * 1024;
+    private static final Pattern SAFE_UPLOAD_NAME = Pattern.compile(
+            "[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.(?:yaml|yml|json)");
     private static final ObjectMapper JSON = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
@@ -62,27 +71,41 @@ public final class HostedSubmissionService {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    public SpecificationId upload(AccountId owner, InputStream input, String mediaType) {
+    public HostedSpecificationAnalysis upload(
+            AccountId owner,
+            InputStream input,
+            String mediaType,
+            String specificationName) {
         byte[] source = null;
         Path temporary = null;
         ObjectKey key = null;
         try {
             Objects.requireNonNull(owner, "owner");
             String canonicalType = mediaType(mediaType);
+            String displayLabel = displayLabel(specificationName);
             source = read(input, MAX_SPECIFICATION_BYTES);
-            temporary = Files.createTempFile(workRoot, "hosted-upload-", canonicalType.contains("json") ? ".json" : ".yaml");
+            temporary = privateTemporary(canonicalType);
             Files.write(temporary, source);
-            byte[] analyzed = generator.analyzer().analyze(temporary, MAX_SPECIFICATION_BYTES).originalSpecification();
-            if (!Arrays.equals(source, analyzed)) throw failure();
+            AnalysisResult analysis = generator.analyzer().analyze(temporary, MAX_SPECIFICATION_BYTES);
+            if (!Arrays.equals(source, analysis.originalSpecification())) throw failure();
             SpecificationId id = new SpecificationId(UUID.randomUUID());
             String sha = sha256(source);
             key = ObjectKey.parse("specifications/" + id.value() + "/" + sha);
             StoredObject stored = storage.put(key, new ByteArrayInputStream(source), source.length, sha, canonicalType);
             if (!stored.key().equals(key) || stored.size() != source.length
                     || !stored.sha256().equals(sha) || !stored.contentType().equals(canonicalType)) throw failure();
-            catalog.register(new SpecificationCatalog.Registration(
-                    id, owner, key, sha, source.length, "UPLOAD", "READY", clock.instant()));
-            return id;
+            HostedSpecificationAnalysis result = new HostedSpecificationAnalysis(
+                    id, displayLabel, source.length, SpecificationAnalysisView.from(analysis.document()));
+            try {
+                catalog.register(new SpecificationCatalog.Registration(
+                        id, owner, key, sha, source.length, "UPLOAD", displayLabel, "READY", clock.instant()));
+            } catch (RuntimeException failure) {
+                if (!retainedByCatalog(owner, id)) delete(key);
+                key = null;
+                throw failure;
+            }
+            key = null;
+            return result;
         } catch (Error fatal) {
             throw fatal;
         } catch (Exception failure) {
@@ -91,6 +114,44 @@ public final class HostedSubmissionService {
         } finally {
             if (source != null) Arrays.fill(source, (byte) 0);
             if (temporary != null) try { Files.deleteIfExists(temporary); } catch (Exception ignored) {}
+        }
+    }
+
+    public HostedSpecificationAnalysis analysis(AccountId owner, SpecificationId specificationId) {
+        try {
+            HostedResourceStore.SpecificationView specification = owned(owner, specificationId);
+            return withPinnedSpecification(specification, (temporary, source) -> {
+                AnalysisResult analysis = generator.analyzer().analyze(temporary, MAX_SPECIFICATION_BYTES);
+                if (!Arrays.equals(source, analysis.originalSpecification())) throw failure();
+                return new HostedSpecificationAnalysis(
+                        specification.id(), specification.label(), specification.byteSize(),
+                        SpecificationAnalysisView.from(analysis.document()));
+            });
+        } catch (Error fatal) {
+            throw fatal;
+        } catch (HostedSpecificationNotFound missing) {
+            throw missing;
+        } catch (RuntimeException failure) {
+            throw failure();
+        }
+    }
+
+    public GenerationPreview preview(
+            AccountId owner,
+            SpecificationId specificationId,
+            byte[] configurationBytes) {
+        try {
+            HostedResourceStore.SpecificationView specification = owned(owner, specificationId);
+            var configuration = generator.configurationParser().parseJson(configurationBytes);
+            return withPinnedSpecification(
+                    specification,
+                    (temporary, source) -> generator.pipeline().preview(temporary, configuration));
+        } catch (Error fatal) {
+            throw fatal;
+        } catch (HostedSpecificationNotFound missing) {
+            throw missing;
+        } catch (RuntimeException failure) {
+            throw failure();
         }
     }
 
@@ -164,12 +225,81 @@ public final class HostedSubmissionService {
         throw failure();
     }
 
+    private String displayLabel(String value) {
+        if (value == null
+                || !SAFE_UPLOAD_NAME.matcher(value).matches()
+                || value.contains("..")) {
+            throw failure();
+        }
+        return value;
+    }
+
+    private HostedResourceStore.SpecificationView owned(AccountId owner, SpecificationId specificationId) {
+        if (owner == null || specificationId == null) throw new HostedSpecificationNotFound();
+        return resources.specification(owner, specificationId).orElseThrow(HostedSpecificationNotFound::new);
+    }
+
+    private <T> T withPinnedSpecification(
+            HostedResourceStore.SpecificationView specification,
+            PinnedSpecificationAction<T> action) {
+        byte[] source = null;
+        Path temporary = null;
+        try (StoredObjectContent content = storage.get(specification.objectKey())) {
+            if (content == null
+                    || content.size() != specification.byteSize()
+                    || !Objects.equals(content.sha256(), specification.sha256())
+                    || !Objects.equals(mediaType(content.contentType()), content.contentType())) {
+                throw failure();
+            }
+            source = read(content.body(), MAX_SPECIFICATION_BYTES);
+            if (source.length != specification.byteSize()
+                    || !sha256(source).equals(specification.sha256())) {
+                throw failure();
+            }
+            temporary = privateTemporary(content.contentType());
+            Files.write(temporary, source);
+            return action.run(temporary, source);
+        } catch (Error fatal) {
+            throw fatal;
+        } catch (HostedSpecificationNotFound missing) {
+            throw missing;
+        } catch (Exception failure) {
+            throw failure();
+        } finally {
+            if (source != null) Arrays.fill(source, (byte) 0);
+            if (temporary != null) try { Files.deleteIfExists(temporary); } catch (Exception ignored) {}
+        }
+    }
+
+    private Path privateTemporary(String contentType) throws Exception {
+        Path temporary = Files.createTempFile(
+                workRoot,
+                "hosted-specification-",
+                contentType.contains("json") ? ".json" : ".yaml");
+        try {
+            Files.setPosixFilePermissions(
+                    temporary,
+                    Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+        } catch (UnsupportedOperationException ignored) {
+            // The temp file API already creates an owner-private file on non-POSIX platforms.
+        }
+        return temporary;
+    }
+
     private String sha256(byte[] bytes) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     }
 
     private void delete(ObjectKey key) {
         try { storage.delete(key); } catch (RuntimeException ignored) {}
+    }
+
+    private boolean retainedByCatalog(AccountId owner, SpecificationId specificationId) {
+        try {
+            return catalog.belongsTo(owner, specificationId);
+        } catch (RuntimeException failure) {
+            return true;
+        }
     }
 
     private Path requireDirectory(Path path) {
@@ -187,5 +317,29 @@ public final class HostedSubmissionService {
         public HostedSubmissionFailure() {
             super("Hosted submission failed", null, false, false);
         }
+    }
+
+    public static final class HostedSpecificationNotFound extends RuntimeException {
+        public HostedSpecificationNotFound() {
+            super("Hosted specification was not found", null, false, false);
+        }
+    }
+
+    public record HostedSpecificationAnalysis(
+            SpecificationId id,
+            String displayLabel,
+            long byteSize,
+            SpecificationAnalysisView analysis) {
+        public HostedSpecificationAnalysis {
+            if (id == null || displayLabel == null || displayLabel.isBlank()
+                    || byteSize < 1 || analysis == null) {
+                throw new IllegalArgumentException("Hosted specification analysis is invalid");
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface PinnedSpecificationAction<T> {
+        T run(Path temporary, byte[] source) throws Exception;
     }
 }

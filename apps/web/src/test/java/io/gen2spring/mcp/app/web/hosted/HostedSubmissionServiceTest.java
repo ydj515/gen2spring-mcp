@@ -1,10 +1,17 @@
 package io.gen2spring.mcp.app.web.hosted;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
 import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
@@ -18,20 +25,185 @@ import io.gen2spring.mcp.application.hosted.job.WorkerId;
 import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
+import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
+import io.gen2spring.mcp.application.hosted.storage.StoredObject;
+import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
+import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class HostedSubmissionServiceTest {
+    private static final AccountId OWNER = new AccountId(
+            UUID.fromString("41dd3b69-589c-4466-a78e-d448407d17b9"));
+
+    @Test
+    void uploadReturnsCanonicalAnalysisAndPersistsTheBoundedBasename(@TempDir Path workRoot) throws Exception {
+        InMemoryStorage storage = new InMemoryStorage();
+        SpecificationCatalog catalog = mock(SpecificationCatalog.class);
+        HostedSubmissionService service = service(
+                GeneratorRuntime.defaults(), storage, catalog, mock(HostedResourceStore.class), workRoot);
+
+        var uploaded = service.upload(
+                OWNER,
+                new ByteArrayInputStream(specification()),
+                "application/yaml",
+                "swagger-3.1.yml");
+
+        assertEquals("swagger-3.1.yml", uploaded.displayLabel());
+        assertEquals(1, uploaded.analysis().counts().total());
+        assertEquals("getForecast", uploaded.analysis().operations().getFirst().operationId());
+        var registration = org.mockito.ArgumentCaptor.forClass(SpecificationCatalog.Registration.class);
+        org.mockito.Mockito.verify(catalog).register(registration.capture());
+        assertEquals(uploaded.id(), registration.getValue().id());
+        assertEquals("swagger-3.1.yml", registration.getValue().displayLabel());
+        assertDirectoryEmpty(workRoot);
+    }
+
+    @Test
+    void rejectsUploadNamesOutsideTheLocalBasenameContractBeforeStorageAccess(@TempDir Path workRoot) {
+        ObjectStorage storage = mock(ObjectStorage.class);
+        HostedSubmissionService service = service(
+                GeneratorRuntime.defaults(), storage, mock(SpecificationCatalog.class),
+                mock(HostedResourceStore.class), workRoot);
+
+        var failure = assertThrows(HostedSubmissionService.HostedSubmissionFailure.class,
+                () -> service.upload(
+                        OWNER,
+                        new ByteArrayInputStream(specification()),
+                        "application/yaml",
+                        "weather.txt"));
+
+        assertEquals("Hosted submission failed", failure.getMessage());
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void retainsThePinnedObjectWhenCatalogRegistrationMayHaveCommitted(@TempDir Path workRoot) throws Exception {
+        InMemoryStorage storage = new InMemoryStorage();
+        SpecificationCatalog catalog = mock(SpecificationCatalog.class);
+        when(catalog.register(any())).thenThrow(new IllegalStateException("database-marker"));
+        when(catalog.belongsTo(eq(OWNER), any())).thenReturn(true);
+        HostedSubmissionService service = service(
+                GeneratorRuntime.defaults(), storage, catalog, mock(HostedResourceStore.class), workRoot);
+
+        var failure = assertThrows(HostedSubmissionService.HostedSubmissionFailure.class,
+                () -> service.upload(
+                        OWNER,
+                        new ByteArrayInputStream(specification()),
+                        "application/yaml",
+                        "weather.yml"));
+
+        assertEquals("Hosted submission failed", failure.getMessage());
+        assertTrue(storage.hasContent());
+        assertDirectoryEmpty(workRoot);
+    }
+
+    @Test
+    void analyzesAnOwnedPinnedObjectAndRejectsCrossOwnerBeforeStorageAccess(@TempDir Path workRoot) throws Exception {
+        byte[] source = specification();
+        SpecificationId id = new SpecificationId(UUID.randomUUID());
+        ObjectKey key = objectKey(id, source);
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        InMemoryStorage storage = new InMemoryStorage(key, source, "application/yaml");
+        when(resources.specification(OWNER, id)).thenReturn(Optional.of(new HostedResourceStore.SpecificationView(
+                id, "URL", key, sha256(source), source.length, "Imported OpenAPI", Instant.EPOCH)));
+        HostedSubmissionService service = service(
+                GeneratorRuntime.defaults(), storage, mock(SpecificationCatalog.class), resources, workRoot);
+
+        var analysis = service.analysis(OWNER, id);
+
+        assertEquals("Imported OpenAPI", analysis.displayLabel());
+        assertEquals("3.1.1", analysis.analysis().openApiVersion());
+        assertEquals(1, storage.getCount);
+        assertDirectoryEmpty(workRoot);
+
+        AccountId other = new AccountId(UUID.randomUUID());
+        assertThrows(HostedSubmissionService.HostedSpecificationNotFound.class,
+                () -> service.analysis(other, id));
+        assertEquals(1, storage.getCount);
+    }
+
+    @Test
+    void rejectsPinnedObjectMetadataMismatchWithoutLeavingTemporaryFiles(@TempDir Path workRoot) throws Exception {
+        byte[] source = specification();
+        SpecificationId id = new SpecificationId(UUID.randomUUID());
+        ObjectKey key = objectKey(id, source);
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        InMemoryStorage storage = new InMemoryStorage(key, source, "application/yaml");
+        when(resources.specification(OWNER, id)).thenReturn(Optional.of(new HostedResourceStore.SpecificationView(
+                id, "UPLOAD", key, "f".repeat(64), source.length, "weather.yml", Instant.EPOCH)));
+        HostedSubmissionService service = service(
+                GeneratorRuntime.defaults(), storage, mock(SpecificationCatalog.class), resources, workRoot);
+
+        var failure = assertThrows(HostedSubmissionService.HostedSubmissionFailure.class,
+                () -> service.analysis(OWNER, id));
+
+        assertEquals("Hosted submission failed", failure.getMessage());
+        assertDirectoryEmpty(workRoot);
+    }
+
+    @Test
+    void previewsThroughTheExistingPlanningPipelineAndCleansThePrivateCopy(@TempDir Path workRoot) throws Exception {
+        byte[] source = specification();
+        SpecificationId id = new SpecificationId(UUID.randomUUID());
+        ObjectKey key = objectKey(id, source);
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        when(resources.specification(OWNER, id)).thenReturn(Optional.of(
+                specificationView(id, key, source, "weather.yml")));
+        HostedSubmissionService service = service(
+                GeneratorRuntime.defaults(), new InMemoryStorage(key, source, "application/yaml"),
+                mock(SpecificationCatalog.class), resources, workRoot);
+
+        var preview = service.preview(OWNER, id, configuration());
+
+        assertEquals("spring-ai-2.0-java21-mvc-streamable", preview.profile().id());
+        assertEquals("weather_get_forecast", preview.tools().getFirst().name());
+        assertDirectoryEmpty(workRoot);
+    }
+
+    @Test
+    void cleansThePrivatePreviewCopyWhenPlanningThrowsAFatalError(@TempDir Path workRoot) throws Exception {
+        byte[] source = specification();
+        SpecificationId id = new SpecificationId(UUID.randomUUID());
+        ObjectKey key = objectKey(id, source);
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        when(resources.specification(OWNER, id)).thenReturn(Optional.of(
+                specificationView(id, key, source, "weather.yml")));
+        GeneratorRuntime generator = mock(GeneratorRuntime.class);
+        when(generator.configurationParser()).thenReturn(GeneratorRuntime.defaults().configurationParser());
+        var pipeline = mock(io.gen2spring.mcp.application.usecase.GenerationPipeline.class);
+        when(generator.pipeline()).thenReturn(pipeline);
+        AssertionError fatal = new AssertionError("private-marker");
+        doThrow(fatal).when(pipeline).preview(any(Path.class), any());
+        HostedSubmissionService service = service(
+                generator, new InMemoryStorage(key, source, "application/yaml"),
+                mock(SpecificationCatalog.class), resources, workRoot);
+
+        AssertionError thrown = assertThrows(AssertionError.class,
+                () -> service.preview(OWNER, id, configuration()));
+
+        assertSame(fatal, thrown);
+        assertDirectoryEmpty(workRoot);
+    }
+
     @Test
     void rejectsInvalidImportTargetsWithOneFixedNonLeakingFailure(@TempDir java.nio.file.Path workRoot) {
         ImportTargetProtector protector = mock(ImportTargetProtector.class);
@@ -65,6 +237,134 @@ class HostedSubmissionServiceTest {
         assertEquals(queue.commands.get(0).requestHash(), queue.commands.get(1).requestHash());
         org.junit.jupiter.api.Assertions.assertNotEquals(
                 queue.commands.get(0).requestSnapshot(), queue.commands.get(1).requestSnapshot());
+    }
+
+    private HostedSubmissionService service(
+            GeneratorRuntime generator,
+            ObjectStorage storage,
+            SpecificationCatalog catalog,
+            HostedResourceStore resources,
+            Path workRoot) {
+        return new HostedSubmissionService(
+                generator, storage, catalog, resources, mock(HostedJobService.class),
+                mock(ImportTargetProtector.class), workRoot, Clock.systemUTC());
+    }
+
+    private HostedResourceStore.SpecificationView specificationView(
+            SpecificationId id, ObjectKey key, byte[] source, String label) throws Exception {
+        return new HostedResourceStore.SpecificationView(
+                id, "UPLOAD", key, sha256(source), source.length, label, Instant.EPOCH);
+    }
+
+    private ObjectKey objectKey(SpecificationId id, byte[] source) throws Exception {
+        return ObjectKey.parse("specifications/" + id.value() + "/" + sha256(source));
+    }
+
+    private String sha256(byte[] source) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(source));
+    }
+
+    private byte[] specification() {
+        return """
+                openapi: 3.1.1
+                info: {title: Weather, version: 1.0.0}
+                servers: [{url: https://weather.example.test}]
+                paths:
+                  /forecast:
+                    get:
+                      operationId: getForecast
+                      summary: Get forecast
+                      parameters:
+                        - name: city
+                          in: query
+                          required: true
+                          schema: {type: string}
+                      responses:
+                        '200': {description: Success}
+                """.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private byte[] configuration() {
+        return """
+                {
+                  "project":{"groupId":"com.example","artifactId":"weather-mcp-server",
+                    "packageName":"com.example.weather"},
+                  "provider":"weather","domain":"forecast",
+                  "targetProfileId":"spring-ai-2.0-java21-mvc-streamable",
+                  "validationLevel":"MCP_PROTOCOL",
+                  "validation":{"toolCall":{"operationId":"getForecast","arguments":{"city":"Seoul"}}},
+                  "operations":[{"operationId":"getForecast","enabled":true,
+                    "toolName":"weather_get_forecast","toolDescription":"Get forecast","parameters":{}}]
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private void assertDirectoryEmpty(Path directory) throws Exception {
+        try (var entries = Files.list(directory)) {
+            assertTrue(entries.findAny().isEmpty());
+        }
+    }
+
+    private static final class InMemoryStorage implements ObjectStorage {
+        private final AtomicReference<ObjectKey> key = new AtomicReference<>();
+        private final AtomicReference<byte[]> content = new AtomicReference<>();
+        private final AtomicReference<String> contentType = new AtomicReference<>();
+        private int getCount;
+
+        private InMemoryStorage() {}
+
+        private InMemoryStorage(ObjectKey key, byte[] content, String contentType) {
+            this.key.set(key);
+            this.content.set(Arrays.copyOf(content, content.length));
+            this.contentType.set(contentType);
+        }
+
+        @Override
+        public StoredObject put(
+                ObjectKey key, java.io.InputStream body, long size, String sha256, String contentType) {
+            try {
+                byte[] bytes = body.readAllBytes();
+                this.key.set(key);
+                this.content.set(bytes);
+                this.contentType.set(contentType);
+                return new StoredObject(key, size, sha256, contentType);
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException(failure);
+            }
+        }
+
+        @Override
+        public StoredObjectContent get(ObjectKey requested) {
+            getCount++;
+            if (!requested.equals(key.get())) throw new AssertionError("unexpected object key");
+            byte[] bytes = Arrays.copyOf(content.get(), content.get().length);
+            String hash;
+            try {
+                hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+            } catch (Exception failure) {
+                throw new IllegalStateException(failure);
+            }
+            return new StoredObjectContent() {
+                @Override public java.io.InputStream body() { return new ByteArrayInputStream(bytes); }
+                @Override public long size() { return bytes.length; }
+                @Override public String sha256() { return hash; }
+                @Override public String contentType() { return contentType.get(); }
+                @Override public void close() {}
+            };
+        }
+
+        @Override
+        public void delete(ObjectKey deleted) {
+            if (deleted.equals(key.get())) {
+                key.set(null);
+                content.set(null);
+                contentType.set(null);
+            }
+        }
+
+        private boolean hasContent() {
+            return content.get() != null;
+        }
     }
 
     private EncryptedImportTarget encrypted(byte value) {

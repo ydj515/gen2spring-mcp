@@ -27,6 +27,7 @@ public interface SpecificationCatalog {
             String sha256,
             long byteSize,
             String sourceType,
+            String displayLabel,
             String parseState,
             Instant observedAt) {
         private static final Pattern SHA256 = Pattern.compile("[a-f0-9]{64}");
@@ -41,6 +42,15 @@ public interface SpecificationCatalog {
                     || byteSize < 1
                     || byteSize > 10 * 1024 * 1024
                     || !("URL".equals(sourceType) || "UPLOAD".equals(sourceType))
+                    || displayLabel == null
+                    || displayLabel.isBlank()
+                    || displayLabel.length() > 160
+                    || !displayLabel.equals(displayLabel.strip())
+                    || displayLabel.equals(".")
+                    || displayLabel.equals("..")
+                    || displayLabel.indexOf('/') >= 0
+                    || displayLabel.indexOf('\\') >= 0
+                    || displayLabel.chars().anyMatch(Character::isISOControl)
                     || !"READY".equals(parseState)) {
                 throw new IllegalArgumentException("Specification registration is invalid");
             }
