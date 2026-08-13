@@ -2,7 +2,7 @@ import {getState, updateState} from './state.js';
 
 const ids = names => Object.fromEntries(names.map(name => [name, document.querySelector(`#${name}`)]));
 const elements = ids([
-  'operation-filter', 'operation-list', 'operation-editor', 'operation-enabled', 'tool-name',
+  'operation-editor', 'operation-enabled', 'tool-name',
   'tool-description', 'parameter-editor', 'data-path', 'success-code-path', 'success-values',
   'error-message-path', 'total-count-path', 'validation-operation', 'output-mode',
   'retry-enabled', 'retry-status-codes', 'retry-network-errors', 'retry-max-retries',
@@ -12,14 +12,6 @@ const elements = ids([
 ]);
 
 export function initializeEditor(onDirty) {
-  elements['operation-filter'].addEventListener('change', renderOperations);
-  elements['operation-list'].addEventListener('click', event => {
-    const button = event.target.closest('button[data-operation-id]');
-    if (!button) return;
-    saveSelectedOperation();
-    updateState({selectedOperationId: button.dataset.operationId});
-    renderOperations();
-  });
   for (const id of ['operation-enabled', 'tool-name', 'tool-description', 'data-path',
     'success-code-path', 'success-values', 'error-message-path', 'total-count-path', 'output-mode',
     'retry-enabled', 'retry-status-codes', 'retry-network-errors', 'retry-max-retries',
@@ -42,23 +34,15 @@ export function initializeEditor(onDirty) {
 }
 
 export function renderOperations() {
-  const state = getState();
-  const filter = elements['operation-filter'].value;
-  const visible = state.operations.filter(operation => filter === 'all'
-    || (filter === 'supported' && operation.supported)
-    || (filter === 'unsupported' && !operation.supported));
-  elements['operation-list'].replaceChildren(...visible.map(operation => {
-    const item = document.createElement('li');
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.dataset.operationId = operation.operationId;
-    button.setAttribute('aria-current', String(operation.operationId === state.selectedOperationId));
-    button.textContent = `${operation.method} ${operation.path} — ${operation.operationId}`;
-    item.append(button);
-    return item;
-  }));
   renderSelectedOperation();
   renderValidationOperations();
+}
+
+export function selectOperation(operationId) {
+  saveSelectedOperation();
+  updateState({selectedOperationId: operationId});
+  renderOperations();
+  document.querySelector('#operation-editor')?.scrollIntoView({block: 'nearest'});
 }
 
 function renderSelectedOperation() {

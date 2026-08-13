@@ -56,18 +56,24 @@ class WebMvcContractTest {
     ObjectMapper json;
 
     @Test
-    void rendersTheFiveStepThymeleafShellWithCsrfMetadata() throws Exception {
-        mockMvc.perform(get("/").with(localRequest()))
+    void rendersTheThreeStepThymeleafEditorAtBothLocalRoutes() throws Exception {
+        for (String route : List.of("/", "/editor")) {
+            mockMvc.perform(get(route).with(localRequest()))
                 .andExpect(status().isOk())
                 .andExpect(view().name("editor"))
-                .andExpect(content().string(containsString("<h2>1. Specification</h2>")))
-                .andExpect(content().string(containsString("<h2>5. Generate and Download</h2>")))
+                .andExpect(content().string(containsString(">1. OpenAPI 파일</h2>")))
+                .andExpect(content().string(containsString(">2. API endpoint 선택</h2>")))
+                .andExpect(content().string(containsString(">3. 생성 설정</h2>")))
+                .andExpect(content().string(not(containsString("<h2>4."))))
+                .andExpect(content().string(not(containsString("<h2>5."))))
+                .andExpect(content().string(containsString("name=\"app-mode\" content=\"local\"")))
                 .andExpect(content().string(containsString("name=\"csrf-token\"")))
                 .andExpect(content().string(containsString("name=\"csrf-header\"")))
                 .andExpect(content().string(not(containsString("__GEN2SPRING_TOKEN__"))))
                 .andExpect(header().string("Cache-Control", containsString("no-store")))
                 .andExpect(header().string("Content-Security-Policy",
                         WebSecurityConfiguration.CONTENT_SECURITY_POLICY));
+        }
     }
 
     @Test

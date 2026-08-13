@@ -35,6 +35,13 @@ final class DashboardController {
         return "dashboard";
     }
 
+    @GetMapping("/editor")
+    String editor(HttpServletRequest request, Model model) {
+        csrf(request, model);
+        model.addAttribute("appMode", "hosted");
+        return "editor";
+    }
+
     @GetMapping("/jobs/{id}")
     String job(Authentication authentication, @PathVariable String id, HttpServletRequest request, Model model) {
         var owner = accounts.resolve(authentication).accountId();

@@ -1,16 +1,34 @@
 import * as api from './api.js';
-import {analyzedOperations, getState, updateState} from './state.js';
-import {buildConfiguration, initializeEditor, renderOperations} from './editor.js';
+import {getState, updateState} from './state.js';
+import {buildConfiguration, initializeEditor, renderOperations, selectOperation} from './editor.js';
+import {initializeUpload} from './upload.js';
+import {initializeOperations} from './operations.js';
 
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
-  'error-summary', 'error-message', 'specification-file', 'upload-button', 'upload-status',
-  'analysis-summary', 'target-profile', 'profile-description', 'preview-button', 'preview-status',
+  'error-summary', 'error-message', 'analysis-summary', 'target-profile', 'profile-description',
+  'preview-button', 'preview-status',
   'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'progress-list', 'downloads'
 ].map(id => [id, byId(id)]));
 
 initializeEditor(invalidatePreview);
-ui['upload-button'].addEventListener('click', analyzeSpecification);
+initializeOperations({
+  onSelectionChange: () => {
+    renderOperations();
+    invalidatePreview();
+  },
+  onEdit: selectOperation
+});
+initializeUpload({
+  onAnalysis: analysis => {
+    ui['preview-button'].disabled = false;
+    renderAnalysis(analysis);
+    renderOperations();
+    invalidatePreview();
+  },
+  onReset: resetSpecificationPresentation,
+  onFailure: showFailure
+});
 ui['preview-button'].addEventListener('click', runPreview);
 ui['generate-button'].addEventListener('click', startGeneration);
 ui['delete-job-button'].addEventListener('click', removeJob);
@@ -51,39 +69,6 @@ async function resumeRetainedJob() {
     if (failure?.code === 'JOB_NOT_FOUND') updateState({jobId: null, job: null});
     else ui['delete-job-button'].disabled = false;
     showFailure(failure);
-  }
-}
-
-async function analyzeSpecification() {
-  clearFailure();
-  const file = ui['specification-file'].files?.[0];
-  if (!file || !/\.(?:yaml|yml|json)$/.test(file.name)) {
-    showFailure({message: 'Select one .yaml, .yml, or .json OpenAPI file.'});
-    return;
-  }
-  ui['upload-button'].disabled = true;
-  ui['upload-status'].textContent = 'Analyzing the local file.';
-  try {
-    const analysis = await api.upload(file);
-    const operations = analyzedOperations(analysis.operations);
-    updateState({
-      specificationId: analysis.id,
-      jobId: null,
-      analysis,
-      operations,
-      selectedOperationId: operations[0]?.operationId ?? null,
-      preview: null,
-      job: null
-    });
-    ui['upload-status'].textContent = `${analysis.operationCount} operations analyzed with ${analysis.warningCount} warnings.`;
-    renderAnalysis(analysis);
-    renderOperations();
-    invalidatePreview();
-  } catch (failure) {
-    showFailure(failure);
-    ui['upload-status'].textContent = 'Specification analysis failed safely.';
-  } finally {
-    ui['upload-button'].disabled = false;
   }
 }
 
@@ -160,7 +145,7 @@ async function removeJob() {
 function invalidatePreview() {
   updateState({preview: null});
   ui['generate-button'].disabled = true;
-  ui['preview-status'].textContent = 'Preview is required before generation.';
+  ui['preview-status'].textContent = '생성 전 미리보기가 필요합니다.';
   ui['preview-output'].replaceChildren();
 }
 
@@ -173,8 +158,10 @@ function describeProfile() {
 
 function renderAnalysis(analysis) {
   const values = [
-    ['Checksum', analysis.checksum], ['OpenAPI', analysis.openApiVersion],
-    ['Base URL', analysis.baseUrl ?? 'Not declared'], ['Operations', String(analysis.operationCount)]
+    ['파일', analysis.file?.name ?? 'OpenAPI'],
+    ['OpenAPI', analysis.openApiVersion],
+    ['Endpoint', String(analysis.counts.total)],
+    ['선택 가능', String(analysis.counts.supported + analysis.counts.supportedWithWarning)]
   ];
   ui['analysis-summary'].replaceChildren(...values.flatMap(([term, description]) => {
     const dt = document.createElement('dt');
@@ -183,6 +170,19 @@ function renderAnalysis(analysis) {
     dd.textContent = description;
     return [dt, dd];
   }));
+}
+
+function resetSpecificationPresentation() {
+  ui['preview-button'].disabled = true;
+  clearFailure();
+  ui['analysis-summary'].replaceChildren();
+  ui['preview-output'].replaceChildren();
+  ui['progress-list'].replaceChildren();
+  ui['downloads'].replaceChildren();
+  ui['job-status'].textContent = '아직 생성 작업을 시작하지 않았습니다.';
+  ui['delete-job-button'].disabled = true;
+  invalidatePreview();
+  renderOperations();
 }
 
 function renderPreview(preview) {

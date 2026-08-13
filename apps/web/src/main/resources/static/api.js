@@ -1,5 +1,6 @@
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 const csrfHeader = document.querySelector('meta[name="csrf-header"]')?.content ?? '';
+const appMode = document.querySelector('meta[name="app-mode"]')?.content ?? 'local';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE']);
 
 async function request(path, options = {}) {
@@ -25,9 +26,13 @@ export async function profiles() {
 }
 
 export async function upload(file) {
-  const response = await request('/api/specifications', {
+  const hosted = appMode === 'hosted';
+  const contentType = hosted
+    ? (file.name.toLowerCase().endsWith('.json') ? 'application/json' : 'application/yaml')
+    : 'application/octet-stream';
+  const response = await request(hosted ? '/api/specifications/uploads' : '/api/specifications', {
     method: 'POST',
-    headers: {'Content-Type': 'application/octet-stream', 'X-Specification-Name': file.name},
+    headers: {'Content-Type': contentType, 'X-Specification-Name': file.name},
     body: file
   });
   return response.json();

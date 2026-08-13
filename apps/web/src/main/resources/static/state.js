@@ -35,12 +35,26 @@ export function subscribe(listener) {
   return () => listeners.delete(listener);
 }
 
+export function resetSpecificationState() {
+  return updateState({
+    specificationId: null,
+    jobId: null,
+    analysis: null,
+    operations: [],
+    selectedOperationId: null,
+    preview: null,
+    job: null
+  });
+}
+
 export function analyzedOperations(operations) {
-  return operations.map(operation => ({
+  return operations.map((operation, index) => ({
     ...operation,
+    sourceIndex: index,
     enabled: operation.supported,
-    toolName: safeToolName(operation.operationId),
-    toolDescription: operation.summary || operation.description || `Call ${operation.operationId}`,
+    toolName: operation.operationId ? safeToolName(operation.operationId) : '',
+    toolDescription: operation.summary || operation.description
+      || (operation.operationId ? `Call ${operation.operationId}` : 'Unsupported endpoint'),
     outputMode: 'GENERIC_JSON',
     retry: {
       enabled: false, statusCodes: [], statusCodesText: '', networkErrors: false,

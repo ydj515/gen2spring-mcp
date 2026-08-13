@@ -21,25 +21,3 @@ document.querySelector('#hosted-import-form')?.addEventListener('submit', async 
     feedback.textContent = `Import queued: ${result.jobId}`;
   } catch (failure) { feedback.textContent = failure.message; }
 });
-
-document.querySelector('#hosted-upload-form')?.addEventListener('submit', async event => {
-  event.preventDefault();
-  try {
-    const file = event.target.file.files[0];
-    const type = file.name.endsWith('.json') ? 'application/json' : 'application/yaml';
-    const result = await submit('/api/specifications/uploads', file, type);
-    feedback.textContent = `Uploaded: ${result.id}`;
-  } catch (failure) { feedback.textContent = failure.message; }
-});
-
-document.querySelector('#hosted-generation-form')?.addEventListener('submit', async event => {
-  event.preventDefault();
-  try {
-    const configuration = JSON.parse(event.target.configuration.value);
-    const result = await submit('/api/jobs', JSON.stringify({
-      specificationId: event.target.specificationId.value,
-      configuration
-    }), 'application/json');
-    feedback.textContent = `Generation queued: ${result.jobId}`;
-  } catch (failure) { feedback.textContent = 'The generation configuration is invalid.'; }
-});
