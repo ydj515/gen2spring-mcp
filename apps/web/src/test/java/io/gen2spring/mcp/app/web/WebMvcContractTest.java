@@ -123,6 +123,16 @@ class WebMvcContractTest {
     }
 
     @Test
+    void localAnalysisKeepsTheSuppliedOpenApiVersionsDecisionEquivalent() throws Exception {
+        JsonNode analysis30 = uploadPairedFixture("swagger-3.0.yml", "3.0.4");
+        JsonNode analysis31 = uploadPairedFixture("swagger-3.1.yml", "3.1.2");
+
+        assertEquals(analysis30.path("operations"), analysis31.path("operations"));
+        assertEquals(analysis30.path("securitySchemes"), analysis31.path("securitySchemes"));
+        assertEquals(analysis30.path("warnings"), analysis31.path("warnings"));
+    }
+
+    @Test
     void preservesJobStatusArtifactAndDeleteRoutes() throws Exception {
         String specificationId = uploadSpecification();
         JsonNode accepted = json.readTree(mockMvc.perform(post("/api/specifications/{id}/jobs", specificationId)
@@ -218,6 +228,43 @@ class WebMvcContractTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         return json.readTree(result.getResponse().getContentAsByteArray()).path("id").textValue();
+    }
+
+    private JsonNode uploadPairedFixture(String fileName, String version) throws Exception {
+        byte[] source = Files.readAllBytes(repositoryRoot().resolve(fileName));
+        JsonNode analysis = json.readTree(mockMvc.perform(post("/api/specifications")
+                        .with(localRequest())
+                        .with(csrf())
+                        .header("X-Specification-Name", fileName)
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                        .content(source))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.openApiVersion").value(version))
+                .andExpect(jsonPath("$.counts.total").value(26))
+                .andExpect(jsonPath("$.counts.supported").value(0))
+                .andExpect(jsonPath("$.counts.supportedWithWarning").value(13))
+                .andExpect(jsonPath("$.counts.unsupported").value(13))
+                .andExpect(jsonPath("$.file.name").value(fileName))
+                .andExpect(jsonPath("$.file.byteSize").value(source.length))
+                .andReturn().getResponse().getContentAsByteArray());
+        JsonNode customers = java.util.stream.StreamSupport.stream(
+                        analysis.path("operations").spliterator(), false)
+                .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
+                .findFirst().orElseThrow();
+        assertEquals("SUPPORTED_WITH_WARNING", customers.path("status").asText());
+        assertEquals("SUCCESS_MEDIA_TYPE_INFERRED", customers.path("issues").get(0).path("code").asText());
+        return analysis;
+    }
+
+    private Path repositoryRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle.kts"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("Unable to locate the repository root");
+        }
+        return current;
     }
 
     private JsonNode awaitTerminal(String jobId) throws Exception {

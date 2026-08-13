@@ -1,6 +1,6 @@
 # OpenAPI MCP Generator
 
-OpenAPI 3.0 operation을 실행 가능한 Spring AI Streamable HTTP MCP 서버 프로젝트로 변환한다.
+OpenAPI 3.0.x와 3.1.x operation을 실행 가능한 Spring AI Streamable HTTP MCP 서버 프로젝트로 변환한다.
 생성 결과는 선택한 Java target으로 컴파일하고, 애플리케이션 기동과 MCP
 `initialize`·`tools/list`·대표 `tools/call`까지 검증한 뒤 ZIP으로 제공한다.
 
@@ -44,7 +44,8 @@ mise run ui:build
 java -jar apps/web/build/libs/web.jar
 ```
 
-현재 UI 상태는 `UI operation editor complete`다. local UI 입력 경계는
+현재 UI는 파일 업로드, API endpoint 선택, 생성 설정의 세 단계로 동작한다. 지원하지 않는 endpoint도
+이유와 함께 표시하지만 preview와 generation에는 선택 가능한 endpoint만 전달한다. local UI 입력 경계는
 `local files only; no URL import`, capacity는 `one running plus one queued job`이다.
 
 ### CLI
@@ -132,7 +133,8 @@ Gradle Wrapper JVM은 host의 Java 21로 시작될 수 있다. generated compile
 
 ## 지원 범위 요약
 
-로컬 OpenAPI 3.0.x 파일, 주요 HTTP method, path/query/header parameter, JSON body,
-primitive·enum·array·object와 non-recursive local `$ref`를 지원한다. remote `$ref`,
-OpenAPI 3.1, composed/recursive schema, Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
+로컬 OpenAPI 3.0.x·3.1.x 파일, 주요 HTTP method, path/query/header parameter, JSON body,
+primitive·enum·array·object와 non-recursive local `$ref`를 지원한다. OpenAPI 3.1은 기본 dialect와
+단일 non-null type + `null` union만 bounded하게 정규화한다. remote `$ref`, custom dialect,
+composed/recursive schema, Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
 정확한 serialization 및 validation 경계는 [사용자 가이드](docs/user-guide.md#지원-범위와-제한)를 참고한다.

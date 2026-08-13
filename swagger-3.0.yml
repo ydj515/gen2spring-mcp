@@ -1,0 +1,2033 @@
+openapi: 3.0.4
+info:
+  title: API Documentation
+  description: kotlin springboot sample project입니다.
+  version: 1.0.0
+servers:
+  - url: /
+    description: Default server
+tags:
+  - name: Customers
+    description: 주문 고객 조회 API
+  - name: Users
+    description: 사용자 CRUD API
+  - name: Orders
+    description: 주문 조회와 상태 전이 API
+  - name: Product
+    description: 상품 카탈로그와 재고 조회
+  - name: Authentication
+    description: 사용자 인증과 JWT 발급
+  - name: Payment Manual Review
+    description: 관리자용 결제 수동 검토와 PG 원장 재조정
+paths:
+  /api/users:
+    get:
+      tags:
+        - Users
+      summary: 사용자 목록 조회
+      description: 전체 사용자 목록을 조회합니다.
+      operationId: getUsers
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserResponse"
+    put:
+      tags:
+        - Users
+      summary: 사용자 수정
+      description: 전체 필드를 받아 사용자를 수정합니다.
+      operationId: updateUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/UpdateUserResponse"
+    post:
+      tags:
+        - Users
+      summary: 회원가입
+      description: 새 사용자를 등록합니다.
+      operationId: createUser
+      requestBody:
+        description: 회원가입 요청 바디
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+            examples:
+              request:
+                $ref: "#/components/examples/SignupRequest"
+        required: true
+      responses:
+        "201":
+          description: 회원가입 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/SignupSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /api/orders:
+    get:
+      tags:
+        - Orders
+      summary: 주문 목록 조회
+      description: customerName, status 조건으로 주문을 조회합니다. searchMode=DERIVED는 파생 쿼리, searchMode=JPQL은 nullable 조건 JPQL을 사용합니다.
+      operationId: getOrders
+      parameters:
+        - name: page
+          in: query
+          description: 페이지 번호
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+          examples:
+            default:
+              value: 0
+        - name: size
+          in: query
+          description: 페이지 크기
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 10
+          examples:
+            default:
+              value: 10
+        - name: customerName
+          in: query
+          description: 고객 이름 필터
+          required: false
+          schema:
+            type: string
+          examples:
+            default:
+              value: 한수진
+        - name: status
+          in: query
+          description: 주문 상태 필터
+          required: false
+          schema:
+            type: string
+            enum:
+              - CREATED
+              - PAYMENT_COMPLETION_PENDING
+              - PAYMENT_CANCELLATION_PENDING
+              - PAID
+              - PARTIALLY_CANCELLED
+              - SHIPPED
+              - EXPIRED
+              - CANCELLED
+          examples:
+            default:
+              value: PAID
+        - name: minTotalAmount
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: orderedFrom
+          in: query
+          description: 주문 시각 시작
+          required: false
+          schema:
+            type: string
+            format: date-time
+          examples:
+            default:
+              value: 2024-07-01T00:00:00
+        - name: orderedTo
+          in: query
+          description: 주문 시각 종료
+          required: false
+          schema:
+            type: string
+            format: date-time
+          examples:
+            default:
+              value: 2024-07-31T23:59:59
+        - name: searchMode
+          in: query
+          required: false
+          schema:
+            type: string
+            default: DERIVED
+            enum:
+              - DERIVED
+              - JPQL
+          examples:
+            default:
+              value: JPQL
+      responses:
+        "200":
+          description: 주문 목록 조회 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/PageOrderSummaryResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/OrderListSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+    post:
+      tags:
+        - Orders
+      summary: 주문 생성
+      description: 주문과 주문 라인을 함께 생성합니다.
+      operationId: createOrder
+      requestBody:
+        description: 주문 생성 요청 바디
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+            examples:
+              request:
+                $ref: "#/components/examples/OrderCreateRequest"
+        required: true
+      responses:
+        "201":
+          description: 주문 생성 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/OrderCreateSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+  /api/orders/{id}/ship:
+    post:
+      tags:
+        - Orders
+      summary: 주문 배송
+      description: PAID 상태 주문을 SHIPPED 상태로 전이합니다.
+      operationId: shipOrder
+      parameters:
+        - name: id
+          in: path
+          description: 주문 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 2
+      responses:
+        "200":
+          description: 주문 배송 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/OrderShipSuccess"
+        "404":
+          $ref: "#/components/responses/NotFoundResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /api/orders/{id}/pay:
+    post:
+      tags:
+        - Orders
+      summary: 주문 결제
+      description: CREATED 상태 주문을 결제합니다. PG 승인 후 주문 완료 저장이 일시 실패하면 처리 중 상태와 조회 URL을 반환합니다.
+      operationId: payOrder
+      parameters:
+        - name: id
+          in: path
+          description: 주문 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 2
+        - name: Idempotency-Key
+          in: header
+          description: 결제 멱등성 키 (클라이언트 발급 UUID 권장)
+          required: true
+          schema:
+            type: string
+          examples:
+            default:
+              value: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        "200":
+          description: 주문 결제 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/PayOrderResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/OrderPaySuccess"
+        "202":
+          description: 결제 승인 후 주문 처리 중
+          content:
+            application/json:
+              examples:
+                processing:
+                  $ref: "#/components/examples/OrderPayProcessing"
+        "404":
+          $ref: "#/components/responses/NotFoundResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /api/orders/{id}/items/batch:
+    post:
+      tags:
+        - Orders
+      summary: 주문 항목 일괄 추가
+      description: 영속성 컨텍스트를 거쳐 적재하고 주기적으로 flush/clear 합니다.
+      operationId: addOrderItems
+      parameters:
+        - name: id
+          in: path
+          description: 주문 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddOrderItemsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/AddOrderItemsResponse"
+  /api/orders/{id}/items/batch-session:
+    post:
+      tags:
+        - Orders
+      summary: 주문 항목 일괄 추가 (트랜잭션 배치)
+      description: 항목 삽입, 전체 재가격 계산, 항목별 금액 배분, 재고 예약을 하나의 트랜잭션으로 처리합니다.
+      operationId: addOrderItemsWithBatchSession
+      parameters:
+        - name: id
+          in: path
+          description: 주문 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddOrderItemsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/AddOrderItemsResponse"
+  /api/orders/{id}/cancel:
+    post:
+      tags:
+        - Orders
+      summary: 주문 취소
+      description: CREATED 또는 PAID 상태 주문을 CANCELLED 상태로 전이합니다.
+      operationId: cancelOrder
+      parameters:
+        - name: id
+          in: path
+          description: 주문 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 2
+        - name: Idempotency-Key
+          in: header
+          description: 취소 멱등성 키 (클라이언트 발급 UUID 권장)
+          required: true
+          schema:
+            type: string
+          examples:
+            default:
+              value: 550e8400-e29b-41d4-a716-446655440099
+        - name: reason
+          in: query
+          description: 취소 사유 (선택)
+          required: false
+          schema:
+            type: string
+          examples:
+            default:
+              value: 단순 변심
+      responses:
+        "200":
+          description: 주문 취소 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/OrderCancelSuccess"
+        "404":
+          $ref: "#/components/responses/NotFoundResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /api/orders/{id}/cancel-items:
+    post:
+      tags:
+        - Orders
+      summary: 주문 항목 부분 취소
+      description: 항목과 수량을 지정해 일부만 취소합니다. 환불 금액은 서버가 계산하고, 재고는 취소한 수량만 되돌립니다.
+      operationId: cancelOrderItems
+      parameters:
+        - name: id
+          in: path
+          description: 주문 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 2
+        - name: Idempotency-Key
+          in: header
+          description: 취소 멱등성 키 (클라이언트 발급 UUID 권장)
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelOrderItemsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: 로그인
+      description: 사용자 자격 증명을 확인하고 JWT 액세스 토큰을 발급합니다.
+      operationId: login
+      requestBody:
+        description: 로그인 요청 바디
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              request:
+                $ref: "#/components/examples/LoginRequest"
+        required: true
+      responses:
+        "200":
+          description: 로그인 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/LoginSuccess"
+  /api/admin/payments/{paymentId}/reconcile:
+    post:
+      tags:
+        - Payment Manual Review
+      summary: 수동 검토 결제 재조정
+      description: PG 원장을 다시 조회하고 완료, 환불 또는 추가 수동 검토 결과를 멱등하게 기록합니다.
+      operationId: reconcile
+      parameters:
+        - name: paymentId
+          in: path
+          description: 재조정할 결제 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 15
+        - name: Idempotency-Key
+          in: header
+          description: 재조정 요청 멱등성 키
+          required: true
+          schema:
+            type: string
+          examples:
+            default:
+              value: 550e8400-e29b-41d4-a716-446655440015
+      requestBody:
+        description: 수동 검토 결제 재조정 요청 바디
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentManualReviewRequest"
+            examples:
+              request:
+                $ref: "#/components/examples/PaymentManualReviewRequest"
+        required: true
+      responses:
+        "200":
+          description: 수동 검토 결제 재조정 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/PaymentManualReviewResponse"
+            application/json:
+              examples:
+                completed:
+                  $ref: "#/components/examples/PaymentManualReviewCompleted"
+                reviewRequired:
+                  $ref: "#/components/examples/PaymentManualReviewReviewRequired"
+  /api/users/{id}:
+    get:
+      tags:
+        - Users
+      summary: 사용자 단건 조회
+      description: id로 사용자 단건을 조회합니다.
+      operationId: getUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+    delete:
+      tags:
+        - Users
+      summary: 사용자 삭제
+      description: id로 사용자를 삭제합니다.
+      operationId: deleteUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/DeleteUserResponse"
+  /api/users/detail:
+    get:
+      tags:
+        - Users
+      summary: username으로 사용자 조회
+      description: 쿼리 파라미터의 username으로 사용자를 조회합니다.
+      operationId: getUserByUsername
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+  /api/products:
+    get:
+      tags:
+        - Product
+      summary: 상품 목록 조회
+      description: 판매 상태와 가용 재고를 함께 반환합니다.
+      operationId: getProducts
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductResponse"
+  /api/products/{id}:
+    get:
+      tags:
+        - Product
+      summary: 상품 단건 조회
+      operationId: getProduct
+      parameters:
+        - name: id
+          in: path
+          description: 상품 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+  /api/orders/{id}:
+    get:
+      tags:
+        - Orders
+      summary: 주문 단건 조회
+      description: 상세 조회는 EntityGraph 기반으로 customer와 orderItems를 함께 로드합니다.
+      operationId: getOrder
+      parameters:
+        - name: id
+          in: path
+          description: 주문 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 1
+      responses:
+        "200":
+          description: 주문 상세 조회 성공
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/OrderDetailSuccess"
+        "404":
+          $ref: "#/components/responses/NotFoundResponse"
+  /api/orders/{id}/nested-select:
+    get:
+      tags:
+        - Orders
+      summary: 주문 단건 조회 (nested select)
+      description: 연관을 지연 로딩해 추가 select가 발생하는 경로입니다.
+      operationId: getOrderWithNestedSelect
+      parameters:
+        - name: id
+          in: path
+          description: 주문 ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          examples:
+            default:
+              value: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+  /api/orders/status/{status}:
+    get:
+      tags:
+        - Orders
+      summary: 상태별 주문 목록 조회
+      description: 주어진 주문 상태의 주문을 모두 조회합니다.
+      operationId: getOrdersByStatus
+      parameters:
+        - name: status
+          in: path
+          description: 주문 상태
+          required: true
+          schema:
+            type: string
+            enum:
+              - CREATED
+              - PAYMENT_COMPLETION_PENDING
+              - PAYMENT_CANCELLATION_PENDING
+              - PAID
+              - PARTIALLY_CANCELLED
+              - SHIPPED
+              - EXPIRED
+              - CANCELLED
+          examples:
+            default:
+              value: PAID
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrderResponse"
+  /api/orders/status-counts:
+    get:
+      tags:
+        - Orders
+      summary: 주문 상태 요약 조회
+      description: 주문 상태별 개수를 projection 기반으로 조회합니다. customerName, status 조건으로 집계 범위를 줄일 수 있습니다.
+      operationId: countOrdersByStatus
+      parameters:
+        - name: customerName
+          in: query
+          description: 고객 이름 필터
+          required: false
+          schema:
+            type: string
+          examples:
+            default:
+              value: 한수진
+        - name: status
+          in: query
+          description: 특정 주문 상태만 집계
+          required: false
+          schema:
+            type: string
+            enum:
+              - CREATED
+              - PAYMENT_COMPLETION_PENDING
+              - PAYMENT_CANCELLATION_PENDING
+              - PAID
+              - PARTIALLY_CANCELLED
+              - SHIPPED
+              - EXPIRED
+              - CANCELLED
+          examples:
+            default:
+              value: PAID
+      responses:
+        "200":
+          description: 주문 상태별 건수 조회 성공
+          content:
+            "*/*":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrderStatusCountResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/OrderStatusCountsSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+  /api/orders/nested-select:
+    get:
+      tags:
+        - Orders
+      summary: 주문 목록 조회 (nested select)
+      description: fetch join과 EntityGraph를 쓰지 않아 연관을 지연 로딩합니다. N+1이 발생하는 비교용 경로입니다.
+      operationId: getOrdersWithNestedSelect
+      parameters:
+        - name: customerName
+          in: query
+          description: 고객 이름 필터
+          required: false
+          schema:
+            type: string
+          examples:
+            default:
+              value: 한수진
+        - name: status
+          in: query
+          description: 주문 상태 필터
+          required: false
+          schema:
+            type: string
+            enum:
+              - CREATED
+              - PAYMENT_COMPLETION_PENDING
+              - PAYMENT_CANCELLATION_PENDING
+              - PAID
+              - PARTIALLY_CANCELLED
+              - SHIPPED
+              - EXPIRED
+              - CANCELLED
+          examples:
+            default:
+              value: PAID
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrderResponse"
+  /api/customers:
+    get:
+      tags:
+        - Customers
+      summary: 고객 목록 조회
+      description: 전체 고객 목록을 조회합니다.
+      operationId: getCustomers
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CustomerResponse"
+  /api/customers/{id}:
+    get:
+      tags:
+        - Customers
+      summary: 고객 단건 조회
+      description: id로 고객 단건을 조회합니다.
+      operationId: getCustomer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+  /api/admin/payments/manual-reviews:
+    get:
+      tags:
+        - Payment Manual Review
+      summary: 수동 검토 결제 목록 조회
+      description: MANUAL_REVIEW_REQUIRED 상태의 결제를 조회합니다. limit은 1부터 100 사이로 보정됩니다.
+      operationId: getManualReviews
+      parameters:
+        - name: limit
+          in: query
+          description: 조회할 최대 결제 수
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 50
+          examples:
+            default:
+              value: 50
+      responses:
+        "200":
+          description: 수동 검토 결제 목록 조회 성공
+          content:
+            "*/*":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ManualReviewPaymentResponse"
+            application/json:
+              examples:
+                success:
+                  $ref: "#/components/examples/PaymentManualReviewListSuccess"
+components:
+  schemas:
+    UpdateUserRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        password:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastPasswordUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        userType:
+          type: string
+          enum:
+            - USER
+            - MANAGER
+          nullable: true
+        trialCount:
+          type: integer
+          format: int32
+      required:
+        - id
+        - trialCount
+        - username
+    UpdateUserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        updatedCount:
+          type: integer
+          format: int32
+      required:
+        - updatedCount
+    CreateUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          maxLength: 10
+          minLength: 4
+          pattern: ^[a-z0-9]+$
+        password:
+          type: string
+          maxLength: 15
+          minLength: 8
+          pattern: ^[a-zA-Z0-9]+$
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        userType:
+          type: string
+          enum:
+            - USER
+            - MANAGER
+          nullable: true
+        trialCount:
+          type: integer
+          format: int32
+      required:
+        - password
+        - trialCount
+        - username
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        username:
+          type: string
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        userType:
+          type: string
+          nullable: true
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastPasswordUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        trialCount:
+          type: integer
+          format: int32
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserRoleResponse"
+      required:
+        - roles
+        - trialCount
+        - username
+    UserRoleResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - description
+        - name
+    CreateOrderRequest:
+      type: object
+      properties:
+        customerId:
+          type: integer
+          format: int64
+        shippingAddress:
+          $ref: "#/components/schemas/ShippingAddressRequest"
+        deliveryRequestedAt:
+          type: string
+          format: date-time
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItemRequest"
+      required:
+        - customerId
+        - items
+        - shippingAddress
+    OrderItemRequest:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+          description: 상품 ID
+          examples:
+            - 1
+        quantity:
+          type: integer
+          format: int32
+          description: 주문 수량
+          examples:
+            - 2
+          minimum: 1
+      required:
+        - productId
+        - quantity
+    ShippingAddressRequest:
+      type: object
+      properties:
+        recipient:
+          type: string
+        zipCode:
+          type: string
+        address1:
+          type: string
+        address2:
+          type: string
+      required:
+        - address1
+        - address2
+        - recipient
+        - zipCode
+    CustomerResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        name:
+          type: string
+        email:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - email
+        - name
+    OrderAmountsResponse:
+      type: object
+      properties:
+        currency:
+          type: string
+        itemsAmount:
+          type: number
+        discountAmount:
+          type: number
+        shippingFee:
+          type: number
+        taxAmount:
+          type: number
+        totalAmount:
+          type: number
+        refundedAmount:
+          type: number
+        refundableAmount:
+          type: number
+      required:
+        - currency
+        - discountAmount
+        - itemsAmount
+        - refundableAmount
+        - refundedAmount
+        - shippingFee
+        - taxAmount
+        - totalAmount
+    OrderItemResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        productId:
+          type: integer
+          format: int64
+        sku:
+          type: string
+        productName:
+          type: string
+        quantity:
+          type: integer
+          format: int32
+        cancelledQuantity:
+          type: integer
+          format: int32
+        unitPrice:
+          type: number
+        lineAmount:
+          type: number
+        discountAmount:
+          type: number
+        taxAmount:
+          type: number
+      required:
+        - cancelledQuantity
+        - discountAmount
+        - lineAmount
+        - productId
+        - productName
+        - quantity
+        - sku
+        - taxAmount
+        - unitPrice
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          format: int64
+        orderNo:
+          type: string
+        customer:
+          $ref: "#/components/schemas/CustomerResponse"
+        status:
+          type: string
+          enum:
+            - CREATED
+            - PAYMENT_COMPLETION_PENDING
+            - PAYMENT_CANCELLATION_PENDING
+            - PAID
+            - PARTIALLY_CANCELLED
+            - SHIPPED
+            - EXPIRED
+            - CANCELLED
+        recipient:
+          type: string
+        zipCode:
+          type: string
+        address1:
+          type: string
+        address2:
+          type: string
+        totalAmount:
+          type: number
+        amounts:
+          $ref: "#/components/schemas/OrderAmountsResponse"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItemResponse"
+        orderedAt:
+          type: string
+          format: date-time
+        deliveryRequestedAt:
+          type: string
+          format: date-time
+          nullable: true
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        paymentCompletionPendingAt:
+          type: string
+          format: date-time
+          nullable: true
+        shippedAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        trackingNumber:
+          type: string
+          nullable: true
+        cancelReason:
+          type: string
+          nullable: true
+        paymentKey:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - address1
+        - address2
+        - amounts
+        - createdAt
+        - customer
+        - id
+        - items
+        - orderNo
+        - orderedAt
+        - recipient
+        - status
+        - totalAmount
+        - version
+        - zipCode
+    PayOrderResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - PAID
+            - PROCESSING
+            - CANCELING
+            - CANCELED
+            - REVIEW_REQUIRED
+        message:
+          type: string
+        pollingUrl:
+          type: string
+        order:
+          $ref: "#/components/schemas/OrderResponse"
+      required:
+        - message
+        - order
+        - pollingUrl
+        - status
+    AddOrderItemsRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItemRequest"
+      required:
+        - items
+    AddOrderItemsResponse:
+      type: object
+      properties:
+        orderId:
+          type: integer
+          format: int64
+        addedItemCount:
+          type: integer
+          format: int32
+        strategy:
+          type: string
+      required:
+        - addedItemCount
+        - orderId
+        - strategy
+    CancelOrderItemsRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: 취소 사유
+          examples:
+            - 일부 상품 단순 변심
+          nullable: true
+        lines:
+          type: array
+          description: 취소할 항목과 수량
+          items:
+            $ref: "#/components/schemas/Line"
+          minItems: 1
+      required:
+        - lines
+    Line:
+      type: object
+      properties:
+        orderItemId:
+          type: integer
+          format: int64
+          description: 주문 항목 ID
+          examples:
+            - 1
+        quantity:
+          type: integer
+          format: int32
+          description: 취소 수량
+          examples:
+            - 1
+          minimum: 1
+      required:
+        - orderItemId
+        - quantity
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - password
+        - username
+    LoginResponse:
+      type: object
+      properties:
+        username:
+          type: string
+        tokenType:
+          type: string
+        accessToken:
+          type: string
+        accessTokenExpiresAt:
+          type: integer
+          format: int64
+      required:
+        - accessToken
+        - accessTokenExpiresAt
+        - tokenType
+        - username
+    PaymentManualReviewRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 0
+      required:
+        - reason
+    PaymentManualReviewResponse:
+      type: object
+      properties:
+        actionId:
+          type: integer
+          format: int64
+        paymentId:
+          type: integer
+          format: int64
+        actionStatus:
+          type: string
+        outcome:
+          type: string
+        ledgerStatus:
+          type: string
+          nullable: true
+        ledgerPaymentKey:
+          type: string
+          nullable: true
+        ledgerAmount:
+          type: number
+          nullable: true
+        paymentStatusBefore:
+          type: string
+        paymentStatusAfter:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        replayed:
+          type: boolean
+      required:
+        - actionId
+        - actionStatus
+        - outcome
+        - paymentId
+        - paymentStatusBefore
+        - replayed
+    ProductResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        sku:
+          type: string
+        name:
+          type: string
+        unitPrice:
+          type: number
+        currency:
+          type: string
+        status:
+          type: string
+        availableQuantity:
+          type: integer
+          format: int32
+        reservedQuantity:
+          type: integer
+          format: int32
+      required:
+        - availableQuantity
+        - currency
+        - id
+        - name
+        - reservedQuantity
+        - sku
+        - status
+        - unitPrice
+    OrderSummaryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          format: int64
+        orderNo:
+          type: string
+        customerId:
+          type: integer
+          format: int64
+        customerName:
+          type: string
+        status:
+          type: string
+          enum:
+            - CREATED
+            - PAYMENT_COMPLETION_PENDING
+            - PAYMENT_CANCELLATION_PENDING
+            - PAID
+            - PARTIALLY_CANCELLED
+            - SHIPPED
+            - EXPIRED
+            - CANCELLED
+        totalAmount:
+          type: number
+        orderedAt:
+          type: string
+          format: date-time
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        shippedAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - createdAt
+        - customerId
+        - customerName
+        - id
+        - orderNo
+        - orderedAt
+        - status
+        - totalAmount
+        - version
+    PageOrderSummaryResponse:
+      type: object
+      properties:
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+        pageable:
+          $ref: "#/components/schemas/PageableObject"
+        first:
+          type: boolean
+        last:
+          type: boolean
+        numberOfElements:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderSummaryResponse"
+        number:
+          type: integer
+          format: int32
+        sort:
+          $ref: "#/components/schemas/SortObject"
+        empty:
+          type: boolean
+    PageableObject:
+      type: object
+      properties:
+        paged:
+          type: boolean
+        pageNumber:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+        unpaged:
+          type: boolean
+        offset:
+          type: integer
+          format: int64
+        sort:
+          $ref: "#/components/schemas/SortObject"
+    SortObject:
+      type: object
+      properties:
+        sorted:
+          type: boolean
+        unsorted:
+          type: boolean
+        empty:
+          type: boolean
+    OrderStatusCountResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - CREATED
+            - PAYMENT_COMPLETION_PENDING
+            - PAYMENT_CANCELLATION_PENDING
+            - PAID
+            - PARTIALLY_CANCELLED
+            - SHIPPED
+            - EXPIRED
+            - CANCELLED
+        orderCount:
+          type: integer
+          format: int64
+      required:
+        - orderCount
+        - status
+    ManualReviewPaymentResponse:
+      type: object
+      properties:
+        paymentId:
+          type: integer
+          format: int64
+        orderId:
+          type: integer
+          format: int64
+        amount:
+          type: number
+        status:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - amount
+        - orderId
+        - paymentId
+        - status
+    DeleteUserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        deletedCount:
+          type: integer
+          format: int32
+      required:
+        - deletedCount
+  responses:
+    BadRequestResponse:
+      description: 잘못된 요청
+      content:
+        application/json:
+          examples:
+            invalidRequest:
+              $ref: "#/components/examples/InvalidRequestFailure"
+            signupValidation:
+              $ref: "#/components/examples/SignupValidationFailure"
+            invalidOrderItem:
+              $ref: "#/components/examples/InvalidOrderItemFailure"
+    NotFoundResponse:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          examples:
+            orderNotFound:
+              $ref: "#/components/examples/OrderNotFoundFailure"
+    ConflictResponse:
+      description: 상태 충돌 또는 중복 요청
+      content:
+        application/json:
+          examples:
+            userAlreadyExists:
+              $ref: "#/components/examples/SignupAlreadyExistsFailure"
+            invalidOrderTransition:
+              $ref: "#/components/examples/OrderConflictFailure"
+            optimisticLockingConflict:
+              $ref: "#/components/examples/OptimisticLockFailure"
+  examples:
+    SignupRequest:
+      summary: 회원가입 요청
+      value:
+        username: user1
+        password: password1
+        name: User One
+        email: user1@example.com
+        userType: USER
+        trialCount: 0
+    SignupSuccess:
+      summary: 회원가입 성공
+      value:
+        id: 1
+        username: user1
+        name: User One
+        email: user1@example.com
+        userType: USER
+        lastLoginAt: null
+        createdAt: 2026-05-08T13:30:00
+        updatedAt: null
+        deletedAt: null
+        lastPasswordUpdatedAt: null
+        trialCount: 0
+        roles: []
+    SignupValidationFailure:
+      summary: 회원가입 유효성 실패
+      value:
+        timestamp: 2026-05-08T13:30:00
+        status: 400
+        error: Bad Request
+        code: "400"
+        message: Invalid Request
+        path: /api/users
+        traceId: b3f1c2d4-0000-4a1b-9c2d-000000000001
+    SignupAlreadyExistsFailure:
+      summary: 이미 존재하는 사용자
+      value:
+        timestamp: 2026-05-08T13:30:00
+        status: 409
+        error: Conflict
+        code: "409"
+        message: user already exists
+        path: /api/users
+        traceId: b3f1c2d4-0000-4a1b-9c2d-000000000001
+    LoginRequest:
+      summary: 로그인 요청
+      value:
+        username: user123
+        password: password123
+    LoginSuccess:
+      summary: 로그인 성공
+      value:
+        username: user123
+        tokenType: Bearer
+        accessToken: eyJhbGciOiJIUzI1NiJ9.example.signature
+        accessTokenExpiresAt: 1786022400000
+    PaymentManualReviewListSuccess:
+      summary: 수동 검토 결제 목록 조회 성공
+      value:
+        - paymentId: 15
+          orderId: 42
+          amount: 169000
+          status: MANUAL_REVIEW_REQUIRED
+          updatedAt: 2026-08-06T20:15:00
+    PaymentManualReviewRequest:
+      summary: 수동 검토 결제 재조정 요청
+      value:
+        reason: PG 원장 상태 수동 확인
+    PaymentManualReviewCompleted:
+      summary: 결제 완료 확인
+      value:
+        actionId: 101
+        paymentId: 15
+        actionStatus: SUCCEEDED
+        outcome: COMPLETED
+        ledgerStatus: APPROVED
+        ledgerPaymentKey: payment-key-15
+        ledgerAmount: 169000
+        paymentStatusBefore: MANUAL_REVIEW_REQUIRED
+        paymentStatusAfter: APPROVED
+        message: PG 원장에서 결제 승인을 확인했습니다.
+        replayed: false
+    PaymentManualReviewReviewRequired:
+      summary: 추가 수동 검토 필요
+      value:
+        actionId: 102
+        paymentId: 15
+        actionStatus: NO_CHANGE
+        outcome: REVIEW_REQUIRED
+        ledgerStatus: PENDING
+        ledgerPaymentKey: payment-key-15
+        ledgerAmount: 169000
+        paymentStatusBefore: MANUAL_REVIEW_REQUIRED
+        paymentStatusAfter: MANUAL_REVIEW_REQUIRED
+        message: PG 원장 상태가 확정되지 않아 추가 확인이 필요합니다.
+        replayed: false
+    OrderCreateRequest:
+      summary: 주문 생성 요청
+      value:
+        customerId: 1
+        shippingAddress:
+          recipient: Alice Kim
+          zipCode: "06236"
+          address1: Seoul Gangnam-daero 123
+          address2: 10F
+        deliveryRequestedAt: 2030-01-01T18:00:00
+        items:
+          - productId: 1
+            quantity: 1
+          - productId: 2
+            quantity: 2
+    OrderStatusCountsSuccess:
+      summary: 주문 상태별 건수 조회 성공
+      value:
+        - status: PAID
+          orderCount: 2
+        - status: SHIPPED
+          orderCount: 1
+    OrderListSuccess:
+      summary: 주문 목록 조회 성공
+      value:
+        content:
+          - id: 2
+            version: 1
+            customerId: 1
+            customerName: 한수진
+            status: PAID
+            totalAmount: 154000
+            paidAt: 2026-05-08T12:05:00
+            shippedAt: null
+            cancelledAt: null
+            createdAt: 2026-05-08T11:00:00
+        pageable:
+          pageNumber: 0
+          pageSize: 10
+        totalElements: 1
+        totalPages: 1
+    OrderDetailSuccess:
+      summary: 주문 상세 조회 성공
+      value:
+        id: 2
+        version: 1
+        customerId: 1
+        customerName: 한수진
+        status: PAID
+        recipient: Alice Kim
+        zipCode: "06236"
+        address1: Seoul Gangnam-daero 123
+        address2: 10F
+        totalAmount: 154000
+        items:
+          - productName: Mechanical Keyboard
+            quantity: 1
+            unitPrice: 129000
+            lineAmount: 129000
+          - productName: Palm Rest
+            quantity: 1
+            unitPrice: 25000
+            lineAmount: 25000
+        paidAt: 2026-05-08T12:05:00
+        shippedAt: null
+        cancelledAt: null
+        createdAt: 2026-05-08T11:00:00
+    OrderCreateSuccess:
+      summary: 주문 생성 성공
+      value:
+        id: 5
+        version: 0
+        customerId: 1
+        customerName: 한수진
+        status: CREATED
+        recipient: Alice Kim
+        zipCode: "06236"
+        address1: Seoul Gangnam-daero 123
+        address2: 10F
+        totalAmount: 154000
+        items:
+          - productName: Mechanical Keyboard
+            quantity: 1
+            unitPrice: 129000
+            lineAmount: 129000
+          - productName: Palm Rest
+            quantity: 1
+            unitPrice: 25000
+            lineAmount: 25000
+        paidAt: null
+        shippedAt: null
+        cancelledAt: null
+        createdAt: 2026-05-08T13:00:00
+    OrderPaySuccess:
+      summary: 주문 결제 성공
+      value:
+        status: PAID
+        message: 결제 및 주문이 완료되었습니다.
+        pollingUrl: /api/orders/2
+        order:
+          id: 2
+          version: 2
+          customerId: 1
+          customerName: 한수진
+          status: PAID
+          recipient: Alice Kim
+          zipCode: "06236"
+          address1: Seoul Gangnam-daero 123
+          address2: 10F
+          totalAmount: 154000
+          items:
+            - productName: Mechanical Keyboard
+              quantity: 1
+              unitPrice: 129000
+              lineAmount: 129000
+            - productName: Palm Rest
+              quantity: 1
+              unitPrice: 25000
+              lineAmount: 25000
+          paidAt: 2026-05-08T12:05:00
+          paymentCompletionPendingAt: null
+          shippedAt: null
+          cancelledAt: null
+          paymentKey: MOCK-PG-abc123
+          createdAt: 2026-05-08T11:00:00
+    OrderPayProcessing:
+      summary: 결제 승인 후 주문 처리 중
+      value:
+        status: PROCESSING
+        message: 결제는 승인되었고 주문을 처리 중입니다. 잠시 후 주문 내역에서 확인할 수 있습니다.
+        pollingUrl: /api/orders/2
+        order:
+          id: 2
+          version: 2
+          customerId: 1
+          customerName: 한수진
+          status: PAYMENT_COMPLETION_PENDING
+          recipient: Alice Kim
+          zipCode: "06236"
+          address1: Seoul Gangnam-daero 123
+          address2: 10F
+          totalAmount: 154000
+          items:
+            - productName: Mechanical Keyboard
+              quantity: 1
+              unitPrice: 129000
+              lineAmount: 129000
+            - productName: Palm Rest
+              quantity: 1
+              unitPrice: 25000
+              lineAmount: 25000
+          paidAt: null
+          paymentCompletionPendingAt: 2026-05-08T13:00:01
+          shippedAt: null
+          cancelledAt: null
+          paymentKey: MOCK-PG-abc123
+          createdAt: 2026-05-08T11:00:00
+    OrderShipSuccess:
+      summary: 주문 배송 성공
+      value:
+        id: 2
+        version: 3
+        customerId: 1
+        customerName: 한수진
+        status: SHIPPED
+        recipient: Alice Kim
+        zipCode: "06236"
+        address1: Seoul Gangnam-daero 123
+        address2: 10F
+        totalAmount: 154000
+        items:
+          - productName: Mechanical Keyboard
+            quantity: 1
+            unitPrice: 129000
+            lineAmount: 129000
+          - productName: Palm Rest
+            quantity: 1
+            unitPrice: 25000
+            lineAmount: 25000
+        paidAt: 2026-05-08T12:05:00
+        shippedAt: 2026-05-08T12:30:00
+        cancelledAt: null
+        createdAt: 2026-05-08T11:00:00
+    OrderCancelSuccess:
+      summary: 주문 취소 성공
+      value:
+        id: 2
+        version: 2
+        customerId: 1
+        customerName: 한수진
+        status: CANCELLED
+        recipient: Alice Kim
+        zipCode: "06236"
+        address1: Seoul Gangnam-daero 123
+        address2: 10F
+        totalAmount: 154000
+        items:
+          - productName: Mechanical Keyboard
+            quantity: 1
+            unitPrice: 129000
+            lineAmount: 129000
+          - productName: Palm Rest
+            quantity: 1
+            unitPrice: 25000
+            lineAmount: 25000
+        paidAt: 2026-05-08T12:05:00
+        shippedAt: null
+        cancelledAt: 2026-05-08T12:10:00
+        createdAt: 2026-05-08T11:00:00
+    InvalidRequestFailure:
+      summary: 쿼리 파라미터 변환 실패
+      value:
+        timestamp: 2026-05-08T13:00:00
+        status: 400
+        error: Bad Request
+        code: "400"
+        message: Invalid Request
+        path: /api/users
+        traceId: b3f1c2d4-0000-4a1b-9c2d-000000000001
+    InvalidOrderItemFailure:
+      summary: 잘못된 주문 항목
+      value:
+        timestamp: 2026-05-08T13:00:00
+        status: 400
+        error: Bad Request
+        code: "400"
+        message: unit price must be greater than zero
+        path: /api/users
+        traceId: b3f1c2d4-0000-4a1b-9c2d-000000000001
+    OrderNotFoundFailure:
+      summary: 주문을 찾을 수 없음
+      value:
+        timestamp: 2026-05-08T13:00:00
+        status: 404
+        error: Not Found
+        code: "404"
+        message: Order not found with id 999
+        path: /api/users
+        traceId: b3f1c2d4-0000-4a1b-9c2d-000000000001
+    OrderConflictFailure:
+      summary: 허용되지 않는 주문 상태 전이
+      value:
+        timestamp: 2026-05-08T13:00:00
+        status: 409
+        error: Conflict
+        code: "409"
+        message: "only created or paid orders can be cancelled. current status: SHIPPED"
+        path: /api/users
+        traceId: b3f1c2d4-0000-4a1b-9c2d-000000000001
+    OptimisticLockFailure:
+      summary: 동시 수정 충돌
+      value:
+        timestamp: 2026-05-08T13:00:00
+        status: 409
+        error: Conflict
+        code: "409"
+        message: order was modified concurrently. retry the request
+        path: /api/users
+        traceId: b3f1c2d4-0000-4a1b-9c2d-000000000001

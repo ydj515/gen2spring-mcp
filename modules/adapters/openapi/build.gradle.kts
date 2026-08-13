@@ -4,3 +4,7 @@ dependencies {
     implementation(libs.swagger.parser)
     implementation(libs.bundles.jackson)
 }
+
+tasks.test {
+    systemProperty("gen2spring.projectRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
+}

@@ -2,6 +2,7 @@ package io.gen2spring.mcp.app.web.hosted;
 
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -30,7 +31,10 @@ import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -152,6 +156,23 @@ class HostedWebMvcContractTest {
     }
 
     @Test
+    void hostedAnalysisKeepsTheSuppliedOpenApiVersionsDecisionEquivalent() throws Exception {
+        var hosted30 = hostedFixture("swagger-3.0.yml");
+        var hosted31 = hostedFixture("swagger-3.1.yml");
+        when(submissions.upload(eq(OWNER), any(), eq("application/yaml"), eq("swagger-3.0.yml")))
+                .thenReturn(hosted30);
+        when(submissions.upload(eq(OWNER), any(), eq("application/yaml"), eq("swagger-3.1.yml")))
+                .thenReturn(hosted31);
+
+        var response30 = uploadHostedFixture("swagger-3.0.yml", "3.0.4");
+        var response31 = uploadHostedFixture("swagger-3.1.yml", "3.1.2");
+
+        assertEquals(response30.path("operations"), response31.path("operations"));
+        assertEquals(response30.path("securitySchemes"), response31.path("securitySchemes"));
+        assertEquals(response30.path("warnings"), response31.path("warnings"));
+    }
+
+    @Test
     void startsOneIdempotentHostedGenerationFromTheGuidedEditor() throws Exception {
         SpecificationId specificationId = new SpecificationId(UUID.randomUUID());
         JobView job = new JobView(
@@ -187,6 +208,51 @@ class HostedWebMvcContractTest {
 
     private org.springframework.test.web.servlet.request.RequestPostProcessor user() {
         return oidcLogin().idToken(token -> token.issuer(ISSUER).subject("subject-1"));
+    }
+
+    private HostedSubmissionService.HostedSpecificationAnalysis hostedFixture(String fileName) throws Exception {
+        Path source = repositoryRoot().resolve(fileName);
+        var analysis = SpecificationAnalysisView.from(
+                new SwaggerOpenApiAnalyzer().analyze(source, 10L * 1024L * 1024L).document());
+        return new HostedSubmissionService.HostedSpecificationAnalysis(
+                new SpecificationId(UUID.randomUUID()), fileName, Files.size(source), analysis);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode uploadHostedFixture(String fileName, String version)
+            throws Exception {
+        byte[] source = Files.readAllBytes(repositoryRoot().resolve(fileName));
+        var response = new com.fasterxml.jackson.databind.ObjectMapper().readTree(mvc.perform(
+                        post("/api/specifications/uploads")
+                                .with(user()).with(csrf())
+                                .header("X-Specification-Name", fileName)
+                                .contentType("application/yaml")
+                                .content(source))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.openApiVersion").value(version))
+                .andExpect(jsonPath("$.counts.total").value(26))
+                .andExpect(jsonPath("$.counts.supported").value(0))
+                .andExpect(jsonPath("$.counts.supportedWithWarning").value(13))
+                .andExpect(jsonPath("$.counts.unsupported").value(13))
+                .andExpect(jsonPath("$.file.name").value(fileName))
+                .andExpect(jsonPath("$.file.byteSize").value(source.length))
+                .andReturn().getResponse().getContentAsByteArray());
+        var customers = java.util.stream.StreamSupport.stream(response.path("operations").spliterator(), false)
+                .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
+                .findFirst().orElseThrow();
+        assertEquals("SUPPORTED_WITH_WARNING", customers.path("status").asText());
+        assertEquals("SUCCESS_MEDIA_TYPE_INFERRED", customers.path("issues").get(0).path("code").asText());
+        return response;
+    }
+
+    private Path repositoryRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle.kts"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("Unable to locate the repository root");
+        }
+        return current;
     }
 
     @TestConfiguration(proxyBeanMethods = false)
