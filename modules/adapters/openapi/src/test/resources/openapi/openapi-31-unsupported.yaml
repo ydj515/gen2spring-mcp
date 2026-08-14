@@ -1,0 +1,53 @@
+openapi: 3.1.2
+info:
+  title: OpenAPI 3.1 Unsupported API
+  version: 1.0.0
+paths:
+  /conditional:
+    get:
+      operationId: conditionalResult
+      responses:
+        '200':
+          description: Conditional result
+          content:
+            application/json:
+              schema:
+                type: object
+                if:
+                  properties:
+                    kind: { const: full }
+                then:
+                  required: [details]
+  /multi:
+    get:
+      operationId: multiTypeInput
+      parameters:
+        - name: value
+          in: query
+          schema:
+            type: [string, integer, 'null']
+      responses:
+        '204': { description: Accepted }
+  /null-only:
+    get:
+      operationId: nullOnlyInput
+      parameters:
+        - name: value
+          in: query
+          schema:
+            type: ['null']
+      responses:
+        '204': { description: Accepted }
+  /tuple:
+    get:
+      operationId: tupleResult
+      responses:
+        '200':
+          description: Tuple result
+          content:
+            application/json:
+              schema:
+                type: array
+                prefixItems:
+                  - { type: string }
+                  - { type: integer }

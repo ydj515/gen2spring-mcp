@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
         name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 final class EditorController {
-    @GetMapping("/")
+    @GetMapping({"/", "/editor"})
     String editor(HttpServletRequest request, Model model) {
         Object value = request.getAttribute(CsrfToken.class.getName());
         if (!(value instanceof CsrfToken csrf)) {
@@ -18,6 +18,7 @@ final class EditorController {
         }
         model.addAttribute("csrfToken", csrf.getToken());
         model.addAttribute("csrfHeader", csrf.getHeaderName());
+        model.addAttribute("appMode", "local");
         return "editor";
     }
 }

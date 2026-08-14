@@ -112,6 +112,7 @@ public final class SpecificationImportService {
                         sha256,
                         source.length,
                         "URL",
+                        "Imported OpenAPI",
                         "READY",
                         clock.instant()));
             } catch (RuntimeException failure) {

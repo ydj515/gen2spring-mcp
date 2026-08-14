@@ -192,6 +192,41 @@ class P1GenerationIntegrationTest {
     }
 
     @Test
+    void suppliedOpenApiVersionPairGeneratesTheSameRepresentativeToolContract() throws Exception {
+        Path configuration = Files.writeString(tempDir.resolve("paired-customers-generation.yaml"), """
+                project:
+                  groupId: com.example
+                  artifactId: paired-customers-mcp-server
+                  packageName: com.example.customers
+                provider: sample
+                domain: customers
+                targetProfileId: spring-ai-2.0-java21-mvc-streamable
+                validationLevel: MCP_PROTOCOL
+                validation:
+                  toolCall:
+                    operationId: getCustomers
+                    arguments: {}
+                operations:
+                  - operationId: getCustomers
+                    enabled: true
+                    toolName: sample_customers_get_customers
+                    toolDescription: Get all customers.
+                """, UTF_8);
+
+        GenerationResult openApi30 = generate(
+                repositoryRoot().resolve("swagger-3.0.yml"), configuration, tempDir.resolve("paired-openapi-30"));
+        GenerationResult openApi31 = generate(
+                repositoryRoot().resolve("swagger-3.1.yml"), configuration, tempDir.resolve("paired-openapi-31"));
+
+        assertEquivalentRepresentativeGeneration(openApi30);
+        assertEquivalentRepresentativeGeneration(openApi31);
+        assertEquals(openApi30.manifest().path("operationMappings"),
+                openApi31.manifest().path("operationMappings"));
+        assertEquals(mainSourceFiles(openApi30.projectRoot()), mainSourceFiles(openApi31.projectRoot()));
+        assertEquals(openApi30.report().path("tools"), openApi31.report().path("tools"));
+    }
+
+    @Test
     void installedCliRejectsInvalidRepresentativeArgumentWithoutPublishingOrLeakingIt() throws Exception {
         Path specification = resource("openapi/weather-api.yaml");
         String configuredValue = "configured-invalid-representative-value";
@@ -431,6 +466,32 @@ class P1GenerationIntegrationTest {
             assertFalse(path.equals(".gradle") || path.startsWith(".gradle/"));
             assertFalse(path.equals("process-logs") || path.startsWith("process-logs/"));
         });
+    }
+
+    private void assertEquivalentRepresentativeGeneration(GenerationResult result) {
+        JsonNode mapping = result.manifest().path("operationMappings").get(0);
+        assertEquals("getCustomers", mapping.path("operationId").asText());
+        assertEquals("sample_customers_get_customers", mapping.path("toolName").asText());
+        assertEquals("GENERIC_JSON", mapping.path("output").path("mode").asText());
+        assertEquals("VALIDATED", result.report().path("status").asText());
+        assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"),
+                result.report().path("stages").findValuesAsText("status"));
+        assertEquals("Representative MCP Tool call matched the mock upstream contract",
+                stage(result.report(), "MCP_TOOL_CALL").path("summary").asText());
+        assertEquals(List.of("sample_customers_get_customers"),
+                result.report().path("tools").findValuesAsText("name"));
+        assertTrue(result.report().path("tools").get(0).path("inputSchemaPresent").asBoolean());
+    }
+
+    private Map<String, String> mainSourceFiles(Path projectRoot) throws IOException {
+        Map<String, String> sources = new LinkedHashMap<>();
+        Path main = projectRoot.resolve("src/main");
+        try (var paths = Files.walk(main)) {
+            for (Path path : paths.filter(Files::isRegularFile).sorted().toList()) {
+                sources.put(main.relativize(path).toString().replace('\\', '/'), Files.readString(path, UTF_8));
+            }
+        }
+        return Map.copyOf(sources);
     }
 
     private List<String> stageNames(JsonNode report) {
@@ -939,6 +1000,17 @@ class P1GenerationIntegrationTest {
         var resource = getClass().getClassLoader().getResource(name);
         assertNotNull(resource, name);
         return Path.of(resource.toURI());
+    }
+
+    private Path repositoryRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle.kts"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("Unable to locate the repository root");
+        }
+        return current;
     }
 
     private JsonNode readJson(Path path) throws IOException {

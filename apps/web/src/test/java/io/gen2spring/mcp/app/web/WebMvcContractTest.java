@@ -56,18 +56,26 @@ class WebMvcContractTest {
     ObjectMapper json;
 
     @Test
-    void rendersTheFiveStepThymeleafShellWithCsrfMetadata() throws Exception {
-        mockMvc.perform(get("/").with(localRequest()))
+    void rendersTheThreeStepThymeleafEditorAtBothLocalRoutes() throws Exception {
+        for (String route : List.of("/", "/editor")) {
+            mockMvc.perform(get(route).with(localRequest()))
                 .andExpect(status().isOk())
                 .andExpect(view().name("editor"))
-                .andExpect(content().string(containsString("<h2>1. Specification</h2>")))
-                .andExpect(content().string(containsString("<h2>5. Generate and Download</h2>")))
+                .andExpect(content().string(containsString(">1. OpenAPI 파일</h2>")))
+                .andExpect(content().string(containsString(">2. API endpoint 선택</h2>")))
+                .andExpect(content().string(containsString(">3. 생성 설정</h2>")))
+                .andExpect(content().string(containsString("id=\"selected-tool-list\"")))
+                .andExpect(content().string(containsString("id=\"generation-summary\"")))
+                .andExpect(content().string(not(containsString("<h2>4."))))
+                .andExpect(content().string(not(containsString("<h2>5."))))
+                .andExpect(content().string(containsString("name=\"app-mode\" content=\"local\"")))
                 .andExpect(content().string(containsString("name=\"csrf-token\"")))
                 .andExpect(content().string(containsString("name=\"csrf-header\"")))
                 .andExpect(content().string(not(containsString("__GEN2SPRING_TOKEN__"))))
                 .andExpect(header().string("Cache-Control", containsString("no-store")))
                 .andExpect(header().string("Content-Security-Policy",
                         WebSecurityConfiguration.CONTENT_SECURITY_POLICY));
+        }
     }
 
     @Test
@@ -87,6 +95,17 @@ class WebMvcContractTest {
                         .content(bytes(specification())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.operations[0].operationId").value("getForecast"))
+                .andExpect(jsonPath("$.operations[0].status").value("SUPPORTED"))
+                .andExpect(jsonPath("$.operations[0].supported").value(true))
+                .andExpect(jsonPath("$.operations[0].issues.length()").value(0))
+                .andExpect(jsonPath("$.counts.total").value(1))
+                .andExpect(jsonPath("$.counts.supported").value(1))
+                .andExpect(jsonPath("$.counts.supportedWithWarning").value(0))
+                .andExpect(jsonPath("$.counts.unsupported").value(0))
+                .andExpect(jsonPath("$.file.name").value("weather.yaml"))
+                .andExpect(jsonPath("$.file.byteSize").value(
+                        specification().getBytes(StandardCharsets.UTF_8).length))
+                .andExpect(jsonPath("$.securitySchemes").isMap())
                 .andReturn().getResponse().getContentAsByteArray());
         String specificationId = uploaded.path("id").textValue();
         assertTrue(specificationId.matches("[a-f0-9]{64}"));
@@ -101,6 +120,16 @@ class WebMvcContractTest {
                         .value("spring-ai-2.0-java21-mvc-streamable"))
                 .andExpect(jsonPath("$.tools[0].name").value("weather_get_forecast"))
                 .andExpect(content().string(not(containsString("representative-private-value"))));
+    }
+
+    @Test
+    void localAnalysisKeepsTheSuppliedOpenApiVersionsDecisionEquivalent() throws Exception {
+        JsonNode analysis30 = uploadPairedFixture("swagger-3.0.yml", "3.0.4");
+        JsonNode analysis31 = uploadPairedFixture("swagger-3.1.yml", "3.1.2");
+
+        assertEquals(analysis30.path("operations"), analysis31.path("operations"));
+        assertEquals(analysis30.path("securitySchemes"), analysis31.path("securitySchemes"));
+        assertEquals(analysis30.path("warnings"), analysis31.path("warnings"));
     }
 
     @Test
@@ -199,6 +228,43 @@ class WebMvcContractTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         return json.readTree(result.getResponse().getContentAsByteArray()).path("id").textValue();
+    }
+
+    private JsonNode uploadPairedFixture(String fileName, String version) throws Exception {
+        byte[] source = Files.readAllBytes(repositoryRoot().resolve(fileName));
+        JsonNode analysis = json.readTree(mockMvc.perform(post("/api/specifications")
+                        .with(localRequest())
+                        .with(csrf())
+                        .header("X-Specification-Name", fileName)
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                        .content(source))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.openApiVersion").value(version))
+                .andExpect(jsonPath("$.counts.total").value(26))
+                .andExpect(jsonPath("$.counts.supported").value(0))
+                .andExpect(jsonPath("$.counts.supportedWithWarning").value(13))
+                .andExpect(jsonPath("$.counts.unsupported").value(13))
+                .andExpect(jsonPath("$.file.name").value(fileName))
+                .andExpect(jsonPath("$.file.byteSize").value(source.length))
+                .andReturn().getResponse().getContentAsByteArray());
+        JsonNode customers = java.util.stream.StreamSupport.stream(
+                        analysis.path("operations").spliterator(), false)
+                .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
+                .findFirst().orElseThrow();
+        assertEquals("SUPPORTED_WITH_WARNING", customers.path("status").asText());
+        assertEquals("SUCCESS_MEDIA_TYPE_INFERRED", customers.path("issues").get(0).path("code").asText());
+        return analysis;
+    }
+
+    private Path repositoryRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle.kts"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("Unable to locate the repository root");
+        }
+        return current;
     }
 
     private JsonNode awaitTerminal(String jobId) throws Exception {

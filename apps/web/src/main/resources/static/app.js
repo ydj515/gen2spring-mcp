@@ -1,26 +1,49 @@
 import * as api from './api.js';
-import {analyzedOperations, getState, updateState} from './state.js';
-import {buildConfiguration, initializeEditor, renderOperations} from './editor.js';
+import {getState, updateState} from './state.js';
+import {buildConfiguration, initializeEditor, renderOperations, selectOperation} from './editor.js';
+import {initializeUpload} from './upload.js';
+import {initializeOperations} from './operations.js';
 
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
-  'error-summary', 'error-message', 'specification-file', 'upload-button', 'upload-status',
-  'analysis-summary', 'target-profile', 'profile-description', 'preview-button', 'preview-status',
-  'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'progress-list', 'downloads'
+  'error-summary', 'error-message', 'analysis-summary', 'target-profile', 'profile-description',
+  'preview-button', 'preview-status',
+  'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'progress-list', 'downloads',
+  'summary-version', 'summary-selected', 'summary-excluded', 'summary-warnings',
+  'summary-profile', 'summary-validation', 'validation-operation'
 ].map(id => [id, byId(id)]));
+const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
 
 initializeEditor(invalidatePreview);
-ui['upload-button'].addEventListener('click', analyzeSpecification);
+initializeOperations({
+  onSelectionChange: () => {
+    renderOperations();
+    invalidatePreview();
+  },
+  onEdit: selectOperation
+});
+const upload = initializeUpload({
+  onAnalysis: analysis => {
+    ui['preview-button'].disabled = false;
+    renderAnalysis(analysis);
+    renderOperations();
+    invalidatePreview();
+  },
+  onReset: resetSpecificationPresentation,
+  onFailure: showFailure
+});
 ui['preview-button'].addEventListener('click', runPreview);
 ui['generate-button'].addEventListener('click', startGeneration);
 ui['delete-job-button'].addEventListener('click', removeJob);
+if (api.hostedMode) ui['delete-job-button'].textContent = '작업 취소';
 for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name',
   'target-profile', 'validation-operation', 'validation-arguments']) {
   byId(id).addEventListener('change', invalidatePreview);
 }
 
 loadProfiles();
-resumeRetainedJob();
+resumeRetainedState();
+renderGenerationSummary();
 
 async function loadProfiles() {
   try {
@@ -35,6 +58,7 @@ async function loadProfiles() {
     const preferred = payload.profiles.find(profile => profile.id === 'spring-ai-2.0-java21-mvc-streamable');
     if (preferred) ui['target-profile'].value = preferred.id;
     describeProfile();
+    renderGenerationSummary();
     ui['target-profile'].addEventListener('change', describeProfile);
   } catch (failure) {
     showFailure(failure);
@@ -54,37 +78,16 @@ async function resumeRetainedJob() {
   }
 }
 
-async function analyzeSpecification() {
-  clearFailure();
-  const file = ui['specification-file'].files?.[0];
-  if (!file || !/\.(?:yaml|yml|json)$/.test(file.name)) {
-    showFailure({message: 'Select one .yaml, .yml, or .json OpenAPI file.'});
-    return;
-  }
-  ui['upload-button'].disabled = true;
-  ui['upload-status'].textContent = 'Analyzing the local file.';
-  try {
-    const analysis = await api.upload(file);
-    const operations = analyzedOperations(analysis.operations);
-    updateState({
-      specificationId: analysis.id,
-      jobId: null,
-      analysis,
-      operations,
-      selectedOperationId: operations[0]?.operationId ?? null,
-      preview: null,
-      job: null
-    });
-    ui['upload-status'].textContent = `${analysis.operationCount} operations analyzed with ${analysis.warningCount} warnings.`;
-    renderAnalysis(analysis);
-    renderOperations();
-    invalidatePreview();
-  } catch (failure) {
-    showFailure(failure);
-    ui['upload-status'].textContent = 'Specification analysis failed safely.';
-  } finally {
-    ui['upload-button'].disabled = false;
-  }
+async function resumeRetainedState() {
+  await resumeRetainedSpecification();
+  await resumeRetainedJob();
+}
+
+async function resumeRetainedSpecification() {
+  if (!api.hostedMode) return;
+  const requested = new URLSearchParams(window.location.search).get('specification');
+  const specificationId = requested || getState().specificationId;
+  if (specificationId) await upload.load(specificationId);
 }
 
 async function runPreview() {
@@ -102,7 +105,7 @@ async function runPreview() {
     invalidatePreview();
     showFailure(failure);
   } finally {
-    ui['preview-button'].disabled = false;
+    updatePreviewGate();
   }
 }
 
@@ -117,7 +120,7 @@ async function startGeneration() {
     ui['generate-button'].disabled = true;
     const accepted = await api.startJob(getState().specificationId, configuration);
     updateState({jobId: accepted.id, job: accepted});
-    ui['delete-job-button'].disabled = true;
+    ui['delete-job-button'].disabled = !api.hostedMode;
     await pollJob(accepted.id);
   } catch (failure) {
     showFailure(failure);
@@ -131,10 +134,11 @@ async function pollJob(jobId) {
     const snapshot = await api.job(jobId);
     updateState({job: snapshot});
     renderJob(snapshot);
-    if (['VALIDATED', 'UNVERIFIED', 'FAILED'].includes(snapshot.state)) {
-      ui['delete-job-button'].disabled = false;
+    if (TERMINAL_STATES.includes(snapshot.state)) {
+      ui['delete-job-button'].disabled = api.hostedMode;
       return;
     }
+    ui['delete-job-button'].disabled = !api.hostedMode;
     await new Promise(resolve => setTimeout(resolve, delay));
     delay = Math.min(2000, delay + 250);
   }
@@ -146,6 +150,11 @@ async function removeJob() {
   if (!jobId) return;
   try {
     await api.deleteJob(jobId);
+    if (api.hostedMode) {
+      ui['job-status'].textContent = 'Cancellation requested.';
+      ui['delete-job-button'].disabled = true;
+      return;
+    }
     updateState({jobId: null, job: null});
     ui['job-status'].textContent = 'Generation job deleted.';
     ui['progress-list'].replaceChildren();
@@ -160,8 +169,10 @@ async function removeJob() {
 function invalidatePreview() {
   updateState({preview: null});
   ui['generate-button'].disabled = true;
-  ui['preview-status'].textContent = 'Preview is required before generation.';
+  ui['preview-status'].textContent = '생성 전 미리보기가 필요합니다.';
   ui['preview-output'].replaceChildren();
+  renderGenerationSummary();
+  updatePreviewGate();
 }
 
 function describeProfile() {
@@ -169,12 +180,15 @@ function describeProfile() {
   ui['profile-description'].textContent = profile
     ? `Java ${profile.javaVersion}, Spring Boot ${profile.springBootVersion}, Spring AI ${profile.springAiVersion}.`
     : 'Select one compatibility profile.';
+  renderGenerationSummary();
 }
 
 function renderAnalysis(analysis) {
   const values = [
-    ['Checksum', analysis.checksum], ['OpenAPI', analysis.openApiVersion],
-    ['Base URL', analysis.baseUrl ?? 'Not declared'], ['Operations', String(analysis.operationCount)]
+    ['파일', analysis.file?.name ?? 'OpenAPI'],
+    ['OpenAPI', analysis.openApiVersion],
+    ['Endpoint', String(analysis.counts.total)],
+    ['선택 가능', String(analysis.counts.supported + analysis.counts.supportedWithWarning)]
   ];
   ui['analysis-summary'].replaceChildren(...values.flatMap(([term, description]) => {
     const dt = document.createElement('dt');
@@ -183,6 +197,44 @@ function renderAnalysis(analysis) {
     dd.textContent = description;
     return [dt, dd];
   }));
+  renderGenerationSummary();
+}
+
+function resetSpecificationPresentation() {
+  ui['preview-button'].disabled = true;
+  clearFailure();
+  ui['analysis-summary'].replaceChildren();
+  ui['preview-output'].replaceChildren();
+  ui['progress-list'].replaceChildren();
+  ui['downloads'].replaceChildren();
+  ui['job-status'].textContent = '아직 생성 작업을 시작하지 않았습니다.';
+  ui['delete-job-button'].disabled = true;
+  invalidatePreview();
+  renderOperations();
+  renderGenerationSummary();
+}
+
+function renderGenerationSummary() {
+  const state = getState();
+  const selected = state.operations.filter(operation => operation.enabled);
+  const warnings = selected.filter(operation => operation.status === 'SUPPORTED_WITH_WARNING').length;
+  ui['summary-version'].textContent = state.analysis?.openApiVersion ?? '—';
+  ui['summary-selected'].textContent = String(selected.length);
+  ui['summary-excluded'].textContent = String(Math.max(0, state.operations.length - selected.length));
+  ui['summary-warnings'].textContent = String(warnings);
+  ui['summary-profile'].textContent = ui['target-profile'].value || '—';
+  ui['summary-validation'].textContent = ui['validation-operation'].value
+    ? `${ui['validation-operation'].value} · MCP protocol`
+    : '미선택';
+}
+
+function updatePreviewGate() {
+  const required = ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name', 'target-profile'];
+  const state = getState();
+  ui['preview-button'].disabled = !state.specificationId
+    || !state.operations.some(operation => operation.enabled)
+    || !ui['validation-operation'].value
+    || required.some(id => !byId(id).value.trim());
 }
 
 function renderPreview(preview) {
@@ -216,18 +268,20 @@ function renderJob(snapshot) {
     item.textContent = `${stage.stage}: ${stage.status}`;
     return item;
   }));
-  ui['downloads'].replaceChildren(...snapshot.downloads.map(name => {
+  ui['downloads'].replaceChildren(...snapshot.downloads.map(artifact => {
+    const name = typeof artifact === 'string' ? artifact : artifact.name;
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = `Download ${name}`;
-    button.addEventListener('click', () => downloadArtifact(snapshot.id, name));
+    button.addEventListener('click', () => downloadArtifact(snapshot.id, artifact));
     return button;
   }));
 }
 
-async function downloadArtifact(jobId, name) {
+async function downloadArtifact(jobId, artifact) {
   try {
-    const response = await api.download(jobId, name);
+    const name = typeof artifact === 'string' ? artifact : artifact.name;
+    const response = await api.download(jobId, artifact);
     const blobUrl = URL.createObjectURL(await response.blob());
     const link = document.createElement('a');
     link.href = blobUrl;
@@ -241,7 +295,7 @@ async function downloadArtifact(jobId, name) {
 
 function filename(response, fallback) {
   const disposition = response.headers.get('Content-Disposition') ?? '';
-  const match = disposition.match(/filename="([a-f0-9.-]+)"/);
+  const match = disposition.match(/filename="([A-Za-z0-9._-]+)"/);
   return match?.[1] ?? fallback;
 }
 

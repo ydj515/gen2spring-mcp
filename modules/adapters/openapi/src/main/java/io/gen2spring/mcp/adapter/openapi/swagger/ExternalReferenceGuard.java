@@ -20,6 +20,7 @@ import java.util.Set;
 
 public final class ExternalReferenceGuard {
     private static final String SOURCE_LOAD = "SOURCE_LOAD";
+    private static final String OPENAPI_31_BASE_DIALECT = "https://spec.openapis.org/oas/3.1/dialect/base";
     private final ObjectMapper jsonMapper = JsonMapper.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
@@ -36,7 +37,12 @@ public final class ExternalReferenceGuard {
                 throw GeneratorException.user(SPEC_PARSE_FAILED, SOURCE_LOAD, "Specification is empty");
             }
             verifyNode(root);
-            return new Preflight(recursiveSchemaOperations(root));
+            return new Preflight(
+                    recursiveSchemaOperations(root),
+                    textualValue(root, "openapi"),
+                    root.has("jsonSchemaDialect"),
+                    textualValue(root, "jsonSchemaDialect"),
+                    hasUnsupportedSchemaDialectOverride(root));
         } catch (JsonProcessingException exception) {
             throw GeneratorException.user(SPEC_PARSE_FAILED, SOURCE_LOAD,
                     "Specification is not valid " + extension.toUpperCase() + "", exception);
@@ -47,6 +53,11 @@ public final class ExternalReferenceGuard {
 
     private ObjectMapper mapperFor(String extension) {
         return extension.equals("json") ? jsonMapper : yamlMapper;
+    }
+
+    private String textualValue(JsonNode root, String fieldName) {
+        JsonNode value = root.get(fieldName);
+        return value != null && value.isTextual() ? value.textValue() : null;
     }
 
     private void verifyNode(JsonNode node) {
@@ -64,6 +75,81 @@ public final class ExternalReferenceGuard {
                 verifyNode(child);
             }
         }
+    }
+
+    private boolean hasUnsupportedSchemaDialectOverride(JsonNode root) {
+        JsonNode schemas = root.path("components").path("schemas");
+        if (schemas.isObject()) {
+            for (JsonNode schema : schemas) {
+                if (hasUnsupportedDialectInSchema(schema)) {
+                    return true;
+                }
+            }
+        }
+        return hasUnsupportedDialectInSchemaFields(root);
+    }
+
+    private boolean hasUnsupportedDialectInSchemaFields(JsonNode node) {
+        if (node.isObject()) {
+            for (Map.Entry<String, JsonNode> field : node.properties()) {
+                if (field.getKey().equals("example") || field.getKey().equals("examples")) {
+                    continue;
+                }
+                if (field.getKey().equals("schema") && hasUnsupportedDialectInSchema(field.getValue())) {
+                    return true;
+                }
+                if (hasUnsupportedDialectInSchemaFields(field.getValue())) {
+                    return true;
+                }
+            }
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                if (hasUnsupportedDialectInSchemaFields(child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasUnsupportedDialectInSchema(JsonNode schema) {
+        if (!schema.isObject()) {
+            return false;
+        }
+        JsonNode dialect = schema.get("$schema");
+        if (dialect != null && (!dialect.isTextual()
+                || !OPENAPI_31_BASE_DIALECT.equals(dialect.textValue()))) {
+            return true;
+        }
+        for (String mapKeyword : new String[] {"properties", "patternProperties", "dependentSchemas"}) {
+            JsonNode children = schema.path(mapKeyword);
+            if (children.isObject()) {
+                for (JsonNode child : children) {
+                    if (hasUnsupportedDialectInSchema(child)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        for (String schemaKeyword : new String[] {
+                "items", "contains", "additionalProperties", "unevaluatedProperties",
+                "unevaluatedItems", "propertyNames", "not", "if", "then", "else"
+        }) {
+            if (hasUnsupportedDialectInSchema(schema.path(schemaKeyword))) {
+                return true;
+            }
+        }
+        for (String arrayKeyword : new String[] {"oneOf", "anyOf", "allOf", "prefixItems"}) {
+            JsonNode children = schema.path(arrayKeyword);
+            if (children.isArray()) {
+                for (JsonNode child : children) {
+                    if (hasUnsupportedDialectInSchema(child)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private Set<String> recursiveSchemaOperations(JsonNode root) {
@@ -151,7 +237,7 @@ public final class ExternalReferenceGuard {
 
     private boolean isHttpMethod(String method) {
         return switch (method) {
-            case "get", "post", "put", "patch", "delete" -> true;
+            case "get", "post", "put", "patch", "delete", "head", "options", "trace" -> true;
             default -> false;
         };
     }
@@ -160,7 +246,12 @@ public final class ExternalReferenceGuard {
         return method.toUpperCase(Locale.ROOT) + " " + path;
     }
 
-    public record Preflight(Set<String> operationsWithRecursiveSchemas) {
+    public record Preflight(
+            Set<String> operationsWithRecursiveSchemas,
+            String openApiVersion,
+            boolean jsonSchemaDialectPresent,
+            String jsonSchemaDialect,
+            boolean unsupportedSchemaDialectOverride) {
         public boolean hasRecursiveSchema(String path, String method) {
             return operationsWithRecursiveSchemas.contains(method + " " + path);
         }

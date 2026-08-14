@@ -38,7 +38,8 @@ public final class PostgresHostedResourceStore implements HostedResourceStore {
                     """
                     select id, source_type, object_key, sha256, byte_size, display_label, created_at
                       from specification
-                     where owner_account_id = ? and (created_at, id) < (?, ?)
+                     where owner_account_id = ? and parse_state = 'READY'
+                       and (created_at, id) < (?, ?)
                      order by created_at desc, id desc
                      limit ?
                     """,
@@ -49,7 +50,7 @@ public final class PostgresHostedResourceStore implements HostedResourceStore {
                 """
                 select id, source_type, object_key, sha256, byte_size, display_label, created_at
                   from specification
-                 where owner_account_id = ?
+                 where owner_account_id = ? and parse_state = 'READY'
                  order by created_at desc, id desc
                  limit ?
                 """,
@@ -63,7 +64,7 @@ public final class PostgresHostedResourceStore implements HostedResourceStore {
         return jdbc.query(
                 """
                 select id, source_type, object_key, sha256, byte_size, display_label, created_at
-                  from specification where owner_account_id = ? and id = ?
+                  from specification where owner_account_id = ? and id = ? and parse_state = 'READY'
                 """,
                 PostgresHostedResourceStore::specification,
                 owner.value(), id.value()).stream().findFirst();

@@ -28,7 +28,9 @@ class ReadmeContractTest {
         assertTrue(userGuide.contains("numeric loopback only"));
         assertTrue(userGuide.contains("local files only; no URL import"));
         assertTrue(userGuide.contains("one running plus one queued job"));
-        assertTrue(userGuide.contains("UI operation editor complete"));
+        assertFalse(userGuide.contains("UI operation editor complete"));
+        assertTrue(userGuide.contains("API endpoint 선택, 생성 설정의 세 단계"));
+        assertTrue(userGuide.contains("지원 불가 항목은 이유와 함께 비활성화"));
         assertTrue(userGuide.contains("supported JSON object response에서 typed output DTO를 생성한다"));
         assertTrue(userGuide.contains("GET operation에 bounded retry를 실행"));
         assertTrue(userGuide.contains("GET operation에 bounded pagination을 실행"));

@@ -2314,6 +2314,10 @@ class GeneratedProjectSmokeTest {
                                 "{'private':'" + PRIVATE_BODY_MARKER + "'"));
                         server.createContext("/suffix-json", exchange -> problemJson(exchange, 200,
                                 "{'code':'00','message':'ok','data':{'accepted':true}}"));
+                        server.createContext("/wildcard-non-json", exchange -> text(exchange, 200,
+                                "{'code':'00','message':'ok','data':{'accepted':true}}"));
+                        server.createContext("/wildcard-missing-type", exchange -> withoutContentType(exchange, 200,
+                                "{'code':'00','message':'ok','data':{'accepted':true}}"));
                         server.createContext("/oversize", exchange -> json(exchange, 200,
                                 "{'value':'" + "x".repeat(2048) + "'}"));
                         server.createContext("/status-oversize", exchange -> json(exchange, 500,
@@ -2385,6 +2389,10 @@ class GeneratedProjectSmokeTest {
                                     "UPSTREAM_PROTOCOL", false, 204);
                             assertEquals(true, executor.execute(operation("/suffix-json"), Map.of())
                                     .at("/data/accepted").booleanValue());
+                            assertError(call(executor, "/wildcard-non-json"),
+                                    "UPSTREAM_PROTOCOL", false, 200);
+                            assertError(call(executor, "/wildcard-missing-type"),
+                                    "UPSTREAM_PROTOCOL", false, 200);
                         } finally {
                             executor.shutdown();
                         }
@@ -2781,6 +2789,15 @@ class GeneratedProjectSmokeTest {
                     private static void noContent(HttpExchange exchange) throws IOException {
                         try (exchange) {
                             exchange.sendResponseHeaders(204, -1);
+                        }
+                    }
+
+                    private static void withoutContentType(
+                            HttpExchange exchange, int status, String body) throws IOException {
+                        byte[] bytes = body.replace('\\'', '"').getBytes(StandardCharsets.UTF_8);
+                        try (exchange) {
+                            exchange.sendResponseHeaders(status, bytes.length);
+                            exchange.getResponseBody().write(bytes);
                         }
                     }
 

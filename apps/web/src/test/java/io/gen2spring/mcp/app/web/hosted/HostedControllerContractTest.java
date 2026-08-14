@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
 import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
@@ -20,6 +23,9 @@ import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.application.usecase.GenerationPreview;
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -28,10 +34,49 @@ import java.io.ByteArrayInputStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 class HostedControllerContractTest {
     private static final AccountId OWNER = new AccountId(UUID.fromString("41dd3b69-589c-4466-a78e-d448407d17b9"));
     private static final JobId JOB = new JobId(UUID.fromString("1a803410-a22a-4bc6-b951-7dbc301ae800"));
+
+    @Test
+    void exposesTheSharedAnalysisForUploadReadAndPlanningPreview() throws Exception {
+        HostedAccountResolver accounts = mock(HostedAccountResolver.class);
+        HostedSubmissionService submissions = mock(HostedSubmissionService.class);
+        Authentication authentication = mock(Authentication.class);
+        SpecificationId id = new SpecificationId(UUID.randomUUID());
+        SpecificationAnalysisView analysis = analysis();
+        var result = new HostedSubmissionService.HostedSpecificationAnalysis(
+                id, "weather.yml", 123, analysis);
+        when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
+        when(submissions.upload(
+                eq(OWNER), any(java.io.InputStream.class), eq("application/yaml"), eq("weather.yml")))
+                .thenReturn(result);
+        when(submissions.analysis(OWNER, id)).thenReturn(result);
+        when(submissions.preview(eq(OWNER), eq(id), any(byte[].class)))
+                .thenReturn(new GenerationPreview(
+                        CompatibilityProfileRegistry.defaults()
+                                .find("spring-ai-2.0-java21-mvc-streamable").orElseThrow(),
+                        List.of(), List.of(), List.of(), List.of("README.md")));
+        HostedSpecificationController controller = new HostedSpecificationController(
+                accounts, submissions, mock(HostedResourceStore.class), new ObjectMapper());
+        MockHttpServletRequest uploadRequest = new MockHttpServletRequest();
+        uploadRequest.setContent("openapi: 3.1.1".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        String uploaded = controller.upload(
+                authentication, "application/yaml", "weather.yml", uploadRequest).getBody().toString();
+        String analyzed = controller.analysis(authentication, id.value().toString()).toString();
+        String previewed = controller.preview(
+                authentication, id.value().toString(), "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+
+        org.junit.jupiter.api.Assertions.assertTrue(uploaded.contains("weather.yml"));
+        org.junit.jupiter.api.Assertions.assertTrue(uploaded.contains("3.1.1"));
+        assertEquals(uploaded, analyzed);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                previewed.contains("spring-ai-2.0-java21-mvc-streamable"));
+        assertFalse(previewed.contains("objectKey"));
+    }
 
     @Test
     void exposesSafeOwnedJobMetadataWithoutPrivateObjectKeys() {
@@ -130,5 +175,12 @@ class HostedControllerContractTest {
                 new SpecificationId(UUID.fromString(id)), "UPLOAD",
                 ObjectKey.parse("specifications/" + id + "/source"), "a".repeat(64), 10,
                 "weather.yaml", createdAt);
+    }
+
+    private SpecificationAnalysisView analysis() {
+        return new SpecificationAnalysisView(
+                "a".repeat(64), "3.1.1", "yaml", URI.create("https://weather.example.test"),
+                new SpecificationAnalysisView.Counts(0, 0, 0, 0),
+                List.of(), java.util.Map.of(), List.of());
     }
 }

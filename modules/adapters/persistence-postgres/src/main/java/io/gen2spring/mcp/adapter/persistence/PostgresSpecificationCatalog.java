@@ -44,7 +44,7 @@ public final class PostgresSpecificationCatalog implements SpecificationCatalog 
                 insert into specification(
                     id, owner_account_id, source_type, object_key, sha256, byte_size,
                     display_label, parse_state, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, 'Imported OpenAPI', ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict (id) do nothing
                 """,
                 registration.id().value(),
@@ -53,6 +53,7 @@ public final class PostgresSpecificationCatalog implements SpecificationCatalog 
                 registration.objectKey().value(),
                 registration.sha256(),
                 registration.byteSize(),
+                registration.displayLabel(),
                 registration.parseState(),
                 Timestamp.from(registration.observedAt()),
                 Timestamp.from(registration.observedAt()));
@@ -63,6 +64,7 @@ public final class PostgresSpecificationCatalog implements SpecificationCatalog 
                        and object_key = ?
                        and sha256 = ?
                        and byte_size = ?
+                       and display_label = ?
                        and parse_state = ? as matches
                   from specification
                  where id = ?
@@ -73,6 +75,7 @@ public final class PostgresSpecificationCatalog implements SpecificationCatalog 
                 registration.objectKey().value(),
                 registration.sha256(),
                 registration.byteSize(),
+                registration.displayLabel(),
                 registration.parseState(),
                 registration.id().value());
         if (matches.size() != 1 || !matches.getFirst()) {

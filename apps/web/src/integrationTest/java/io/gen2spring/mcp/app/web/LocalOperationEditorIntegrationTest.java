@@ -57,7 +57,7 @@ class LocalOperationEditorIntegrationTest {
     void installedEditorGeneratesValidatesDownloadsAndDeletesAProject() throws Exception {
         Path bootJar = Path.of(System.getProperty("gen2springWeb.bootJar"));
         assertTrue(Files.isRegularFile(bootJar));
-        byte[] specification = resource("/openapi/weather.yaml");
+        byte[] specification = specificationWithUnsupportedOperation();
         byte[] configuration = resource("/config/weather.json");
         String java17Home = requiredEnvironment("GEN2SPRING_JAVA_17_HOME");
         String java21Home = requiredEnvironment("GEN2SPRING_JAVA_21_HOME");
@@ -131,10 +131,28 @@ class LocalOperationEditorIntegrationTest {
                     base, "/api/specifications", "POST", specification, browser, "weather.yaml");
             assertEquals(201, upload.statusCode());
             JsonNode uploaded = JSON.readTree(upload.body());
-            assertEquals(1, uploaded.path("operationCount").intValue());
-            assertEquals("getForecast", uploaded.path("operations").get(0).path("operationId").textValue());
+            assertEquals(2, uploaded.path("counts").path("total").intValue());
+            JsonNode supportedOperation = operation(uploaded, "getForecast");
+            JsonNode unsupportedOperation = operation(uploaded, "healthHead");
+            assertEquals("SUPPORTED", supportedOperation.path("status").textValue());
+            assertTrue(supportedOperation.path("supported").booleanValue());
+            assertEquals("UNSUPPORTED", unsupportedOperation.path("status").textValue());
+            assertFalse(unsupportedOperation.path("supported").booleanValue());
+            assertEquals(List.of("HTTP_METHOD_UNSUPPORTED"),
+                    strings(unsupportedOperation.path("issues"), "code"));
             String specificationId = uploaded.path("id").textValue();
             assertTrue(specificationId.matches("[a-f0-9]{64}"));
+
+            byte[] unsupportedConfiguration = new String(configuration, UTF_8)
+                    .replace("getForecast", "healthHead")
+                    .replace("weather_get_forecast", "weather_health_head")
+                    .getBytes(UTF_8);
+            HttpResponse<byte[]> unsupportedPreview = request(
+                    base, "/api/specifications/" + specificationId + "/preview",
+                    "POST", unsupportedConfiguration, browser, null);
+            assertEquals(422, unsupportedPreview.statusCode());
+            assertEquals("OPERATION_UNSUPPORTED",
+                    JSON.readTree(unsupportedPreview.body()).path("error").path("code").textValue());
 
             HttpResponse<byte[]> preview = request(
                     base, "/api/specifications/" + specificationId + "/preview",
@@ -384,6 +402,28 @@ class LocalOperationEditorIntegrationTest {
         List<String> values = new ArrayList<>();
         array.forEach(value -> values.add(value.textValue()));
         return List.copyOf(values);
+    }
+
+    private JsonNode operation(JsonNode uploaded, String operationId) {
+        for (JsonNode operation : uploaded.path("operations")) {
+            if (operationId.equals(operation.path("operationId").textValue())) {
+                return operation;
+            }
+        }
+        throw new AssertionError("analyzed operation is missing");
+    }
+
+    private byte[] specificationWithUnsupportedOperation() throws Exception {
+        String source = new String(resource("/openapi/weather.yaml"), UTF_8);
+        return (source + """
+                  /health:
+                    head:
+                      operationId: healthHead
+                      summary: Check health
+                      responses:
+                        '204':
+                          description: No content
+                """).getBytes(UTF_8);
     }
 
     private byte[] resource(String name) throws Exception {

@@ -3,10 +3,14 @@ package io.gen2spring.mcp.app.web.hosted;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
+import io.gen2spring.mcp.app.web.api.GenerationPreviewPresenter;
+import io.gen2spring.mcp.app.web.api.SpecificationAnalysisPresenter;
 import io.gen2spring.mcp.app.web.security.HostedAccountResolver;
+import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -14,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,6 +31,8 @@ final class HostedSpecificationController {
     private final HostedSubmissionService submissions;
     private final HostedResourceStore resources;
     private final ObjectMapper json;
+    private final SpecificationAnalysisPresenter analysisPresenter;
+    private final GenerationPreviewPresenter previewPresenter;
     private final HostedCursorCodec cursors = new HostedCursorCodec();
 
     HostedSpecificationController(
@@ -37,6 +44,8 @@ final class HostedSpecificationController {
         this.submissions = Objects.requireNonNull(submissions, "submissions");
         this.resources = Objects.requireNonNull(resources, "resources");
         this.json = Objects.requireNonNull(json, "json");
+        this.analysisPresenter = new SpecificationAnalysisPresenter(this.json);
+        this.previewPresenter = new GenerationPreviewPresenter(this.json);
     }
 
     @PostMapping(path = "/api/specifications/uploads", consumes = {
@@ -45,10 +54,28 @@ final class HostedSpecificationController {
     ResponseEntity<JsonNode> upload(
             Authentication authentication,
             @RequestHeader("Content-Type") String contentType,
+            @RequestHeader("X-Specification-Name") String specificationName,
             HttpServletRequest request) throws IOException {
         var owner = accounts.resolve(authentication).accountId();
-        var id = submissions.upload(owner, request.getInputStream(), contentType);
-        return ResponseEntity.status(HttpStatus.CREATED).body(json.createObjectNode().put("id", id.value().toString()));
+        var result = submissions.upload(
+                owner, request.getInputStream(), contentType, specificationName);
+        return ResponseEntity.status(HttpStatus.CREATED).body(analysis(result));
+    }
+
+    @GetMapping("/api/specifications/{id}/analysis")
+    JsonNode analysis(Authentication authentication, @PathVariable String id) {
+        var result = submissions.analysis(
+                accounts.resolve(authentication).accountId(), specificationId(id));
+        return analysis(result);
+    }
+
+    @PostMapping(path = "/api/specifications/{id}/preview", consumes = MediaType.APPLICATION_JSON_VALUE)
+    JsonNode preview(
+            Authentication authentication,
+            @PathVariable String id,
+            @RequestBody byte[] configuration) {
+        return previewPresenter.present(submissions.preview(
+                accounts.resolve(authentication).accountId(), specificationId(id), configuration));
     }
 
     @PostMapping(path = "/api/specifications/imports", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -95,5 +122,21 @@ final class HostedSpecificationController {
             result.putNull("nextCursor");
         }
         return result;
+    }
+
+    private JsonNode analysis(HostedSubmissionService.HostedSpecificationAnalysis result) {
+        return analysisPresenter.present(
+                result.id().value().toString(),
+                result.displayLabel(),
+                result.byteSize(),
+                result.analysis());
+    }
+
+    private SpecificationId specificationId(String value) {
+        try {
+            return new SpecificationId(UUID.fromString(value));
+        } catch (RuntimeException failure) {
+            throw new HostedSubmissionService.HostedSpecificationNotFound();
+        }
     }
 }

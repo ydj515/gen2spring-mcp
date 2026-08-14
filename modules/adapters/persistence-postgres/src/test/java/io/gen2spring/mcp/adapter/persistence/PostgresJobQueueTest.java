@@ -101,7 +101,7 @@ class PostgresJobQueueTest {
         SpecificationId id = new SpecificationId(UUID.randomUUID());
         ObjectKey key = ObjectKey.parse("specifications/" + id.value() + "/" + HASH_A);
         SpecificationCatalog.Registration registration = new SpecificationCatalog.Registration(
-                id, owner, key, HASH_A, 10, "URL", "READY", NOW);
+                id, owner, key, HASH_A, 10, "URL", "Imported OpenAPI", "READY", NOW);
 
         assertEquals(SpecificationCatalog.RegistrationResult.CREATED, specifications.register(registration));
         assertEquals(SpecificationCatalog.RegistrationResult.REPLAYED, specifications.register(registration));
@@ -112,7 +112,7 @@ class PostgresJobQueueTest {
         IllegalStateException conflict = assertThrows(
                 IllegalStateException.class,
                 () -> specifications.register(new SpecificationCatalog.Registration(
-                        id, owner, key, HASH_B, 10, "URL", "READY", NOW)));
+                        id, owner, key, HASH_B, 10, "URL", "Imported OpenAPI", "READY", NOW)));
         assertEquals("Specification registration failed", conflict.getMessage());
     }
 

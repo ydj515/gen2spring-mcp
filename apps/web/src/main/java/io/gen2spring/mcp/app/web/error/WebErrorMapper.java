@@ -20,7 +20,8 @@ public final class WebErrorMapper {
         if (failure instanceof WebException exception) {
             return exception.failure();
         }
-        if (failure instanceof HostedJobController.HostedResourceNotFound) {
+        if (failure instanceof HostedJobController.HostedResourceNotFound
+                || failure instanceof HostedSubmissionService.HostedSpecificationNotFound) {
             return new WebFailure(404, "RESOURCE_NOT_FOUND", "HOSTED_LOOKUP", "The hosted resource was not found");
         }
         if (failure instanceof HostedJobFailure hosted) {

@@ -2,8 +2,22 @@ package io.gen2spring.mcp.adapter.openapi.swagger;
 
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 
-import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.OPERATION_ID_DUPLICATED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_REFERENCE_UNRESOLVED;
+import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_VERSION_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.HTTP_METHOD_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_DUPLICATED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_MISSING;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_COMPOSITION_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_MULTI_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_INFERRED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.Status.SUPPORTED_WITH_WARNING;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.Status.UNSUPPORTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -16,9 +30,198 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class SwaggerOpenApiAnalyzerTest {
     private final SpecificationAnalyzer analyzer = new SwaggerOpenApiAnalyzer();
+
+    @ParameterizedTest
+    @ValueSource(strings = {"3.0.0", "3.0.999", "3.1.0", "3.1.2"})
+    void acceptsOnlyTheApprovedNumericPatchVersionFamilies(String version) throws Exception {
+        Path specification = Files.createTempFile("accepted-openapi-version", ".yaml");
+        Files.writeString(specification, """
+                openapi: %s
+                info: { title: Version API, version: '1.0' }
+                paths: {}
+                """.formatted(version));
+
+        assertEquals(version, analyzer.analyze(specification, 1024).document().openApiVersion());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"2.0", "3.0", "3.0.3-beta", "3.1", "3.1.0-rc1", "3.2.0"})
+    void rejectsEveryOtherVersionFormWithOneSafeFailure(String version) throws Exception {
+        Path specification = Files.createTempFile("rejected-openapi-version", ".yaml");
+        Files.writeString(specification, """
+                openapi: %s
+                info: { title: Version API, version: '1.0' }
+                paths: {}
+                """.formatted(version));
+
+        GeneratorException failure = assertThrows(
+                GeneratorException.class, () -> analyzer.analyze(specification, 1024));
+
+        assertEquals(SPEC_VERSION_UNSUPPORTED, failure.code());
+        assertEquals("The OpenAPI version or JSON Schema dialect is unsupported", failure.safeMessage());
+        assertFalse(failure.safeMessage().contains(version));
+    }
+
+    @Test
+    void acceptsOnlyTheOpenApi31BaseDialect() throws Exception {
+        var supported = analyzer.analyze(resource("openapi/openapi-31-supported.yaml"), 10 * 1024 * 1024);
+        Path unsupported = Files.createTempFile("unsupported-openapi-dialect", ".yaml");
+        Files.writeString(unsupported, """
+                openapi: 3.1.2
+                jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+                info: { title: Dialect API, version: '1.0' }
+                paths: {}
+                """);
+
+        GeneratorException failure = assertThrows(
+                GeneratorException.class, () -> analyzer.analyze(unsupported, 1024));
+
+        assertEquals("3.1.2", supported.document().openApiVersion());
+        assertEquals(SPEC_VERSION_UNSUPPORTED, failure.code());
+        assertEquals("The OpenAPI version or JSON Schema dialect is unsupported", failure.safeMessage());
+        assertFalse(failure.safeMessage().contains("json-schema.org"));
+    }
+
+    @Test
+    void rejectsSchemaLevelOpenApi31DialectOverridesWithOneSafeFailure() throws Exception {
+        Path specification = Files.createTempFile("unsupported-schema-dialect", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Dialect API, version: '1.0' }
+                components:
+                  schemas:
+                    Widget:
+                      $schema: https://json-schema.org/draft/2020-12/schema
+                      type: string
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      responses:
+                        '200':
+                          description: Success
+                          content:
+                            application/json:
+                              schema: { $ref: '#/components/schemas/Widget' }
+                """);
+
+        GeneratorException failure = assertThrows(
+                GeneratorException.class, () -> analyzer.analyze(specification, 4096));
+
+        assertEquals(SPEC_VERSION_UNSUPPORTED, failure.code());
+        assertEquals("The OpenAPI version or JSON Schema dialect is unsupported", failure.safeMessage());
+        assertFalse(failure.safeMessage().contains("json-schema.org"));
+    }
+
+    @Test
+    void normalizesOpenApi31SingleNullUnionsAndRejectsOtherTypeSets() throws Exception {
+        var supported = analyzer.analyze(
+                resource("openapi/openapi-31-supported.yaml"), 10 * 1024 * 1024).document();
+        var nullable = supported.operations().getFirst().successResponse().properties().get("label");
+        var unsupported = analyzer.analyze(
+                        resource("openapi/openapi-31-unsupported.yaml"), 10 * 1024 * 1024)
+                .document().operations().stream()
+                .collect(java.util.stream.Collectors.toMap(operation -> operation.operationId(), operation -> operation));
+
+        assertEquals(SchemaType.STRING, nullable.type());
+        assertTrue(nullable.nullable());
+        assertTrue(supported.operations().getFirst().supported());
+        assertTrue(unsupported.get("multiTypeInput").support().issueCodes()
+                .contains(SCHEMA_MULTI_TYPE_UNSUPPORTED));
+        assertTrue(unsupported.get("nullOnlyInput").support().issueCodes()
+                .contains(SCHEMA_MULTI_TYPE_UNSUPPORTED));
+        assertTrue(unsupported.get("conditionalResult").support().issueCodes()
+                .contains(SCHEMA_CONSTRAINT_UNSUPPORTED),
+                unsupported.get("conditionalResult").support().issueCodes().toString());
+        assertTrue(unsupported.get("tupleResult").support().issueCodes()
+                .contains(SCHEMA_CONSTRAINT_UNSUPPORTED),
+                unsupported.get("tupleResult").support().issueCodes().toString());
+    }
+
+    @Test
+    void keepsInputNullabilityFailClosedForOpenApi31() throws Exception {
+        Path specification = Files.createTempFile("nullable-openapi31-input", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Nullable Input API, version: '1.0' }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      parameters:
+                        - name: revision
+                          in: query
+                          schema: { type: [string, 'null'] }
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertTrue(operation.parameters().getFirst().schema().nullable());
+        assertEquals(java.util.List.of(SCHEMA_NULLABILITY_UNSUPPORTED), operation.support().issueCodes());
+    }
+
+    @Test
+    void ignoresTheRemovedNullableKeywordForOpenApi31Schemas() throws Exception {
+        Path specification = Files.createTempFile("openapi31-legacy-nullable", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Nullable Extension API, version: '1.0' }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      parameters:
+                        - name: revision
+                          in: query
+                          schema: { type: string, nullable: true }
+                      responses:
+                        '200':
+                          description: Success
+                          content:
+                            application/json:
+                              schema: { type: string, nullable: true }
+                """);
+
+        var operation = analyzer.analyze(specification, 4096).document().operations().getFirst();
+
+        assertTrue(operation.supported(), operation.support().issueCodes().toString());
+        assertFalse(operation.parameters().getFirst().schema().nullable());
+        assertFalse(operation.successResponse().nullable());
+    }
+
+    @Test
+    void failsOpenApi31RefSiblingsClosedInsteadOfDroppingTheirConstraints() throws Exception {
+        Path specification = Files.createTempFile("openapi31-ref-sibling", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Ref Sibling API, version: '1.0' }
+                components:
+                  schemas:
+                    WidgetId: { type: string }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      parameters:
+                        - name: widgetId
+                          in: query
+                          schema:
+                            $ref: '#/components/schemas/WidgetId'
+                            not: { const: forbidden }
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operation = analyzer.analyze(specification, 4096).document().operations().getFirst();
+
+        assertFalse(operation.supported());
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_CONSTRAINT_UNSUPPORTED));
+    }
 
     @Test
     void rejectsDuplicateKeysAndTrailingJsonTokens() throws Exception {
@@ -180,8 +383,8 @@ class SwaggerOpenApiAnalyzerTest {
         for (String operationId : java.util.List.of("conflicting", "missingSchema", "composed")) {
             assertFalse(operations.get(operationId).supported(), operationId);
             assertNull(operations.get(operationId).successResponse(), operationId);
-            assertTrue(operations.get(operationId).warnings().stream()
-                    .anyMatch(warning -> warning.contains("Success response schemas")), operationId);
+            assertTrue(operations.get(operationId).support().issueCodes().contains(SUCCESS_SCHEMA_UNSUPPORTED),
+                    operationId);
         }
     }
 
@@ -248,18 +451,60 @@ class SwaggerOpenApiAnalyzerTest {
                 operations.get("stringEnum").parameters().getFirst().schema().enumValues());
         assertFalse(operations.get("integerEnum").supported());
         assertFalse(operations.get("booleanEnum").supported());
-        assertTrue(operations.get("integerEnum").warnings().stream()
-                .anyMatch(warning -> warning.contains("Only string enum schemas")));
-        assertTrue(operations.get("booleanEnum").warnings().stream()
-                .anyMatch(warning -> warning.contains("Only string enum schemas")));
+        assertEquals(java.util.List.of(SCHEMA_CONSTRAINT_UNSUPPORTED),
+                operations.get("integerEnum").support().issueCodes());
+        assertEquals(java.util.List.of(SCHEMA_CONSTRAINT_UNSUPPORTED),
+                operations.get("booleanEnum").support().issueCodes());
+        assertEquals(java.util.List.of(SCHEMA_CONSTRAINT_UNSUPPORTED.message()),
+                operations.get("integerEnum").parameters().getFirst().schema().warnings());
+        assertEquals(java.util.List.of(SCHEMA_CONSTRAINT_UNSUPPORTED.message()),
+                operations.get("booleanEnum").parameters().getFirst().schema().warnings());
     }
 
     @Test
-    void rejectsDuplicateOperationIds() throws Exception {
-        var exception = assertThrows(GeneratorException.class,
-                () -> analyzer.analyze(resource("openapi/duplicate-operation-id.yaml"), 10 * 1024 * 1024));
+    void marksEveryDuplicateOperationIdWithoutRejectingTheDocument() throws Exception {
+        var document = analyzer.analyze(resource("openapi/duplicate-operation-id.yaml"), 10 * 1024 * 1024).document();
 
-        assertEquals(OPERATION_ID_DUPLICATED, exception.code());
+        assertEquals(2, document.operations().size());
+        document.operations().forEach(operation -> {
+            assertEquals(UNSUPPORTED, operation.support().status());
+            assertEquals(java.util.List.of(OPERATION_ID_DUPLICATED), operation.support().issueCodes());
+        });
+    }
+
+    @Test
+    void preservesMissingIdsAndUnsupportedHttpMethodsAsVisibleOperations() throws Exception {
+        Path specification = Files.createTempFile("visible-unsupported-operations", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.0.3
+                info: { title: Visible API, version: '1.0' }
+                paths:
+                  /missing:
+                    get:
+                      responses: { '204': { description: Accepted } }
+                  /head:
+                    head:
+                      operationId: headResource
+                      responses: { '204': { description: Accepted } }
+                  /options:
+                    options:
+                      operationId: optionsResource
+                      responses: { '204': { description: Accepted } }
+                  /trace:
+                    trace:
+                      operationId: traceResource
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operations = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations();
+
+        assertEquals(4, operations.size());
+        var missing = operations.stream().filter(operation -> operation.operationId() == null).findFirst().orElseThrow();
+        assertEquals(java.util.List.of(OPERATION_ID_MISSING), missing.support().issueCodes());
+        operations.stream().filter(operation -> operation.operationId() != null).forEach(operation -> {
+            assertEquals(UNSUPPORTED, operation.support().status());
+            assertEquals(java.util.List.of(HTTP_METHOD_UNSUPPORTED), operation.support().issueCodes());
+        });
     }
 
     @Test
@@ -268,8 +513,9 @@ class SwaggerOpenApiAnalyzerTest {
 
         var operation = document.operations().getFirst();
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("allOf")));
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("Recursive schemas")));
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_COMPOSITION_UNSUPPORTED));
+        assertTrue(operation.support().issueCodes().contains(
+                io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.RECURSIVE_SCHEMA_UNSUPPORTED));
     }
 
     @Test
@@ -295,7 +541,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("additionalProperties")));
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED));
     }
 
     @Test
@@ -319,7 +565,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("Nullable")));
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_NULLABILITY_UNSUPPORTED));
     }
 
     @Test
@@ -437,7 +683,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("exclusive numeric bounds")));
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_CONSTRAINT_UNSUPPORTED));
     }
 
     @Test
@@ -462,7 +708,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("application/json")));
+        assertTrue(operation.support().issueCodes().contains(REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED));
     }
 
     @Test
@@ -488,11 +734,11 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.warnings().stream().anyMatch(warning -> warning.contains("application/json")));
+        assertTrue(operation.support().issueCodes().contains(REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED));
     }
 
     @Test
-    void supportsOnlyExactJsonSuccessBodiesWhileAllowingAnEmptyNoContentResponse() throws Exception {
+    void appliesTheBoundedSuccessMediaDecisionTable() throws Exception {
         Path specification = Files.createTempFile("response-media-types", ".yaml");
         Files.writeString(specification, """
                 openapi: 3.0.3
@@ -522,6 +768,30 @@ class SwaggerOpenApiAnalyzerTest {
                           description: JSON response
                           content:
                             application/json: { schema: { type: object } }
+                  /vendor-json:
+                    get:
+                      operationId: getVendorJson
+                      responses:
+                        '200':
+                          description: Vendor JSON response
+                          content:
+                            application/problem+json: { schema: { type: object } }
+                  /wildcard:
+                    get:
+                      operationId: getWildcardJson
+                      responses:
+                        '200':
+                          description: Inferred JSON response
+                          content:
+                            '*/*': { schema: { type: object } }
+                  /wildcard-missing-schema:
+                    get:
+                      operationId: getWildcardWithoutSchema
+                      responses:
+                        '200':
+                          description: Missing inferred schema
+                          content:
+                            '*/*': {}
                   /accepted:
                     get:
                       operationId: getAccepted
@@ -540,16 +810,24 @@ class SwaggerOpenApiAnalyzerTest {
 
         var operations = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations();
 
-        assertFalse(operations.stream().filter(operation -> operation.operationId().equals("getPlain"))
-                .findFirst().orElseThrow().supported());
-        assertFalse(operations.stream().filter(operation -> operation.operationId().equals("getXml"))
-                .findFirst().orElseThrow().supported());
-        assertTrue(operations.stream().filter(operation -> operation.operationId().equals("getJson"))
-                .findFirst().orElseThrow().supported());
-        assertTrue(operations.stream().filter(operation -> operation.operationId().equals("getAccepted"))
-                .findFirst().orElseThrow().supported());
-        assertFalse(operations.stream().filter(operation -> operation.operationId().equals("getMixed"))
-                .findFirst().orElseThrow().supported());
+        var byId = operations.stream().collect(
+                java.util.stream.Collectors.toMap(operation -> operation.operationId(), operation -> operation));
+
+        assertEquals(java.util.List.of(SUCCESS_MEDIA_TYPE_UNSUPPORTED),
+                byId.get("getPlain").support().issueCodes());
+        assertEquals(java.util.List.of(SUCCESS_MEDIA_TYPE_UNSUPPORTED),
+                byId.get("getXml").support().issueCodes());
+        assertTrue(byId.get("getJson").supported());
+        assertTrue(byId.get("getVendorJson").supported());
+        assertEquals(SUPPORTED_WITH_WARNING, byId.get("getWildcardJson").support().status());
+        assertEquals(java.util.List.of(SUCCESS_MEDIA_TYPE_INFERRED),
+                byId.get("getWildcardJson").support().issueCodes());
+        assertEquals(SchemaType.OBJECT, byId.get("getWildcardJson").successResponse().type());
+        assertEquals(java.util.List.of(SUCCESS_SCHEMA_UNSUPPORTED),
+                byId.get("getWildcardWithoutSchema").support().issueCodes());
+        assertTrue(byId.get("getAccepted").supported());
+        assertEquals(java.util.List.of(SUCCESS_MEDIA_TYPE_UNSUPPORTED),
+                byId.get("getMixed").support().issueCodes());
     }
 
     @Test

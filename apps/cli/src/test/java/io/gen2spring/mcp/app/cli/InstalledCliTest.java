@@ -78,6 +78,36 @@ class InstalledCliTest {
     }
 
     @Test
+    void installedInspectKeepsTheSuppliedOpenApiVersionsDecisionEquivalent() throws Exception {
+        Path executable = Path.of(System.getProperty("openapiMcp.executable"));
+        Path safeTemp = tempDir.toRealPath();
+        Path output30 = safeTemp.resolve("openapi-30-analysis.json");
+        Path output31 = safeTemp.resolve("openapi-31-analysis.json");
+
+        Result inspect30 = run(executable, "inspect", "--spec", repositoryRoot().resolve("swagger-3.0.yml").toString(),
+                "--output", output30.toString());
+        Result inspect31 = run(executable, "inspect", "--spec", repositoryRoot().resolve("swagger-3.1.yml").toString(),
+                "--output", output31.toString());
+
+        assertEquals(0, inspect30.exitCode(), inspect30.stderr());
+        assertEquals(0, inspect31.exitCode(), inspect31.stderr());
+        assertEquals("", inspect30.stderr());
+        assertEquals("", inspect31.stderr());
+        assertFalse(inspect30.stdout().contains("swagger-3.0.yml"));
+        assertFalse(inspect31.stdout().contains("swagger-3.1.yml"));
+
+        var analysis30 = JSON.readTree(Files.readString(output30));
+        var analysis31 = JSON.readTree(Files.readString(output31));
+        assertEquals("3.0.4", analysis30.path("openApiVersion").asText());
+        assertEquals("3.1.2", analysis31.path("openApiVersion").asText());
+        assertExactPairedFixtureCounts(analysis30);
+        assertExactPairedFixtureCounts(analysis31);
+        assertEquals(analysis30.path("operations"), analysis31.path("operations"));
+        assertEquals(analysis30.path("securitySchemes"), analysis31.path("securitySchemes"));
+        assertEquals(analysis30.path("warnings"), analysis31.path("warnings"));
+    }
+
+    @Test
     void rootReadmeDocumentsTheCompletedP1ContractsAndRemainingP2Work() throws Exception {
         String readme = Files.readString(repositoryRoot().resolve("README.md"));
         String userGuide = Files.readString(repositoryRoot().resolve("docs/user-guide.md"));
@@ -137,7 +167,14 @@ class InstalledCliTest {
         assertTrue(userGuide.contains("`gradlew.bat`"));
         assertTrue(userGuide.contains("`bin/java.exe`"));
         assertTrue(userGuide.contains("https://github.com/ydj515/gen2spring-mcp/issues/2"));
-        assertTrue(userGuide.contains("UI operation editor complete"));
+        assertFalse(userGuide.contains("UI operation editor complete"));
+        assertTrue(readme.contains("OpenAPI 3.0.x와 3.1.x"));
+        assertTrue(readme.contains("파일 업로드, API endpoint 선택, 생성 설정의 세 단계"));
+        assertTrue(userGuide.contains("OpenAPI 3.0.x와 3.1.x"));
+        assertTrue(userGuide.contains("API endpoint 선택, 생성 설정의 세 단계"));
+        assertTrue(userGuide.contains("지원 불가 항목은 이유와 함께 비활성화"));
+        assertTrue(userGuide.contains("https://spec.openapis.org/oas/3.1/dialect/base"));
+        assertFalse(userGuide.contains("OpenAPI 3.1, `oneOf`"));
         assertFalse(userGuide.contains("typed output DTO, retry 실행, pagination 실행은 후속 P1 범위다"));
         assertFalse(userGuide.contains("Windows validation host remains follow-up P1"));
         assertFalse(userGuide.contains(
@@ -410,6 +447,18 @@ class InstalledCliTest {
         assertEquals("MVC", profile.path("target").path("webStack").asText());
         assertEquals("SYNC", profile.path("target").path("programmingModel").asText());
         assertEquals("STREAMABLE_HTTP", profile.path("target").path("transport").asText());
+    }
+
+    private void assertExactPairedFixtureCounts(com.fasterxml.jackson.databind.JsonNode analysis) {
+        assertEquals(26, analysis.path("counts").path("total").asInt());
+        assertEquals(0, analysis.path("counts").path("supported").asInt());
+        assertEquals(13, analysis.path("counts").path("supportedWithWarning").asInt());
+        assertEquals(13, analysis.path("counts").path("unsupported").asInt());
+        var customers = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
+                .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
+                .findFirst().orElseThrow();
+        assertEquals("SUPPORTED_WITH_WARNING", customers.path("status").asText());
+        assertEquals("SUCCESS_MEDIA_TYPE_INFERRED", customers.path("issues").get(0).path("code").asText());
     }
 
     private Path repositoryRoot() {

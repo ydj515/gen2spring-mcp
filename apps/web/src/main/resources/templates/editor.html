@@ -1,156 +1,198 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" th:content="${csrfToken}">
   <meta name="csrf-header" th:content="${csrfHeader}">
-  <title>Gen2Spring MCP Operation Editor</title>
+  <meta name="app-mode" th:content="${appMode}">
+  <title>Gen2Spring MCP Endpoint Editor</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="site-header">
-    <p class="eyebrow">Local-only generator</p>
-    <h1>Gen2Spring MCP Operation Editor</h1>
-    <p>Turn a local OpenAPI file into a validated Spring MCP server without uploading it elsewhere.</p>
+    <div>
+      <p class="eyebrow">OpenAPI to MCP</p>
+      <h1>Gen2Spring MCP</h1>
+      <p>필요한 API endpoint만 선택해 검증 가능한 Spring MCP 서버를 생성합니다.</p>
+    </div>
+    <a class="header-link" href="/" th:if="${appMode == 'hosted'}">작업 내역</a>
   </header>
-  <nav aria-label="Editor steps">
+  <nav aria-label="생성 단계">
     <ol class="step-nav">
-      <li><a href="#specification-step">Specification</a></li>
-      <li><a href="#operations-step">Operations</a></li>
-      <li><a href="#project-step">Project</a></li>
-      <li><a href="#preview-step">Preview</a></li>
-      <li><a href="#generate-step">Generate</a></li>
+      <li><a href="#specification-step"><span>1</span> OpenAPI 파일</a></li>
+      <li><a href="#operations-step"><span>2</span> Endpoint 선택</a></li>
+      <li><a href="#generation-step"><span>3</span> 생성 설정</a></li>
     </ol>
   </nav>
   <main>
     <div id="error-summary" class="error-summary" role="alert" aria-live="assertive" tabindex="-1" hidden>
-      <h2>Check the highlighted step</h2>
+      <h2>입력 내용을 확인해 주세요</h2>
       <p id="error-message"></p>
     </div>
 
-    <section id="specification-step">
-      <h2>1. Specification</h2>
-      <p>Select one local OpenAPI YAML or JSON file. URL import is not available.</p>
-      <div class="field-row">
-        <div class="field grow">
-          <label for="specification-file">OpenAPI file</label>
-          <input id="specification-file" type="file" accept=".yaml,.yml,.json">
-        </div>
-        <button id="upload-button" type="button">Analyze file</button>
+    <section id="specification-step" class="workflow-step" aria-labelledby="specification-title">
+      <div class="section-heading">
+        <div><p class="step-kicker">STEP 1</p><h2 id="specification-title">1. OpenAPI 파일</h2></div>
+        <p>YAML, YML, JSON · 최대 10MB</p>
       </div>
-      <p id="upload-status" class="status" aria-live="polite">No specification analyzed.</p>
-      <dl id="analysis-summary" class="summary-grid"></dl>
+      <div id="upload-surface" class="upload-surface" data-upload-state="idle">
+        <input id="specification-file" class="visually-hidden" type="file" accept=".yaml,.yml,.json">
+        <div id="upload-dropzone" class="upload-dropzone" role="button" tabindex="0"
+             aria-controls="specification-file" aria-describedby="upload-help">
+          <strong>파일을 선택하거나 끌어놓기</strong>
+          <span id="upload-help">OpenAPI 문서를 이 영역에 놓으면 바로 분석합니다.</span>
+        </div>
+        <div id="uploaded-file" class="uploaded-file" hidden>
+          <div>
+            <strong id="uploaded-file-name"></strong>
+            <span id="uploaded-file-details"></span>
+          </div>
+          <div class="button-row compact-actions">
+            <button id="replace-file-button" class="secondary" type="button">파일 교체</button>
+            <button id="remove-file-button" class="text-button" type="button">제거</button>
+          </div>
+        </div>
+      </div>
+      <p id="upload-live-status" class="status" role="status" aria-live="polite">분석할 OpenAPI 파일을 선택해 주세요.</p>
+      <dl id="analysis-summary" class="summary-grid" aria-label="분석 결과"></dl>
     </section>
 
-    <section id="operations-step">
-      <h2>2. Operations</h2>
-      <div class="field compact">
-        <label for="operation-filter">Filter operations</label>
-        <select id="operation-filter">
-          <option value="all">All operations</option>
-          <option value="supported">Supported only</option>
-          <option value="unsupported">Unsupported only</option>
-        </select>
+    <section id="operations-step" class="workflow-step" aria-labelledby="operations-title">
+      <div class="section-heading endpoint-heading">
+        <div><p class="step-kicker">STEP 2</p><h2 id="operations-title">2. API endpoint 선택</h2></div>
+        <label class="select-all" for="select-all-operations">
+          <input id="select-all-operations" type="checkbox" disabled> 선택 가능한 항목 전체
+        </label>
       </div>
-      <div class="operation-layout">
-        <div>
-          <h3>Analyzed operations</h3>
-          <ul id="operation-list" class="operation-list"></ul>
-        </div>
-        <fieldset id="operation-editor" disabled>
-          <legend>Selected operation</legend>
-          <label class="checkbox" for="operation-enabled">
-            <input id="operation-enabled" type="checkbox"> Generate this Tool
-          </label>
-          <div class="field">
-            <label for="tool-name">Tool name</label>
-            <input id="tool-name" type="text" maxlength="64" autocomplete="off">
+      <fieldset id="operation-selection" class="endpoint-selection" disabled>
+        <legend class="visually-hidden">MCP Tool로 만들 endpoint</legend>
+        <div class="endpoint-toolbar">
+          <div class="field grow">
+            <label for="operation-search">Endpoint 검색</label>
+            <input id="operation-search" type="search" placeholder="method, path, operationId, 설명 검색" autocomplete="off">
           </div>
-          <div class="field">
-            <label for="tool-description">Tool description</label>
-            <textarea id="tool-description" maxlength="1024" rows="3"></textarea>
-          </div>
-          <h3>Output</h3>
           <div class="field compact">
-            <label for="output-mode">Output mode</label>
-            <select id="output-mode">
-              <option value="GENERIC_JSON">Generic JSON</option>
-              <option value="TYPED">Typed DTO</option>
+            <label for="operation-filter">지원 상태</label>
+            <select id="operation-filter">
+              <option value="all">전체</option>
+              <option value="supported">선택 가능</option>
+              <option value="warning">경고 있음</option>
+              <option value="unsupported">지원하지 않음</option>
             </select>
           </div>
-          <h3>Retry policy</h3>
-          <label class="checkbox" for="retry-enabled">
-            <input id="retry-enabled" type="checkbox"> Enable bounded retry
-          </label>
-          <div class="field-grid policy-fields">
-            <div class="field"><label for="retry-status-codes">HTTP error status codes</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
-            <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> Retry network errors</label>
-            <div class="field"><label for="retry-max-retries">Maximum retries</label><input id="retry-max-retries" type="number" min="1" max="3" value="1"></div>
-            <div class="field"><label for="retry-initial-backoff">Initial backoff milliseconds</label><input id="retry-initial-backoff" type="number" min="1" max="5000" value="100"></div>
-            <div class="field"><label for="retry-max-backoff">Maximum backoff milliseconds</label><input id="retry-max-backoff" type="number" min="1" max="10000" value="1000"></div>
-            <label class="checkbox" for="retry-respect-retry-after"><input id="retry-respect-retry-after" type="checkbox" checked> Respect Retry-After</label>
-          </div>
-          <h3>Pagination policy</h3>
-          <label class="checkbox" for="pagination-enabled">
-            <input id="pagination-enabled" type="checkbox"> Enable bounded cursor pagination
-          </label>
-          <div class="field-grid policy-fields">
-            <div class="field"><label for="pagination-request-parameter">Cursor query parameter</label><input id="pagination-request-parameter" type="text" maxlength="128"></div>
-            <div class="field"><label for="pagination-initial-value">Initial value as JSON string or integer</label><textarea id="pagination-initial-value" rows="2"></textarea></div>
-            <div class="field"><label for="pagination-items-path">Items JSON Pointer</label><input id="pagination-items-path" type="text" value="/items"></div>
-            <div class="field"><label for="pagination-next-value-path">Next value JSON Pointer</label><input id="pagination-next-value-path" type="text" value="/next"></div>
-            <div class="field"><label for="pagination-max-pages">Maximum pages</label><input id="pagination-max-pages" type="number" min="2" max="20" value="10"></div>
-            <div class="field"><label for="pagination-max-items">Maximum items</label><input id="pagination-max-items" type="number" min="1" max="2000" value="1000"></div>
-          </div>
-          <h3>Parameter sources</h3>
-          <div id="parameter-editor"></div>
-          <h3>Response normalization</h3>
+        </div>
+        <p id="operation-counts" class="endpoint-counts" aria-live="polite">파일 분석 후 endpoint를 선택할 수 있습니다.</p>
+        <ul id="operation-list" class="operation-list"></ul>
+        <p id="operation-empty" class="empty-state" hidden>검색 조건에 맞는 endpoint가 없습니다.</p>
+      </fieldset>
+    </section>
+
+    <section id="generation-step" class="workflow-step" aria-labelledby="generation-title">
+      <div class="section-heading">
+        <div><p class="step-kicker">STEP 3</p><h2 id="generation-title">3. 생성 설정</h2></div>
+        <p>프로젝트와 Tool 세부 설정을 확인한 뒤 미리보기합니다.</p>
+      </div>
+
+      <div class="generation-layout">
+        <div class="generation-main">
           <div class="field-grid">
-            <div class="field"><label for="data-path">Data JSON Pointer</label><input id="data-path" type="text"></div>
-            <div class="field"><label for="success-code-path">Success code JSON Pointer</label><input id="success-code-path" type="text"></div>
-            <div class="field"><label for="success-values">Success values JSON array</label><textarea id="success-values" rows="2">[]</textarea></div>
-            <div class="field"><label for="error-message-path">Error message JSON Pointer</label><input id="error-message-path" type="text"></div>
-            <div class="field"><label for="total-count-path">Total count JSON Pointer</label><input id="total-count-path" type="text"></div>
+            <div class="field"><label for="group-id">Group ID</label><input id="group-id" value="com.example" required></div>
+            <div class="field"><label for="artifact-id">Artifact ID</label><input id="artifact-id" value="openapi-mcp-server" required></div>
+            <div class="field"><label for="package-name">Package name</label><input id="package-name" value="com.example.mcp" required></div>
+            <div class="field"><label for="provider-name">Provider</label><input id="provider-name" value="provider" required></div>
+            <div class="field"><label for="domain-name">Domain</label><input id="domain-name" value="api" required></div>
+            <div class="field"><label for="target-profile">Compatibility profile</label><select id="target-profile" required></select></div>
           </div>
-        </fieldset>
-      </div>
-    </section>
+          <p id="profile-description" class="status" aria-live="polite">호환 프로필을 불러오는 중입니다.</p>
 
-    <section id="project-step">
-      <h2>3. Project and Target</h2>
-      <div class="field-grid">
-        <div class="field"><label for="group-id">Group ID</label><input id="group-id" value="com.example" required></div>
-        <div class="field"><label for="artifact-id">Artifact ID</label><input id="artifact-id" value="openapi-mcp-server" required></div>
-        <div class="field"><label for="package-name">Package name</label><input id="package-name" value="com.example.mcp" required></div>
-        <div class="field"><label for="provider-name">Provider</label><input id="provider-name" value="provider" required></div>
-        <div class="field"><label for="domain-name">Domain</label><input id="domain-name" value="api" required></div>
-        <div class="field"><label for="target-profile">Compatibility profile</label><select id="target-profile" required></select></div>
-      </div>
-      <p id="profile-description" class="status" aria-live="polite">Loading local profiles.</p>
-    </section>
+          <div class="selected-tools-section">
+            <div class="selected-tools-heading">
+              <h3>선택한 MCP Tool</h3>
+              <p>행을 펼쳐 기본 이름과 고급 정책을 조정할 수 있습니다.</p>
+            </div>
+            <div id="selected-tool-list" class="selected-tool-list" aria-live="polite"></div>
+            <p id="selected-tool-empty" class="empty-state">Step 2에서 endpoint를 하나 이상 선택해 주세요.</p>
+          </div>
 
-    <section id="preview-step">
-      <h2>4. Preview</h2>
-      <div class="field-grid">
-        <div class="field"><label for="validation-operation">Representative operation</label><select id="validation-operation"></select></div>
-        <div class="field"><label for="validation-arguments">Representative arguments JSON object</label><textarea id="validation-arguments" rows="4">{}</textarea></div>
-      </div>
-      <button id="preview-button" type="button">Validate configuration and preview</button>
-      <p id="preview-status" class="status" aria-live="polite">Preview is required before generation.</p>
-      <div id="preview-output" class="preview-output"></div>
-    </section>
+          <div id="operation-editor-home" hidden>
+            <fieldset id="operation-editor" disabled>
+          <legend>Tool 설정</legend>
+          <label class="checkbox" for="operation-enabled"><input id="operation-enabled" type="checkbox"> 이 Tool 생성</label>
+          <div class="field-grid">
+            <div class="field"><label for="tool-name">Tool name</label><input id="tool-name" type="text" maxlength="64" autocomplete="off"></div>
+            <div class="field"><label for="tool-description">Tool description</label><textarea id="tool-description" maxlength="1024" rows="3"></textarea></div>
+            <div class="field"><label for="output-mode">Output mode</label><select id="output-mode"><option value="GENERIC_JSON">Generic JSON</option><option value="TYPED">Typed DTO</option></select></div>
+          </div>
+              <details class="advanced-settings tool-advanced-settings">
+                <summary>고급 Tool 정책</summary>
+                <div class="advanced-settings-body">
+                  <h3>Retry policy</h3>
+                  <label class="checkbox" for="retry-enabled"><input id="retry-enabled" type="checkbox"> bounded retry 사용</label>
+                  <div class="field-grid policy-fields">
+                    <div class="field"><label for="retry-status-codes">HTTP error status codes</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
+                    <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> network error retry</label>
+                    <div class="field"><label for="retry-max-retries">Maximum retries</label><input id="retry-max-retries" type="number" min="1" max="3" value="1"></div>
+                    <div class="field"><label for="retry-initial-backoff">Initial backoff milliseconds</label><input id="retry-initial-backoff" type="number" min="1" max="5000" value="100"></div>
+                    <div class="field"><label for="retry-max-backoff">Maximum backoff milliseconds</label><input id="retry-max-backoff" type="number" min="1" max="10000" value="1000"></div>
+                    <label class="checkbox" for="retry-respect-retry-after"><input id="retry-respect-retry-after" type="checkbox" checked> Retry-After 반영</label>
+                  </div>
+                  <h3>Pagination policy</h3>
+                  <label class="checkbox" for="pagination-enabled"><input id="pagination-enabled" type="checkbox"> cursor pagination 사용</label>
+                  <div class="field-grid policy-fields">
+                    <div class="field"><label for="pagination-request-parameter">Cursor query parameter</label><input id="pagination-request-parameter" type="text" maxlength="128"></div>
+                    <div class="field"><label for="pagination-initial-value">Initial value as JSON string or integer</label><textarea id="pagination-initial-value" rows="2"></textarea></div>
+                    <div class="field"><label for="pagination-items-path">Items JSON Pointer</label><input id="pagination-items-path" type="text" value="/items"></div>
+                    <div class="field"><label for="pagination-next-value-path">Next value JSON Pointer</label><input id="pagination-next-value-path" type="text" value="/next"></div>
+                    <div class="field"><label for="pagination-max-pages">Maximum pages</label><input id="pagination-max-pages" type="number" min="2" max="20" value="10"></div>
+                    <div class="field"><label for="pagination-max-items">Maximum items</label><input id="pagination-max-items" type="number" min="1" max="2000" value="1000"></div>
+                  </div>
+                  <h3>Parameter sources</h3>
+                  <div id="parameter-editor"></div>
+                  <h3>Response normalization</h3>
+                  <div class="field-grid">
+                    <div class="field"><label for="data-path">Data JSON Pointer</label><input id="data-path" type="text"></div>
+                    <div class="field"><label for="success-code-path">Success code JSON Pointer</label><input id="success-code-path" type="text"></div>
+                    <div class="field"><label for="success-values">Success values JSON array</label><textarea id="success-values" rows="2">[]</textarea></div>
+                    <div class="field"><label for="error-message-path">Error message JSON Pointer</label><input id="error-message-path" type="text"></div>
+                    <div class="field"><label for="total-count-path">Total count JSON Pointer</label><input id="total-count-path" type="text"></div>
+                  </div>
+                </div>
+              </details>
+            </fieldset>
+          </div>
 
-    <section id="generate-step">
-      <h2>5. Generate and Download</h2>
-      <div class="button-row">
-        <button id="generate-button" type="button" disabled>Generate project</button>
-        <button id="delete-job-button" class="secondary" type="button" disabled>Delete job</button>
+          <div class="preview-section">
+        <h3>대표 호출과 미리보기</h3>
+        <div class="field-grid">
+          <div class="field"><label for="validation-operation">Representative operation</label><select id="validation-operation"></select></div>
+          <div class="field"><label for="validation-arguments">Representative arguments JSON object</label><textarea id="validation-arguments" rows="4">{}</textarea></div>
+        </div>
+        <div class="button-row">
+          <button id="preview-button" type="button" disabled>설정 검증 및 미리보기</button>
+          <button id="generate-button" type="button" disabled>프로젝트 생성</button>
+          <button id="delete-job-button" class="secondary" type="button" disabled>작업 삭제</button>
+        </div>
+        <p id="preview-status" class="status" aria-live="polite">생성 전 미리보기가 필요합니다.</p>
+        <div id="preview-output" class="preview-output"></div>
+        <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
+        <ol id="progress-list" class="progress-list"></ol>
+        <div id="downloads" class="downloads"></div>
+          </div>
+        </div>
+        <aside id="generation-summary" class="generation-summary" aria-labelledby="generation-summary-title">
+          <h3 id="generation-summary-title">생성 요약</h3>
+          <dl>
+            <div><dt>OpenAPI</dt><dd id="summary-version">—</dd></div>
+            <div><dt>선택 Tool</dt><dd id="summary-selected">0</dd></div>
+            <div><dt>제외 endpoint</dt><dd id="summary-excluded">0</dd></div>
+            <div><dt>경고</dt><dd id="summary-warnings">0</dd></div>
+            <div><dt>프로필</dt><dd id="summary-profile">—</dd></div>
+            <div><dt>대표 검증</dt><dd id="summary-validation">미선택</dd></div>
+          </dl>
+        </aside>
       </div>
-      <p id="job-status" class="status" aria-live="polite">No generation job started.</p>
-      <ol id="progress-list" class="progress-list"></ol>
-      <div id="downloads" class="downloads"></div>
     </section>
   </main>
   <script type="module" src="/app.js"></script>

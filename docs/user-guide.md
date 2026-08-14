@@ -47,8 +47,8 @@ apps/web/build/libs/web.jar
 
 ## Local operation editor
 
-Spring Boot 3.5 WebMVC + Thymeleaf UI에서 specification 선택, operation 편집, Tool schema preview,
-생성·검증과 artifact download를 수행한다. 상태는 `UI operation editor complete`다.
+Spring Boot 3.5 WebMVC + Thymeleaf UI에서 specification 분석, endpoint 선택, Tool 설정과 preview,
+생성·검증, artifact download를 수행한다. 브라우저는 OpenAPI를 해석하지 않고 서버가 반환한 지원 판정을 표시한다.
 
 ```bash
 mise run ui
@@ -72,7 +72,10 @@ GEN2SPRING_UI_PORT=0 mise exec -- java -jar apps/web/build/libs/web.jar
 binding은 `numeric loopback only`다. 기본 local mode는 public multi-user service가 아니다.
 remote address, 잘못된 `Host`·`Origin`, forwarded header를 거부하고 Spring Security session CSRF를 사용한다.
 
-UI 작업 흐름은 specification, operations, project/target, preview, generate/download의 다섯 단계다.
+UI 작업 흐름은 OpenAPI 파일, API endpoint 선택, 생성 설정의 세 단계다. 파일 input과 drag-and-drop은
+업로드·분석·완료·오류 상태를 표시하고, 파일을 교체하거나 제거하면 선택·override·preview·job 상태를 초기화한다.
+모든 endpoint를 보여 주되 지원 불가 항목은 이유와 함께 비활성화하고, 경고 포함 지원 항목은 선택할 수 있다.
+전체 선택은 선택 가능한 endpoint에만 적용하며, 선택한 endpoint별 Tool 설정을 접어서 편집한다.
 입력 경계는 `local files only; no URL import`이며 OpenAPI는 10 MiB, configuration은 1 MiB로 제한한다.
 capacity는 `one running plus one queued job`이고 세 번째 active job을 거부한다. terminal job은 마지막
 접근 후 한 시간이 지나면 정리한다. ZIP은 `VALIDATED` 결과에만 제공한다.
@@ -130,7 +133,7 @@ digest로 고정하고 `USER 10001:10001`로 실행한다. `.dockerignore`는 Do
   --output /private/tmp/gen2spring-weather-analysis.json
 ```
 
-분석 결과에는 원본 checksum, OpenAPI version, operation, security scheme과 warning이 담긴다.
+분석 결과에는 원본 checksum, OpenAPI version, operation별 status·typed issue, security scheme과 warning이 담긴다.
 기존 output 파일은 덮어쓰지 않는다.
 
 ### 프로젝트 생성
@@ -281,7 +284,7 @@ directory와 ZIP에 포함하지 않는다.
 
 지원:
 
-- 로컬 `.yaml`, `.yml`, `.json` OpenAPI 3.0.x
+- 로컬 `.yaml`, `.yml`, `.json` OpenAPI 3.0.x와 3.1.x
 - `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
 - path, query, header parameter와 JSON request body
 - primitive, enum, array, object, non-recursive local `$ref`
@@ -292,7 +295,10 @@ directory와 ZIP에 포함하지 않는다.
 
 - path/header는 기본 `simple` scalar, query는 기본 `form` scalar와 scalar-item
   `form` + `explode=true` array만 지원한다.
-- remote `$ref`, OpenAPI 3.1, `oneOf`, `anyOf`, `allOf`, discriminator와 recursive schema는 거부한다.
+- OpenAPI 3.1은 dialect 생략 또는 `https://spec.openapis.org/oas/3.1/dialect/base`만 허용하고,
+  정확히 하나의 지원 non-null type과 `null` 조합만 기존 nullable schema로 정규화한다.
+- remote `$ref`, custom JSON Schema dialect, multi-type, `oneOf`, `anyOf`, `allOf`, discriminator와
+  recursive schema는 거부하거나 해당 endpoint를 이유와 함께 지원 불가로 표시한다.
 - Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
 - local UI는 URL import를 제공하지 않는다. hosted URL import도 문서 내부 remote `$ref`는 거부한다.
 

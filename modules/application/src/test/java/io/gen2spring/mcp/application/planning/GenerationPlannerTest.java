@@ -19,6 +19,7 @@ import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSecurityScheme;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OperationSupport;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
@@ -60,7 +61,7 @@ class GenerationPlannerTest {
                 List.of(
                         new ApiParameter("city", ParameterLocation.QUERY, true, "City", string),
                         new ApiParameter("serviceKey", ParameterLocation.QUERY, true, "API key", string)),
-                null, false, List.of("serviceKey"), true, List.of());
+                null, false, List.of("serviceKey"), OperationSupport.fromIssues(List.of()));
         return new OpenApiDocument(
                 "3.0.3", "a".repeat(64), "yaml", URI.create("https://weather.example.test"),
                 List.of(operation),

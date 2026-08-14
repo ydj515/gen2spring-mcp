@@ -22,6 +22,8 @@ class PostgresHostedResourceStoreTest {
     private static final AccountId OTHER = new AccountId(UUID.fromString("51dd3b69-589c-4466-a78e-d448407d17b9"));
     private static final SpecificationId SPECIFICATION =
             new SpecificationId(UUID.fromString("80782e7c-337d-4d4d-bd4d-ad478359563c"));
+    private static final SpecificationId PENDING_SPECIFICATION =
+            new SpecificationId(UUID.fromString("90782e7c-337d-4d4d-bd4d-ad478359563c"));
     private static final JobId JOB = new JobId(UUID.fromString("1a803410-a22a-4bc6-b951-7dbc301ae800"));
     private static final UUID ARTIFACT = UUID.fromString("6a803410-a22a-4bc6-b951-7dbc301ae800");
 
@@ -64,6 +66,7 @@ class PostgresHostedResourceStoreTest {
 
         assertTrue(store.specifications(OTHER, 10).isEmpty());
         assertTrue(store.specification(OTHER, SPECIFICATION).isEmpty());
+        assertTrue(store.specification(OWNER, PENDING_SPECIFICATION).isEmpty());
         assertTrue(store.jobs(OTHER, 10).isEmpty());
         assertTrue(store.job(OTHER, JOB).isEmpty());
         assertTrue(store.events(OTHER, JOB, 10).isEmpty());
@@ -84,6 +87,13 @@ class PostgresHostedResourceStoreTest {
                 values (?, ?, 'UPLOAD', 'specifications/80782e7c-337d-4d4d-bd4d-ad478359563c/source', repeat('a', 64), 10,
                         'weather.yaml', 'READY', now(), now())
                 """, SPECIFICATION.value(), OWNER.value());
+        jdbc.update("""
+                insert into specification(
+                    id, owner_account_id, source_type, object_key, sha256, byte_size,
+                    display_label, parse_state, created_at, updated_at)
+                values (?, ?, 'URL', 'specifications/90782e7c-337d-4d4d-bd4d-ad478359563c/source', repeat('d', 64), 10,
+                        'pending import', 'PENDING', now() - interval '1 minute', now())
+                """, PENDING_SPECIFICATION.value(), OWNER.value());
         jdbc.update("""
                 insert into generation_job(
                     id, owner_account_id, specification_id, kind, operation,

@@ -25,6 +25,8 @@ import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSecurityScheme;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
+import io.gen2spring.mcp.domain.specification.OperationSupport;
+import io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.ToolInput;
 import io.gen2spring.mcp.domain.tool.OutputKind;
@@ -64,7 +66,7 @@ class ToolModelFactoryTest {
         ApiSchema response = objectSchema(Map.of("city", textSchema()), List.of("city"));
         var operation = new ApiOperation(
                 "getForecast", HttpMethod.GET, "/forecast", "Get forecast", null,
-                List.of(), null, false, List.of(), true, List.of(), response);
+                List.of(), null, false, List.of(), operationSupport(true), response);
         var selection = new OperationSelection(
                 "getForecast", true, null, null, Map.of(), null,
                 new OutputSelection(OutputKind.TYPED_DTO));
@@ -81,7 +83,7 @@ class ToolModelFactoryTest {
         RetryPolicy retry = new RetryPolicy(List.of(429, 503), true, 2, 100, 1_000, true);
         ApiOperation get = new ApiOperation(
                 "getForecast", HttpMethod.GET, "/forecast", "Get forecast", null,
-                List.of(), null, false, List.of(), true, List.of());
+                List.of(), null, false, List.of(), operationSupport(true));
         OperationSelection selection = new OperationSelection(
                 "getForecast", true, null, null, Map.of(), null,
                 new OutputSelection(OutputKind.GENERIC_JSON), retry);
@@ -97,7 +99,7 @@ class ToolModelFactoryTest {
         RetryPolicy retry = new RetryPolicy(List.of(598), false, 1, 100, 1_000, false);
         ApiOperation post = new ApiOperation(
                 privateOperationId, HttpMethod.POST, "/retry-private", "Post data", null,
-                List.of(), null, false, List.of(), true, List.of());
+                List.of(), null, false, List.of(), operationSupport(true));
         OperationSelection selection = new OperationSelection(
                 privateOperationId, true, null, null, Map.of(), null,
                 new OutputSelection(OutputKind.GENERIC_JSON), retry);
@@ -139,7 +141,7 @@ class ToolModelFactoryTest {
                 "cursor", ParameterLocation.QUERY, false, "Pagination cursor", textSchema());
         ApiOperation operation = new ApiOperation(
                 "getForecast", HttpMethod.GET, "/forecast", "Get forecast", null,
-                List.of(header, query), null, false, List.of(), true, List.of(),
+                List.of(header, query), null, false, List.of(), operationSupport(true),
                 paginatedResponse(textSchema(), nullableTextSchema()));
         OperationSelection selection = new OperationSelection(
                 "getForecast", true, null, null, Map.of(), null,
@@ -202,7 +204,8 @@ class ToolModelFactoryTest {
 
         ApiOperation secured = new ApiOperation(
                 "getForecast", HttpMethod.GET, "/forecast", "Get forecast", null,
-                operation.parameters(), null, false, List.of("cursorAuth"), true, List.of(), operation.successResponse());
+                operation.parameters(), null, false, List.of("cursorAuth"), operationSupport(true),
+                operation.successResponse());
         OpenApiDocument securedDocument = new OpenApiDocument(
                 "3.0.3", "checksum", "yaml", URI.create("https://api.weather.example.com"), List.of(secured),
                 Map.of("cursorAuth", new ApiSecurityScheme(
@@ -255,7 +258,7 @@ class ToolModelFactoryTest {
     void rejectsOperationsWithoutAnyUsableToolDescription() {
         var operation = new ApiOperation(
                 "undocumented", HttpMethod.GET, "/undocumented", null, null,
-                List.of(parameter("id")), null, false, List.of(), true, List.of());
+                List.of(parameter("id")), null, false, List.of(), operationSupport(true));
 
         GeneratorException exception = assertThrows(GeneratorException.class,
                 () -> factory.create(document(List.of(operation)), request(List.of(selection(
@@ -311,7 +314,7 @@ class ToolModelFactoryTest {
     void bindsAnApplicableSchemeOnlyApiKeyFromItsExplicitSecretOverride() {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
-                List.of(parameter("region")), null, false, List.of("partnerKey"), true, List.of());
+                List.of(parameter("region")), null, false, List.of("partnerKey"), operationSupport(true));
         var document = new OpenApiDocument("3.0.3", "checksum", "yaml", URI.create("https://api.example.test"),
                 List.of(operation),
                 Map.of(
@@ -336,7 +339,7 @@ class ToolModelFactoryTest {
     void bindsASchemeOnlyApiKeyFromItsTargetParameterNameOverride() {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
-                List.of(), null, false, List.of("partnerKey"), true, List.of());
+                List.of(), null, false, List.of("partnerKey"), operationSupport(true));
         var document = new OpenApiDocument("3.0.3", "checksum", "yaml", URI.create("https://api.example.test"),
                 List.of(operation),
                 Map.of("partnerKey", new ApiSecurityScheme(
@@ -356,7 +359,7 @@ class ToolModelFactoryTest {
         for (String header : List.of("aCcEpT", "cOnTeNt-TyPe")) {
             var operation = new ApiOperation(
                     "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
-                    List.of(), null, false, List.of("partnerKey"), true, List.of());
+                    List.of(), null, false, List.of("partnerKey"), operationSupport(true));
             var document = new OpenApiDocument("3.0.3", "checksum", "yaml", URI.create("https://api.example.test"),
                     List.of(operation),
                     Map.of("partnerKey", new ApiSecurityScheme(
@@ -377,7 +380,7 @@ class ToolModelFactoryTest {
                 "TrAcEpArEnT", "TRACESTATE", "bAgGaGe", "B3", "X-B3-TraceId", "x-b3-custom")) {
             var operation = new ApiOperation(
                     "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
-                    List.of(), null, false, List.of("partnerKey"), true, List.of());
+                    List.of(), null, false, List.of("partnerKey"), operationSupport(true));
             var document = new OpenApiDocument(
                     "3.0.3",
                     "checksum",
@@ -406,7 +409,7 @@ class ToolModelFactoryTest {
     void rejectsMissingAndConflictingOverridesForApplicableApiKeySchemes() {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
-                List.of(parameter("X-Partner-Key")), null, false, List.of("partnerKey"), true, List.of());
+                List.of(parameter("X-Partner-Key")), null, false, List.of("partnerKey"), operationSupport(true));
         var document = new OpenApiDocument("3.0.3", "checksum", "yaml", URI.create("https://api.example.test"),
                 List.of(operation),
                 Map.of("partnerKey", new ApiSecurityScheme(
@@ -428,7 +431,7 @@ class ToolModelFactoryTest {
     void rejectsConflictingSchemeOverridesForApiKeysThatShareTheSameTarget() {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
-                List.of(), null, false, List.of("primaryKey", "secondaryKey"), true, List.of());
+                List.of(), null, false, List.of("primaryKey", "secondaryKey"), operationSupport(true));
         var document = new OpenApiDocument("3.0.3", "checksum", "yaml", URI.create("https://api.example.test"),
                 List.of(operation),
                 Map.of(
@@ -450,7 +453,7 @@ class ToolModelFactoryTest {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
                 List.of(new ApiParameter("X-Partner-Key", ParameterLocation.HEADER, false, "key", schema())),
-                null, false, List.of("primaryKey", "secondaryKey"), true, List.of());
+                null, false, List.of("primaryKey", "secondaryKey"), operationSupport(true));
         var document = new OpenApiDocument("3.0.3", "checksum", "yaml", URI.create("https://api.example.test"),
                 List.of(operation),
                 Map.of(
@@ -476,7 +479,7 @@ class ToolModelFactoryTest {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
                 List.of(new ApiParameter("x-partner-key", ParameterLocation.HEADER, false, "key", schema())),
-                null, false, List.of("partnerKey"), true, List.of());
+                null, false, List.of("partnerKey"), operationSupport(true));
         var document = new OpenApiDocument("3.0.3", "checksum", "yaml", URI.create("https://api.example.test"),
                 List.of(operation),
                 Map.of("partnerKey", new ApiSecurityScheme(
@@ -520,7 +523,7 @@ class ToolModelFactoryTest {
             var operation = new ApiOperation(
                     "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
                     List.of(new ApiParameter(header, ParameterLocation.HEADER, false, header, schema())),
-                    null, false, List.of(), true, List.of());
+                    null, false, List.of(), operationSupport(true));
 
             GeneratorException exception = assertThrows(GeneratorException.class,
                     () -> factory.create(document(List.of(operation)), request(List.of(selection(
@@ -537,7 +540,7 @@ class ToolModelFactoryTest {
             var operation = new ApiOperation(
                     "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
                     List.of(new ApiParameter(header, ParameterLocation.HEADER, false, header, schema())),
-                    null, false, List.of(), true, List.of());
+                    null, false, List.of(), operationSupport(true));
 
             GeneratorException exception = assertThrows(
                     GeneratorException.class,
@@ -566,7 +569,7 @@ class ToolModelFactoryTest {
                 Map.of("postal-code", text, "unit-number", integer), List.of("postal-code"), null, true, List.of());
         var operation = new ApiOperation(
                 "submitAddress", HttpMethod.POST, "/addresses", "Submit address", null,
-                List.of(), body, true, List.of(), true, List.of());
+                List.of(), body, true, List.of(), operationSupport(true));
 
         var tool = factory.create(document(List.of(operation)), request(List.of(selection(
                 "submitAddress", null, Map.of())))).getFirst();
@@ -588,7 +591,7 @@ class ToolModelFactoryTest {
         ApiSchema body = objectSchema(Map.of("postal-code", textSchema()), List.of("postal-code"));
         var operation = new ApiOperation(
                 "submitAddress", HttpMethod.POST, "/addresses", "Submit address", null,
-                List.of(), body, false, List.of(), true, List.of());
+                List.of(), body, false, List.of(), operationSupport(true));
 
         GeneratorException exception = assertThrows(GeneratorException.class,
                 () -> factory.create(document(List.of(operation)), request(List.of(selection(
@@ -602,7 +605,7 @@ class ToolModelFactoryTest {
         ApiSchema body = objectSchema(Map.of("note", textSchema()), List.of());
         var operation = new ApiOperation(
                 "submitAddress", HttpMethod.POST, "/addresses", "Submit address", null,
-                List.of(), body, false, List.of(), true, List.of());
+                List.of(), body, false, List.of(), operationSupport(true));
 
         var tool = factory.create(document(List.of(operation)), request(List.of(selection(
                 "submitAddress", null, Map.of())))).getFirst();
@@ -629,7 +632,7 @@ class ToolModelFactoryTest {
         for (Map.Entry<String, ApiSchema> testCase : cases) {
             var operation = new ApiOperation(
                     "submitCredential", HttpMethod.POST, "/credentials", "Submit credential", null,
-                    List.of(), testCase.getValue(), true, List.of(), true, List.of());
+                    List.of(), testCase.getValue(), true, List.of(), operationSupport(true));
 
             GeneratorException exception = assertThrows(GeneratorException.class,
                     () -> factory.create(document(List.of(operation)), request(List.of(selection(
@@ -650,7 +653,7 @@ class ToolModelFactoryTest {
                 Map.of("postal-code", text, "postal_code", text), List.of(), null, true, List.of());
         var operation = new ApiOperation(
                 "submitAddress", HttpMethod.POST, "/addresses", "Submit address", null,
-                List.of(), body, true, List.of(), true, List.of());
+                List.of(), body, true, List.of(), operationSupport(true));
 
         GeneratorException exception = assertThrows(GeneratorException.class,
                 () -> factory.create(document(List.of(operation)), request(List.of(selection(
@@ -664,7 +667,7 @@ class ToolModelFactoryTest {
         ApiOperation operation = new ApiOperation(
                 "lookupCredential", HttpMethod.GET, "/credentials", "Lookup credential", null,
                 List.of(parameter("page"), parameter("api_key")), null, false,
-                List.of("nonstandardCredential"), true, List.of());
+                List.of("nonstandardCredential"), operationSupport(true));
         OpenApiDocument document = new OpenApiDocument(
                 "3.0.3", "checksum", "yaml", URI.create("https://api.weather.example.com"), List.of(operation),
                 Map.of("nonstandardCredential", new ApiSecurityScheme(
@@ -699,7 +702,7 @@ class ToolModelFactoryTest {
                 List.of(
                         new ApiParameter("token", ParameterLocation.QUERY, true, "Lookup token", textSchema()),
                         new ApiParameter("token", ParameterLocation.HEADER, false, "API key", textSchema())),
-                null, false, List.of("tokenAuth"), true, List.of());
+                null, false, List.of("tokenAuth"), operationSupport(true));
         OpenApiDocument document = new OpenApiDocument(
                 "3.0.3", "checksum", "yaml", URI.create("https://api.weather.example.com"), List.of(operation),
                 Map.of("tokenAuth", new ApiSecurityScheme(
@@ -722,7 +725,7 @@ class ToolModelFactoryTest {
     private ApiKeyFixture caseVariantHeaderSchemes(String primaryEnvironment, String secondaryEnvironment) {
         var operation = new ApiOperation(
                 "getPartnerData", HttpMethod.GET, "/partner", "Partner data", null,
-                List.of(), null, false, List.of("primaryKey", "secondaryKey"), true, List.of());
+                List.of(), null, false, List.of("primaryKey", "secondaryKey"), operationSupport(true));
         var document = new OpenApiDocument("3.0.3", "checksum", "yaml", URI.create("https://api.example.test"),
                 List.of(operation),
                 Map.of(
@@ -777,7 +780,7 @@ class ToolModelFactoryTest {
     private ApiOperation paginatedOperation(HttpMethod method, ApiParameter cursor, ApiSchema response) {
         return new ApiOperation(
                 "getForecast", method, "/forecast", "Get forecast", null,
-                List.of(cursor), null, false, List.of(), true, List.of(), response);
+                List.of(cursor), null, false, List.of(), operationSupport(true), response);
     }
 
     private PaginationPolicy pagination(Object initialValue) {
@@ -821,7 +824,7 @@ class ToolModelFactoryTest {
         return document(List.of(new ApiOperation(
                 "getForecast", HttpMethod.GET, "/forecast", "Get forecast", "Public weather forecast",
                 List.of(parameter("nx"), parameter("ny"), parameter("serviceKey")), null, false,
-                List.of("serviceKeyAuth"), true, List.of())));
+                List.of("serviceKeyAuth"), operationSupport(true))));
     }
 
     private OpenApiDocument document(List<ApiOperation> operations) {
@@ -832,7 +835,7 @@ class ToolModelFactoryTest {
 
     private ApiOperation operation(String operationId, boolean supported) {
         return new ApiOperation(operationId, HttpMethod.GET, "/" + operationId, operationId, null,
-                List.of(parameter("id")), null, false, List.of(), supported, List.of());
+                List.of(parameter("id")), null, false, List.of(), operationSupport(supported));
     }
 
     private ApiParameter parameter(String name) {
@@ -842,6 +845,11 @@ class ToolModelFactoryTest {
     private ApiSchema schema() {
         return new ApiSchema(SchemaType.INTEGER, "int32", false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
+    }
+
+    private OperationSupport operationSupport(boolean supported) {
+        return OperationSupport.fromIssues(supported
+                ? List.of() : List.of(IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED));
     }
 
     private record ApiKeyFixture(OpenApiDocument document, GenerationCommand request) {}
