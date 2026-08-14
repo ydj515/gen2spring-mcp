@@ -81,6 +81,8 @@ class StaticAssetContractTest {
         assertTrue(upload.contains("file.name"));
         assertTrue(upload.contains("file.size"));
         assertTrue(upload.contains("resetSpecificationState"));
+        assertTrue(upload.contains("let requestVersion = 0;"));
+        assertTrue(upload.contains("if (version !== requestVersion) return;"));
         assertTrue(operations.contains("operation.issues"));
         assertTrue(operations.contains("operation.status"));
         assertTrue(operations.contains("operation.supported"));
@@ -100,14 +102,19 @@ class StaticAssetContractTest {
         assertTrue(state.contains("operation.supported"));
         assertTrue(api.contains("X-Specification-Name"));
         assertTrue(api.contains("/api/specifications/uploads"));
+        assertTrue(api.contains("export async function analysis(specificationId)"));
+        assertTrue(api.contains("/api/specifications/${specificationId}/analysis"));
         assertTrue(api.contains("meta[name=\"app-mode\"]"));
         assertTrue(app.contains("initializeUpload"));
         assertTrue(app.contains("initializeOperations"));
+        assertTrue(app.contains("resumeRetainedSpecification"));
+        assertTrue(app.contains("await resumeRetainedSpecification();\n  await resumeRetainedJob();"));
         assertTrue(app.contains("onAnalysis: analysis => {\n    ui['preview-button'].disabled = false;"));
         assertTrue(app.contains("function resetSpecificationPresentation() {\n  ui['preview-button'].disabled = true;"));
         assertTrue(app.contains("renderGenerationSummary"));
         assertTrue(app.contains("['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED']"));
         assertTrue(app.contains("ui['delete-job-button'].disabled = api.hostedMode;"));
+        assertTrue(app.contains("ui['delete-job-button'].disabled = !api.hostedMode;"));
         assertTrue(api.contains("crypto.randomUUID()"));
         assertTrue(api.contains("Idempotency-Key"));
         assertTrue(api.contains("'/api/jobs'"));

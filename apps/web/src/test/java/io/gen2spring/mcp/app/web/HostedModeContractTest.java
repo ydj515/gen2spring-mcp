@@ -35,6 +35,7 @@ class HostedModeContractTest {
         assertTrue(dashboard.contains("새 MCP 프로젝트"));
         assertTrue(dashboard.contains("Specifications"));
         assertTrue(dashboard.contains("Jobs"));
+        assertTrue(dashboard.contains("th:href=\"@{/editor(specification=${spec.id.value})}\""));
         assertTrue(editor.contains("meta name=\"app-mode\""));
         assertFalse(dashboard.contains("id=\"hosted-upload-form\""));
         assertFalse(dashboard.contains("id=\"hosted-generation-form\""));

@@ -40,6 +40,10 @@ export async function upload(file) {
   return response.json();
 }
 
+export async function analysis(specificationId) {
+  return (await request(`/api/specifications/${specificationId}/analysis`)).json();
+}
+
 export async function preview(specificationId, configuration) {
   const response = await request(`/api/specifications/${specificationId}/preview`, {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(configuration)

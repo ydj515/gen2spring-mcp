@@ -22,7 +22,7 @@ initializeOperations({
   },
   onEdit: selectOperation
 });
-initializeUpload({
+const upload = initializeUpload({
   onAnalysis: analysis => {
     ui['preview-button'].disabled = false;
     renderAnalysis(analysis);
@@ -42,7 +42,7 @@ for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'd
 }
 
 loadProfiles();
-resumeRetainedJob();
+resumeRetainedState();
 renderGenerationSummary();
 
 async function loadProfiles() {
@@ -76,6 +76,18 @@ async function resumeRetainedJob() {
     else ui['delete-job-button'].disabled = false;
     showFailure(failure);
   }
+}
+
+async function resumeRetainedState() {
+  await resumeRetainedSpecification();
+  await resumeRetainedJob();
+}
+
+async function resumeRetainedSpecification() {
+  if (!api.hostedMode) return;
+  const requested = new URLSearchParams(window.location.search).get('specification');
+  const specificationId = requested || getState().specificationId;
+  if (specificationId) await upload.load(specificationId);
 }
 
 async function runPreview() {
@@ -126,6 +138,7 @@ async function pollJob(jobId) {
       ui['delete-job-button'].disabled = api.hostedMode;
       return;
     }
+    ui['delete-job-button'].disabled = !api.hostedMode;
     await new Promise(resolve => setTimeout(resolve, delay));
     delay = Math.min(2000, delay + 250);
   }

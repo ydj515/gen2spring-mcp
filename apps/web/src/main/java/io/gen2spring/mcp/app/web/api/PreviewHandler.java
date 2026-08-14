@@ -4,7 +4,6 @@ import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
@@ -31,13 +30,6 @@ public final class PreviewHandler {
         this.previewPresenter = new GenerationPreviewPresenter(this.json);
         this.configurationReader = new BoundedBodyReader(
                 io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser.MAX_BYTES);
-    }
-
-    ObjectNode profiles() {
-        ObjectNode root = json.createObjectNode();
-        ArrayNode profiles = root.putArray("profiles");
-        application.profiles().profiles().forEach(profile -> profiles.add(previewPresenter.profile(profile)));
-        return root;
     }
 
     ObjectNode upload(String specificationName, InputStream body) {

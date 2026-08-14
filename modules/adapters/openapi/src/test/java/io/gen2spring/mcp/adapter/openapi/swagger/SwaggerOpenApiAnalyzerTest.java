@@ -88,6 +88,37 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
+    void rejectsSchemaLevelOpenApi31DialectOverridesWithOneSafeFailure() throws Exception {
+        Path specification = Files.createTempFile("unsupported-schema-dialect", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Dialect API, version: '1.0' }
+                components:
+                  schemas:
+                    Widget:
+                      $schema: https://json-schema.org/draft/2020-12/schema
+                      type: string
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      responses:
+                        '200':
+                          description: Success
+                          content:
+                            application/json:
+                              schema: { $ref: '#/components/schemas/Widget' }
+                """);
+
+        GeneratorException failure = assertThrows(
+                GeneratorException.class, () -> analyzer.analyze(specification, 4096));
+
+        assertEquals(SPEC_VERSION_UNSUPPORTED, failure.code());
+        assertEquals("The OpenAPI version or JSON Schema dialect is unsupported", failure.safeMessage());
+        assertFalse(failure.safeMessage().contains("json-schema.org"));
+    }
+
+    @Test
     void normalizesOpenApi31SingleNullUnionsAndRejectsOtherTypeSets() throws Exception {
         var supported = analyzer.analyze(
                 resource("openapi/openapi-31-supported.yaml"), 10 * 1024 * 1024).document();
@@ -133,6 +164,63 @@ class SwaggerOpenApiAnalyzerTest {
 
         assertTrue(operation.parameters().getFirst().schema().nullable());
         assertEquals(java.util.List.of(SCHEMA_NULLABILITY_UNSUPPORTED), operation.support().issueCodes());
+    }
+
+    @Test
+    void ignoresTheRemovedNullableKeywordForOpenApi31Schemas() throws Exception {
+        Path specification = Files.createTempFile("openapi31-legacy-nullable", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Nullable Extension API, version: '1.0' }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      parameters:
+                        - name: revision
+                          in: query
+                          schema: { type: string, nullable: true }
+                      responses:
+                        '200':
+                          description: Success
+                          content:
+                            application/json:
+                              schema: { type: string, nullable: true }
+                """);
+
+        var operation = analyzer.analyze(specification, 4096).document().operations().getFirst();
+
+        assertTrue(operation.supported(), operation.support().issueCodes().toString());
+        assertFalse(operation.parameters().getFirst().schema().nullable());
+        assertFalse(operation.successResponse().nullable());
+    }
+
+    @Test
+    void failsOpenApi31RefSiblingsClosedInsteadOfDroppingTheirConstraints() throws Exception {
+        Path specification = Files.createTempFile("openapi31-ref-sibling", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Ref Sibling API, version: '1.0' }
+                components:
+                  schemas:
+                    WidgetId: { type: string }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: getWidget
+                      parameters:
+                        - name: widgetId
+                          in: query
+                          schema:
+                            $ref: '#/components/schemas/WidgetId'
+                            not: { const: forbidden }
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operation = analyzer.analyze(specification, 4096).document().operations().getFirst();
+
+        assertFalse(operation.supported());
+        assertTrue(operation.support().issueCodes().contains(SCHEMA_CONSTRAINT_UNSUPPORTED));
     }
 
     @Test

@@ -26,24 +26,33 @@ import java.util.TreeSet;
 
 public final class SwaggerSchemaNormalizer {
     public ApiSchema normalize(Schema<?> schema, Map<String, Schema> componentSchemas) {
-        return normalize(schema, componentSchemas, false, false);
+        return normalize(schema, componentSchemas, "3.0.0");
+    }
+
+    ApiSchema normalize(Schema<?> schema, Map<String, Schema> componentSchemas, String openApiVersion) {
+        return normalize(schema, componentSchemas, false, false, honorsNullable(openApiVersion));
     }
 
     public ApiSchema normalizeResponse(Schema<?> schema, Map<String, Schema> componentSchemas) {
-        return normalize(schema, componentSchemas, true, true);
+        return normalizeResponse(schema, componentSchemas, "3.0.0");
+    }
+
+    ApiSchema normalizeResponse(Schema<?> schema, Map<String, Schema> componentSchemas, String openApiVersion) {
+        return normalize(schema, componentSchemas, true, true, honorsNullable(openApiVersion));
     }
 
     private ApiSchema normalize(
             Schema<?> schema,
             Map<String, Schema> componentSchemas,
             boolean allowNullable,
-            boolean responseSchema) {
+            boolean responseSchema,
+            boolean honorNullableKeyword) {
         if (schema == null) {
             return unsupported(SCHEMA_MISSING.message());
         }
         return normalize(schema, componentSchemas == null ? Map.of() : componentSchemas,
                 Collections.newSetFromMap(new IdentityHashMap<>()), new java.util.HashSet<>(),
-                allowNullable, responseSchema);
+                allowNullable, responseSchema, honorNullableKeyword);
     }
 
     private ApiSchema normalize(
@@ -52,9 +61,13 @@ public final class SwaggerSchemaNormalizer {
             Set<Schema<?>> ancestors,
             Set<String> ancestorReferences,
             boolean allowNullable,
-            boolean responseSchema) {
+            boolean responseSchema,
+            boolean honorNullableKeyword) {
         String reference = schema.get$ref();
         if (reference != null) {
+            if (!honorNullableKeyword && hasSemanticReferenceSibling(schema, allowNullable)) {
+                return unsupported(SCHEMA_CONSTRAINT_UNSUPPORTED.message());
+            }
             if (!reference.startsWith("#/components/schemas/")) {
                 return unsupported(SCHEMA_TYPE_UNSUPPORTED.message());
             }
@@ -66,7 +79,7 @@ public final class SwaggerSchemaNormalizer {
                 return referencedSchema == null
                         ? unsupported(SCHEMA_MISSING.message())
                         : normalize(referencedSchema, componentSchemas, ancestors, ancestorReferences,
-                                allowNullable, responseSchema);
+                                allowNullable, responseSchema, honorNullableKeyword);
             } finally {
                 ancestorReferences.remove(reference);
             }
@@ -75,7 +88,7 @@ public final class SwaggerSchemaNormalizer {
             return unsupported(RECURSIVE_SCHEMA_UNSUPPORTED.message());
         }
         try {
-            TypeResolution typeResolution = resolveType(schema);
+            TypeResolution typeResolution = resolveType(schema, honorNullableKeyword);
             List<String> warnings = unsupportedCompositionWarnings(schema);
             warnings.addAll(unsupportedSemanticWarnings(schema, allowNullable, typeResolution.nullable()));
             if (typeResolution.multipleTypesUnsupported()) {
@@ -99,13 +112,13 @@ public final class SwaggerSchemaNormalizer {
                     if (!excluded) {
                         properties.put(name, normalize(
                                 property, componentSchemas, ancestors, ancestorReferences,
-                                allowNullable, responseSchema));
+                                allowNullable, responseSchema, honorNullableKeyword));
                     }
                 });
             }
             ApiSchema items = schema.getItems() == null ? null
                     : normalize(schema.getItems(), componentSchemas, ancestors, ancestorReferences,
-                            allowNullable, responseSchema);
+                            allowNullable, responseSchema, honorNullableKeyword);
             if (type == SchemaType.ARRAY && items == null) {
                 warnings.add(SCHEMA_CONSTRAINT_UNSUPPORTED.message());
             }
@@ -198,12 +211,12 @@ public final class SwaggerSchemaNormalizer {
         return warnings;
     }
 
-    private TypeResolution resolveType(Schema<?> schema) {
+    private TypeResolution resolveType(Schema<?> schema, boolean honorNullableKeyword) {
         Set<String> declaredTypes = schema.getTypes();
         if (declaredTypes == null || declaredTypes.isEmpty()) {
             return new TypeResolution(
                     mapType(schema.getType(), schema.getProperties()),
-                    Boolean.TRUE.equals(schema.getNullable()),
+                    honorNullableKeyword && Boolean.TRUE.equals(schema.getNullable()),
                     false);
         }
 
@@ -212,7 +225,8 @@ public final class SwaggerSchemaNormalizer {
                 .filter(java.util.Objects::nonNull)
                 .map(type -> type.toLowerCase(Locale.ROOT))
                 .forEach(normalizedTypes::add);
-        boolean nullable = normalizedTypes.remove("null") || Boolean.TRUE.equals(schema.getNullable());
+        boolean nullable = normalizedTypes.remove("null")
+                || honorNullableKeyword && Boolean.TRUE.equals(schema.getNullable());
         if (normalizedTypes.size() != 1) {
             return new TypeResolution(null, nullable, true);
         }
@@ -240,6 +254,28 @@ public final class SwaggerSchemaNormalizer {
 
     private List<String> enumValues(List<?> values) {
         return values == null ? List.of() : values.stream().map(String::valueOf).toList();
+    }
+
+    private boolean honorsNullable(String openApiVersion) {
+        return openApiVersion != null && openApiVersion.startsWith("3.0.");
+    }
+
+    private boolean hasSemanticReferenceSibling(Schema<?> schema, boolean allowNullable) {
+        return schema.getType() != null
+                || schema.getTypes() != null && !schema.getTypes().isEmpty()
+                || schema.getFormat() != null
+                || schema.getEnum() != null && !schema.getEnum().isEmpty()
+                || schema.getMinimum() != null
+                || schema.getMaximum() != null
+                || schema.getMinLength() != null
+                || schema.getMaxLength() != null
+                || schema.getPattern() != null
+                || schema.getDefault() != null
+                || schema.getProperties() != null && !schema.getProperties().isEmpty()
+                || schema.getRequired() != null && !schema.getRequired().isEmpty()
+                || schema.getItems() != null
+                || !unsupportedCompositionWarnings(schema).isEmpty()
+                || !unsupportedSemanticWarnings(schema, allowNullable, false).isEmpty();
     }
 
     private ApiSchema unsupported(String warning) {

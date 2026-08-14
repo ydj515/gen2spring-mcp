@@ -1,5 +1,5 @@
 import * as api from './api.js';
-import {analyzedOperations, resetSpecificationState, updateState} from './state.js';
+import {analyzedOperations, getState, resetSpecificationState, updateState} from './state.js';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const VALID_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:yaml|yml|json)$/;
@@ -15,6 +15,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
   const fileDetails = document.querySelector('#uploaded-file-details');
   const live = document.querySelector('#upload-live-status');
   let dragDepth = 0;
+  let requestVersion = 0;
 
   const setUploadState = state => {
     surface.dataset.uploadState = state;
@@ -25,6 +26,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
   };
 
   const reset = () => {
+    requestVersion += 1;
     input.value = '';
     dragDepth = 0;
     resetSpecificationState();
@@ -35,7 +37,29 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     onReset();
   };
 
+  const complete = (analysis, version, retainedJobId = null) => {
+    if (version !== requestVersion) return;
+    const operations = analyzedOperations(analysis.operations ?? []);
+    updateState({
+      specificationId: analysis.id,
+      analysis,
+      operations,
+      selectedOperationId: operations.find(operation => operation.supported)?.operationId ?? null,
+      preview: null,
+      job: null,
+      jobId: retainedJobId
+    });
+    const analyzedName = analysis.file?.name ?? 'OpenAPI';
+    const analyzedSize = analysis.file?.byteSize;
+    fileName.textContent = analyzedName;
+    setUploadState('completed');
+    fileDetails.textContent = `${Number.isSafeInteger(analyzedSize) ? formatBytes(analyzedSize) : '저장된 파일'} · OpenAPI ${analysis.openApiVersion}`;
+    live.textContent = `${analysis.counts.total}개 endpoint 분석을 완료했습니다.`;
+    onAnalysis(analysis);
+  };
+
   const analyze = async file => {
+    const version = ++requestVersion;
     resetSpecificationState();
     onReset();
     if (!(file instanceof File) || !VALID_NAME.test(file.name) || file.name.includes('..')
@@ -51,24 +75,33 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     live.textContent = `${file.name} 파일을 분석하고 있습니다.`;
     try {
       const analysis = await api.upload(file);
-      const operations = analyzedOperations(analysis.operations ?? []);
-      updateState({
-        specificationId: analysis.id,
-        analysis,
-        operations,
-        selectedOperationId: operations.find(operation => operation.supported)?.operationId ?? null,
-        preview: null,
-        job: null,
-        jobId: null
-      });
-      setUploadState('completed');
-      fileDetails.textContent = `${formatBytes(file.size)} · OpenAPI ${analysis.openApiVersion}`;
-      live.textContent = `${analysis.counts.total}개 endpoint 분석을 완료했습니다.`;
-      onAnalysis(analysis);
+      if (version !== requestVersion) return;
+      complete(analysis, version);
     } catch (failure) {
+      if (version !== requestVersion) return;
       resetSpecificationState();
       setUploadState('error');
       live.textContent = 'OpenAPI 파일을 분석하지 못했습니다.';
+      onFailure(failure);
+    }
+  };
+
+  const load = async specificationId => {
+    const version = ++requestVersion;
+    const retainedJobId = getState().specificationId === specificationId ? getState().jobId : null;
+    resetSpecificationState();
+    onReset();
+    setUploadState('analyzing');
+    live.textContent = '저장된 OpenAPI 파일을 분석하고 있습니다.';
+    try {
+      const analysis = await api.analysis(specificationId);
+      if (version !== requestVersion) return;
+      complete(analysis, version, retainedJobId);
+    } catch (failure) {
+      if (version !== requestVersion) return;
+      resetSpecificationState();
+      setUploadState('error');
+      live.textContent = '저장된 OpenAPI 파일을 분석하지 못했습니다.';
       onFailure(failure);
     }
   };
@@ -103,7 +136,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
   });
 
   setUploadState('idle');
-  return {reset};
+  return {reset, load};
 }
 
 function formatBytes(bytes) {

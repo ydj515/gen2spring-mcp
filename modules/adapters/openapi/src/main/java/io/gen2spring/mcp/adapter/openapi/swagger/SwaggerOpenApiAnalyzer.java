@@ -121,7 +121,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         boolean supportedDialect = !preflight.jsonSchemaDialectPresent()
                 || version != null && version.startsWith("3.1.")
                 && OPENAPI_31_BASE_DIALECT.equals(preflight.jsonSchemaDialect());
-        if (!supportedVersion || !supportedDialect) {
+        if (!supportedVersion || !supportedDialect || preflight.unsupportedSchemaDialectOverride()) {
             throw GeneratorException.user(
                     SPEC_VERSION_UNSUPPORTED, SPEC_ANALYSIS, UNSUPPORTED_VERSION_MESSAGE);
         }
@@ -198,12 +198,14 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas = openApi.getComponents() == null
                 ? Map.of() : openApi.getComponents().getSchemas();
         List<ApiParameter> parameters = normalizeParameters(
-                pathParameters, operation.getParameters(), componentSchemas, issues);
-        ApiSchema requestBody = normalizeRequestBody(operation.getRequestBody(), componentSchemas, issues);
+                pathParameters, operation.getParameters(), componentSchemas, openApi.getOpenapi(), issues);
+        ApiSchema requestBody = normalizeRequestBody(
+                operation.getRequestBody(), componentSchemas, openApi.getOpenapi(), issues);
         if (method == HttpMethod.GET && operation.getRequestBody() != null) {
             issues.add(GET_REQUEST_BODY_UNSUPPORTED);
         }
-        ApiSchema successResponse = normalizeSuccessResponse(operation, componentSchemas, issues);
+        ApiSchema successResponse = normalizeSuccessResponse(
+                operation, componentSchemas, openApi.getOpenapi(), issues);
         parameters.forEach(parameter -> addSchemaIssues(issues, parameter.schema()));
         addSchemaIssues(issues, requestBody);
 
@@ -218,6 +220,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
     private ApiSchema normalizeSuccessResponse(
             Operation operation,
             Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas,
+            String openApiVersion,
             List<IssueCode> issues) {
         if (operation.getResponses() == null) {
             return null;
@@ -251,7 +254,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 issues.add(SUCCESS_MEDIA_TYPE_INFERRED);
             }
             ApiSchema schema = schemaNormalizer.normalizeResponse(
-                    selection.mediaType().getSchema(), componentSchemas);
+                    selection.mediaType().getSchema(), componentSchemas, openApiVersion);
             addSchemaIssues(issues, schema);
             schemas.add(schema);
         }
@@ -344,6 +347,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             List<Parameter> pathParameters,
             List<Parameter> operationParameters,
             Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas,
+            String openApiVersion,
             List<IssueCode> issues) {
         Map<String, Parameter> byLocationAndName = new LinkedHashMap<>();
         addParameters(byLocationAndName, pathParameters);
@@ -355,7 +359,8 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 issues.add(PARAMETER_LOCATION_UNSUPPORTED);
                 return;
             }
-            ApiSchema schema = schemaNormalizer.normalize(parameter.getSchema(), componentSchemas);
+            ApiSchema schema = schemaNormalizer.normalize(
+                    parameter.getSchema(), componentSchemas, openApiVersion);
             if (!supportsParameterSerialization(parameter, location, schema)) {
                 issues.add(PARAMETER_SERIALIZATION_UNSUPPORTED);
             }
@@ -416,6 +421,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
     private ApiSchema normalizeRequestBody(
             RequestBody requestBody,
             Map<String, io.swagger.v3.oas.models.media.Schema> componentSchemas,
+            String openApiVersion,
             List<IssueCode> issues) {
         if (requestBody == null) {
             return null;
@@ -423,9 +429,9 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         MediaType mediaType = preferredApplicationJsonMediaType(requestBody.getContent());
         if (mediaType == null || mediaType.getSchema() == null) {
             issues.add(REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED);
-            return schemaNormalizer.normalize(null, componentSchemas);
+            return schemaNormalizer.normalize(null, componentSchemas, openApiVersion);
         }
-        return schemaNormalizer.normalize(mediaType.getSchema(), componentSchemas);
+        return schemaNormalizer.normalize(mediaType.getSchema(), componentSchemas, openApiVersion);
     }
 
     private MediaType preferredApplicationJsonMediaType(Content content) {

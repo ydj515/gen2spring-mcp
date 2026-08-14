@@ -18,7 +18,7 @@
     <form id="hosted-import-form"><label for="import-url">Public HTTP(S) URL</label><input id="import-url" name="url" type="url" required><button type="submit">Queue import</button></form>
     <p id="hosted-feedback" role="status" aria-live="polite"></p>
   </section>
-  <section class="panel"><h2>Specifications</h2><ul class="hosted-list"><li th:each="spec : ${specifications}"><strong th:text="${spec.label}">Spec</strong><span th:text="${spec.sourceType}">UPLOAD</span><code th:text="${spec.id.value}">id</code></li><li th:if="${#lists.isEmpty(specifications)}">No specifications yet.</li></ul></section>
+  <section class="panel"><h2>Specifications</h2><ul class="hosted-list"><li th:each="spec : ${specifications}"><a th:href="@{/editor(specification=${spec.id.value})}"><strong th:text="${spec.label}">Spec</strong></a><span th:text="${spec.sourceType}">UPLOAD</span><code th:text="${spec.id.value}">id</code></li><li th:if="${#lists.isEmpty(specifications)}">No specifications yet.</li></ul></section>
   <section class="panel"><h2>Jobs</h2><ul class="hosted-list"><li th:each="job : ${jobs}"><a th:href="@{/jobs/{id}(id=${job.id.value})}" th:text="${job.kind + ' · ' + job.status}">Job</a><time th:text="${job.createdAt}">time</time></li><li th:if="${#lists.isEmpty(jobs)}">No jobs yet.</li></ul></section>
 </main>
 <script src="/hosted.js" defer></script>
