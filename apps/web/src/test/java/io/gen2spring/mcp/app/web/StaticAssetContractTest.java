@@ -160,6 +160,25 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void streamsJobProgressWithAPollingFallback() throws Exception {
+        String api = resource("/static/api.js");
+        String app = resource("/static/app.js");
+
+        assertTrue(api.contains("export function jobEvents(jobId"));
+        assertTrue(api.contains("new EventSource("));
+        assertTrue(api.contains("/events"));
+        // One normalization for both transports, or hosted payloads would be
+        // converted in one path and not the other.
+        assertTrue(api.contains("function normalizeJob(payload)"));
+        assertTrue(app.contains("async function followJob(jobId)"));
+        // The fallback is what keeps progress visible where a proxy blocks the stream.
+        assertTrue(app.contains("await pollJob(jobId)"));
+        // A reconnecting stream must not trigger the fallback; only a closed one.
+        assertTrue(api.contains("EventSource.CLOSED"));
+        assertFalse(api.contains("innerHTML"));
+    }
+
+    @Test
     void assignsUploadAndEndpointSelectionToDedicatedStateOwners() throws Exception {
         String app = resource("/static/app.js");
         String api = resource("/static/api.js");

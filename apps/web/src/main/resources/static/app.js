@@ -79,7 +79,7 @@ async function resumeRetainedJob() {
   if (!jobId) return;
   ui['delete-job-button'].disabled = true;
   try {
-    await pollJob(jobId);
+    await followJob(jobId);
   } catch (failure) {
     if (failure?.code === 'JOB_NOT_FOUND') updateState({jobId: null, job: null});
     else ui['delete-job-button'].disabled = false;
@@ -131,11 +131,45 @@ async function startGeneration() {
     updateState({jobId: accepted.id, job: accepted});
     ui['delete-job-button'].disabled = !api.hostedMode;
     wizard.goToStep(5);
-    await pollJob(accepted.id);
+    await followJob(accepted.id);
   } catch (failure) {
     showFailure(failure);
     ui['generate-button'].disabled = false;
   }
+}
+
+const FIRST_EVENT_DEADLINE_MILLIS = 5000;
+
+// Prefers the event stream and hands off to polling when it cannot be
+// established or cannot recover. Falling back is one-way for the life of a job,
+// so a flapping stream cannot thrash between transports.
+async function followJob(jobId) {
+  const streamed = await new Promise(resolve => {
+    let settled = false;
+    const settle = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      stream.close();
+      resolve(value);
+    };
+    const stream = api.jobEvents(jobId, {
+      onSnapshot: snapshot => {
+        // The job was deleted or replaced; stop without handing off.
+        if (getState().jobId !== jobId) return settle(true);
+        clearTimeout(deadline);
+        updateState({job: snapshot});
+        renderJob(snapshot);
+        ui['delete-job-button'].disabled = TERMINAL_STATES.includes(snapshot.state)
+          ? api.hostedMode : !api.hostedMode;
+      },
+      onDone: () => settle(true),
+      onFailure: () => settle(false)
+    });
+    const deadline = setTimeout(() => settle(false), FIRST_EVENT_DEADLINE_MILLIS);
+  });
+  if (streamed) return;
+  await pollJob(jobId);
 }
 
 async function pollJob(jobId) {
