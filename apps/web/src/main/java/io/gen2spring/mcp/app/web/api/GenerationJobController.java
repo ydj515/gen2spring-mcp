@@ -1,9 +1,15 @@
 package io.gen2spring.mcp.app.web.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.gen2spring.mcp.app.web.job.GenerationJobManager;
+import io.gen2spring.mcp.app.web.job.JobEventStream;
+import io.gen2spring.mcp.app.web.job.JobSnapshot;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.util.EnumSet;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -13,15 +19,23 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
         name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 final class GenerationJobController {
-    private final JobHandler jobs;
+    private static final Set<JobSnapshot.State> TERMINAL = EnumSet.of(
+            JobSnapshot.State.VALIDATED, JobSnapshot.State.UNVERIFIED, JobSnapshot.State.FAILED);
 
-    GenerationJobController(JobHandler jobs) {
+    private final JobHandler jobs;
+    private final GenerationJobManager manager;
+    private final JobEventStream streams;
+
+    GenerationJobController(JobHandler jobs, GenerationJobManager manager, JobEventStream streams) {
         this.jobs = Objects.requireNonNull(jobs, "jobs");
+        this.manager = Objects.requireNonNull(manager, "manager");
+        this.streams = Objects.requireNonNull(streams, "streams");
     }
 
     @PostMapping(
@@ -39,6 +53,27 @@ final class GenerationJobController {
     @GetMapping("/api/jobs/{id}")
     JsonNode status(@PathVariable String id) {
         return jobs.status(WebApiRoutes.requireIdentifier(id));
+    }
+
+    @GetMapping(path = "/api/jobs/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    SseEmitter events(@PathVariable String id) {
+        String jobId = WebApiRoutes.requireIdentifier(id);
+        // Resolving up front makes an unknown id fail as the ordinary not-found
+        // response instead of opening a stream that would die on its first read.
+        GenerationJobManager.VersionedSnapshot initial = manager.current(jobId);
+        return streams.open((since, timeout) -> {
+            if (since < initial.version()) {
+                return Optional.of(change(initial));
+            }
+            return manager.awaitChange(jobId, since, timeout).map(this::change);
+        });
+    }
+
+    private JobEventStream.Change change(GenerationJobManager.VersionedSnapshot versioned) {
+        return new JobEventStream.Change(
+                versioned.version(),
+                jobs.snapshotPayload(versioned.snapshot()),
+                TERMINAL.contains(versioned.snapshot().state()));
     }
 
     @DeleteMapping("/api/jobs/{id}")

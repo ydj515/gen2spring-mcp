@@ -366,8 +366,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -383,7 +383,10 @@ public final class JobEventStream implements AutoCloseable {
 
     public JobEventStream(int maximumStreams) {
         this.workers = new ThreadPoolExecutor(
-                0, maximumStreams, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1),
+                // SynchronousQueue, not a bounded queue. Any queue capacity would
+                // park an over-limit stream behind a running one, sending no events
+                // while the client waits out its deadline instead of falling back.
+                0, maximumStreams, 30, TimeUnit.SECONDS, new SynchronousQueue<>(),
                 runnable -> {
                     Thread thread = new Thread(runnable, "job-event-stream");
                     thread.setDaemon(true);
