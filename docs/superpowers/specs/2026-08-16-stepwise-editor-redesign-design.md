@@ -34,7 +34,7 @@ The current palette is an ad hoc set of literal hex values. Roughly forty distin
 
 ## 4. Non-goals
 
-- Changing the progress transport. Polling remains; no `SseEmitter` endpoint is introduced.
+- Changing the progress transport. Polling remains; no `SseEmitter` endpoint is introduced. **Superseded** by `docs/superpowers/specs/2026-08-16-job-progress-sse-design.md`, which replaces the transport with server-sent events and keeps polling as a fallback. Everything else in this design, including the progress presentation and the failure ratio rule, still stands.
 - Changing `GenerationProgress.STAGES`, the pipeline, the job manager, or any hosted job contract.
 - Changing the analysis contract, the preview contract, or the generation configuration payload.
 - Adding a dark theme. The token structure must accommodate one later without restructuring.
