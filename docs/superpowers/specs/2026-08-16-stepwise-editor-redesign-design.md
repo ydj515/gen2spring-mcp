@@ -77,11 +77,13 @@ The `generation-summary` aside moves out of step 3 and up to the wizard shell. I
 
 `state.js` gains `currentStep`, an integer from 1 to 4, persisted to `sessionStorage` under `gen2spring.currentStep` alongside the existing specification and job keys. On load the restored step is clamped to the highest step the restored state actually satisfies, so a reload can never land on an unreachable step.
 
+Clamping must run against in-memory state, not persisted keys. Local mode exposes no analysis route — `/api/specifications/{id}/analysis` is registered only by the hosted controller — so `resumeRetainedSpecification()` returns early when `api.hostedMode` is false and the retained `specificationId` names a specification whose operations were never re-fetched. A gate that trusted that id would place the user on an empty step 2 with no way forward. Gate 1 therefore reads `state.analysis`, which only a completed analysis populates. In local mode a reload consequently returns to step 1, matching the idle upload surface the user actually sees.
+
 ### 7.2 Advance conditions
 
 | Transition | Condition |
 | --- | --- |
-| 1 to 2 | `state.specificationId` is set, meaning analysis completed |
+| 1 to 2 | `state.analysis` is populated |
 | 2 to 3 | At least one operation has `enabled === true` |
 | 3 to 4 | All of `group-id`, `artifact-id`, `package-name`, `provider-name`, `domain-name`, `target-profile` are non-empty |
 

@@ -9,16 +9,27 @@ import org.junit.jupiter.api.Test;
 
 class StaticAssetContractTest {
     @Test
-    void exposesTheAccessibleThreeStepEndpointEditor() throws Exception {
+    void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
         String index = resource("/templates/editor.html");
         String styles = resource("/static/styles.css");
 
         assertTrue(index.contains("<html lang=\"ko\""));
-        assertTrue(index.contains("<h2 id=\"specification-title\">1. OpenAPI 파일</h2>"));
-        assertTrue(index.contains("<h2 id=\"operations-title\">2. API endpoint 선택</h2>"));
-        assertTrue(index.contains("<h2 id=\"generation-title\">3. 생성 설정</h2>"));
-        assertFalse(index.contains("<h2>4."));
+        assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">1. OpenAPI 파일</h2>"));
+        assertTrue(index.contains("<h2 id=\"operations-title\" tabindex=\"-1\">2. API endpoint 선택</h2>"));
+        assertTrue(index.contains("<h2 id=\"generation-title\" tabindex=\"-1\">3. 생성 설정</h2>"));
+        assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">4. 생성 및 결과</h2>"));
         assertFalse(index.contains("<h2>5."));
+
+        assertTrue(index.contains("class=\"wizard-steps\""));
+        assertTrue(index.contains("aria-current=\"step\""));
+        assertTrue(index.contains("data-step=\"1\""));
+        assertTrue(index.contains("data-step=\"4\""));
+        assertTrue(index.contains("class=\"workflow-step wizard-panel\""));
+        assertTrue(index.contains("id=\"wizard-live\""));
+        assertTrue(index.contains("id=\"step-back-3\""));
+        assertTrue(index.contains("id=\"step-next-3\""));
+        assertTrue(index.contains("id=\"step-hint-3\""));
+        assertTrue(index.contains("tabindex=\"-1\""));
         assertTrue(index.contains("id=\"specification-file\" class=\"visually-hidden\" type=\"file\" accept=\".yaml,.yml,.json\""));
         assertTrue(index.contains("id=\"upload-dropzone\""));
         assertTrue(index.contains("data-upload-state=\"idle\""));
@@ -69,6 +80,33 @@ class StaticAssetContractTest {
         assertTrue(styles.contains(".generation-layout { grid-template-columns:"));
         assertTrue(styles.contains(".generation-summary { position: static; }"));
         assertTrue(styles.contains(".selected-tool-summary-content { display: grid;"));
+    }
+
+    @Test
+    void ownsStepNavigationInADedicatedWizardModule() throws Exception {
+        String wizard = resource("/static/wizard.js");
+        String state = resource("/static/state.js");
+        String app = resource("/static/app.js");
+
+        assertTrue(wizard.contains("export function canAdvance(step, state)"));
+        assertTrue(wizard.contains("export function initializeWizard"));
+        // Local mode has no analysis route, so a retained specificationId can name
+        // a specification whose operations were never re-fetched. Gate 1 must read
+        // the in-memory analysis or a reload strands the user on an empty step 2.
+        assertTrue(wizard.contains("if (step === 1) return Boolean(state.analysis);"));
+        assertFalse(wizard.contains("Boolean(state.specificationId)"));
+        assertTrue(wizard.contains("hashchange"));
+        assertTrue(wizard.contains("aria-current"));
+        assertTrue(wizard.contains("focus()"));
+        // A disabled next button must always name what is blocking it.
+        assertTrue(wizard.contains("export function blockingReason(step, state)"));
+        assertTrue(wizard.contains("aria-invalid"));
+        assertTrue(wizard.contains("항목을 채워 주세요."));
+        assertTrue(state.contains("currentStep"));
+        assertTrue(state.contains("gen2spring.currentStep"));
+        assertTrue(app.contains("initializeWizard"));
+        assertTrue(app.contains("syncGate"));
+        assertFalse(wizard.contains("innerHTML"));
     }
 
     @Test

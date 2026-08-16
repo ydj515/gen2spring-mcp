@@ -3,6 +3,7 @@ import {getState, updateState} from './state.js';
 import {buildConfiguration, initializeEditor, renderOperations, selectOperation} from './editor.js';
 import {initializeUpload} from './upload.js';
 import {initializeOperations} from './operations.js';
+import {initializeWizard} from './wizard.js';
 
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
@@ -14,13 +15,17 @@ const ui = Object.fromEntries([
 ].map(id => [id, byId(id)]));
 const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
 
+const wizard = initializeWizard();
 initializeEditor(invalidatePreview);
 initializeOperations({
   onSelectionChange: () => {
     renderOperations();
     invalidatePreview();
   },
-  onEdit: selectOperation
+  onEdit: operationId => {
+    wizard.goToStep(3);
+    selectOperation(operationId);
+  }
 });
 const upload = initializeUpload({
   onAnalysis: analysis => {
@@ -28,6 +33,9 @@ const upload = initializeUpload({
     renderAnalysis(analysis);
     renderOperations();
     invalidatePreview();
+    // A retained specification replays this callback on resume; advancing
+    // unconditionally would discard the restored step.
+    if (getState().currentStep === 1) wizard.goToStep(2);
   },
   onReset: resetSpecificationPresentation,
   onFailure: showFailure
@@ -42,7 +50,7 @@ for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'd
 }
 
 loadProfiles();
-resumeRetainedState();
+resumeRetainedState().then(() => wizard.syncGate());
 renderGenerationSummary();
 
 async function loadProfiles() {
@@ -173,6 +181,7 @@ function invalidatePreview() {
   ui['preview-output'].replaceChildren();
   renderGenerationSummary();
   updatePreviewGate();
+  wizard.syncGate();
 }
 
 function describeProfile() {

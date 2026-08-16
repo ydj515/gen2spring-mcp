@@ -1,9 +1,11 @@
 const SPECIFICATION_KEY = 'gen2spring.specificationId';
 const JOB_KEY = 'gen2spring.jobId';
+const STEP_KEY = 'gen2spring.currentStep';
 
 let state = Object.freeze({
   specificationId: sessionStorage.getItem(SPECIFICATION_KEY),
   jobId: sessionStorage.getItem(JOB_KEY),
+  currentStep: Number(sessionStorage.getItem(STEP_KEY)) || 1,
   analysis: null,
   operations: [],
   selectedOperationId: null,
@@ -26,6 +28,9 @@ export function updateState(patch) {
     if (patch.jobId) sessionStorage.setItem(JOB_KEY, patch.jobId);
     else sessionStorage.removeItem(JOB_KEY);
   }
+  if (Object.hasOwn(patch, 'currentStep')) {
+    sessionStorage.setItem(STEP_KEY, String(patch.currentStep));
+  }
   listeners.forEach(listener => listener(state));
   return state;
 }
@@ -39,6 +44,7 @@ export function resetSpecificationState() {
   return updateState({
     specificationId: null,
     jobId: null,
+    currentStep: 1,
     analysis: null,
     operations: [],
     selectedOperationId: null,

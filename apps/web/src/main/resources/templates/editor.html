@@ -20,21 +20,23 @@
     <a class="header-link" href="/" th:if="${appMode == 'hosted'}">작업 내역</a>
   </header>
   <nav aria-label="생성 단계">
-    <ol class="step-nav">
-      <li><a href="#specification-step"><span>1</span> OpenAPI 파일</a></li>
-      <li><a href="#operations-step"><span>2</span> Endpoint 선택</a></li>
-      <li><a href="#generation-step"><span>3</span> 생성 설정</a></li>
+    <ol class="wizard-steps" id="wizard-steps">
+      <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark">1</span> OpenAPI 파일</button></li>
+      <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark">2</span> Endpoint 선택</button></li>
+      <li><button type="button" class="wizard-chip" data-step="3" disabled><span class="wizard-chip-mark">3</span> 생성 설정</button></li>
+      <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark">4</span> 생성 및 결과</button></li>
     </ol>
   </nav>
+  <p id="wizard-live" class="visually-hidden" role="status" aria-live="polite"></p>
   <main>
     <div id="error-summary" class="error-summary" role="alert" aria-live="assertive" tabindex="-1" hidden>
       <h2>입력 내용을 확인해 주세요</h2>
       <p id="error-message"></p>
     </div>
 
-    <section id="specification-step" class="workflow-step" aria-labelledby="specification-title">
+    <section id="specification-step" class="workflow-step wizard-panel" data-step="1" aria-labelledby="specification-title">
       <div class="section-heading">
-        <div><p class="step-kicker">STEP 1</p><h2 id="specification-title">1. OpenAPI 파일</h2></div>
+        <div><p class="step-kicker">STEP 1</p><h2 id="specification-title" tabindex="-1">1. OpenAPI 파일</h2></div>
         <p>YAML, YML, JSON · 최대 10MB</p>
       </div>
       <div id="upload-surface" class="upload-surface" data-upload-state="idle">
@@ -57,11 +59,15 @@
       </div>
       <p id="upload-live-status" class="status" role="status" aria-live="polite">분석할 OpenAPI 파일을 선택해 주세요.</p>
       <dl id="analysis-summary" class="summary-grid" aria-label="분석 결과"></dl>
+      <div class="wizard-nav">
+        <p id="step-hint-1" class="wizard-hint" role="status" aria-live="polite"></p>
+        <button id="step-next-1" type="button" disabled>다음: Endpoint 선택</button>
+      </div>
     </section>
 
-    <section id="operations-step" class="workflow-step" aria-labelledby="operations-title">
+    <section id="operations-step" class="workflow-step wizard-panel" data-step="2" aria-labelledby="operations-title" hidden>
       <div class="section-heading endpoint-heading">
-        <div><p class="step-kicker">STEP 2</p><h2 id="operations-title">2. API endpoint 선택</h2></div>
+        <div><p class="step-kicker">STEP 2</p><h2 id="operations-title" tabindex="-1">2. API endpoint 선택</h2></div>
         <label class="select-all" for="select-all-operations">
           <input id="select-all-operations" type="checkbox" disabled> 선택 가능한 항목 전체
         </label>
@@ -87,11 +93,16 @@
         <ul id="operation-list" class="operation-list"></ul>
         <p id="operation-empty" class="empty-state" hidden>검색 조건에 맞는 endpoint가 없습니다.</p>
       </fieldset>
+      <div class="wizard-nav">
+        <button id="step-back-2" class="secondary" type="button">이전</button>
+        <p id="step-hint-2" class="wizard-hint" role="status" aria-live="polite"></p>
+        <button id="step-next-2" type="button" disabled>다음: 생성 설정</button>
+      </div>
     </section>
 
-    <section id="generation-step" class="workflow-step" aria-labelledby="generation-title">
+    <section id="generation-step" class="workflow-step wizard-panel" data-step="3" aria-labelledby="generation-title" hidden>
       <div class="section-heading">
-        <div><p class="step-kicker">STEP 3</p><h2 id="generation-title">3. 생성 설정</h2></div>
+        <div><p class="step-kicker">STEP 3</p><h2 id="generation-title" tabindex="-1">3. 생성 설정</h2></div>
         <p>프로젝트와 Tool 세부 설정을 확인한 뒤 미리보기합니다.</p>
       </div>
 
@@ -163,7 +174,22 @@
             </fieldset>
           </div>
 
-          <div class="preview-section">
+        </div>
+      </div>
+      <div class="wizard-nav">
+        <button id="step-back-3" class="secondary" type="button">이전</button>
+        <p id="step-hint-3" class="wizard-hint" role="status" aria-live="polite"></p>
+        <button id="step-next-3" type="button" disabled>다음: 생성 및 결과</button>
+      </div>
+    </section>
+
+    <section id="generation-run-step" class="workflow-step wizard-panel" data-step="4" aria-labelledby="generation-run-title" hidden>
+      <div class="section-heading">
+        <div><p class="step-kicker">STEP 4</p><h2 id="generation-run-title" tabindex="-1">4. 생성 및 결과</h2></div>
+        <p>대표 호출로 설정을 검증한 뒤 프로젝트를 생성합니다.</p>
+      </div>
+
+      <div class="preview-section">
         <h3>대표 호출과 미리보기</h3>
         <div class="field-grid">
           <div class="field"><label for="validation-operation">Representative operation</label><select id="validation-operation"></select></div>
@@ -179,21 +205,23 @@
         <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
         <ol id="progress-list" class="progress-list"></ol>
         <div id="downloads" class="downloads"></div>
-          </div>
-        </div>
-        <aside id="generation-summary" class="generation-summary" aria-labelledby="generation-summary-title">
-          <h3 id="generation-summary-title">생성 요약</h3>
-          <dl>
-            <div><dt>OpenAPI</dt><dd id="summary-version">—</dd></div>
-            <div><dt>선택 Tool</dt><dd id="summary-selected">0</dd></div>
-            <div><dt>제외 endpoint</dt><dd id="summary-excluded">0</dd></div>
-            <div><dt>경고</dt><dd id="summary-warnings">0</dd></div>
-            <div><dt>프로필</dt><dd id="summary-profile">—</dd></div>
-            <div><dt>대표 검증</dt><dd id="summary-validation">미선택</dd></div>
-          </dl>
-        </aside>
+      </div>
+      <div class="wizard-nav">
+        <button id="step-back-4" class="secondary" type="button">이전</button>
       </div>
     </section>
+
+    <aside id="generation-summary" class="generation-summary" aria-labelledby="generation-summary-title" hidden>
+      <h3 id="generation-summary-title">생성 요약</h3>
+      <dl>
+        <div><dt>OpenAPI</dt><dd id="summary-version">—</dd></div>
+        <div><dt>선택 Tool</dt><dd id="summary-selected">0</dd></div>
+        <div><dt>제외 endpoint</dt><dd id="summary-excluded">0</dd></div>
+        <div><dt>경고</dt><dd id="summary-warnings">0</dd></div>
+        <div><dt>프로필</dt><dd id="summary-profile">—</dd></div>
+        <div><dt>대표 검증</dt><dd id="summary-validation">미선택</dd></div>
+      </dl>
+    </aside>
   </main>
   <script type="module" src="/app.js"></script>
 </body>
