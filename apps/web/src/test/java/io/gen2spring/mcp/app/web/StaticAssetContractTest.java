@@ -110,6 +110,38 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void summarizesGenerationProgressWithoutLosingStageDetail() throws Exception {
+        String index = resource("/templates/editor.html");
+        String progress = resource("/static/progress.js");
+        String app = resource("/static/app.js");
+        String styles = resource("/static/styles.css");
+
+        assertTrue(index.contains("id=\"job-progress\""));
+        assertTrue(index.contains("id=\"job-stage-label\""));
+        assertTrue(index.contains("id=\"job-progress-value\""));
+        assertTrue(index.contains("id=\"job-progress-fill\""));
+        assertTrue(index.contains("id=\"job-progress-details\""));
+        assertTrue(index.contains("id=\"progress-list\""));
+        assertTrue(index.contains("<summary>상세 보기</summary>"));
+
+        assertTrue(progress.contains("export function renderProgress(snapshot)"));
+        assertTrue(progress.contains("OpenAPI 문서 분석"));
+        assertTrue(progress.contains("Spring 컨텍스트 기동"));
+        assertTrue(progress.contains("대표 Tool 호출 검증"));
+        assertTrue(progress.contains("산출물 패키징"));
+        assertTrue(progress.contains("'SKIPPED'"));
+        assertTrue(app.contains("renderProgress(snapshot)"));
+        assertTrue(styles.contains(".progress-fill"));
+        // A failure marks every later stage SKIPPED. Counting the full list would
+        // render a build that died at stage 3 as 88% complete.
+        assertTrue(progress.contains("const counted = failed ? stages.slice(0, failedIndex) : stages;"));
+        assertTrue(styles.contains(".progress-fill[data-state=\"failed\"] { background: var(--danger); }"));
+
+        assertFalse(progress.contains("innerHTML"));
+        assertFalse(progress.contains("EventSource"));
+    }
+
+    @Test
     void assignsUploadAndEndpointSelectionToDedicatedStateOwners() throws Exception {
         String app = resource("/static/app.js");
         String api = resource("/static/api.js");

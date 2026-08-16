@@ -203,9 +203,10 @@ An unrecognized stage identifier falls back to the raw constant rather than thro
 
 ### 9.3 Behavior
 
-- Completion ratio is `(SUCCESS + SKIPPED) / STAGES.length`.
+- Completion ratio is `(SUCCESS + SKIPPED) / STAGES.length`, counted over the whole list on a clean run.
+- On a failure the ratio counts only the stages **before** the failed one. A failure marks every later stage `SKIPPED`, so counting the full list would render a build that died at stage 3 as 88% complete. The bar must not overstate a failed run.
 - The status line names the first `RUNNING` stage, or the terminal state when none is running.
-- On a `FAILED` stage the disclosure opens automatically and the failed row renders in `--danger-text`.
+- On a `FAILED` stage the disclosure opens automatically, the failed row renders in `--danger-text`, and the bar fill switches to `--danger` via `data-state="failed"`.
 - The region stays `hidden` until a job starts and is cleared by the existing reset paths.
 
 `app.js` delegates to `progress.js` from `renderJob()`. `pollJob()`, `TERMINAL_STATES`, and every job API call are untouched.

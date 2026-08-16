@@ -4,12 +4,13 @@ import {buildConfiguration, initializeEditor, renderOperations, selectOperation}
 import {initializeUpload} from './upload.js';
 import {initializeOperations} from './operations.js';
 import {initializeWizard} from './wizard.js';
+import {clearProgress, renderProgress} from './progress.js';
 
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
   'error-summary', 'error-message', 'analysis-summary', 'target-profile', 'profile-description',
   'preview-button', 'preview-status',
-  'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'progress-list', 'downloads',
+  'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'downloads',
   'summary-version', 'summary-selected', 'summary-excluded', 'summary-warnings',
   'summary-profile', 'summary-validation', 'validation-operation'
 ].map(id => [id, byId(id)]));
@@ -165,7 +166,7 @@ async function removeJob() {
     }
     updateState({jobId: null, job: null});
     ui['job-status'].textContent = 'Generation job deleted.';
-    ui['progress-list'].replaceChildren();
+    clearProgress();
     ui['downloads'].replaceChildren();
     ui['delete-job-button'].disabled = true;
     ui['generate-button'].disabled = !getState().preview;
@@ -214,7 +215,7 @@ function resetSpecificationPresentation() {
   clearFailure();
   ui['analysis-summary'].replaceChildren();
   ui['preview-output'].replaceChildren();
-  ui['progress-list'].replaceChildren();
+  clearProgress();
   ui['downloads'].replaceChildren();
   ui['job-status'].textContent = '아직 생성 작업을 시작하지 않았습니다.';
   ui['delete-job-button'].disabled = true;
@@ -271,12 +272,7 @@ function renderJob(snapshot) {
   ui['job-status'].textContent = snapshot.error
     ? `${snapshot.state}: ${snapshot.error.message}`
     : `${snapshot.state}${snapshot.currentStage ? ` — ${snapshot.currentStage}` : ''}`;
-  ui['progress-list'].replaceChildren(...snapshot.stages.map(stage => {
-    const item = document.createElement('li');
-    item.dataset.status = stage.status;
-    item.textContent = `${stage.stage}: ${stage.status}`;
-    return item;
-  }));
+  renderProgress(snapshot);
   ui['downloads'].replaceChildren(...snapshot.downloads.map(artifact => {
     const name = typeof artifact === 'string' ? artifact : artifact.name;
     const button = document.createElement('button');

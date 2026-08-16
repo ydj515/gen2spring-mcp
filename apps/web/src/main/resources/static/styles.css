@@ -329,9 +329,20 @@ legend { font-weight: 750; }
 .preview-output, .downloads { display: grid; gap: .75rem; margin-top: 1rem; }
 .tool-card { padding: .8rem; border: 1px solid var(--line); border-radius: .5rem; }
 .tool-card pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.progress-list { display: grid; gap: .4rem; padding-left: 1.5rem; }
+.job-progress { display: grid; gap: .6rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+.job-progress[hidden] { display: none; }
+.progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; }
+.progress-stage { margin: 0; font-weight: 650; }
+.progress-count { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
+.progress-track { height: 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.progress-fill { width: 0; height: 100%; border-radius: 999px; background: var(--primary); transition: width .4s ease; }
+.progress-fill[data-state="failed"] { background: var(--danger); }
+.progress-details > summary { display: flex; align-items: center; min-height: 44px; color: var(--muted); font-weight: 650; cursor: pointer; }
+.progress-list { display: grid; gap: .4rem; margin: 0; padding-left: 1.5rem; }
 .progress-list li[data-status="FAILED"] { color: var(--danger-text); font-weight: 700; }
 .progress-list li[data-status="SUCCESS"] { color: var(--success-text); }
+.progress-list li[data-status="SKIPPED"] { color: var(--soft); }
+@media (prefers-reduced-motion: reduce) { .progress-fill { transition: none; } }
 .downloads button { width: fit-content; }
 
 @media (max-width: 720px) {

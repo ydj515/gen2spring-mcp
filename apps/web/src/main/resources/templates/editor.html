@@ -203,7 +203,17 @@
         <p id="preview-status" class="status" aria-live="polite">생성 전 미리보기가 필요합니다.</p>
         <div id="preview-output" class="preview-output"></div>
         <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
-        <ol id="progress-list" class="progress-list"></ol>
+        <div id="job-progress" class="job-progress" hidden>
+          <div class="progress-head">
+            <p id="job-stage-label" class="progress-stage"></p>
+            <span id="job-progress-value" class="progress-count"></span>
+          </div>
+          <div class="progress-track"><div id="job-progress-fill" class="progress-fill"></div></div>
+          <details id="job-progress-details" class="progress-details">
+            <summary>상세 보기</summary>
+            <ol id="progress-list" class="progress-list"></ol>
+          </details>
+        </div>
         <div id="downloads" class="downloads"></div>
       </div>
       <div class="wizard-nav">
