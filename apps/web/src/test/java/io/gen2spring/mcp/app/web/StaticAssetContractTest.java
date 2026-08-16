@@ -45,7 +45,18 @@ class StaticAssetContractTest {
         assertTrue(index.contains("name=\"csrf-token\""));
         assertTrue(index.contains("name=\"csrf-header\""));
 
-        assertTrue(styles.contains("--success: #148f77"));
+        assertTrue(styles.contains("--primary: #4f46e5"));
+        assertTrue(styles.contains("--surface: #ffffff"));
+        assertTrue(styles.contains("--line: #e2e8f0"));
+        assertTrue(styles.contains("--text: #0f172a"));
+        assertTrue(styles.contains("--muted: #475569"));
+        assertTrue(styles.contains("--success: #10b981"));
+        assertTrue(styles.contains("--success-text: #047857"));
+        assertTrue(styles.contains("--warning-text: #92400e"));
+        assertTrue(styles.contains("--danger-text: #b91c1c"));
+        assertTrue(styles.contains("color: var(--success-text)"));
+        assertFalse(styles.contains("#148f77"));
+        assertFalse(styles.contains("#2455a6"));
         assertTrue(styles.contains("[data-upload-state=\"drag-over\"]"));
         assertTrue(styles.contains("min-height: 6.5rem"));
         assertTrue(styles.contains(".upload-dropzone[hidden] { display: none; }"));
