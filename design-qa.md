@@ -69,9 +69,25 @@ The fill-only tokens measure `--success` 2.54:1, `--warning` 2.15:1, and `--dang
 - `#job-status` rendered raw internal constants directly above the progress bar, producing a second untranslated line reading `RUNNING — COMPILE`. The stage now belongs to the bar alone, and the status line carries a Korean job state drawn from a map covering both vocabularies: local `VALIDATED` and `UNVERIFIED`, hosted `SUCCEEDED` and `CANCELLED`.
 - `removeJob` wrote `Cancellation requested.` and `Generation job deleted.` into that same status line in English. Both are now Korean.
 
+## Progress transport
+
+Progress moved from browser polling to a server-sent event stream at `GET /api/jobs/{id}/events`, with the polling loop retained as an automatic fallback. See `docs/superpowers/specs/2026-08-16-job-progress-sse-design.md`.
+
+- One full local generation was observed over the stream. The instrumented page counted **one** `/events` request and **zero** `/api/jobs/{id}` polls, finishing at 8/8 with three downloads.
+- The same generation with the stream forced to close before its first event fell back to polling, issued **ten** polls, and finished at 8/8 with the same three downloads. Both transports drive the same progress bar.
+- Event timing was read directly from the stream: stages arrived as they happened, including three transitions inside 200 ms of each other, which a 500 ms poll would have collapsed.
+- A stream opened against an already terminal job sends its snapshot immediately and then `done`, so a late subscriber is never blank.
+- An unknown but well-formed job id returns a plain JSON 404 rather than opening a stream; a malformed id returns 404.
+- Twelve streams were opened and abandoned against a pool capped at eight; a fresh stream still served immediately afterwards and no `job-event-stream` threads remained, so client disconnects release their thread.
+- The proxy configuration was exercised against a real nginx fronting an upstream that emits one event per second, using the events block extracted verbatim from `deploy/hosted/proxy/nginx.conf`. Events arrived one second apart. With `proxy_buffering` turned back on, all six arrived together at 5.01 s — no error, only broken timing, which is why this needed a running proxy rather than a string assertion.
+- `nginx -t` accepts the deployment file. It rejected the first version: an unquoted `{36}` in the location regex reads as a block opener, giving `unknown directive "36}/events$"`. The contract test had passed on that version because the literal string it asserted was present.
+
+Heartbeats are covered by `JobEventStreamTest.emitsAHeartbeatWhenTheFeedTimesOut` rather than by observation; the interval is 15 seconds and a local generation completes in about 9, so no idle stream arises to watch.
+
 ## Not covered
 
 - Hosted mode was not exercised. `dashboard.html` and `job-detail.html` inherit the new tokens without markup changes, but the hosted resume path, which does re-fetch the analysis, was verified only by reading the code.
+- The hosted event stream was not run end to end. Exercising it needs a docker compose stack with PostgreSQL, MinIO, the worker, and nginx. `HostedControllerContractTest` covers its ownership refusal and its terminal-status handling, and the proxy block was verified against a real nginx as recorded above, but no hosted job has actually streamed its progress through the full deployment. The 400 ms re-read interval in `HostedJobEventFeed` is therefore an untested latency choice.
 - No automated browser test covers the wizard. This repository has no JavaScript test runner and no headless browser; `StaticAssetContractTest` pins structure and the accessibility decisions as source text, and everything above was checked by hand.
 
 final result: passed
