@@ -58,6 +58,7 @@ GEN2SPRING_UI_PORT=49500 mise exec -- ./gradlew :apps:web:bootRun --quiet --no-d
 | `apps/web/.../job/JobEventStream.java` | SSE mechanics, `ChangeFeed`, `Change` | 2 |
 | `apps/web/.../api/JobHandler.java` | Expose snapshot serialization | 2 |
 | `apps/web/.../api/GenerationJobController.java` | Local events endpoint | 2 |
+| `apps/web/.../config/JobEventStreamConfiguration.java` | Mode-neutral stream bean | 2 |
 | `apps/web/src/main/resources/application.yml` | Async request timeout | 2 |
 | `apps/web/.../hosted/HostedJobEventFeed.java` | Hosted read-loop feed | 3 |
 | `apps/web/.../hosted/HostedJobController.java` | Hosted events endpoint | 3 |
@@ -492,14 +493,29 @@ In `JobHandler`, change `private ObjectNode snapshot(JobSnapshot snapshot)` to `
 
 - [ ] **Step 5: Add the local endpoint**
 
-Register the stream as a bean. In `WebRuntimeConfiguration`:
+Register the stream as a bean. It must NOT go in `WebRuntimeConfiguration`, which carries
+`@ConditionalOnProperty(havingValue = "local")` and would leave the hosted controller in
+Task 3 with nothing to inject. Create a mode-neutral
+`apps/web/src/main/java/io/gen2spring/mcp/app/web/config/JobEventStreamConfiguration.java`:
 
 ```java
-@Bean
-JobEventStream jobEventStream() {
-    return new JobEventStream(8);
+package io.gen2spring.mcp.app.web.config;
+
+import io.gen2spring.mcp.app.web.job.JobEventStream;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+class JobEventStreamConfiguration {
+    @Bean(destroyMethod = "close")
+    JobEventStream jobEventStream() {
+        return new JobEventStream(8);
+    }
 }
 ```
+
+`WebMvcConfiguration` is the only existing mode-neutral configuration, but it is a
+`WebMvcConfigurer` for MVC concerns; a stream thread pool does not belong there.
 
 In `GenerationJobController`, inject `GenerationJobManager jobs`, `JobHandler handler`, and `JobEventStream streams`, then add:
 
@@ -565,7 +581,7 @@ Expected: an immediate `event: snapshot`, further `snapshot` events as stages ad
 - [ ] **Step 9: Commit**
 
 ```bash
-git add apps/web/src/main/java/io/gen2spring/mcp/app/web/job/JobEventStream.java apps/web/src/test/java/io/gen2spring/mcp/app/web/job/JobEventStreamTest.java apps/web/src/main/java/io/gen2spring/mcp/app/web/api/JobHandler.java apps/web/src/main/java/io/gen2spring/mcp/app/web/api/GenerationJobController.java apps/web/src/main/java/io/gen2spring/mcp/app/web/config/WebRuntimeConfiguration.java apps/web/src/main/resources/application.yml
+git add apps/web/src/main/java/io/gen2spring/mcp/app/web/job/JobEventStream.java apps/web/src/test/java/io/gen2spring/mcp/app/web/job/JobEventStreamTest.java apps/web/src/main/java/io/gen2spring/mcp/app/web/api/JobHandler.java apps/web/src/main/java/io/gen2spring/mcp/app/web/api/GenerationJobController.java apps/web/src/main/java/io/gen2spring/mcp/app/web/config/JobEventStreamConfiguration.java apps/web/src/main/resources/application.yml
 git commit -m "feat(web): stream local generation progress over server-sent events"
 ```
 

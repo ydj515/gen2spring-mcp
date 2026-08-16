@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -148,6 +149,47 @@ public final class GenerationJobManager implements AutoCloseable {
         }
     }
 
+    /** A snapshot paired with the change version it was taken at. */
+    public record VersionedSnapshot(long version, JobSnapshot snapshot) {}
+
+    public VersionedSnapshot current(String id) {
+        MutableJob job;
+        synchronized (this) {
+            job = requireJob(id);
+        }
+        synchronized (job) {
+            job.lastAccess = clock.instant();
+            return new VersionedSnapshot(job.version, job.snapshot());
+        }
+    }
+
+    /**
+     * Blocks until the job changes past {@code sinceVersion}, or the timeout elapses.
+     * Returns empty on timeout rather than throwing, because a quiet interval is the
+     * normal heartbeat path for a stream reader and not a failure.
+     */
+    public Optional<VersionedSnapshot> awaitChange(String id, long sinceVersion, Duration timeout)
+            throws InterruptedException {
+        Objects.requireNonNull(timeout, "timeout");
+        MutableJob job;
+        synchronized (this) {
+            job = requireJob(id);
+        }
+        long remainingNanos = timeout.toNanos();
+        long deadline = System.nanoTime() + remainingNanos;
+        synchronized (job) {
+            while (job.version <= sinceVersion) {
+                if (remainingNanos <= 0) {
+                    return Optional.empty();
+                }
+                TimeUnit.NANOSECONDS.timedWait(job, remainingNanos);
+                remainingNanos = deadline - System.nanoTime();
+            }
+            job.lastAccess = clock.instant();
+            return Optional.of(new VersionedSnapshot(job.version, job.snapshot()));
+        }
+    }
+
     public synchronized JobWorkspace.Artifact artifact(String id, String name) {
         MutableJob job = requireJob(id);
         JobWorkspace.Artifact artifact;
@@ -225,7 +267,7 @@ public final class GenerationJobManager implements AutoCloseable {
                 return;
             }
             job.state = JobSnapshot.State.RUNNING;
-            job.notifyAll();
+            job.markChanged();
         }
         try {
             GenerationOutcome outcome = generation.generate(
@@ -290,19 +332,19 @@ public final class GenerationJobManager implements AutoCloseable {
             if (progress.status() == ProgressStatus.RUNNING && current == ProgressStatus.PENDING
                     && job.previousSettled(progress.stage())) {
                 job.stages.put(progress.stage(), ProgressStatus.RUNNING);
-                job.notifyAll();
+                job.markChanged();
                 return;
             }
             if ((progress.status() == ProgressStatus.SUCCESS || progress.status() == ProgressStatus.FAILED)
                     && current == ProgressStatus.RUNNING) {
                 job.stages.put(progress.stage(), progress.status());
-                job.notifyAll();
+                job.markChanged();
                 return;
             }
             if (progress.status() == ProgressStatus.SKIPPED && current == ProgressStatus.PENDING
                     && job.previousSettled(progress.stage())) {
                 job.stages.put(progress.stage(), ProgressStatus.SKIPPED);
-                job.notifyAll();
+                job.markChanged();
             }
         }
     }
@@ -374,6 +416,10 @@ public final class GenerationJobManager implements AutoCloseable {
         private final LinkedHashMap<String, ProgressStatus> stages = new LinkedHashMap<>();
         private final Runnable completionHook;
         private final AtomicBoolean completionReleased = new AtomicBoolean();
+        // Starts at 1, not 0. A stream opens with cursor 0, and a job that has not
+        // changed yet must still exceed that cursor or the immediate first snapshot
+        // the stream contract promises would never be sent.
+        private long version = 1;
         private volatile JobSnapshot.State state = JobSnapshot.State.QUEUED;
         private ValidationStatus validationStatus;
         private JobSnapshot.JobError error;
@@ -427,6 +473,16 @@ public final class GenerationJobManager implements AutoCloseable {
             state = terminalState;
             error = terminalError;
             completeHook();
+            markChanged();
+        }
+
+        /**
+         * Bumps the change version and wakes every waiter. Version and notification
+         * are raised together so a change can never be signalled without advancing
+         * the cursor a stream reader is comparing against.
+         */
+        private void markChanged() {
+            version++;
             notifyAll();
         }
 
