@@ -59,7 +59,7 @@ Smaller and lower deployment risk, but it leaves two transports in the client an
 
 ### 5.3 Rejected for now: `LISTEN`/`NOTIFY` for hosted
 
-End-to-end event driven. It needs the worker to issue `NOTIFY` or a trigger to do it, a dedicated listener connection outside the pooled datasource, and reconnection handling for that connection. It is a strict upgrade over 5.1 behind the same `JobEventSource` interface, so it can replace the hosted implementation later without touching the controller or the client. Adopt it if hosted progress latency exceeds two seconds or if concurrent streams make the read loop's database load a problem.
+End-to-end event driven. It needs the worker to issue `NOTIFY` or a trigger to do it, a dedicated listener connection outside the pooled datasource, and reconnection handling for that connection. It is a strict upgrade over 5.1 behind the same `ChangeFeed` closure, so it can replace the hosted feed later without touching `JobEventStream`, the controllers, or the client. Adopt it if hosted progress latency exceeds two seconds or if concurrent streams make the read loop's database load a problem.
 
 ## 6. Stream Contract
 
@@ -93,21 +93,26 @@ Each mode sends exactly what its own `GET /api/jobs/{id}` already returns. Local
 
 ### 7.1 The mode boundary
 
-One interface isolates the only real difference:
+A shared `JobEventStream` component owns every piece of SSE mechanics — the emitter, the heartbeat, the version cursor, the thread. The per-mode difference arrives as a closure the caller has already bound:
 
 ```java
-public interface JobEventSource {
+@FunctionalInterface
+public interface ChangeFeed {
     /**
      * Blocks until the job changes past sinceVersion, or the timeout elapses.
-     * Returns empty on timeout so the caller can emit a heartbeat.
+     * Returns empty on timeout so the stream can emit a heartbeat.
      */
-    Optional<VersionedSnapshot> awaitChange(String jobId, long sinceVersion, Duration timeout);
+    Optional<Change> awaitChange(long sinceVersion, Duration timeout);
 }
 
-public record VersionedSnapshot(long version, JsonNode payload, boolean terminal) {}
+public record Change(long version, JsonNode payload, boolean terminal) {}
+
+public SseEmitter open(ChangeFeed feed);
 ```
 
-One SSE controller consumes this interface. Swapping the hosted implementation for a `LISTEN`/`NOTIFY` one later changes nothing above it.
+The feed carries no job id and no owner because the caller closed over both. This matters for hosted mode: an interface taking `(String jobId, …)` would have nowhere to put the account, and widening it to `(owner, jobId, …)` would force local mode to pass a parameter it does not have while teaching a shared component about authentication. Each mode keeps its own controller, as the codebase already does through `@ConditionalOnProperty`, and ownership stays where it is enforced today.
+
+Replacing the hosted feed with a `LISTEN`/`NOTIFY` one later is a change to one lambda.
 
 ### 7.2 Local implementation
 
@@ -158,10 +163,10 @@ These are required; without them hosted streams do not work.
 | File | Change |
 | --- | --- |
 | `apps/web/.../job/GenerationJobManager.java` | `version` counter, `awaitChange` |
-| `apps/web/.../job/JobEventSource.java` | New interface and `VersionedSnapshot` |
-| `apps/web/.../job/LocalJobEventSource.java` | New, monitor-backed |
-| `apps/web/.../api/JobEventStreamController.java` | New, local `/api/jobs/{id}/events` |
-| `apps/web/.../hosted/HostedJobEventSource.java` | New, read-loop backed |
+| `apps/web/.../job/JobEventStream.java` | New, shared SSE mechanics plus `ChangeFeed` and `Change` |
+| `apps/web/.../api/GenerationJobController.java` | Local `/api/jobs/{id}/events`, monitor-backed feed |
+| `apps/web/.../api/JobHandler.java` | Expose snapshot serialization to the stream |
+| `apps/web/.../hosted/HostedJobEventFeed.java` | New, read-loop backed feed |
 | `apps/web/.../hosted/HostedJobController.java` | Hosted `/api/jobs/{id}/events` |
 | `apps/web/src/main/resources/application.yml` | Async request timeout |
 | `apps/web/src/main/resources/static/api.js` | `jobEvents`, shared normalization |
