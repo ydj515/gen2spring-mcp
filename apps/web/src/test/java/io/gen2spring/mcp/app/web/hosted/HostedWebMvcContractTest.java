@@ -24,6 +24,7 @@ import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
 import io.gen2spring.mcp.app.web.error.WebErrorResponseWriter;
+import io.gen2spring.mcp.app.web.config.JobEventStreamConfiguration;
 import io.gen2spring.mcp.app.web.security.HostedSecurityConfiguration;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
@@ -59,8 +60,10 @@ import org.springframework.test.web.servlet.MockMvc;
 @WebMvcTest(
         controllers = {HostedSpecificationController.class, HostedJobController.class, HostedArtifactController.class},
         properties = "gen2spring.mode=hosted")
+// A WebMvcTest slice does not load plain @Configuration classes, and the job
+// controller needs the shared event stream, so import it the way production does.
 @Import({HostedSecurityConfiguration.class, HostedWebMvcContractTest.SecurityBeans.class,
-        WebErrorMapper.class, WebErrorResponseWriter.class})
+        WebErrorMapper.class, WebErrorResponseWriter.class, JobEventStreamConfiguration.class})
 class HostedWebMvcContractTest {
     private static final String ISSUER = "https://issuer.example";
     private static final AccountId OWNER = new AccountId(UUID.fromString("41dd3b69-589c-4466-a78e-d448407d17b9"));

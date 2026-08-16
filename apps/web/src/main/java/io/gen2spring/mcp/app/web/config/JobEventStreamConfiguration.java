@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
  * event stream, so the shared pool cannot live in either.
  */
 @Configuration(proxyBeanMethods = false)
-class JobEventStreamConfiguration {
+public class JobEventStreamConfiguration {
     private static final int MAXIMUM_CONCURRENT_STREAMS = 8;
 
     @Bean(destroyMethod = "close")

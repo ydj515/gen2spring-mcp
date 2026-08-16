@@ -2,6 +2,8 @@ package io.gen2spring.mcp.app.web.hosted;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,6 +18,7 @@ import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
+import io.gen2spring.mcp.app.web.job.JobEventStream;
 import io.gen2spring.mcp.app.web.security.HostedAccountPrincipal;
 import io.gen2spring.mcp.app.web.security.HostedAccountResolver;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
@@ -94,13 +97,71 @@ class HostedControllerContractTest {
                 "a".repeat(64), 20, "application/zip", Instant.EPOCH, Instant.EPOCH.plusSeconds(60))));
         HostedJobController controller = new HostedJobController(
                 accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class), resources,
-                new ObjectMapper());
+                new ObjectMapper(), mock(JobEventStream.class));
 
         String response = controller.get(authentication, JOB.value().toString()).toString();
 
         assertFalse(response.contains("objectKey"));
         assertFalse(response.contains("sha256"));
         assertFalse(response.contains("artifacts/1a803410"));
+    }
+
+    @Test
+    void refusesAnEventStreamForAJobOwnedByAnotherAccount() {
+        HostedAccountResolver accounts = mock(HostedAccountResolver.class);
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        Authentication authentication = mock(Authentication.class);
+        when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
+        when(resources.job(OWNER, JOB)).thenReturn(Optional.empty());
+        JobEventStream streams = mock(JobEventStream.class);
+        HostedJobController controller = new HostedJobController(
+                accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class), resources,
+                new ObjectMapper(), streams);
+
+        assertThrows(
+                HostedJobController.HostedResourceNotFound.class,
+                () -> controller.events(authentication, JOB.value().toString()));
+        // Ownership must be settled before any stream exists, or the stream's
+        // behaviour would itself disclose whether the job is real.
+        verifyNoInteractions(streams);
+    }
+
+    @Test
+    void streamsOwnedJobProgressWithoutPrivateObjectKeys() {
+        HostedAccountResolver accounts = mock(HostedAccountResolver.class);
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        Authentication authentication = mock(Authentication.class);
+        when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
+        when(resources.job(OWNER, JOB)).thenReturn(Optional.of(new HostedResourceStore.JobDetails(
+                JOB, JobKind.GENERATION, JobStatus.SUCCEEDED, Optional.empty(), 1, false,
+                null, null, Instant.EPOCH, Instant.EPOCH)));
+        when(resources.events(OWNER, JOB, 100)).thenReturn(List.of());
+        when(resources.artifacts(OWNER, JOB)).thenReturn(List.of(new HostedResourceStore.ArtifactView(
+                UUID.randomUUID(), JOB, "ZIP",
+                ObjectKey.parse("artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/result"),
+                "a".repeat(64), 20, "application/zip", Instant.EPOCH, Instant.EPOCH.plusSeconds(60))));
+
+        try (JobEventStream streams = new JobEventStream(2)) {
+            HostedJobController controller = new HostedJobController(
+                    accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class), resources,
+                    new ObjectMapper(), streams);
+
+            assertNotNull(controller.events(authentication, JOB.value().toString()));
+        }
+    }
+
+    @Test
+    void hostedFeedReportsTerminalStatusAndHidesPrivateObjectKeys() throws Exception {
+        var payload = new ObjectMapper().createObjectNode().put("status", "SUCCEEDED");
+        HostedJobEventFeed feed = new HostedJobEventFeed(
+                () -> new HostedJobEventFeed.Payload(payload, 3, JobStatus.SUCCEEDED));
+
+        var change = feed.awaitChange(0, java.time.Duration.ofMillis(200)).orElseThrow();
+
+        assertEquals(payload, change.payload());
+        assertTrue(change.terminal(), "a SUCCEEDED job must close the stream");
+        assertTrue(feed.awaitChange(change.version(), java.time.Duration.ofMillis(150)).isEmpty(),
+                "an unchanged job must time out rather than repeat itself");
     }
 
     @Test
