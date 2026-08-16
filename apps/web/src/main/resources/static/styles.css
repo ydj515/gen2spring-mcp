@@ -329,6 +329,7 @@ legend { font-weight: 750; }
 .preview-output, .downloads { display: grid; gap: .75rem; margin-top: 1rem; }
 .tool-card { padding: .8rem; border: 1px solid var(--line); border-radius: .5rem; }
 .tool-card pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.job-actions { margin-top: 1.25rem; }
 .job-progress { display: grid; gap: .6rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
 .job-progress[hidden] { display: none; }
 .progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; }
@@ -351,6 +352,8 @@ legend { font-weight: 750; }
   .field-grid, .operation-layout, .parameter-row, .generation-layout { grid-template-columns: minmax(0, 1fr); }
   section, .error-summary { padding: 1rem; }
   .wizard-steps { gap: .35rem; padding-bottom: .5rem; }
+  /* Five chips no longer share the row; let each keep its label and scroll. */
+  .wizard-steps li { flex: 0 0 auto; }
   .wizard-chip { padding: .55rem .7rem; font-size: .9rem; }
   .wizard-nav { flex-direction: column-reverse; }
   .wizard-nav button { width: 100%; }

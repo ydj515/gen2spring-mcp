@@ -24,7 +24,8 @@
       <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark">1</span> OpenAPI 파일</button></li>
       <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark">2</span> Endpoint 선택</button></li>
       <li><button type="button" class="wizard-chip" data-step="3" disabled><span class="wizard-chip-mark">3</span> 생성 설정</button></li>
-      <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark">4</span> 생성 및 결과</button></li>
+      <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark">4</span> 미리보기와 생성</button></li>
+      <li><button type="button" class="wizard-chip" data-step="5" disabled><span class="wizard-chip-mark">5</span> 생성 진행</button></li>
     </ol>
   </nav>
   <p id="wizard-live" class="visually-hidden" role="status" aria-live="polite"></p>
@@ -185,7 +186,7 @@
 
     <section id="generation-run-step" class="workflow-step wizard-panel" data-step="4" aria-labelledby="generation-run-title" hidden>
       <div class="section-heading">
-        <div><p class="step-kicker">STEP 4</p><h2 id="generation-run-title" tabindex="-1">4. 생성 및 결과</h2></div>
+        <div><p class="step-kicker">STEP 4</p><h2 id="generation-run-title" tabindex="-1">4. 미리보기와 생성</h2></div>
         <p>대표 호출로 설정을 검증한 뒤 프로젝트를 생성합니다.</p>
       </div>
 
@@ -198,26 +199,41 @@
         <div class="button-row">
           <button id="preview-button" type="button" disabled>설정 검증 및 미리보기</button>
           <button id="generate-button" type="button" disabled>프로젝트 생성</button>
-          <button id="delete-job-button" class="secondary" type="button" disabled>작업 삭제</button>
         </div>
         <p id="preview-status" class="status" aria-live="polite">생성 전 미리보기가 필요합니다.</p>
         <div id="preview-output" class="preview-output"></div>
-        <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
-        <div id="job-progress" class="job-progress" hidden>
-          <div class="progress-head">
-            <p id="job-stage-label" class="progress-stage"></p>
-            <span id="job-progress-value" class="progress-count"></span>
-          </div>
-          <div class="progress-track"><div id="job-progress-fill" class="progress-fill"></div></div>
-          <details id="job-progress-details" class="progress-details">
-            <summary>상세 보기</summary>
-            <ol id="progress-list" class="progress-list"></ol>
-          </details>
-        </div>
-        <div id="downloads" class="downloads"></div>
       </div>
       <div class="wizard-nav">
         <button id="step-back-4" class="secondary" type="button">이전</button>
+        <p id="step-hint-4" class="wizard-hint" role="status" aria-live="polite"></p>
+        <button id="step-next-4" type="button" disabled>다음: 생성 진행</button>
+      </div>
+    </section>
+
+    <section id="generation-job-step" class="workflow-step wizard-panel" data-step="5" aria-labelledby="generation-job-title" hidden>
+      <div class="section-heading">
+        <div><p class="step-kicker">STEP 5</p><h2 id="generation-job-title" tabindex="-1">5. 생성 진행</h2></div>
+        <p>생성과 검증이 끝나면 산출물을 내려받을 수 있습니다.</p>
+      </div>
+
+      <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
+      <div id="job-progress" class="job-progress" hidden>
+        <div class="progress-head">
+          <p id="job-stage-label" class="progress-stage"></p>
+          <span id="job-progress-value" class="progress-count"></span>
+        </div>
+        <div class="progress-track"><div id="job-progress-fill" class="progress-fill"></div></div>
+        <details id="job-progress-details" class="progress-details">
+          <summary>상세 보기</summary>
+          <ol id="progress-list" class="progress-list"></ol>
+        </details>
+      </div>
+      <div id="downloads" class="downloads"></div>
+      <div class="button-row job-actions">
+        <button id="delete-job-button" class="secondary" type="button" disabled>작업 삭제</button>
+      </div>
+      <div class="wizard-nav">
+        <button id="step-back-5" class="secondary" type="button">이전</button>
       </div>
     </section>
 

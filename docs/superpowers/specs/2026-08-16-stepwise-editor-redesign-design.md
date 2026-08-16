@@ -9,7 +9,7 @@
 
 ## 1. Purpose
 
-Convert the editor from one long scrolling page into a four-step wizard that shows exactly one step at a time, replace the flat eight-stage generation progress list with a progress bar that keeps the stage detail behind progressive disclosure, and restate the visual layer on the Slate and Indigo token set.
+Convert the editor from one long scrolling page into a five-step wizard that shows exactly one step at a time, replace the flat eight-stage generation progress list with a progress bar that keeps the stage detail behind progressive disclosure, and restate the visual layer on the Slate and Indigo token set.
 
 This design supersedes the single-page three-section information architecture in the OpenAPI 3.1 guided editor design. It does not supersede that design's canonical analysis contract, its server-owned support decision, or any generation, validation, security, or artifact contract.
 
@@ -23,7 +23,7 @@ The current palette is an ad hoc set of literal hex values. Roughly forty distin
 
 ## 3. Goals
 
-- Present the editor as four steps with one step visible at a time.
+- Present the editor as five steps with one step visible at a time.
 - Gate forward movement on the completion of the current step, while leaving backward movement unrestricted.
 - Preserve every entered value when the user moves backward and forward.
 - Survive a page reload by restoring both the retained specification and the current step.
@@ -46,9 +46,9 @@ The current palette is an ad hoc set of literal hex values. Roughly forty distin
 
 ### 5.1 Selected: client-side wizard in one document
 
-`editor.html` keeps one document containing four panels. Only the active panel lacks the `hidden` attribute. A new `wizard.js` module owns step state, gating, and navigation.
+`editor.html` keeps one document containing five panels. Only the active panel lacks the `hidden` attribute. A new `wizard.js` module owns step state, gating, and navigation.
 
-This was selected because the entire in-progress configuration already lives in browser memory in `state.js`, while the server retains only a `specificationId`. Keeping all four panels in the DOM makes backward navigation lossless without any serialization work, because the form controls themselves hold the values.
+This was selected because the entire in-progress configuration already lives in browser memory in `state.js`, while the server retains only a `specificationId`. Keeping all five panels in the DOM makes backward navigation lossless without any serialization work, because the form controls themselves hold the values.
 
 ### 5.2 Rejected: one server route per step
 
@@ -65,17 +65,20 @@ Switching panels with `:target` selectors and anchor links would need no step st
 | 1 | OpenAPI 파일 | Drop zone, upload states, analysis summary |
 | 2 | Endpoint 선택 | Search, status filter, select-all, operation list |
 | 3 | 생성 설정 | Six project metadata fields, profile selection, selected Tool list and per-Tool editor |
-| 4 | 생성 및 결과 | Representative call, preview, generation trigger, progress, downloads |
+| 4 | 미리보기와 생성 | Representative call, preview trigger and output, generation trigger |
+| 5 | 생성 진행 | Job state line, progress bar and stage detail, downloads, delete or cancel |
 
 Steps 1 and 2 keep their current content unchanged. The existing `STEP 3` splits at the `preview-section` boundary: everything above it becomes step 3, and `preview-section` becomes step 4.
 
-The `generation-summary` aside moves out of step 3 and up to the wizard shell. It is hidden during step 1, where no analyzed data exists, and visible during steps 2, 3, and 4. On viewports at or below 720 px it stops being sticky and renders below the active panel, matching the existing responsive rule.
+Step 5 exists because generation is long-running and its progress deserves the whole screen rather than a strip below the preview output. It is a wizard step rather than a route: local mode registers no analysis route, so navigating to a separate page and back would discard the configuration and make regeneration require a fresh upload. Keeping it in the wizard preserves that state in the DOM. Hosted mode's existing `/jobs/{id}` page is out of scope and unchanged.
+
+The `generation-summary` aside moves out of step 3 and up to the wizard shell. It is hidden during step 1, where no analyzed data exists, and visible during steps 2 through 5. On viewports at or below 720 px it stops being sticky and renders below the active panel, matching the existing responsive rule.
 
 ## 7. Navigation and Gating
 
 ### 7.1 Step state
 
-`state.js` gains `currentStep`, an integer from 1 to 4, persisted to `sessionStorage` under `gen2spring.currentStep` alongside the existing specification and job keys. On load the restored step is clamped to the highest step the restored state actually satisfies, so a reload can never land on an unreachable step.
+`state.js` gains `currentStep`, an integer from 1 to 5, persisted to `sessionStorage` under `gen2spring.currentStep` alongside the existing specification and job keys. On load the restored step is clamped to the highest step the restored state actually satisfies, so a reload can never land on an unreachable step.
 
 Clamping must run against in-memory state, not persisted keys. Local mode exposes no analysis route — `/api/specifications/{id}/analysis` is registered only by the hosted controller — so `resumeRetainedSpecification()` returns early when `api.hostedMode` is false and the retained `specificationId` names a specification whose operations were never re-fetched. A gate that trusted that id would place the user on an empty step 2 with no way forward. Gate 1 therefore reads `state.analysis`, which only a completed analysis populates. In local mode a reload consequently returns to step 1, matching the idle upload surface the user actually sees.
 
@@ -86,8 +89,9 @@ Clamping must run against in-memory state, not persisted keys. Local mode expose
 | 1 to 2 | `state.analysis` is populated |
 | 2 to 3 | At least one operation has `enabled === true` |
 | 3 to 4 | All of `group-id`, `artifact-id`, `package-name`, `provider-name`, `domain-name`, `target-profile` are non-empty |
+| 4 to 5 | `state.jobId` is set, meaning a generation job has started |
 
-Step 4 has no outgoing transition. Its internal gate is unchanged: `generate-button` stays disabled until a preview succeeds.
+Step 5 has no outgoing transition. Step 4's internal gate is unchanged: `generate-button` stays disabled until a preview succeeds. Starting generation moves the user to step 5 rather than requiring a separate click, and gate 4 keeps step 5 reachable afterwards so the user can navigate back and forward without regenerating. Deleting the job closes the gate, which clamps the user back to step 4.
 
 The gate predicate is isolated in one exported function, `canAdvance(step, state)`, in `wizard.js`. Isolating it keeps the navigation wiring free of validation detail and makes the rule set testable as a unit.
 
@@ -106,7 +110,7 @@ When an edit on an earlier step breaks a later step's precondition, `currentStep
 - The stepper is an `<ol>`; the active chip carries `aria-current="step"`, and unreachable chips are `disabled`.
 - Inactive panels keep the `hidden` attribute, which removes them from the accessibility tree while preserving their form values in the DOM.
 - On each transition, focus moves to the newly activated panel's `<h2>`, which carries `tabindex="-1"`.
-- A visually hidden live region announces the new step, for example `4단계 중 3단계, 생성 설정`.
+- A visually hidden live region announces the new step, for example `5단계 중 3단계, 생성 설정`.
 - Next and previous controls are `<button type="button">` at the documented 44 px minimum height.
 
 ## 8. Visual Design
@@ -176,7 +180,7 @@ No `[data-theme="dark"]` block ships. Every color in `styles.css` must resolve t
 
 ### 9.1 Markup
 
-A new `#job-progress` region replaces the bare `#progress-list` in step 4:
+A new `#job-progress` region replaces the bare `#progress-list`, and lives in step 5:
 
 - a status line holding the Korean label for the running stage and a `3 / 8` counter;
 - a progress track and fill;
@@ -209,7 +213,13 @@ An unrecognized stage identifier falls back to the raw constant rather than thro
 - On a `FAILED` stage the disclosure opens automatically, the failed row renders in `--danger-text`, and the bar fill switches to `--danger` via `data-state="failed"`.
 - The region stays `hidden` until a job starts and is cleared by the existing reset paths.
 
-`app.js` delegates to `progress.js` from `renderJob()`. `pollJob()`, `TERMINAL_STATES`, and every job API call are untouched.
+`app.js` delegates to `progress.js` from `renderJob()`. `pollJob()`, `TERMINAL_STATES`, and every job API call are untouched. Polling is driven by `pollJob`, not by the panel, so leaving step 5 does not interrupt a running job.
+
+### 9.4 Job state line
+
+`#job-status` previously rendered `${state} — ${currentStage}`, producing an untranslated line such as `RUNNING — COMPILE` immediately above a progress bar that already named the stage in Korean. The stage now belongs to the bar alone, and `#job-status` carries only a Korean job state from `stateLabel()` in `progress.js`.
+
+The two modes use different vocabularies and the map covers their union: local emits `QUEUED`, `RUNNING`, `VALIDATED`, `UNVERIFIED`, and `FAILED`; hosted emits `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, and `CANCELLED`. An unrecognized state falls back to its raw constant, matching the stage-label policy.
 
 ## 10. Module Boundaries
 
@@ -229,7 +239,7 @@ An unrecognized stage identifier falls back to the raw constant rather than thro
 
 | File | Change |
 | --- | --- |
-| `apps/web/src/main/resources/templates/editor.html` | Wizard shell, four panels, stepper, progress region |
+| `apps/web/src/main/resources/templates/editor.html` | Wizard shell, five panels, stepper, progress region |
 | `apps/web/src/main/resources/static/styles.css` | Token set, wizard, stepper, and progress styles |
 | `apps/web/src/main/resources/static/wizard.js` | New |
 | `apps/web/src/main/resources/static/progress.js` | New |
@@ -244,8 +254,8 @@ An unrecognized stage identifier falls back to the raw constant rather than thro
 `StaticAssetContractTest` currently asserts the single-page structure. The following assertions become false and must be restated rather than deleted:
 
 - `--success: #148f77` becomes the new token block, asserted through `--success-text: #047857` so the accessibility decision in section 8.2 is locked by a test.
-- The three `<h2 id="...-title">` assertions extend to a fourth step heading.
-- `assertFalse(index.contains("<h2>4."))` is removed, because a fourth step now exists. The guard against a fifth step is retained.
+- The three `<h2 id="...-title">` assertions extend to the fourth and fifth step headings.
+- `assertFalse(index.contains("<h2>4."))` and its successor `<h2>5.` guard are removed as those steps come into existence. A guard against a sixth step is retained.
 - New assertions cover the stepper list, the panel `hidden` mechanism, `aria-current`, the progress region identifiers, and `canAdvance` in `wizard.js`.
 
 The existing negative assertions on `innerHTML`, `Authorization`, `js-yaml`, `SwaggerParser`, and `X-Gen2Spring-Token` extend to cover `wizard.js` and `progress.js`.
@@ -253,7 +263,7 @@ The existing negative assertions on `innerHTML`, `Authorization`, `js-yaml`, `Sw
 ## 13. Verification
 
 - `./gradlew :apps:web:test` for the contract and MVC tests.
-- Manual pass on the running local instance: upload `swagger-3.0.yml` and `swagger-3.1.yml`, walk all four steps, generate, and confirm the progress bar, the collapsed detail, and the downloads.
+- Manual pass on the running local instance: upload `swagger-3.0.yml` and `swagger-3.1.yml`, walk all five steps, generate, and confirm the progress bar, the collapsed detail, and the downloads.
 - Reload mid-flow on step 3 and confirm the step and the analyzed specification both restore.
 - Break a step 3 required field and confirm the wizard clamps back rather than stranding the user on step 4.
 - Browser back button moves one step back rather than leaving the editor.
@@ -262,6 +272,6 @@ The existing negative assertions on `innerHTML`, `Authorization`, `js-yaml`, `Sw
 
 ## 14. Risks
 
-- Constraint: all four panels stay in the DOM, so document size grows and every module must scope its queries to its own panel.
+- Constraint: all five panels stay in the DOM, so document size grows and every module must scope its queries to its own panel.
 - Risk: clamping `currentStep` on invalidation can move users backward unexpectedly if the clamp is too eager. The clamp must run only when a gate genuinely fails, not on every state write.
 - Exception: `sessionStorage` restores the step but not scroll position within a panel; a reload lands at the top of the restored step.

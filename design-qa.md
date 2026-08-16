@@ -4,7 +4,7 @@ Date: 2026-08-16
 
 ## Scope
 
-- Compared the implemented four-step wizard with the approved design in `docs/superpowers/specs/2026-08-16-stepwise-editor-redesign-design.md`.
+- Compared the implemented five-step wizard with the approved design in `docs/superpowers/specs/2026-08-16-stepwise-editor-redesign-design.md`, plus the follow-up split of step 4 into preview/start and a dedicated generation-progress step.
 - Exercised the editor against a dedicated instance started on a fixed port, because the Thymeleaf template cache in an already-running instance keeps serving the previous markup.
 - Walked all four steps with synthetic OpenAPI 3.0 documents of 1, 4, and 26 operations, the last mixing selectable and unsupported endpoints.
 - Verified the gate rules: analysis completes before step 2, at least one endpoint selected before step 3, six project fields filled before step 4.
@@ -16,6 +16,8 @@ Date: 2026-08-16
 - Ran one real generation to completion and observed the progress bar advance through all eight stages to `VALIDATED` with three downloads offered.
 - Verified the failure presentation by rendering a snapshot whose `COMPILE` stage failed.
 - Verified 400 px, 720 px, and 1280 px viewports on every step.
+- Verified the generation-progress step: step 5 stays locked with the hint `프로젝트 생성을 시작하면 진행 상황을 볼 수 있습니다.` until a job exists, starting generation carries the user there and moves focus to its heading, navigating back to step 4 preserves the configuration, and returning to step 5 shows the finished result without regenerating. Deleting the job closes the gate and clamps back to step 4.
+- Verified the job state line is Korean in both vocabularies. `RUNNING` renders `생성 중입니다.` while the bar separately reads `Gradle 컴파일 진행 중입니다.`, and `VALIDATED` renders `검증까지 완료했습니다.`
 - Verified the paired root documents are covered server-side rather than re-checking them by hand: `OpenApiVersionPairAcceptanceTest` and `WebMvcContractTest` assert the 3.0 and 3.1 analysis equivalence, and both run in `:apps:web:test`.
 
 ## Measurements
@@ -24,13 +26,16 @@ Page height with 26 operations, measured by isolating each panel and then reveal
 
 | View | Height |
 | --- | --- |
-| Single page equivalent, all four panels visible | 9545 px |
+| Single page equivalent, all five panels visible | 9425 px |
 | Step 1, OpenAPI 파일 | 900 px |
 | Step 2, Endpoint 선택 | 5331 px |
 | Step 3, 생성 설정 | 1780 px |
-| Step 4, 생성 및 결과 | 948 px |
+| Step 4, 미리보기와 생성 | 900 px |
+| Step 5, 생성 진행 | 900 px |
 
-The tallest single step is 44 percent shorter than the single page, and every step other than the endpoint list is more than 80 percent shorter. Step 2 remains long because a 26 item endpoint list is inherently long; splitting steps does not address list length.
+Measured in a 900 px viewport, so 900 px means the step fits entirely on screen with nothing to scroll — true of steps 1, 4, and 5. Step 5 was measured before a job started; with a finished job and three download buttons it grows by roughly 120 px and still fits.
+
+The tallest single step is 43 percent shorter than the single page, and every step other than the endpoint list fits on one screen. Step 2 remains long because a 26 item endpoint list is inherently long; splitting steps does not address list length.
 
 Contrast measured in the browser against `--surface`, matching the design's section 8.2 table within 0.05:
 
@@ -61,6 +66,8 @@ The fill-only tokens measure `--success` 2.54:1, `--warning` 2.15:1, and `--dang
 - The progress ratio originally counted every `SUCCESS` and `SKIPPED` stage. A failure marks all later stages `SKIPPED`, so a build that died at `COMPILE` rendered as `7 / 8` and 88 percent. On failure the ratio now counts only the stages before the failed one, showing `2 / 8` and 25 percent, and the fill switches to the danger token.
 - `goToStep` announced the new step and moved focus, then assigned the location hash, which re-entered through `hashchange` and repeated both. The handler now compares against the current step before re-entering.
 - The initial `goToStep` on page load called `focus()`, stealing focus from the document on every load. The load path now passes `{focus: false, announce: false}`.
+- `#job-status` rendered raw internal constants directly above the progress bar, producing a second untranslated line reading `RUNNING — COMPILE`. The stage now belongs to the bar alone, and the status line carries a Korean job state drawn from a map covering both vocabularies: local `VALIDATED` and `UNVERIFIED`, hosted `SUCCEEDED` and `CANCELLED`.
+- `removeJob` wrote `Cancellation requested.` and `Generation job deleted.` into that same status line in English. Both are now Korean.
 
 ## Not covered
 

@@ -17,18 +17,21 @@ class StaticAssetContractTest {
         assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">1. OpenAPI 파일</h2>"));
         assertTrue(index.contains("<h2 id=\"operations-title\" tabindex=\"-1\">2. API endpoint 선택</h2>"));
         assertTrue(index.contains("<h2 id=\"generation-title\" tabindex=\"-1\">3. 생성 설정</h2>"));
-        assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">4. 생성 및 결과</h2>"));
-        assertFalse(index.contains("<h2>5."));
+        assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">4. 미리보기와 생성</h2>"));
+        assertTrue(index.contains("<h2 id=\"generation-job-title\" tabindex=\"-1\">5. 생성 진행</h2>"));
+        assertFalse(index.contains("<h2>6."));
 
         assertTrue(index.contains("class=\"wizard-steps\""));
         assertTrue(index.contains("aria-current=\"step\""));
         assertTrue(index.contains("data-step=\"1\""));
-        assertTrue(index.contains("data-step=\"4\""));
+        assertTrue(index.contains("data-step=\"5\""));
         assertTrue(index.contains("class=\"workflow-step wizard-panel\""));
         assertTrue(index.contains("id=\"wizard-live\""));
         assertTrue(index.contains("id=\"step-back-3\""));
         assertTrue(index.contains("id=\"step-next-3\""));
         assertTrue(index.contains("id=\"step-hint-3\""));
+        assertTrue(index.contains("id=\"step-next-4\""));
+        assertTrue(index.contains("id=\"step-back-5\""));
         assertTrue(index.contains("tabindex=\"-1\""));
         assertTrue(index.contains("id=\"specification-file\" class=\"visually-hidden\" type=\"file\" accept=\".yaml,.yml,.json\""));
         assertTrue(index.contains("id=\"upload-dropzone\""));
@@ -95,6 +98,10 @@ class StaticAssetContractTest {
         // the in-memory analysis or a reload strands the user on an empty step 2.
         assertTrue(wizard.contains("if (step === 1) return Boolean(state.analysis);"));
         assertFalse(wizard.contains("Boolean(state.specificationId)"));
+        // Step 5 opens once a job exists, so starting generation carries the user there.
+        assertTrue(wizard.contains("if (step === 4) return Boolean(state.jobId);"));
+        assertTrue(wizard.contains("#step-([1-5])"));
+        assertTrue(app.contains("wizard.goToStep(5)"));
         assertTrue(wizard.contains("hashchange"));
         assertTrue(wizard.contains("aria-current"));
         assertTrue(wizard.contains("focus()"));
@@ -131,6 +138,17 @@ class StaticAssetContractTest {
         assertTrue(progress.contains("산출물 패키징"));
         assertTrue(progress.contains("'SKIPPED'"));
         assertTrue(app.contains("renderProgress(snapshot)"));
+        // The job state line must be Korean, not the raw RUNNING — COMPILE constants.
+        // Both modes' status vocabularies are covered: local emits VALIDATED and
+        // UNVERIFIED, hosted emits SUCCEEDED and CANCELLED.
+        assertTrue(progress.contains("export function stateLabel(state)"));
+        for (String status : new String[] {
+                "QUEUED", "RUNNING", "VALIDATED", "UNVERIFIED", "SUCCEEDED", "FAILED", "CANCELLED"
+        }) {
+            assertTrue(progress.contains(status + ": '"), status);
+        }
+        assertTrue(app.contains("stateLabel(snapshot.state)"));
+        assertFalse(app.contains("${snapshot.currentStage}"));
         assertTrue(styles.contains(".progress-fill"));
         // A failure marks every later stage SKIPPED. Counting the full list would
         // render a build that died at stage 3 as 88% complete.

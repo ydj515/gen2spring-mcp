@@ -4,7 +4,7 @@ import {buildConfiguration, initializeEditor, renderOperations, selectOperation}
 import {initializeUpload} from './upload.js';
 import {initializeOperations} from './operations.js';
 import {initializeWizard} from './wizard.js';
-import {clearProgress, renderProgress} from './progress.js';
+import {clearProgress, renderProgress, stateLabel} from './progress.js';
 
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
@@ -130,6 +130,7 @@ async function startGeneration() {
     const accepted = await api.startJob(getState().specificationId, configuration);
     updateState({jobId: accepted.id, job: accepted});
     ui['delete-job-button'].disabled = !api.hostedMode;
+    wizard.goToStep(5);
     await pollJob(accepted.id);
   } catch (failure) {
     showFailure(failure);
@@ -160,16 +161,18 @@ async function removeJob() {
   try {
     await api.deleteJob(jobId);
     if (api.hostedMode) {
-      ui['job-status'].textContent = 'Cancellation requested.';
+      ui['job-status'].textContent = '취소를 요청했습니다.';
       ui['delete-job-button'].disabled = true;
       return;
     }
     updateState({jobId: null, job: null});
-    ui['job-status'].textContent = 'Generation job deleted.';
+    ui['job-status'].textContent = '생성 작업을 삭제했습니다.';
     clearProgress();
     ui['downloads'].replaceChildren();
     ui['delete-job-button'].disabled = true;
     ui['generate-button'].disabled = !getState().preview;
+    // Deleting the job closes the step 5 gate, so step 5 must stop being current.
+    wizard.syncGate();
   } catch (failure) {
     showFailure(failure);
   }
@@ -269,9 +272,11 @@ function renderPreview(preview) {
 }
 
 function renderJob(snapshot) {
+  // The stage belongs to the progress bar, which names it in Korean. Repeating
+  // it here produced a second, untranslated line reading RUNNING — COMPILE.
   ui['job-status'].textContent = snapshot.error
-    ? `${snapshot.state}: ${snapshot.error.message}`
-    : `${snapshot.state}${snapshot.currentStage ? ` — ${snapshot.currentStage}` : ''}`;
+    ? `${stateLabel(snapshot.state)} ${snapshot.error.message}`
+    : stateLabel(snapshot.state);
   renderProgress(snapshot);
   ui['downloads'].replaceChildren(...snapshot.downloads.map(artifact => {
     const name = typeof artifact === 'string' ? artifact : artifact.name;

@@ -9,6 +9,17 @@ const STAGE_LABELS = {
   PACKAGE: '산출물 패키징'
 };
 const SETTLED = ['SUCCESS', 'SKIPPED'];
+// Local mode reports VALIDATED and UNVERIFIED; hosted mode reports SUCCEEDED
+// and CANCELLED. The union is covered so neither leaks a raw constant.
+const JOB_STATE_LABELS = {
+  QUEUED: '대기 중입니다.',
+  RUNNING: '생성 중입니다.',
+  VALIDATED: '검증까지 완료했습니다.',
+  UNVERIFIED: '생성했지만 검증하지 못했습니다.',
+  SUCCEEDED: '완료했습니다.',
+  FAILED: '실패했습니다.',
+  CANCELLED: '취소했습니다.'
+};
 
 const region = () => document.querySelector('#job-progress');
 
@@ -16,6 +27,10 @@ const region = () => document.querySelector('#job-progress');
 // stage renders plainly instead of showing undefined.
 export function label(stage) {
   return STAGE_LABELS[stage] ?? stage;
+}
+
+export function stateLabel(state) {
+  return JOB_STATE_LABELS[state] ?? state;
 }
 
 export function clearProgress() {
