@@ -57,7 +57,11 @@ export function renderProgress(snapshot) {
   // render a build that died at stage 3 as 88% complete, so on failure only the
   // stages that actually settled before it count.
   const counted = failed ? stages.slice(0, failedIndex) : stages;
-  const settled = counted.filter(entry => SETTLED.includes(entry.status)).length;
+  // Hosted timeline events use job-transition statuses rather than local stage
+  // statuses. A terminal SUCCEEDED snapshot settles the whole observed timeline.
+  const completed = snapshot.state === 'SUCCEEDED';
+  const settled = completed ? stages.length
+    : counted.filter(entry => SETTLED.includes(entry.status)).length;
 
   const fill = document.querySelector('#job-progress-fill');
   fill.style.width = `${Math.round((settled / stages.length) * 100)}%`;

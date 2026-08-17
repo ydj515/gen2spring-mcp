@@ -101,7 +101,15 @@ Progress moved from browser polling to a server-sent event stream at `GET /api/j
 - The proxy configuration was exercised against a real nginx fronting an upstream that emits one event per second, using the events block extracted verbatim from `deploy/hosted/proxy/nginx.conf`. Events arrived one second apart. With `proxy_buffering` turned back on, all six arrived together at 5.01 s — no error, only broken timing, which is why this needed a running proxy rather than a string assertion.
 - `nginx -t` accepts the deployment file. It rejected the first version: an unquoted `{36}` in the location regex reads as a block opener, giving `unknown directive "36}/events$"`. The contract test had passed on that version because the literal string it asserted was present.
 
-Heartbeats are covered by `JobEventStreamTest.emitsAHeartbeatWhenTheFeedTimesOut` rather than by observation; the interval is 15 seconds and a local generation completes in about 9, so no idle stream arises to watch.
+Heartbeats are covered by `JobEventStreamTest.emitsAHeartbeatWhenTheFeedTimesOut` rather than by observation; the interval is 15 seconds and a local generation completes in about 9, so no idle stream arises to watch. They are named events so the browser can reset a 35 second liveness watchdog and fall back to polling if an open connection stops delivering data.
+
+## Review hardening
+
+- A retained local job keeps step 5 independently reachable after reload even though local mode cannot restore the analysis needed for steps 2 through 4.
+- Hosted specification resume restores the saved wizard step after the temporary upload-state reset.
+- A terminal hosted `SUCCEEDED` snapshot settles the complete observed timeline instead of rendering `0 / N`.
+- The editor's two-column grid is scoped to `.editor-main`, leaving hosted dashboard and job-detail pages on their single-column layout.
+- Named heartbeat events reset the browser watchdog after the first snapshot; a stalled stream hands off to the existing polling fallback after 35 seconds.
 
 ## Not covered
 

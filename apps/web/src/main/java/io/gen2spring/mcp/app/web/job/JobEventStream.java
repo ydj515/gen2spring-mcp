@@ -64,8 +64,6 @@ public final class JobEventStream implements AutoCloseable {
     interface EmitterSink {
         void event(String name, JsonNode payload);
 
-        void heartbeat();
-
         void complete();
 
         void completeWithError(Throwable failure);
@@ -97,7 +95,10 @@ public final class JobEventStream implements AutoCloseable {
             while (true) {
                 Optional<Change> change = feed.awaitChange(version, FEED_BUDGET);
                 if (change.isEmpty()) {
-                    sink.heartbeat();
+                    // A named event is observable by EventSource. A comment keeps
+                    // the connection alive at the transport layer but cannot reset
+                    // the browser's liveness watchdog.
+                    sink.event("heartbeat", null);
                     continue;
                 }
                 Change observed = change.get();
@@ -135,11 +136,6 @@ public final class JobEventStream implements AutoCloseable {
         @Override
         public void event(String name, JsonNode payload) {
             send(SseEmitter.event().name(name).data(payload == null ? "{}" : payload.toString()));
-        }
-
-        @Override
-        public void heartbeat() {
-            send(SseEmitter.event().comment("ping"));
         }
 
         private void send(SseEmitter.SseEventBuilder builder) {

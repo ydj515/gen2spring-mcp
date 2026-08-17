@@ -99,7 +99,7 @@ export async function job(jobId) {
   return normalizeJob(await (await request(`/api/jobs/${jobId}`)).json());
 }
 
-export function jobEvents(jobId, {onSnapshot, onDone, onFailure}) {
+export function jobEvents(jobId, {onSnapshot, onHeartbeat, onDone, onFailure}) {
   const source = new EventSource(`/api/jobs/${jobId}/events`);
   source.addEventListener('snapshot', message => {
     try {
@@ -108,6 +108,7 @@ export function jobEvents(jobId, {onSnapshot, onDone, onFailure}) {
       onFailure();
     }
   });
+  source.addEventListener('heartbeat', () => onHeartbeat());
   source.addEventListener('done', () => {
     source.close();
     onDone();

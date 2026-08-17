@@ -135,6 +135,23 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void keepsARetainedLocalJobReachableWithoutARestoredAnalysis() throws Exception {
+        String wizard = resource("/static/wizard.js");
+
+        assertTrue(wizard.contains("if (step === 5 && state.jobId) return true;"));
+        assertTrue(wizard.contains("isReachable(getState().currentStep, getState())"));
+    }
+
+    @Test
+    void restoresTheHostedWizardStepAfterReloadingTheRetainedSpecification() throws Exception {
+        String upload = resource("/static/upload.js");
+
+        assertTrue(upload.contains("const sameSpecification = getState().specificationId === specificationId;"));
+        assertTrue(upload.contains("const retainedStep = sameSpecification ? getState().currentStep : 1;"));
+        assertTrue(upload.contains("currentStep: retainedStep"));
+    }
+
+    @Test
     void summarizesGenerationProgressWithoutLosingStageDetail() throws Exception {
         String index = resource("/templates/editor.html");
         String progress = resource("/static/progress.js");
@@ -177,6 +194,8 @@ class StaticAssetContractTest {
         // A failure marks every later stage SKIPPED. Counting the full list would
         // render a build that died at stage 3 as 88% complete.
         assertTrue(progress.contains("const counted = failed ? stages.slice(0, failedIndex) : stages;"));
+        assertTrue(progress.contains("const completed = snapshot.state === 'SUCCEEDED';"));
+        assertTrue(progress.contains("const settled = completed ? stages.length"));
         assertTrue(styles.contains(".progress-fill[data-state=\"failed\"] { background: var(--danger); }"));
 
         assertFalse(progress.contains("innerHTML"));
@@ -199,7 +218,22 @@ class StaticAssetContractTest {
         assertTrue(app.contains("await pollJob(jobId)"));
         // A reconnecting stream must not trigger the fallback; only a closed one.
         assertTrue(api.contains("EventSource.CLOSED"));
+        assertTrue(api.contains("source.addEventListener('heartbeat'"));
+        assertTrue(api.contains("onHeartbeat"));
+        assertTrue(app.contains("STREAM_LIVENESS_DEADLINE_MILLIS"));
+        assertTrue(app.contains("refreshDeadline"));
         assertFalse(api.contains("innerHTML"));
+    }
+
+    @Test
+    void scopesTheEditorGridAwayFromHostedPages() throws Exception {
+        String index = resource("/templates/editor.html");
+        String styles = resource("/static/styles.css");
+
+        assertTrue(index.contains("<main class=\"editor-main\">"));
+        assertTrue(styles.contains(".editor-main {\n"));
+        assertTrue(styles.contains(".editor-main > #error-summary"));
+        assertFalse(styles.contains("\nmain {\n"));
     }
 
     @Test

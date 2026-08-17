@@ -71,13 +71,20 @@ export function initializeWizard() {
     return reachable;
   };
 
+  const isReachable = (step, state) => {
+    // A retained local job can be restored without its analysis because local
+    // mode has no analysis read route. Keep only the result step independently
+    // reachable instead of unlocking the empty configuration steps in between.
+    if (step === 5 && state.jobId) return true;
+    return step <= highestReachable();
+  };
+
   const render = () => {
     const current = getState().currentStep;
-    const reachable = highestReachable();
     for (const step of STEPS) {
       panels.get(step).hidden = step !== current;
       const chip = chips.get(step);
-      chip.disabled = step > reachable;
+      chip.disabled = !isReachable(step, getState());
       if (step === current) chip.setAttribute('aria-current', 'step');
       else chip.removeAttribute('aria-current');
       const next = document.querySelector(`#step-next-${step}`);
@@ -98,7 +105,7 @@ export function initializeWizard() {
 
   const goToStep = (step, {focus = true, announce = true, clamp = true} = {}) => {
     const bounded = Math.min(Math.max(step, 1), LAST_STEP);
-    const target = clamp ? Math.min(bounded, highestReachable()) : bounded;
+    const target = clamp && !isReachable(bounded, getState()) ? highestReachable() : bounded;
     if (target !== getState().currentStep) updateState({currentStep: target});
     else render();
     // Assigning the hash re-enters through hashchange; skip the write when it
@@ -110,7 +117,7 @@ export function initializeWizard() {
 
   const syncGate = () => {
     const reachable = highestReachable();
-    if (getState().currentStep > reachable) goToStep(reachable);
+    if (!isReachable(getState().currentStep, getState())) goToStep(reachable);
     else render();
   };
 

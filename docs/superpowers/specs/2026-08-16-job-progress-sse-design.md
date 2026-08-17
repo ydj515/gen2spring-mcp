@@ -73,14 +73,15 @@ End-to-end event driven. It needs the worker to issue `NOTIFY` or a trigger to d
 event: snapshot
 data: {…}
 
-: ping
+event: heartbeat
+data: {}
 
 event: done
 data: {}
 ```
 
 - `snapshot` carries the job state. One is always sent immediately on connect so a late subscriber is never blank.
-- `: ping` is an SSE comment sent every 15 seconds while idle. It keeps proxies and browsers from treating the connection as dead.
+- `heartbeat` is a named event sent every 15 seconds while idle. It keeps the transport active and lets the browser reset its stream-liveness watchdog.
 - `done` is sent once when the job reaches a terminal state, after the final `snapshot`, and the emitter completes.
 
 ### 6.3 Payload shape
@@ -136,18 +137,19 @@ The emitter completes on terminal state, on client disconnect, on timeout, and o
 
 ## 8. Client Design
 
-`api.js` gains `jobEvents(jobId, {onSnapshot, onDone, onFailure})`, wrapping `EventSource` and returning a close handle. It applies the existing hosted normalization to each payload before calling `onSnapshot`.
+`api.js` gains `jobEvents(jobId, {onSnapshot, onHeartbeat, onDone, onFailure})`, wrapping `EventSource` and returning a close handle. It applies the existing hosted normalization to each payload before calling `onSnapshot` and exposes named heartbeat events to the caller.
 
 `app.js` replaces the `pollJob` call site with `followJob`, which:
 
 1. opens the stream and starts a first-event deadline;
-2. on each `snapshot`, does exactly what the poll loop did — `updateState({job})` then `renderJob(snapshot)`;
-3. on `done` or terminal state, closes the stream and settles the delete button as today;
-4. falls back to `pollJob` when the first event does not arrive within 5 seconds, or when `EventSource` reports an error with `readyState === EventSource.CLOSED`.
+2. on each `snapshot`, does exactly what the poll loop did — `updateState({job})` then `renderJob(snapshot)` — and starts a 35 second liveness watchdog;
+3. on each `heartbeat`, resets that watchdog;
+4. on `done` or terminal state, closes the stream and settles the delete button as today;
+5. falls back to `pollJob` when the first event does not arrive within 5 seconds, when no snapshot or heartbeat arrives for 35 seconds, or when `EventSource` reports an error with `readyState === EventSource.CLOSED`.
 
 Five seconds is chosen against the server contract in section 6.2: a healthy stream emits its first `snapshot` immediately on connect, so anything approaching a second already indicates the stream is not being delivered. The margin covers a cold container and a proxy handshake without leaving the user watching a dead panel.
 
-A transient error where `EventSource` is still reconnecting is not a fallback trigger; the browser's own reconnection is allowed to do its job first. Falling back is one-way for the life of that job, so a flapping stream cannot thrash between transports.
+A transient error where `EventSource` is still reconnecting is not a fallback trigger; the browser's own reconnection is allowed to do its job first. Two missed 15 second heartbeats plus five seconds of scheduling margin trigger the 35 second watchdog. Falling back is one-way for the life of that job, so a flapping stream cannot thrash between transports.
 
 ## 9. Deployment Configuration
 

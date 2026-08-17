@@ -139,6 +139,7 @@ async function startGeneration() {
 }
 
 const FIRST_EVENT_DEADLINE_MILLIS = 5000;
+const STREAM_LIVENESS_DEADLINE_MILLIS = 35000;
 
 // Prefers the event stream and hands off to polling when it cannot be
 // established or cannot recover. Falling back is one-way for the life of a job,
@@ -146,6 +147,8 @@ const FIRST_EVENT_DEADLINE_MILLIS = 5000;
 async function followJob(jobId) {
   const streamed = await new Promise(resolve => {
     let settled = false;
+    let deadline;
+    let stream;
     const settle = value => {
       if (settled) return;
       settled = true;
@@ -153,20 +156,26 @@ async function followJob(jobId) {
       stream.close();
       resolve(value);
     };
-    const stream = api.jobEvents(jobId, {
+    const refreshDeadline = timeout => {
+      if (settled) return;
+      clearTimeout(deadline);
+      deadline = setTimeout(() => settle(false), timeout);
+    };
+    stream = api.jobEvents(jobId, {
       onSnapshot: snapshot => {
         // The job was deleted or replaced; stop without handing off.
         if (getState().jobId !== jobId) return settle(true);
-        clearTimeout(deadline);
+        refreshDeadline(STREAM_LIVENESS_DEADLINE_MILLIS);
         updateState({job: snapshot});
         renderJob(snapshot);
         ui['delete-job-button'].disabled = TERMINAL_STATES.includes(snapshot.state)
           ? api.hostedMode : !api.hostedMode;
       },
+      onHeartbeat: () => refreshDeadline(STREAM_LIVENESS_DEADLINE_MILLIS),
       onDone: () => settle(true),
       onFailure: () => settle(false)
     });
-    const deadline = setTimeout(() => settle(false), FIRST_EVENT_DEADLINE_MILLIS);
+    refreshDeadline(FIRST_EVENT_DEADLINE_MILLIS);
   });
   if (streamed) return;
   await pollJob(jobId);

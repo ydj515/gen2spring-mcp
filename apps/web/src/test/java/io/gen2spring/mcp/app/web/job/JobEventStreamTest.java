@@ -48,7 +48,8 @@ class JobEventStreamTest {
             }));
 
             assertTrue(sink.awaitCompletion(5, TimeUnit.SECONDS));
-            assertTrue(sink.heartbeats() >= 2, "each feed timeout must produce one heartbeat");
+            assertTrue(sink.eventNames().stream().filter("heartbeat"::equals).count() >= 2,
+                    "each feed timeout must produce one observable heartbeat event");
         }
     }
 
@@ -91,7 +92,6 @@ class JobEventStreamTest {
     private static final class RecordingSink implements JobEventStream.EmitterSink {
         private final List<String> events = new CopyOnWriteArrayList<>();
         private final CountDownLatch done = new CountDownLatch(1);
-        private volatile int heartbeats;
         private volatile boolean errored;
         private volatile boolean throwOnEvent;
 
@@ -108,11 +108,6 @@ class JobEventStreamTest {
         }
 
         @Override
-        public void heartbeat() {
-            heartbeats++;
-        }
-
-        @Override
         public void complete() {
             done.countDown();
         }
@@ -125,10 +120,6 @@ class JobEventStreamTest {
 
         List<String> eventNames() {
             return List.copyOf(events);
-        }
-
-        int heartbeats() {
-            return heartbeats;
         }
 
         boolean completed() {

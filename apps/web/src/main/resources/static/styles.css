@@ -124,15 +124,15 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   box-shadow: inset 0 0 0 1px var(--danger);
 }
 
-main {
+.editor-main {
   padding-block: 1rem 4rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
   gap: 1.25rem;
   align-items: start;
 }
-main > #error-summary { grid-column: 1 / -1; }
-main:has(#generation-summary[hidden]) { grid-template-columns: minmax(0, 1fr); }
+.editor-main > #error-summary { grid-column: 1 / -1; }
+.editor-main:has(#generation-summary[hidden]) { grid-template-columns: minmax(0, 1fr); }
 #generation-summary[hidden] { display: none; }
 
 /* No margin-top here. Both containers that hold these are grids with their own
@@ -403,7 +403,7 @@ legend { font-weight: 750; }
 
 @media (max-width: 720px) {
   .site-header { padding-top: 1.5rem; }
-  main { grid-template-columns: minmax(0, 1fr); }
+  .editor-main { grid-template-columns: minmax(0, 1fr); }
   .field-grid, .operation-layout, .parameter-row, .generation-layout { grid-template-columns: minmax(0, 1fr); }
   section, .error-summary { padding: 1rem; }
   .wizard-steps { gap: .35rem; padding-bottom: .5rem; }
