@@ -11,8 +11,11 @@
   --primary: #4f46e5;
   --primary-dark: #3730a3;
   --primary-light: rgb(79 70 229 / 8%);
-  --success: #10b981;
-  --success-text: #047857;
+  /* Teal rather than emerald. Emerald carries yellow and sat apart from the
+     slate and indigo family; teal reads as the same palette while still
+     reading as success where the meaning is genuine. */
+  --success: #0d9488;
+  --success-text: #0f766e;
   --warning: #f59e0b;
   --warning-text: #92400e;
   --danger: #ef4444;
@@ -176,10 +179,12 @@ section, .error-summary {
 .upload-dropzone strong { font-size: 1.05rem; }
 .upload-dropzone span { color: var(--muted); }
 .upload-dropzone[hidden] { display: none; }
+/* A drop target is an affordance, not a success, so it wears the brand colour.
+   Green here made selection and confirmation compete with the primary action. */
 .upload-surface[data-upload-state="drag-over"] .upload-dropzone {
-  border-color: var(--success);
-  background: color-mix(in srgb, var(--success) 12%, white);
-  box-shadow: inset 0 0 0 2px var(--success);
+  border-color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: inset 0 0 0 2px var(--primary);
 }
 .upload-surface[data-upload-state="analyzing"] .upload-dropzone { cursor: progress; opacity: .75; }
 .upload-surface[data-upload-state="error"] .upload-dropzone {
@@ -193,9 +198,11 @@ section, .error-summary {
   gap: 1rem;
   min-height: 6rem;
   padding: 1rem 1.15rem;
-  border: 1px solid var(--success);
+  /* The loaded file is current state, not a success message. The completion it
+     used to announce in green is already stated by the status line below it. */
+  border: 1px solid var(--primary);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--success) 8%, white);
+  background: var(--primary-light);
 }
 .uploaded-file[hidden] { display: none; }
 .uploaded-file strong, .uploaded-file span { display: block; }
@@ -212,7 +219,9 @@ section, .error-summary {
 .endpoint-toolbar { display: flex; align-items: end; gap: .75rem; margin-bottom: .75rem; }
 .endpoint-counts { color: var(--muted); margin-block: .5rem 1rem; }
 .select-all { display: flex; align-items: center; gap: .5rem; min-height: 44px; font-weight: 700; }
-.select-all input, .endpoint-check input { width: 1.15rem; height: 1.15rem; min-height: 0; accent-color: var(--success); }
+/* Selecting an endpoint is a choice, not a success. Indigo keeps one owner of
+   action colour on a screen that also carries primary buttons. */
+.select-all input, .endpoint-check input { width: 1.15rem; height: 1.15rem; min-height: 0; accent-color: var(--primary); }
 .operation-list { display: grid; gap: .75rem; }
 .endpoint-card {
   display: grid;

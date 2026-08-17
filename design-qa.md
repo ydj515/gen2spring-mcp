@@ -78,6 +78,16 @@ The fill-only tokens measure `--success` 2.54:1, `--warning` 2.15:1, and `--dang
 - Control radius moved from a one-off `.45rem` to a `--radius-control: 8px` token shared by buttons, inputs, and selects, so controls sit in the same family as the 12 px card radius instead of near it.
 - Download labels were English in a Korean interface. They now read `프로젝트 아카이브 내려받기`, `매니페스트 내려받기`, and `검증 리포트 내려받기`, with an unknown artifact keeping its raw name the way stage and job state labels do.
 
+## Semantic colour scope
+
+Green appeared in eleven places, and three of them carried no success meaning: the select-all and per-endpoint checkboxes, the loaded-file card, and the drag-over drop target. Those are selection, current state, and an affordance. Painting them green gave a screen two owners of action colour, with a checkbox in one hue and its primary button in another.
+
+- Checkboxes, the loaded-file card, and the drop target now use `--primary`. Verified as `rgb(79, 70, 229)` on all three.
+- The remaining four usages are genuinely semantic and keep the success token: the SUPPORTED endpoint border, the POST method badge, the SUPPORTED status badge, and SUCCESS rows in the progress detail.
+- `--success` moved from emerald `#10b981` to teal `#0d9488`, and `--success-text` from `#047857` to `#0f766e`. Emerald carries yellow and read as a different family beside slate and indigo; teal sits with them while still reading as success.
+- Contrast holds: `--success-text` measures 5.47:1 on white and passes AA, `--success` measures 3.74:1 and stays fill-only. A sweep of every leaf element under `main` and `nav` found no glyph rendering in a fill-only token.
+- Counted across steps after the change: steps 1, 4, and 5 render no green at all; step 3 renders one badge; step 2 renders five elements, all of them supported-endpoint borders and badges.
+
 ## Progress transport
 
 Progress moved from browser polling to a server-sent event stream at `GET /api/jobs/{id}/events`, with the polling loop retained as an automatic fallback. See `docs/superpowers/specs/2026-08-16-job-progress-sse-design.md`.

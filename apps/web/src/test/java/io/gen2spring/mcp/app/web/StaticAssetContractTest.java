@@ -64,8 +64,14 @@ class StaticAssetContractTest {
         assertTrue(styles.contains("--line: #e2e8f0"));
         assertTrue(styles.contains("--text: #0f172a"));
         assertTrue(styles.contains("--muted: #475569"));
-        assertTrue(styles.contains("--success: #10b981"));
-        assertTrue(styles.contains("--success-text: #047857"));
+        assertTrue(styles.contains("--success: #0d9488"));
+        assertTrue(styles.contains("--success-text: #0f766e"));
+        // Selection, drop targets, and loaded state are brand affordances, not
+        // success. Painting them green gave the screen two owners of action colour.
+        assertTrue(styles.contains("accent-color: var(--primary);"));
+        assertFalse(styles.contains("accent-color: var(--success)"));
+        assertFalse(styles.contains("color-mix(in srgb, var(--success) 8%, white)"));
+        assertFalse(styles.contains("color-mix(in srgb, var(--success) 12%, white)"));
         assertTrue(styles.contains("--warning-text: #92400e"));
         assertTrue(styles.contains("--danger-text: #b91c1c"));
         assertTrue(styles.contains("color: var(--success-text)"));
