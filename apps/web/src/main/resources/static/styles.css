@@ -18,6 +18,7 @@
   --danger: #ef4444;
   --danger-text: #b91c1c;
   --radius: 12px;
+  --radius-control: 8px;
   --shadow: 0 4px 6px -1px rgb(15 23 42 / 5%), 0 2px 4px -2px rgb(15 23 42 / 5%), 0 0 0 1px rgb(15 23 42 / 2%);
   --dot-color: rgb(79 70 229 / 5%);
   color-scheme: light;
@@ -131,8 +132,10 @@ main > #error-summary { grid-column: 1 / -1; }
 main:has(#generation-summary[hidden]) { grid-template-columns: minmax(0, 1fr); }
 #generation-summary[hidden] { display: none; }
 
+/* No margin-top here. Both containers that hold these are grids with their own
+   gap, and the margin applied only to sections, pushing a wizard panel 1rem
+   below the summary aside sitting in the same grid row. */
 section, .error-summary {
-  margin-top: 1rem;
   padding: 1.25rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -199,6 +202,11 @@ section, .error-summary {
 .uploaded-file span { color: var(--muted); margin-top: .2rem; }
 .compact-actions { align-items: center; flex-wrap: nowrap; }
 .text-button { border-color: transparent; background: transparent; color: var(--danger-text); }
+.text-button:hover:not(:disabled) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--danger) 10%, white);
+  color: var(--danger-text);
+}
 
 .endpoint-selection { padding: 0; border: 0; }
 .endpoint-toolbar { display: flex; align-items: end; gap: .75rem; margin-bottom: .75rem; }
@@ -290,7 +298,7 @@ input, select, textarea, button {
   min-height: 44px;
   padding: .65rem .75rem;
   border: 1px solid var(--line-strong);
-  border-radius: .45rem;
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: inherit;
   font: inherit;
@@ -298,16 +306,43 @@ input, select, textarea, button {
 
 textarea { resize: vertical; }
 
+/* Three weights, so a screen reads as one primary action plus its supports.
+   Primary is solid, secondary is outlined, text carries no chrome at all. */
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: .65rem 1.1rem;
   border-color: var(--primary);
   background: var(--primary);
   color: var(--surface);
-  font-weight: 700;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .08s ease;
 }
 
-button.secondary { background: var(--surface); color: var(--primary); }
+button:hover:not(:disabled) { background: var(--primary-dark); border-color: var(--primary-dark); }
+button:active:not(:disabled) { transform: translateY(1px); }
+
+button.secondary {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--primary);
+}
+button.secondary:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary-dark);
+}
+
 button:disabled { cursor: not-allowed; opacity: .55; }
+
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+  button:active:not(:disabled) { transform: none; }
+}
 :focus-visible { outline: 3px solid var(--warning); outline-offset: 2px; }
 
 .status { color: var(--muted); }
@@ -317,7 +352,16 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .operation-layout { display: grid; grid-template-columns: minmax(14rem, .8fr) minmax(0, 1.6fr); gap: 1rem; }
 .operation-list { margin: 0; padding: 0; list-style: none; }
-.operation-list button { width: 100%; margin-bottom: .5rem; text-align: left; background: var(--primary-light); color: var(--primary-dark); }
+.operation-list button {
+  width: 100%;
+  margin-bottom: .5rem;
+  justify-content: flex-start;
+  text-align: left;
+  border-color: var(--line);
+  background: var(--primary-light);
+  color: var(--primary-dark);
+}
+.operation-list button:hover:not(:disabled) { border-color: var(--primary); background: var(--primary-light); }
 .operation-list button[aria-current="true"] { border-color: var(--primary); box-shadow: inset 4px 0 var(--primary); }
 fieldset { min-width: 0; border: 1px solid var(--line); border-radius: .6rem; }
 legend { font-weight: 750; }
@@ -326,7 +370,10 @@ legend { font-weight: 750; }
 .parameter-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(9rem, .6fr) minmax(0, 1fr); gap: .5rem; margin-bottom: .75rem; align-items: end; }
 .parameter-name { overflow-wrap: anywhere; font-weight: 650; }
 
-.preview-output, .downloads { display: grid; gap: .75rem; margin-top: 1rem; }
+.preview-output { display: grid; gap: .75rem; margin-top: 1rem; }
+/* Artifacts sit in a row, not a stack. Stacked full-weight blocks read as three
+   competing primary actions when they are really one result to collect. */
+.downloads { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
 .tool-card { padding: .8rem; border: 1px solid var(--line); border-radius: .5rem; }
 .tool-card pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .job-actions { margin-top: 1.25rem; }
@@ -344,7 +391,6 @@ legend { font-weight: 750; }
 .progress-list li[data-status="SUCCESS"] { color: var(--success-text); }
 .progress-list li[data-status="SKIPPED"] { color: var(--soft); }
 @media (prefers-reduced-motion: reduce) { .progress-fill { transition: none; } }
-.downloads button { width: fit-content; }
 
 @media (max-width: 720px) {
   .site-header { padding-top: 1.5rem; }

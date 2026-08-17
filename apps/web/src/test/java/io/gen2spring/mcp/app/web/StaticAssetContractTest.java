@@ -83,6 +83,18 @@ class StaticAssetContractTest {
         assertTrue(styles.contains(".generation-layout { grid-template-columns:"));
         assertTrue(styles.contains(".generation-summary { position: static; }"));
         assertTrue(styles.contains(".selected-tool-summary-content { display: grid;"));
+
+        // A wizard panel and the summary aside share a grid row, so a margin on
+        // only one of them misaligns their tops. Both containers supply a gap.
+        assertFalse(styles.contains("section, .error-summary {\n  margin-top"));
+        // Buttons carry three weights, and every one of them reacts to a pointer.
+        assertTrue(styles.contains("--radius-control: 8px"));
+        assertTrue(styles.contains("button:hover:not(:disabled)"));
+        assertTrue(styles.contains("button:active:not(:disabled)"));
+        assertTrue(styles.contains("button.secondary:hover:not(:disabled)"));
+        assertTrue(styles.contains("@media (prefers-reduced-motion: reduce)"));
+        // Artifacts form a row; stacked blocks read as competing primary actions.
+        assertTrue(styles.contains(".downloads { display: flex; flex-wrap: wrap;"));
     }
 
     @Test
@@ -149,6 +161,12 @@ class StaticAssetContractTest {
         }
         assertTrue(app.contains("stateLabel(snapshot.state)"));
         assertFalse(app.contains("${snapshot.currentStage}"));
+        // Download labels are Korean like the rest of the interface, and the
+        // buttons stay at secondary weight beside the primary generate action.
+        assertTrue(app.contains("function artifactLabel(name)"));
+        assertTrue(app.contains("프로젝트 아카이브"));
+        assertTrue(app.contains("검증 리포트"));
+        assertFalse(app.contains("`Download ${name}`"));
         assertTrue(styles.contains(".progress-fill"));
         // A failure marks every later stage SKIPPED. Counting the full list would
         // render a build that died at stage 3 as 88% complete.

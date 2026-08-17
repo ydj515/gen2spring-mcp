@@ -69,6 +69,15 @@ The fill-only tokens measure `--success` 2.54:1, `--warning` 2.15:1, and `--dang
 - `#job-status` rendered raw internal constants directly above the progress bar, producing a second untranslated line reading `RUNNING — COMPILE`. The stage now belongs to the bar alone, and the status line carries a Korean job state drawn from a map covering both vocabularies: local `VALIDATED` and `UNVERIFIED`, hosted `SUCCEEDED` and `CANCELLED`.
 - `removeJob` wrote `Cancellation requested.` and `Generation job deleted.` into that same status line in English. Both are now Korean.
 
+## Control hierarchy and panel alignment
+
+- A wizard panel and the summary aside share one grid row, but `margin-top: 1rem` applied only to `section`, so the panel sat 1 rem below the aside. Both `main` and `.hosted-shell` are grids with their own gap, making that margin redundant; removing it aligns the two. Measured tops now match at 271 px on steps 2, 3, 4, and 5.
+- Buttons carried one weight: every control was solid indigo at `font-weight: 700`, so three download buttons competed with `프로젝트 생성` for the same attention. They now run three weights — primary solid indigo, secondary white with a `--line-strong` border and `--primary` text, and text with no chrome. Verified per step: `다음: 생성 및 결과` renders `rgb(79, 70, 229)` on white text, `이전` and `파일 교체` render white with indigo text, `제거` renders transparent with `--danger-text`.
+- No button had a hover or active state, which was the largest part of the dated feel. Four hover rules now exist (primary, secondary, text, operation list) plus a 1 px active press, all disabled under `prefers-reduced-motion`.
+- Downloads stacked vertically at ragged widths because the container was a grid and each button was `width: fit-content`. They now form a wrapping row: three buttons share one row at 1280 px, and at 400 px they stack at a uniform 352 px matching the container.
+- Control radius moved from a one-off `.45rem` to a `--radius-control: 8px` token shared by buttons, inputs, and selects, so controls sit in the same family as the 12 px card radius instead of near it.
+- Download labels were English in a Korean interface. They now read `프로젝트 아카이브 내려받기`, `매니페스트 내려받기`, and `검증 리포트 내려받기`, with an unknown artifact keeping its raw name the way stage and job state labels do.
+
 ## Progress transport
 
 Progress moved from browser polling to a server-sent event stream at `GET /api/jobs/{id}/events`, with the polling loop retained as an automatic fallback. See `docs/superpowers/specs/2026-08-16-job-progress-sse-design.md`.

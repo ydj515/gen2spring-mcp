@@ -316,10 +316,25 @@ function renderJob(snapshot) {
     const name = typeof artifact === 'string' ? artifact : artifact.name;
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = `Download ${name}`;
+    // Collecting a result is not the primary action on this step, so these stay
+    // at secondary weight rather than competing with 프로젝트 생성.
+    button.className = 'secondary';
+    button.textContent = artifactLabel(name);
     button.addEventListener('click', () => downloadArtifact(snapshot.id, artifact));
     return button;
   }));
+}
+
+const ARTIFACT_LABELS = {
+  archive: '프로젝트 아카이브',
+  manifest: '매니페스트',
+  report: '검증 리포트'
+};
+
+// An unknown artifact keeps its raw name, matching the stage and job state
+// label policy in progress.js.
+function artifactLabel(name) {
+  return `${ARTIFACT_LABELS[name] ?? name} 내려받기`;
 }
 
 async function downloadArtifact(jobId, artifact) {
