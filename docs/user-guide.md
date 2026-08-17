@@ -280,6 +280,37 @@ ZIP entry는 path order, timestamp와 file mode를 결정적으로 기록한다.
 정규화한 뒤 나머지가 같아야 한다. validation workspace의 `build/`, `.gradle/`, process log는 배포
 directory와 ZIP에 포함하지 않는다.
 
+### 생성 프로젝트 소스 구조
+
+```text
+src/main/java/{packageName}/
+├── application/
+│   └── {Domain}McpApplication.java       # Spring Boot Application 진입점
+├── generated/
+│   ├── dto/                              # 입력/출력 Record (Jakarta Validation 포함)
+│   │   ├── {ToolName}Input.java
+│   │   └── {ToolName}Result.java
+│   ├── metadata/                         # API 엔드포인트 URL, HTTP Method, 바인딩 매핑 정보
+│   │   └── {Domain}Operations.java
+│   └── tool/                             # MCP 도구 진입점 및 ToolSpecification 빈 등록
+│       ├── {Domain}McpTools.java
+│       └── {Domain}McpToolCallbacks.java
+└── runtime/                              # 프로덕션 안정성 보장 엔진
+    ├── OpenApiOperationExecutor.java    # RestClient 호출, 타임아웃, 큐/동시성, 1MB 크기 제한
+    ├── ResponseNormalizer.java           # 응답 정규화 및 에러 포맷팅
+    ├── RuntimeTelemetry.java             # Micrometer 메트릭 및 W3C 분산 추적
+    ├── ToolArgumentContext.java          # 파라미터 컨텍스트 전달
+    └── RetryPolicy / PaginationPolicy    # 재시도 및 페이징 제어 (선택적 생성)
+```
+
+### 설계 배경: annotation-scanner 비활성화 이유
+
+생성 프로젝트의 `application.yml`에서 `spring.ai.mcp.server.annotation-scanner.enabled: false`를 기본 적용하는 이유는 다음과 같습니다.
+
+1. **OpenAPI 스키마 무결성 보장 (Deterministic Tool Schema)**: Spring AI의 자동 리플렉션 스캔은 Java 파라미터 타입으로부터 JSON Schema를 동적 생성하므로 OpenAPI 원본의 세부 제약(포맷, required 순서, custom constraints 등)이 유실될 수 있습니다. 본 생성기는 OpenAPI 명세에서 도출된 엄격한 JSON Schema 리터럴을 `DefaultToolDefinition.inputSchema`에 직접 주입하여 MCP 클라이언트와의 계약을 완벽히 보장합니다.
+2. **도구 중복 등록 및 어노테이션 혼선 방지**: Spring AI MCP Server Starter의 스캐너는 일반 `@Tool`이 아닌 `@McpTool`을 스캔하며, Spring AI 버전 간(1.1의 Community 패키지 vs 2.0의 공식 패키지) 어노테이션 네임스페이스가 상이합니다. 어노테이션 스캐너를 비활성화하고 `List<McpServerFeatures.SyncToolSpecification>` 빈으로 명시적 등록함으로써 도구 중복 등록과 스캔 누락을 원천 차단합니다.
+3. **런타임 파이프라인 및 안전한 에러 캡슐화**: 커스텀 `callHandler`를 통해 도구 호출 시 W3C 분산 추적 및 Micrometer 메트릭(`RuntimeTelemetry`)을 수집하고, 백엔드 API 오류 시 원시 스택트레이스 대신 정제된 safe error payload(`isError=true`)를 안전하게 반환합니다.
+
 ## 지원 범위와 제한
 
 지원:

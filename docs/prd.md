@@ -945,20 +945,36 @@ SpringAi2ProjectGenerator
 
 ## FR-10.1 Package Structure
 
-기본 구조:
+생성 프로젝트 소스 구조:
 
 ```text
-{basePackage}
-├── application
-├── config
-├── tool
-├── client
-├── runtime
-├── model
-│   ├── input
-│   └── output
-└── support
+src/main/java/{packageName}/
+├── application/
+│   └── {Domain}McpApplication.java       # Spring Boot Application 진입점
+├── generated/
+│   ├── dto/                              # 입력/출력 Record (Jakarta Validation 포함)
+│   │   ├── {ToolName}Input.java
+│   │   └── {ToolName}Result.java
+│   ├── metadata/                         # API 엔드포인트 URL, HTTP Method, 바인딩 매핑 정보
+│   │   └── {Domain}Operations.java
+│   └── tool/                             # MCP 도구 진입점 및 ToolSpecification 빈 등록
+│       ├── {Domain}McpTools.java
+│       └── {Domain}McpToolCallbacks.java
+└── runtime/                              # 프로덕션 안정성 보장 엔진
+    ├── OpenApiOperationExecutor.java    # RestClient 호출, 타임아웃, 큐/동시성, 1MB 크기 제한
+    ├── ResponseNormalizer.java           # 응답 정규화 및 에러 포맷팅
+    ├── RuntimeTelemetry.java             # Micrometer 메트릭 및 W3C 분산 추적
+    ├── ToolArgumentContext.java          # 파라미터 컨텍스트 전달
+    └── RetryPolicy / PaginationPolicy    # 재시도 및 페이징 제어 (선택적 생성)
 ```
+
+### FR-10.1.1 MCP Server 설정 및 annotation-scanner 비활성화 설계
+
+생성된 프로젝트의 `application.yml`에서는 `spring.ai.mcp.server.annotation-scanner.enabled: false`를 기본 적용한다.
+
+1. **OpenAPI 스키마 무결성 보장 (Deterministic Tool Schema)**: Spring AI 리플렉션 스캐너의 동적 생성 스키마 대신, OpenAPI 명세에서 도출된 엄격한 JSON Schema 리터럴을 `DefaultToolDefinition.inputSchema`에 직접 주입하여 계약 무결성을 보장한다.
+2. **도구 중복 등록 및 어노테이션 혼선 방지**: Spring AI MCP Server Starter의 `@McpTool` 요구사항 및 버전별(1.1 Community vs 2.0 Official) 어노테이션 패키지 파편화를 방지하고 `List<McpServerFeatures.SyncToolSpecification>` 빈으로 명시적 등록한다.
+3. **런타임 파이프라인 및 안전한 에러 캡슐화**: 커스텀 `callHandler`를 통해 도구 호출 시 W3C 분산 추적 및 Micrometer 메트릭(`RuntimeTelemetry`)을 수집하고, 공급자 API 오류 시 원시 스택트레이스 대신 `isError=true` safe payload를 안전하게 캡슐화한다.
 
 ## FR-10.2 Naming
 
