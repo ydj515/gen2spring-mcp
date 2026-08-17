@@ -37,7 +37,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     onReset();
   };
 
-  const complete = (analysis, version, retainedJobId = null) => {
+  const complete = (analysis, version, retainedJobId = null, retainedStep = 1) => {
     if (version !== requestVersion) return;
     const operations = analyzedOperations(analysis.operations ?? []);
     updateState({
@@ -47,7 +47,8 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
       selectedOperationId: operations.find(operation => operation.supported)?.operationId ?? null,
       preview: null,
       job: null,
-      jobId: retainedJobId
+      jobId: retainedJobId,
+      currentStep: retainedStep
     });
     const analyzedName = analysis.file?.name ?? 'OpenAPI';
     const analyzedSize = analysis.file?.byteSize;
@@ -88,7 +89,9 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
 
   const load = async specificationId => {
     const version = ++requestVersion;
-    const retainedJobId = getState().specificationId === specificationId ? getState().jobId : null;
+    const sameSpecification = getState().specificationId === specificationId;
+    const retainedJobId = sameSpecification ? getState().jobId : null;
+    const retainedStep = sameSpecification ? getState().currentStep : 1;
     resetSpecificationState();
     onReset();
     setUploadState('analyzing');
@@ -96,7 +99,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     try {
       const analysis = await api.analysis(specificationId);
       if (version !== requestVersion) return;
-      complete(analysis, version, retainedJobId);
+      complete(analysis, version, retainedJobId, retainedStep);
     } catch (failure) {
       if (version !== requestVersion) return;
       resetSpecificationState();

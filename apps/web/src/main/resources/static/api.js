@@ -71,8 +71,10 @@ export async function startJob(specificationId, configuration) {
   })).json();
 }
 
-export async function job(jobId) {
-  const payload = await (await request(`/api/jobs/${jobId}`)).json();
+// Shared by both transports. Hosted sends its own record shape and local sends
+// the flat snapshot, so this is the single place either becomes the shape the
+// presentation code expects.
+function normalizeJob(payload) {
   if (!hostedMode) return payload;
   const stages = (payload.events ?? []).map(event => ({
     stage: event.stage,
@@ -91,6 +93,32 @@ export async function job(jobId) {
     })),
     error: payload.status === 'FAILED' ? {message: latest?.summary ?? 'Generation failed safely.'} : null
   };
+}
+
+export async function job(jobId) {
+  return normalizeJob(await (await request(`/api/jobs/${jobId}`)).json());
+}
+
+export function jobEvents(jobId, {onSnapshot, onHeartbeat, onDone, onFailure}) {
+  const source = new EventSource(`/api/jobs/${jobId}/events`);
+  source.addEventListener('snapshot', message => {
+    try {
+      onSnapshot(normalizeJob(JSON.parse(message.data)));
+    } catch {
+      onFailure();
+    }
+  });
+  source.addEventListener('heartbeat', () => onHeartbeat());
+  source.addEventListener('done', () => {
+    source.close();
+    onDone();
+  });
+  source.addEventListener('error', () => {
+    // A reconnecting EventSource is still healthy. Only a closed one is fatal,
+    // so the browser's own retry gets its chance before we hand off to polling.
+    if (source.readyState === EventSource.CLOSED) onFailure();
+  });
+  return {close: () => source.close()};
 }
 
 export function downloadUrl(jobId, artifact) {

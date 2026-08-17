@@ -50,14 +50,18 @@ public final class JobHandler {
     }
 
     ObjectNode status(String id) {
-        return snapshot(jobs.snapshot(id));
+        return snapshotPayload(jobs.snapshot(id));
     }
 
     void delete(String id) {
         jobs.delete(id);
     }
 
-    private ObjectNode snapshot(JobSnapshot snapshot) {
+    /**
+     * Serializes one snapshot. The polling endpoint and the event stream share this
+     * method so the two transports can never drift into different payload shapes.
+     */
+    public ObjectNode snapshotPayload(JobSnapshot snapshot) {
         ObjectNode root = json.createObjectNode();
         root.put("id", snapshot.id());
         root.put("state", snapshot.state().name());

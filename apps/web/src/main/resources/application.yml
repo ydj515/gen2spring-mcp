@@ -21,6 +21,11 @@ spring:
   main:
     banner-mode: "off"
     log-startup-info: false
+  mvc:
+    async:
+      # Job event streams stay open for the life of a generation. Matches the
+      # SseEmitter timeout so the container never severs a healthy stream first.
+      request-timeout: 30m
 gen2spring:
   mode: ${GEN2SPRING_MODE:local}
   hosted:

@@ -200,6 +200,95 @@ class GenerationJobManagerTest {
         assertTrue(Files.exists(unrelated));
     }
 
+    @Test
+    void awaitChangeReturnsWhenAStageAdvances() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch advance = new CountDownLatch(1);
+        GenerationExecutor executor = (specification, request, output, progress) -> {
+            entered.countDown();
+            assertTrue(advance.await(5, TimeUnit.SECONDS));
+            progress.onProgress(new GenerationProgress("ANALYZE", ProgressStatus.RUNNING));
+            return validatedOutput(output);
+        };
+
+        try (GenerationJobManager jobs = manager(executor)) {
+            JobSnapshot accepted = jobs.submit(specification(), request());
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            GenerationJobManager.VersionedSnapshot before = jobs.current(accepted.id());
+
+            advance.countDown();
+            GenerationJobManager.VersionedSnapshot after = jobs
+                    .awaitChange(accepted.id(), before.version(), Duration.ofSeconds(5))
+                    .orElseThrow(() -> new AssertionError("expected a change before the timeout"));
+
+            assertTrue(after.version() > before.version());
+        }
+    }
+
+    @Test
+    void awaitChangeReturnsEmptyOnTimeoutWithoutConsumingTheJob() throws Exception {
+        GenerationExecutor executor = (specification, request, output, progress) -> validatedOutput(output);
+
+        try (GenerationJobManager jobs = manager(executor)) {
+            JobSnapshot accepted = jobs.submit(specification(), request());
+            jobs.await(accepted.id(), Duration.ofSeconds(5));
+            GenerationJobManager.VersionedSnapshot settled = jobs.current(accepted.id());
+
+            assertTrue(jobs.awaitChange(accepted.id(), settled.version(), Duration.ofMillis(150)).isEmpty());
+            assertEquals(settled.version(), jobs.current(accepted.id()).version());
+        }
+    }
+
+    @Test
+    void versionIncreasesMonotonicallyAcrossTheWholeRun() throws Exception {
+        GenerationExecutor executor = (specification, request, output, progress) -> {
+            for (String stage : GenerationProgress.STAGES) {
+                progress.onProgress(new GenerationProgress(stage, ProgressStatus.RUNNING));
+                progress.onProgress(new GenerationProgress(stage, ProgressStatus.SUCCESS));
+            }
+            return validatedOutput(output);
+        };
+
+        try (GenerationJobManager jobs = manager(executor)) {
+            JobSnapshot accepted = jobs.submit(specification(), request());
+            jobs.await(accepted.id(), Duration.ofSeconds(5));
+
+            long version = 0;
+            int observed = 0;
+            // A terminal job never changes again, so the first empty result ends the run.
+            while (true) {
+                var change = jobs.awaitChange(accepted.id(), version, Duration.ofMillis(200));
+                if (change.isEmpty()) {
+                    break;
+                }
+                assertTrue(change.get().version() > version, "version must strictly increase");
+                version = change.get().version();
+                observed++;
+            }
+
+            assertTrue(observed > 0, "expected at least one observed change");
+            assertEquals(version, jobs.current(accepted.id()).version());
+        }
+    }
+
+    @Test
+    void openingAStreamOnAFreshJobSeesAVersionAboveTheStartingCursor() throws Exception {
+        CountDownLatch hold = new CountDownLatch(1);
+        GenerationExecutor executor = (specification, request, output, progress) -> {
+            assertTrue(hold.await(5, TimeUnit.SECONDS));
+            return validatedOutput(output);
+        };
+
+        try (GenerationJobManager jobs = manager(executor)) {
+            JobSnapshot accepted = jobs.submit(specification(), request());
+
+            // A stream opens with cursor 0 and must be able to send an immediate
+            // snapshot even before the job has changed at all.
+            assertTrue(jobs.current(accepted.id()).version() > 0);
+            hold.countDown();
+        }
+    }
+
     private GenerationJobManager manager(GenerationExecutor executor) {
         return new GenerationJobManager(
                 tempDir, executor, Clock.systemUTC(), Duration.ofHours(1), ignored -> {});

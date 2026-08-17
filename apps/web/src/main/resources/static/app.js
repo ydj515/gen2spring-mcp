@@ -3,24 +3,30 @@ import {getState, updateState} from './state.js';
 import {buildConfiguration, initializeEditor, renderOperations, selectOperation} from './editor.js';
 import {initializeUpload} from './upload.js';
 import {initializeOperations} from './operations.js';
+import {initializeWizard} from './wizard.js';
+import {clearProgress, renderProgress, stateLabel} from './progress.js';
 
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
   'error-summary', 'error-message', 'analysis-summary', 'target-profile', 'profile-description',
   'preview-button', 'preview-status',
-  'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'progress-list', 'downloads',
+  'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'downloads',
   'summary-version', 'summary-selected', 'summary-excluded', 'summary-warnings',
   'summary-profile', 'summary-validation', 'validation-operation'
 ].map(id => [id, byId(id)]));
 const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
 
+const wizard = initializeWizard();
 initializeEditor(invalidatePreview);
 initializeOperations({
   onSelectionChange: () => {
     renderOperations();
     invalidatePreview();
   },
-  onEdit: selectOperation
+  onEdit: operationId => {
+    wizard.goToStep(3);
+    selectOperation(operationId);
+  }
 });
 const upload = initializeUpload({
   onAnalysis: analysis => {
@@ -28,6 +34,9 @@ const upload = initializeUpload({
     renderAnalysis(analysis);
     renderOperations();
     invalidatePreview();
+    // A retained specification replays this callback on resume; advancing
+    // unconditionally would discard the restored step.
+    if (getState().currentStep === 1) wizard.goToStep(2);
   },
   onReset: resetSpecificationPresentation,
   onFailure: showFailure
@@ -42,7 +51,7 @@ for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'd
 }
 
 loadProfiles();
-resumeRetainedState();
+resumeRetainedState().then(() => wizard.syncGate());
 renderGenerationSummary();
 
 async function loadProfiles() {
@@ -70,7 +79,7 @@ async function resumeRetainedJob() {
   if (!jobId) return;
   ui['delete-job-button'].disabled = true;
   try {
-    await pollJob(jobId);
+    await followJob(jobId);
   } catch (failure) {
     if (failure?.code === 'JOB_NOT_FOUND') updateState({jobId: null, job: null});
     else ui['delete-job-button'].disabled = false;
@@ -121,11 +130,55 @@ async function startGeneration() {
     const accepted = await api.startJob(getState().specificationId, configuration);
     updateState({jobId: accepted.id, job: accepted});
     ui['delete-job-button'].disabled = !api.hostedMode;
-    await pollJob(accepted.id);
+    wizard.goToStep(5);
+    await followJob(accepted.id);
   } catch (failure) {
     showFailure(failure);
     ui['generate-button'].disabled = false;
   }
+}
+
+const FIRST_EVENT_DEADLINE_MILLIS = 5000;
+const STREAM_LIVENESS_DEADLINE_MILLIS = 35000;
+
+// Prefers the event stream and hands off to polling when it cannot be
+// established or cannot recover. Falling back is one-way for the life of a job,
+// so a flapping stream cannot thrash between transports.
+async function followJob(jobId) {
+  const streamed = await new Promise(resolve => {
+    let settled = false;
+    let deadline;
+    let stream;
+    const settle = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      stream.close();
+      resolve(value);
+    };
+    const refreshDeadline = timeout => {
+      if (settled) return;
+      clearTimeout(deadline);
+      deadline = setTimeout(() => settle(false), timeout);
+    };
+    stream = api.jobEvents(jobId, {
+      onSnapshot: snapshot => {
+        // The job was deleted or replaced; stop without handing off.
+        if (getState().jobId !== jobId) return settle(true);
+        refreshDeadline(STREAM_LIVENESS_DEADLINE_MILLIS);
+        updateState({job: snapshot});
+        renderJob(snapshot);
+        ui['delete-job-button'].disabled = TERMINAL_STATES.includes(snapshot.state)
+          ? api.hostedMode : !api.hostedMode;
+      },
+      onHeartbeat: () => refreshDeadline(STREAM_LIVENESS_DEADLINE_MILLIS),
+      onDone: () => settle(true),
+      onFailure: () => settle(false)
+    });
+    refreshDeadline(FIRST_EVENT_DEADLINE_MILLIS);
+  });
+  if (streamed) return;
+  await pollJob(jobId);
 }
 
 async function pollJob(jobId) {
@@ -151,16 +204,18 @@ async function removeJob() {
   try {
     await api.deleteJob(jobId);
     if (api.hostedMode) {
-      ui['job-status'].textContent = 'Cancellation requested.';
+      ui['job-status'].textContent = '취소를 요청했습니다.';
       ui['delete-job-button'].disabled = true;
       return;
     }
     updateState({jobId: null, job: null});
-    ui['job-status'].textContent = 'Generation job deleted.';
-    ui['progress-list'].replaceChildren();
+    ui['job-status'].textContent = '생성 작업을 삭제했습니다.';
+    clearProgress();
     ui['downloads'].replaceChildren();
     ui['delete-job-button'].disabled = true;
     ui['generate-button'].disabled = !getState().preview;
+    // Deleting the job closes the step 5 gate, so step 5 must stop being current.
+    wizard.syncGate();
   } catch (failure) {
     showFailure(failure);
   }
@@ -173,6 +228,7 @@ function invalidatePreview() {
   ui['preview-output'].replaceChildren();
   renderGenerationSummary();
   updatePreviewGate();
+  wizard.syncGate();
 }
 
 function describeProfile() {
@@ -205,7 +261,7 @@ function resetSpecificationPresentation() {
   clearFailure();
   ui['analysis-summary'].replaceChildren();
   ui['preview-output'].replaceChildren();
-  ui['progress-list'].replaceChildren();
+  clearProgress();
   ui['downloads'].replaceChildren();
   ui['job-status'].textContent = '아직 생성 작업을 시작하지 않았습니다.';
   ui['delete-job-button'].disabled = true;
@@ -259,23 +315,35 @@ function renderPreview(preview) {
 }
 
 function renderJob(snapshot) {
+  // The stage belongs to the progress bar, which names it in Korean. Repeating
+  // it here produced a second, untranslated line reading RUNNING — COMPILE.
   ui['job-status'].textContent = snapshot.error
-    ? `${snapshot.state}: ${snapshot.error.message}`
-    : `${snapshot.state}${snapshot.currentStage ? ` — ${snapshot.currentStage}` : ''}`;
-  ui['progress-list'].replaceChildren(...snapshot.stages.map(stage => {
-    const item = document.createElement('li');
-    item.dataset.status = stage.status;
-    item.textContent = `${stage.stage}: ${stage.status}`;
-    return item;
-  }));
+    ? `${stateLabel(snapshot.state)} ${snapshot.error.message}`
+    : stateLabel(snapshot.state);
+  renderProgress(snapshot);
   ui['downloads'].replaceChildren(...snapshot.downloads.map(artifact => {
     const name = typeof artifact === 'string' ? artifact : artifact.name;
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = `Download ${name}`;
+    // Collecting a result is not the primary action on this step, so these stay
+    // at secondary weight rather than competing with 프로젝트 생성.
+    button.className = 'secondary';
+    button.textContent = artifactLabel(name);
     button.addEventListener('click', () => downloadArtifact(snapshot.id, artifact));
     return button;
   }));
+}
+
+const ARTIFACT_LABELS = {
+  archive: '프로젝트 아카이브',
+  manifest: '매니페스트',
+  report: '검증 리포트'
+};
+
+// An unknown artifact keeps its raw name, matching the stage and job state
+// label policy in progress.js.
+function artifactLabel(name) {
+  return `${ARTIFACT_LABELS[name] ?? name} 내려받기`;
 }
 
 async function downloadArtifact(jobId, artifact) {
