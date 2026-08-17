@@ -170,7 +170,7 @@ The font stack stays `Inter, ui-sans-serif, system-ui, sans-serif` with no `@fon
 
 ### 8.4 Page treatment
 
-The body gains the reference theme's dot pattern: `radial-gradient(var(--dot-color) 1.5px, transparent 1.5px)` at `20px 20px`. It costs no request and no script.
+The body gains a dot pattern: `radial-gradient(var(--dot-color) 1.5px, transparent 1.5px)` at `20px 20px`. It costs no request and no script.
 
 ### 8.5 Dark theme readiness
 
