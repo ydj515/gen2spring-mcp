@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
@@ -26,6 +27,16 @@ class GenerationConfigurationParserTest {
         assertEquals(yaml, json);
         assertEquals(BigInteger.valueOf(3), json.validation().toolCall().arguments().get("days"));
         assertEquals(new BigDecimal("127.0"), json.validation().toolCall().arguments().get("longitude"));
+    }
+
+    @Test
+    void preservesExplicitJsonNullInToolCallArguments() {
+        var yaml = parser.parseYaml(validYaml().replace("days: 3", "days: null").getBytes(UTF_8));
+        var json = parser.parseJson(validJson().replace("\"days\": 3", "\"days\": null").getBytes(UTF_8));
+
+        assertEquals(yaml, json);
+        assertTrue(yaml.validation().toolCall().arguments().containsKey("days"));
+        assertEquals(null, yaml.validation().toolCall().arguments().get("days"));
     }
 
     @Test

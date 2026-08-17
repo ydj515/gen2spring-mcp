@@ -109,7 +109,7 @@ class GenerationPreviewTest {
         GenerationPreview.Tool second = GenerationPreview.Tool.from(tool, inputSchema);
 
         String canonicalSchema = """
-                {"properties":{"items":{"items":{"properties":{"id":{"format":"int64","type":"integer"}},"required":["id"],"type":"object"},"type":"array"},"next":{"nullable":true,"type":"string"}},"required":["items"],"type":"object"}
+                {"properties":{"items":{"items":{"properties":{"id":{"format":"int64","type":"integer"}},"required":["id"],"type":"object"},"minItems":1,"type":"array"},"next":{"nullable":true,"type":"string"}},"required":["items"],"type":"object"}
                 """.strip();
         String checksum = HexFormat.of().formatHex(
                 MessageDigest.getInstance("SHA-256").digest(canonicalSchema.getBytes(UTF_8)));
@@ -131,7 +131,7 @@ class GenerationPreviewTest {
                 null, null, null, null, Map.of("id", id), List.of("id"), null, true, List.of());
         ApiSchema items = new ApiSchema(
                 SchemaType.ARRAY, null, false, List.of(), null, null,
-                null, null, null, null, Map.of(), List.of(), item, true, List.of());
+                null, null, null, null, Map.of(), List.of(), item, 1, true, List.of());
         ApiSchema next = new ApiSchema(
                 SchemaType.STRING, null, true, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());

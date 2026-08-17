@@ -110,7 +110,7 @@ final class ToolClassRenderer {
 
     private void addValidationImports(Set<String> imports, ToolInput input) {
         ApiSchema schema = input.schema();
-        if (input.required()) {
+        if (input.required() && !schema.nullable()) {
             imports.add("jakarta.validation.constraints.NotNull");
         }
         if (InputRecordRenderer.requiresCascade(schema)) {
@@ -122,7 +122,7 @@ final class ToolClassRenderer {
         if (schema.maximum() != null) {
             imports.add("jakarta.validation.constraints.DecimalMax");
         }
-        if (schema.minLength() != null || schema.maxLength() != null) {
+        if (schema.minLength() != null || schema.maxLength() != null || schema.minItems() != null) {
             imports.add("jakarta.validation.constraints.Size");
         }
         if (schema.pattern() != null) {

@@ -19,10 +19,12 @@ final class ToolCallbackConfigurationRenderer {
         Set<String> imports = new TreeSet<>(Set.of(
                 packageName + ".runtime.ProviderErrorException",
                 packageName + ".runtime.RuntimeTelemetry",
+                packageName + ".runtime.ToolArgumentContext",
                 "io.modelcontextprotocol.server.McpServerFeatures",
                 "io.modelcontextprotocol.spec.McpSchema",
                 "java.lang.reflect.Method",
                 "java.util.List",
+                "java.util.Map",
                 "org.springframework.ai.mcp.McpToolUtils",
                 "org.springframework.ai.tool.definition.DefaultToolDefinition",
                 "org.springframework.ai.tool.execution.ToolExecutionException",
@@ -107,8 +109,13 @@ final class ToolCallbackConfigurationRenderer {
                 .append("                            runtimeTelemetry.startToolCall(tool.name(), operationId);\n")
                 .append("                    try (var ignored = telemetryCall.openScope()) {\n")
                 .append("                    try {\n")
-                .append("                        String input = objectMapper.writeValueAsString(request.arguments());\n")
-                .append("                        String output = callback.call(input);\n")
+                .append("                        Map<String, Object> rawArguments =\n")
+                .append("                                request.arguments() == null ? Map.of() : request.arguments();\n")
+                .append("                        String input = objectMapper.writeValueAsString(rawArguments);\n")
+                .append("                        String output;\n")
+                .append("                        try (var argumentContext = ToolArgumentContext.open(rawArguments)) {\n")
+                .append("                            output = callback.call(input);\n")
+                .append("                        }\n")
                 .append("                        telemetryCall.complete(\n")
                 .append("                                RuntimeTelemetry.Outcome.SUCCESS,\n")
                 .append("                                RuntimeTelemetry.ErrorCategory.NONE,\n")

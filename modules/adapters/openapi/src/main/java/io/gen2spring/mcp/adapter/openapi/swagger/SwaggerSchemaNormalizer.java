@@ -41,6 +41,10 @@ public final class SwaggerSchemaNormalizer {
         return normalize(schema, componentSchemas, true, true, honorsNullable(openApiVersion));
     }
 
+    ApiSchema normalizeRequestBody(Schema<?> schema, Map<String, Schema> componentSchemas, String openApiVersion) {
+        return normalize(schema, componentSchemas, true, false, honorsNullable(openApiVersion));
+    }
+
     private ApiSchema normalize(
             Schema<?> schema,
             Map<String, Schema> componentSchemas,
@@ -90,7 +94,8 @@ public final class SwaggerSchemaNormalizer {
         try {
             TypeResolution typeResolution = resolveType(schema, honorNullableKeyword);
             List<String> warnings = unsupportedCompositionWarnings(schema);
-            warnings.addAll(unsupportedSemanticWarnings(schema, allowNullable, typeResolution.nullable()));
+            warnings.addAll(unsupportedSemanticWarnings(
+                    schema, allowNullable, typeResolution.nullable(), typeResolution.type()));
             if (typeResolution.multipleTypesUnsupported()) {
                 warnings.add(SCHEMA_MULTI_TYPE_UNSUPPORTED.message());
             }
@@ -143,6 +148,7 @@ public final class SwaggerSchemaNormalizer {
                             .filter(properties::containsKey)
                             .toList(),
                     items,
+                    schema.getMinItems(),
                     warnings.isEmpty(),
                     List.copyOf(warnings));
         } finally {
@@ -170,7 +176,8 @@ public final class SwaggerSchemaNormalizer {
     private List<String> unsupportedSemanticWarnings(
             Schema<?> schema,
             boolean allowNullable,
-            boolean nullable) {
+            boolean nullable,
+            SchemaType type) {
         List<String> warnings = new ArrayList<>();
         Object additionalProperties = schema.getAdditionalProperties();
         if (additionalProperties != null && !Boolean.FALSE.equals(additionalProperties)) {
@@ -185,6 +192,7 @@ public final class SwaggerSchemaNormalizer {
                 || schema.getExclusiveMaximumValue() != null
                 || schema.getMultipleOf() != null
                 || schema.getMinItems() != null
+                        && (schema.getMinItems() < 0 || type != SchemaType.ARRAY)
                 || schema.getMaxItems() != null
                 || Boolean.TRUE.equals(schema.getUniqueItems())
                 || schema.getMinProperties() != null
@@ -274,8 +282,9 @@ public final class SwaggerSchemaNormalizer {
                 || schema.getProperties() != null && !schema.getProperties().isEmpty()
                 || schema.getRequired() != null && !schema.getRequired().isEmpty()
                 || schema.getItems() != null
+                || schema.getMinItems() != null
                 || !unsupportedCompositionWarnings(schema).isEmpty()
-                || !unsupportedSemanticWarnings(schema, allowNullable, false).isEmpty();
+                || !unsupportedSemanticWarnings(schema, allowNullable, false, null).isEmpty();
     }
 
     private ApiSchema unsupported(String warning) {

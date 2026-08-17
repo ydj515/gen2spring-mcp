@@ -230,7 +230,7 @@ public final class GenerationConfigurationParser {
         String field = container != null && container.mapping() ? container.pendingKey() : null;
         boolean isJsonValue = container != null && container.jsonValueMode();
         boolean supportedJsonScalar = Tag.STR.equals(tag) || Tag.INT.equals(tag)
-                || Tag.FLOAT.equals(tag) || Tag.BOOL.equals(tag);
+                || Tag.FLOAT.equals(tag) || Tag.BOOL.equals(tag) || Tag.NULL.equals(tag);
         if ("initialValue".equals(field)) {
             if (!Tag.STR.equals(tag) && !Tag.INT.equals(tag)) {
                 throw invalid("Generation configuration scalar types must match the schema");
@@ -530,7 +530,7 @@ public final class GenerationConfigurationParser {
             throw invalid("Tool call arguments exceed configured bounds");
         }
         if (node == null || node.isNull()) {
-            throw invalid("Tool call arguments cannot contain null values");
+            return null;
         }
         if (node.isObject()) {
             return argumentMap(node, depth);

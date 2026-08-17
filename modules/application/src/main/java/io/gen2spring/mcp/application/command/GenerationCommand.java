@@ -115,6 +115,9 @@ public record GenerationCommand(
     }
 
     private static Object immutableJsonValue(Object value) {
+        if (value == null) {
+            return null;
+        }
         if (value instanceof String || value instanceof Number || value instanceof Boolean) {
             return value;
         }

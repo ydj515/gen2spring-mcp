@@ -198,6 +198,7 @@ class JavaSourceRendererTest {
                 "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
                 "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
                 "src/main/java/com/example/weather/runtime/SecretBinding.java",
+                "src/main/java/com/example/weather/runtime/ToolArgumentContext.java",
                 "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
                 "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java")),
                 new TreeSet<>(files.keySet()));
@@ -222,7 +223,9 @@ class JavaSourceRendererTest {
         assertTrue(runtime.contains("com.fasterxml.jackson.databind.json.JsonMapper"));
         assertTrue(runtime.contains("com.fasterxml.jackson.core.JsonProcessingException"));
         assertTrue(runtime.contains(
-                ".serializationInclusion(JsonInclude.Include.NON_NULL)"));
+                ".defaultPropertyInclusion(JsonInclude.Value.construct("));
+        assertTrue(runtime.contains(
+                "JsonInclude.Include.NON_NULL, JsonInclude.Include.ALWAYS)"));
         assertFalse(runtime.contains("changeDefaultPropertyInclusion"));
 
         assertTelemetryExecutionContract(files, runtime);
@@ -343,6 +346,46 @@ class JavaSourceRendererTest {
         assertTrue(input.contains("@Size(min = 2, max = 12)"));
         assertTrue(input.contains("@Pattern(regexp = \"[A-Z]+\")"));
         assertTrue(input.contains("String postalCode"));
+    }
+
+    @Test
+    void mapsNullableAndArrayMinimumsToCompatibleValidation() {
+        ApiSchema nullableLabel = new ApiSchema(
+                SchemaType.STRING, null, true, List.of(), null, null, null, null,
+                null, null, Map.of(), List.of(), null, null, true, List.of());
+        ApiSchema values = new ApiSchema(
+                SchemaType.ARRAY, null, false, List.of(), null, null, null, null,
+                null, null, Map.of(), List.of(), nullableLabel, 1, true, List.of());
+        ToolDefinition tool = weatherTool(
+                List.of(
+                        new ToolInput("label", "label", "Nullable label", true, nullableLabel),
+                        new ToolInput("values", "values", "Values", true, values)),
+                List.of(
+                        new ParameterBinding("label", ParameterLocation.BODY, "label"),
+                        new ParameterBinding("values", ParameterLocation.BODY, "values")));
+
+        var files = renderer.render(context(List.of(tool)));
+        String input = utf8(files.get(
+                "src/main/java/com/example/weather/generated/model/GetForecastInput.java"));
+        String callbacks = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+        String argumentContext = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/ToolArgumentContext.java"));
+
+        assertFalse(input.contains("@NotNull String label"));
+        assertTrue(input.contains("@NotNull @Size(min = 1, max = 2147483647) List<String> values"));
+        assertTrue(input.contains("ToolArgumentContext.active()"), input);
+        assertTrue(input.contains("ToolArgumentContext.contains(\"label\")"), input);
+        assertTrue(input.contains("ToolArgumentContext.value(\"label\")"), input);
+        assertTrue(callbacks.contains(
+                "Map<String, Object> rawArguments ="),
+                callbacks);
+        assertTrue(callbacks.contains(
+                "request.arguments() == null ? Map.of() : request.arguments()"), callbacks);
+        assertTrue(callbacks.contains("ToolArgumentContext.open(rawArguments)"), callbacks);
+        assertTrue(argumentContext.contains("ThreadLocal<Map<String, Object>>"), argumentContext);
+        assertTrue(argumentContext.contains("Collections.unmodifiableMap(new LinkedHashMap<>(arguments))"),
+                argumentContext);
     }
 
     @Test
@@ -479,7 +522,7 @@ class JavaSourceRendererTest {
         assertTrue(callbacks.contains("ObjectMapper objectMapper)"), callbacks);
         assertTrue(callbacks.contains(
                 ".build(), objectMapper, runtimeTelemetry, \"getForecast\")"), callbacks);
-        assertTrue(callbacks.contains("objectMapper.writeValueAsString(request.arguments())"), callbacks);
+        assertTrue(callbacks.contains("objectMapper.writeValueAsString(rawArguments)"), callbacks);
         assertFalse(callbacks.contains("import com.fasterxml.jackson.databind.json.JsonMapper;"), callbacks);
         assertFalse(callbacks.contains("JsonMapper jsonMapper"), callbacks);
     }

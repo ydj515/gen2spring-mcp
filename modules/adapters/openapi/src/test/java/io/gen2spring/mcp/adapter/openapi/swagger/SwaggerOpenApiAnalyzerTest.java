@@ -166,6 +166,71 @@ class SwaggerOpenApiAnalyzerTest {
         assertEquals(java.util.List.of(SCHEMA_NULLABILITY_UNSUPPORTED), operation.support().issueCodes());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"3.0.4", "3.1.2"})
+    void supportsNullableObjectBodyPropertiesAndMinItems(String version) throws Exception {
+        String nullable = version.startsWith("3.0")
+                ? "type: string, nullable: true"
+                : "type: [string, 'null']";
+        Path specification = Files.createTempFile("nullable-object-body", ".yaml");
+        Files.writeString(specification, """
+                openapi: %s
+                info: { title: Nullable Body API, version: '1.0' }
+                paths:
+                  /widgets:
+                    post:
+                      operationId: createWidget
+                      requestBody:
+                        required: true
+                        content:
+                          application/json:
+                            schema:
+                              type: object
+                              required: [label, values]
+                              properties:
+                                label: { %s }
+                                values:
+                                  type: array
+                                  minItems: 1
+                                  items: { type: integer, format: int32 }
+                      responses: { '204': { description: Accepted } }
+                """.formatted(version, nullable));
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertTrue(operation.supported(), operation.support().issueCodes().toString());
+        assertTrue(operation.requestBody().properties().get("label").nullable());
+        assertEquals(1, operation.requestBody().properties().get("values").minItems());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"3.0.4", "3.1.2"})
+    void keepsNullableRootRequestBodiesFailClosed(String version) throws Exception {
+        String nullable = version.startsWith("3.0")
+                ? "type: string, nullable: true"
+                : "type: [string, 'null']";
+        Path specification = Files.createTempFile("nullable-root-body", ".yaml");
+        Files.writeString(specification, """
+                openapi: %s
+                info: { title: Nullable Root Body API, version: '1.0' }
+                paths:
+                  /widgets:
+                    post:
+                      operationId: createWidget
+                      requestBody:
+                        required: true
+                        content:
+                          application/json:
+                            schema: { %s }
+                      responses: { '204': { description: Accepted } }
+                """.formatted(version, nullable));
+
+        var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
+
+        assertFalse(operation.supported());
+        assertEquals(java.util.List.of(SCHEMA_NULLABILITY_UNSUPPORTED), operation.support().issueCodes());
+    }
+
     @Test
     void ignoresTheRemovedNullableKeywordForOpenApi31Schemas() throws Exception {
         Path specification = Files.createTempFile("openapi31-legacy-nullable", ".yaml");

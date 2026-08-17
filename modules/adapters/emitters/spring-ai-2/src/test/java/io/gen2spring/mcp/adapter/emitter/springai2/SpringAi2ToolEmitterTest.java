@@ -45,12 +45,13 @@ class SpringAi2ToolEmitterTest {
             "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
             "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
             "src/main/java/com/example/weather/runtime/SecretBinding.java",
+            "src/main/java/com/example/weather/runtime/ToolArgumentContext.java",
             "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
             "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java");
     private static final String EXPECTED_SOURCE_DIGEST =
-            "d7ac8b128fd5ff8da0bee81aa032e66d421e6992816631267ebda66d2e719807";
+            "373bfca49d1c383af4dd4c356249271235e4a5a3f5c78fab8b0feab030de7050";
     private static final String EXPECTED_PROJECT_DIGEST =
-            "9d1931d1f68bdd50e88643b7f4d8cf3e923d3923241063822cdfbe574056d980";
+            "07de1f7ec0dfc107757d1b312f937917b4fc5c11075a06a9a6cbcbec399fcc63";
 
     @Test
     void emitsTheCharacterizedSpringAi2ToolSources() {

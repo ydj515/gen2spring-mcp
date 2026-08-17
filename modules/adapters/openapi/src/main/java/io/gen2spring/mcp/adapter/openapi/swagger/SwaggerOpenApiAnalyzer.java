@@ -9,6 +9,7 @@ import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_LOCATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_SERIALIZATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SECURITY_REQUIREMENT_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_INFERRED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_UNSUPPORTED;
@@ -201,6 +202,9 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 pathParameters, operation.getParameters(), componentSchemas, openApi.getOpenapi(), issues);
         ApiSchema requestBody = normalizeRequestBody(
                 operation.getRequestBody(), componentSchemas, openApi.getOpenapi(), issues);
+        if (requestBody != null && requestBody.nullable()) {
+            issues.add(SCHEMA_NULLABILITY_UNSUPPORTED);
+        }
         if (method == HttpMethod.GET && operation.getRequestBody() != null) {
             issues.add(GET_REQUEST_BODY_UNSUPPORTED);
         }
@@ -431,7 +435,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
             issues.add(REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED);
             return schemaNormalizer.normalize(null, componentSchemas, openApiVersion);
         }
-        return schemaNormalizer.normalize(mediaType.getSchema(), componentSchemas, openApiVersion);
+        return schemaNormalizer.normalizeRequestBody(mediaType.getSchema(), componentSchemas, openApiVersion);
     }
 
     private MediaType preferredApplicationJsonMediaType(Content content) {

@@ -50,6 +50,9 @@ final class InputRecordRenderer {
         }
 
         Set<String> imports = imports(inputs);
+        if (!inputs.isEmpty()) {
+            imports.add(packageName + ".runtime.ToolArgumentContext");
+        }
         StringBuilder source = new StringBuilder("package ").append(packageName).append(".generated.model;\n\n");
         imports.forEach(value -> source.append("import ").append(value).append(";\n"));
         if (!imports.isEmpty()) {
@@ -74,11 +77,21 @@ final class InputRecordRenderer {
                 .append("        Map<String, Object> arguments = new LinkedHashMap<>();\n");
         for (ToolInput input : inputs) {
             String name = JavaSourceRenderer.lowerCamel(input.name());
-            if (input.required()) {
-                source.append("        arguments.put(").append(JavaStringLiteral.quote(input.name()))
-                        .append(", ").append(name).append(");\n");
+            source.append("        if (ToolArgumentContext.active()) {\n")
+                    .append("            if (ToolArgumentContext.contains(")
+                    .append(JavaStringLiteral.quote(input.name())).append(")) {\n")
+                    .append("                arguments.put(").append(JavaStringLiteral.quote(input.name()))
+                    .append(", ToolArgumentContext.value(").append(JavaStringLiteral.quote(input.name()))
+                    .append("));\n")
+                    .append("            }\n")
+                    .append("        } else ");
+            if (input.required() || input.schema().nullable()) {
+                source.append("{\n")
+                        .append("            arguments.put(").append(JavaStringLiteral.quote(input.name()))
+                        .append(", ").append(name).append(");\n")
+                        .append("        }\n");
             } else {
-                source.append("        if (").append(name).append(" != null) {\n")
+                source.append("if (").append(name).append(" != null) {\n")
                         .append("            arguments.put(").append(JavaStringLiteral.quote(input.name()))
                         .append(", ").append(name).append(");\n")
                         .append("        }\n");
@@ -234,7 +247,7 @@ final class InputRecordRenderer {
             if (requiresCascade(input.schema())) {
                 imports.add("jakarta.validation.Valid");
             }
-            if (input.required()) {
+            if (input.required() && !input.schema().nullable()) {
                 imports.add("jakarta.validation.constraints.NotNull");
             }
             ApiSchema schema = input.schema();
@@ -244,7 +257,8 @@ final class InputRecordRenderer {
             if (!isEnumSchema(schema) && schema.maximum() != null) {
                 imports.add("jakarta.validation.constraints.DecimalMax");
             }
-            if (!isEnumSchema(schema) && (schema.minLength() != null || schema.maxLength() != null)) {
+            if (!isEnumSchema(schema) && (schema.minLength() != null || schema.maxLength() != null
+                    || schema.minItems() != null)) {
                 imports.add("jakarta.validation.constraints.Size");
             }
             if (!isEnumSchema(schema) && schema.pattern() != null) {
@@ -281,7 +295,7 @@ final class InputRecordRenderer {
         if (requiresCascade(schema)) {
             annotations.add("@Valid");
         }
-        if (required) {
+        if (required && !schema.nullable()) {
             annotations.add("@NotNull");
         }
         if (isEnumSchema(schema)) {
@@ -293,8 +307,9 @@ final class InputRecordRenderer {
         if (schema.maximum() != null) {
             annotations.add("@DecimalMax(" + JavaStringLiteral.quote(schema.maximum().toPlainString()) + ")");
         }
-        if (schema.minLength() != null || schema.maxLength() != null) {
-            int minimum = schema.minLength() == null ? 0 : schema.minLength();
+        if (schema.minLength() != null || schema.maxLength() != null || schema.minItems() != null) {
+            int minimum = schema.minItems() != null
+                    ? schema.minItems() : schema.minLength() == null ? 0 : schema.minLength();
             int maximum = schema.maxLength() == null ? Integer.MAX_VALUE : schema.maxLength();
             annotations.add("@Size(min = " + minimum + ", max = " + maximum + ")");
         }

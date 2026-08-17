@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.domain.specification;
 
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_MISSING;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NESTED_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_INFERRED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.Status.SUPPORTED;
@@ -65,6 +66,7 @@ class OperationSupportTest {
                 SUCCESS_MEDIA_TYPE_INFERRED.message());
         assertEquals(OperationSupport.Severity.ERROR, OPERATION_ID_MISSING.severity());
         assertEquals("The operation must declare an operationId", OPERATION_ID_MISSING.message());
+        assertEquals("A nested schema contains unsupported features", SCHEMA_NESTED_UNSUPPORTED.message());
     }
 
     @Test

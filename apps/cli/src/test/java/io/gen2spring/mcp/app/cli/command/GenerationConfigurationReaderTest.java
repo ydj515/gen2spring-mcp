@@ -162,7 +162,6 @@ class GenerationConfigurationReaderTest {
         return List.of(
                 valid.replace(validationBlock(), ""),
                 valid.replace("  toolCall:\n", "  unsupported: value\n  toolCall:\n"),
-                valid.replace("      days: 3", "      days: null"),
                 valid.replace("      days: 3", "      nested:\n" + nestedMapping(17, "        ") + "      days: 3"),
                 valid.replace("      days: 3", members(257)),
                 valid.replace("        - public", arrayItems(257)),

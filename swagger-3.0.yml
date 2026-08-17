@@ -31,7 +31,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 type: array
                 items:
@@ -52,7 +52,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/UpdateUserResponse"
     post:
@@ -75,10 +75,9 @@ paths:
         "201":
           description: 회원가입 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/UserResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/SignupSuccess"
@@ -184,10 +183,9 @@ paths:
         "200":
           description: 주문 목록 조회 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/PageOrderSummaryResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/OrderListSuccess"
@@ -213,10 +211,9 @@ paths:
         "201":
           description: 주문 생성 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/OrderCreateSuccess"
@@ -244,10 +241,9 @@ paths:
         "200":
           description: 주문 배송 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/OrderShipSuccess"
@@ -286,10 +282,9 @@ paths:
         "200":
           description: 주문 결제 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/PayOrderResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/OrderPaySuccess"
@@ -297,6 +292,8 @@ paths:
           description: 결제 승인 후 주문 처리 중
           content:
             application/json:
+              schema:
+                $ref: "#/components/schemas/PayOrderResponse"
               examples:
                 processing:
                   $ref: "#/components/examples/OrderPayProcessing"
@@ -332,7 +329,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/AddOrderItemsResponse"
   /api/orders/{id}/items/batch-session:
@@ -363,7 +360,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/AddOrderItemsResponse"
   /api/orders/{id}/cancel:
@@ -406,10 +403,9 @@ paths:
         "200":
           description: 주문 취소 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/OrderCancelSuccess"
@@ -451,7 +447,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
   /api/auth/login:
@@ -475,10 +471,9 @@ paths:
         "200":
           description: 로그인 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/LoginResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/LoginSuccess"
@@ -523,10 +518,9 @@ paths:
         "200":
           description: 수동 검토 결제 재조정 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/PaymentManualReviewResponse"
-            application/json:
               examples:
                 completed:
                   $ref: "#/components/examples/PaymentManualReviewCompleted"
@@ -550,7 +544,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/UserResponse"
     delete:
@@ -570,7 +564,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/DeleteUserResponse"
   /api/users/detail:
@@ -590,7 +584,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/UserResponse"
   /api/products:
@@ -604,7 +598,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 type: array
                 items:
@@ -630,7 +624,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
   /api/orders/{id}:
@@ -655,10 +649,9 @@ paths:
         "200":
           description: 주문 상세 조회 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/OrderDetailSuccess"
@@ -686,7 +679,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
   /api/orders/status/{status}:
@@ -719,7 +712,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 type: array
                 items:
@@ -763,12 +756,11 @@ paths:
         "200":
           description: 주문 상태별 건수 조회 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/OrderStatusCountResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/OrderStatusCountsSuccess"
@@ -813,7 +805,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 type: array
                 items:
@@ -829,7 +821,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 type: array
                 items:
@@ -852,7 +844,7 @@ paths:
         "200":
           description: OK
           content:
-            "*/*":
+            application/json:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
   /api/admin/payments/manual-reviews:
@@ -878,12 +870,11 @@ paths:
         "200":
           description: 수동 검토 결제 목록 조회 성공
           content:
-            "*/*":
+            application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/ManualReviewPaymentResponse"
-            application/json:
               examples:
                 success:
                   $ref: "#/components/examples/PaymentManualReviewListSuccess"

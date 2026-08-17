@@ -451,14 +451,14 @@ class InstalledCliTest {
 
     private void assertExactPairedFixtureCounts(com.fasterxml.jackson.databind.JsonNode analysis) {
         assertEquals(26, analysis.path("counts").path("total").asInt());
-        assertEquals(0, analysis.path("counts").path("supported").asInt());
-        assertEquals(13, analysis.path("counts").path("supportedWithWarning").asInt());
-        assertEquals(13, analysis.path("counts").path("unsupported").asInt());
+        assertEquals(26, analysis.path("counts").path("supported").asInt());
+        assertEquals(0, analysis.path("counts").path("supportedWithWarning").asInt());
+        assertEquals(0, analysis.path("counts").path("unsupported").asInt());
         var customers = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
                 .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
                 .findFirst().orElseThrow();
-        assertEquals("SUPPORTED_WITH_WARNING", customers.path("status").asText());
-        assertEquals("SUCCESS_MEDIA_TYPE_INFERRED", customers.path("issues").get(0).path("code").asText());
+        assertEquals("SUPPORTED", customers.path("status").asText());
+        assertTrue(customers.path("issues").isEmpty());
     }
 
     private Path repositoryRoot() {

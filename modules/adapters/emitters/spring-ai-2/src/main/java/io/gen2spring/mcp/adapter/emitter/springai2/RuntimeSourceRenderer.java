@@ -19,6 +19,7 @@ final class RuntimeSourceRenderer {
         sources.put(runtimePath + "ParameterLocation.java", parameterLocation(packageName));
         sources.put(runtimePath + "ParameterBinding.java", parameterBinding(packageName));
         sources.put(runtimePath + "SecretBinding.java", secretBinding(packageName));
+        sources.put(runtimePath + "ToolArgumentContext.java", toolArgumentContext(packageName));
         sources.put(runtimePath + "OperationDefinition.java", hasPaginationPolicies
                 ? operationDefinitionWithPagination(packageName)
                 : hasRetryPolicies ? operationDefinitionWithRetry(packageName) : operationDefinition(packageName));
@@ -47,6 +48,69 @@ final class RuntimeSourceRenderer {
                     QUERY,
                     HEADER,
                     BODY
+                }
+                """.formatted(packageName);
+    }
+
+    private String toolArgumentContext(String packageName) {
+        return """
+                package %s.runtime;
+
+                import java.util.Collections;
+                import java.util.LinkedHashMap;
+                import java.util.Map;
+                import java.util.Objects;
+
+                public final class ToolArgumentContext {
+                    private static final ThreadLocal<Map<String, Object>> CURRENT = new ThreadLocal<>();
+
+                    private ToolArgumentContext() {}
+
+                    public static Scope open(Map<String, Object> arguments) {
+                        Objects.requireNonNull(arguments, "arguments");
+                        Map<String, Object> previous = CURRENT.get();
+                        CURRENT.set(Collections.unmodifiableMap(new LinkedHashMap<>(arguments)));
+                        return new Scope(previous);
+                    }
+
+                    public static boolean active() {
+                        return CURRENT.get() != null;
+                    }
+
+                    public static boolean contains(String name) {
+                        Map<String, Object> arguments = CURRENT.get();
+                        return arguments != null && arguments.containsKey(name);
+                    }
+
+                    public static Object value(String name) {
+                        Map<String, Object> arguments = CURRENT.get();
+                        if (arguments == null || !arguments.containsKey(name)) {
+                            throw new IllegalStateException("Generated Tool argument is unavailable");
+                        }
+                        return arguments.get(name);
+                    }
+
+                    public static final class Scope implements AutoCloseable {
+                        private final Map<String, Object> previous;
+                        private boolean closed;
+
+                        private Scope(Map<String, Object> previous) {
+                            this.previous = previous;
+                        }
+
+                        @Override
+                        public void close() {
+                            if (closed) {
+                                return;
+                            }
+                            closed = true;
+                            if (previous == null) {
+                                CURRENT.remove();
+                            } else {
+                                CURRENT.set(previous);
+                            }
+                        }
+                    }
                 }
                 """.formatted(packageName);
     }
@@ -696,9 +760,13 @@ final class RuntimeSourceRenderer {
                                 ? new LinkedHashMap<String, Object>() : null;
 
                         for (ParameterBinding binding : operation.parameterBindings()) {
-                            Object value = arguments.get(binding.sourceName());
-                            if (value == null) {
+                            if (!arguments.containsKey(binding.sourceName())) {
                                 continue;
+                            }
+                            Object value = arguments.get(binding.sourceName());
+                            if (value == null && (binding.targetLocation() != ParameterLocation.BODY
+                                    || !operation.objectRequestBody())) {
+                                throw new RequestSerializationException();
                             }
                             requestBody = bind(uriBuilder, pathVariables, headers, binding.targetLocation(),
                                     binding.targetName(), value, requestBody, operation.objectRequestBody());

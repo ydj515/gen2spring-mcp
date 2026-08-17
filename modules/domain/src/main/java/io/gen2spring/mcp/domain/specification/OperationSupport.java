@@ -70,7 +70,7 @@ public record OperationSupport(Status status, List<Issue> issues) {
         SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED(
                 Severity.ERROR, "Schemas with additional properties are not supported"),
         SCHEMA_CONSTRAINT_UNSUPPORTED(Severity.ERROR, "The schema constraint is not supported"),
-        SCHEMA_NESTED_UNSUPPORTED(Severity.ERROR, "The nested schema is not supported"),
+        SCHEMA_NESTED_UNSUPPORTED(Severity.ERROR, "A nested schema contains unsupported features"),
         PARAMETER_LOCATION_UNSUPPORTED(Severity.ERROR, "The parameter location is not supported"),
         PARAMETER_SERIALIZATION_UNSUPPORTED(Severity.ERROR, "The parameter serialization is not supported"),
         GET_REQUEST_BODY_UNSUPPORTED(Severity.ERROR, "GET request bodies are not supported"),

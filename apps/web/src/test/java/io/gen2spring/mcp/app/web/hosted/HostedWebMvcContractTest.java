@@ -3,6 +3,7 @@ package io.gen2spring.mcp.app.web.hosted;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -233,17 +234,17 @@ class HostedWebMvcContractTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.openApiVersion").value(version))
                 .andExpect(jsonPath("$.counts.total").value(26))
-                .andExpect(jsonPath("$.counts.supported").value(0))
-                .andExpect(jsonPath("$.counts.supportedWithWarning").value(13))
-                .andExpect(jsonPath("$.counts.unsupported").value(13))
+                .andExpect(jsonPath("$.counts.supported").value(26))
+                .andExpect(jsonPath("$.counts.supportedWithWarning").value(0))
+                .andExpect(jsonPath("$.counts.unsupported").value(0))
                 .andExpect(jsonPath("$.file.name").value(fileName))
                 .andExpect(jsonPath("$.file.byteSize").value(source.length))
                 .andReturn().getResponse().getContentAsByteArray());
         var customers = java.util.stream.StreamSupport.stream(response.path("operations").spliterator(), false)
                 .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
                 .findFirst().orElseThrow();
-        assertEquals("SUPPORTED_WITH_WARNING", customers.path("status").asText());
-        assertEquals("SUCCESS_MEDIA_TYPE_INFERRED", customers.path("issues").get(0).path("code").asText());
+        assertEquals("SUPPORTED", customers.path("status").asText());
+        assertTrue(customers.path("issues").isEmpty());
         return response;
     }
 

@@ -65,13 +65,24 @@ public final class ExpectedToolSchemaFactory {
                 }
                 addNumericConstraints(expected, schema);
             }
-            case ARRAY -> expected.put("items", schema(schema.items()));
+            case ARRAY -> {
+                expected.put("items", schema(schema.items()));
+                if (schema.minItems() != null) {
+                    expected.put("minItems", schema.minItems());
+                }
+            }
             case OBJECT -> expected.putAll(objectSchema(schema));
             case BOOLEAN -> {
                 // Boolean schemas have no additional supported P0 constraints.
             }
         }
-        return Collections.unmodifiableMap(expected);
+        Map<String, Object> nonNullSchema = Collections.unmodifiableMap(expected);
+        if (!schema.nullable()) {
+            return nonNullSchema;
+        }
+        Map<String, Object> nullableSchema = new LinkedHashMap<>();
+        nullableSchema.put("anyOf", List.of(nonNullSchema, Map.of("type", "null")));
+        return Collections.unmodifiableMap(nullableSchema);
     }
 
     private void addStringConstraints(Map<String, Object> expected, ApiSchema schema) {
@@ -136,6 +147,9 @@ public final class ExpectedToolSchemaFactory {
         if (schema.type() != SchemaType.STRING
                 && schema.enumValues() != null && !schema.enumValues().isEmpty()) {
             throw new IllegalArgumentException("Only string enum schemas are supported");
+        }
+        if (schema.minItems() != null && (schema.type() != SchemaType.ARRAY || schema.minItems() < 0)) {
+            throw new IllegalArgumentException("Generated array schema metadata is invalid");
         }
     }
 

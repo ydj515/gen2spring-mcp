@@ -74,8 +74,29 @@ public record OpenApiDocument(
             Map<String, ApiSchema> properties,
             List<String> requiredProperties,
             ApiSchema items,
+            Integer minItems,
             boolean supported,
-            List<String> warnings) {}
+            List<String> warnings) {
+        public ApiSchema(
+                SchemaType type,
+                String format,
+                boolean nullable,
+                List<String> enumValues,
+                BigDecimal minimum,
+                BigDecimal maximum,
+                Integer minLength,
+                Integer maxLength,
+                String pattern,
+                Object defaultValue,
+                Map<String, ApiSchema> properties,
+                List<String> requiredProperties,
+                ApiSchema items,
+                boolean supported,
+                List<String> warnings) {
+            this(type, format, nullable, enumValues, minimum, maximum, minLength, maxLength,
+                    pattern, defaultValue, properties, requiredProperties, items, null, supported, warnings);
+        }
+    }
 
     public record ApiSecurityScheme(
             String name,

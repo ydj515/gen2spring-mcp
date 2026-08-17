@@ -22,6 +22,41 @@ import org.junit.jupiter.api.Test;
 
 class ExpectedToolSchemaFactoryTest {
     @Test
+    void rendersNullableInputsAndArrayMinimumsWithoutWeakeningRequiredKeys() {
+        ApiSchema nullableLabel = new ApiSchema(
+                STRING, null, true, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), null, null, true, List.of());
+        ApiSchema values = new ApiSchema(
+                ARRAY, null, false, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), nullableLabel, 1, true, List.of());
+        var tool = new ToolDefinition(
+                "create", "catalog_create", "Create a catalog entry",
+                List.of(
+                        new ToolInput("label", "label", "Nullable label", true, nullableLabel),
+                        new ToolInput("values", "values", "Non-empty values", true, values)),
+                null, List.of(), OutputKind.GENERIC_JSON);
+
+        var schema = new ExpectedToolSchemaFactory().create(List.of(tool)).get("catalog_create").inputSchema();
+
+        assertEquals(Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "label", Map.of(
+                                "anyOf", List.of(
+                                        Map.of("type", "string"),
+                                        Map.of("type", "null")),
+                                "description", "Nullable label"),
+                        "values", Map.of(
+                                "type", "array",
+                                "items", Map.of("anyOf", List.of(
+                                        Map.of("type", "string"),
+                                        Map.of("type", "null"))),
+                                "minItems", 1,
+                                "description", "Non-empty values")),
+                "required", List.of("label", "values")), schema);
+    }
+
+    @Test
     void recursivelyPreservesApplicableSchemaConstraintsAndExcludesSecrets() {
         ApiSchema id = schema(INTEGER, "int64", BigDecimal.ONE, BigDecimal.valueOf(999), 2, 4, "[0-9]+",
                 Map.of(), List.of(), null, List.of());

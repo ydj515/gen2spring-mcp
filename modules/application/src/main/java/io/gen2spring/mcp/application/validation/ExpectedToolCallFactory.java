@@ -122,6 +122,12 @@ public final class ExpectedToolCallFactory {
         if (schema == null || schema.type() == null) {
             throw invalid(inputName);
         }
+        if (value == null) {
+            if (schema.nullable()) {
+                return null;
+            }
+            throw invalid(inputName);
+        }
         return switch (schema.type()) {
             case STRING -> normalizeString(schema, requireType(value, String.class, inputName), inputName);
             case INTEGER -> normalizeInteger(schema, value, inputName);
@@ -275,6 +281,9 @@ public final class ExpectedToolCallFactory {
 
     private List<Object> normalizeArray(ApiSchema schema, List<?> value, String inputName) {
         if (schema.items() == null) {
+            throw invalid(inputName);
+        }
+        if (schema.minItems() != null && value.size() < schema.minItems()) {
             throw invalid(inputName);
         }
         List<Object> normalized = new ArrayList<>(value.size());

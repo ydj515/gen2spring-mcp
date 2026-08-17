@@ -312,13 +312,16 @@ class GeneratedRuntimeRegressionTest {
         ApiSchema text = new ApiSchema(
                 SchemaType.STRING, null, false, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema nullableText = new ApiSchema(
+                SchemaType.STRING, null, true, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
         ApiSchema details = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null,
-                null, null, null, null, Map.of("city", text, "label", text, "unit", text),
+                null, null, null, null, Map.of("city", text, "label", nullableText, "unit", text),
                 List.of("city"), null, true, List.of());
         ApiSchema tags = new ApiSchema(
                 SchemaType.ARRAY, null, false, List.of(), null, null,
-                null, null, null, null, Map.of(), List.of(), text, true, List.of());
+                null, null, null, null, Map.of(), List.of(), text, 1, true, List.of());
         var detailsTool = new ToolDefinition(
                 "submitDetails", "kma_weather_submit_details", "Submit weather details.",
                 List.of(new ToolInput("details", "details", "Weather details", true, details)),
@@ -1096,7 +1099,7 @@ class GeneratedRuntimeRegressionTest {
 
                         Error thrown = assertThrows(Error.class, () -> fatal.callHandler().apply(
                                 null, new McpSchema.CallToolRequest(
-                                        "weather_fatal_failure", Map.of())));
+                                        "weather_fatal_failure", null)));
 
                         assertSame(FatalFailureProbe.ERROR, thrown);
                     }
@@ -1249,6 +1252,7 @@ class GeneratedRuntimeRegressionTest {
                 import org.springframework.web.client.RestClient;
 
                 import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
                 import static org.junit.jupiter.api.Assertions.assertThrows;
 
                 class GeneratedPaginationContractTest {
@@ -2661,13 +2665,20 @@ class GeneratedRuntimeRegressionTest {
                 package com.example.weather.application;
 
                 import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
+                import static org.junit.jupiter.api.Assertions.assertThrows;
 
                 import com.example.weather.generated.model.SubmitDetailsDetails;
                 import com.example.weather.generated.tool.WeatherMcpTools;
+                import com.example.weather.runtime.ToolArgumentContext;
                 import com.sun.net.httpserver.HttpServer;
+                import io.modelcontextprotocol.server.McpServerFeatures;
+                import io.modelcontextprotocol.spec.McpSchema;
                 import java.net.InetSocketAddress;
                 import java.nio.charset.StandardCharsets;
+                import java.util.LinkedHashMap;
                 import java.util.List;
+                import java.util.Map;
                 import java.util.concurrent.atomic.AtomicReference;
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
@@ -2689,6 +2700,10 @@ class GeneratedRuntimeRegressionTest {
 
                     @Autowired
                     private WeatherMcpTools tools;
+
+                    @Autowired
+                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    private List<McpServerFeatures.SyncToolSpecification> specifications;
 
                     @DynamicPropertySource
                     static void provider(DynamicPropertyRegistry registry) {
@@ -2712,11 +2727,60 @@ class GeneratedRuntimeRegressionTest {
                     }
 
                     @Test
+                    void preservesExplicitNullAndOmissionAtTheMcpBoundary() {
+                        Map<String, Object> details = new LinkedHashMap<>();
+                        details.put("city", "Seoul");
+                        details.put("label", null);
+                        details.put("unit", "metric");
+
+                        callTool("kma_weather_submit_details", Map.of("details", details));
+                        assertEquals("{\\\"city\\\":\\\"Seoul\\\",\\\"label\\\":null,\\\"unit\\\":\\\"metric\\\"}",
+                                detailsBody.get());
+
+                        details.remove("label");
+                        callTool("kma_weather_submit_details", Map.of("details", details));
+                        assertEquals("{\\\"city\\\":\\\"Seoul\\\",\\\"unit\\\":\\\"metric\\\"}", detailsBody.get());
+                        assertFalse(ToolArgumentContext.active());
+                    }
+
+                    @Test
+                    void restoresNestedArgumentScopesAndCleansTheThread() {
+                        assertFalse(ToolArgumentContext.active());
+                        try (var outer = ToolArgumentContext.open(Map.of("value", "outer"))) {
+                            assertEquals("outer", ToolArgumentContext.value("value"));
+                            try (var inner = ToolArgumentContext.open(Map.of("value", "inner"))) {
+                                assertEquals("inner", ToolArgumentContext.value("value"));
+                            }
+                            assertEquals("outer", ToolArgumentContext.value("value"));
+                        }
+                        assertFalse(ToolArgumentContext.active());
+                    }
+
+                    @Test
                     void keepsRootArrayBodySerializationAndResponseParsing() {
                         var response = tools.submitTags(List.of("spring", "ai"));
 
                         assertEquals("[\\\"spring\\\",\\\"ai\\\"]", tagsBody.get());
                         assertEquals("{\\\"validated\\\":true}", response.toString());
+                    }
+
+                    @Test
+                    void rejectsAnArrayBelowTheDeclaredMinimumBeforeCallingTheProvider() {
+                        tagsBody.set("unchanged");
+
+                        assertThrows(RuntimeException.class,
+                                () -> callTool("kma_weather_submit_tags", Map.of("body", List.of())));
+
+                        assertEquals("unchanged", tagsBody.get());
+                    }
+
+                    private void callTool(String name, Map<String, Object> arguments) {
+                        var specification = specifications.stream()
+                                .filter(candidate -> candidate.tool().name().equals(name))
+                                .findFirst()
+                                .orElseThrow();
+                        specification.callHandler().apply(
+                                null, new McpSchema.CallToolRequest(name, arguments));
                     }
 
                     private static void respond(

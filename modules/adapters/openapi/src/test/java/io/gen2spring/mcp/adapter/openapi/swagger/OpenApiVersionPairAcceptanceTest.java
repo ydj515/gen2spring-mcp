@@ -34,7 +34,7 @@ class OpenApiVersionPairAcceptanceTest {
         assertEquals(openApi30.operations(), openApi31.operations());
         assertEquals(expectedDecisionRows(), decisionRows(openApi30));
         assertEquals(expectedDecisionRows(), decisionRows(openApi31));
-        assertEquals(15, inferredSuccessMediaCount(openApi30));
+        assertEquals(0, inferredSuccessMediaCount(openApi30));
         assertEquals(inferredSuccessMediaCount(openApi30), inferredSuccessMediaCount(openApi31));
     }
 
@@ -66,32 +66,32 @@ class OpenApiVersionPairAcceptanceTest {
 
     private List<String> expectedDecisionRows() {
         return """
-                getManualReviews UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                reconcile UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                login UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                getCustomers SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                getCustomer SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                getOrders UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                createOrder UNSUPPORTED [SCHEMA_NULLABILITY_UNSUPPORTED, SCHEMA_NESTED_UNSUPPORTED, SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                getOrdersWithNestedSelect SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                countOrdersByStatus UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                getOrdersByStatus SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                getOrder UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                cancelOrder UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                cancelOrderItems UNSUPPORTED [SCHEMA_NULLABILITY_UNSUPPORTED, SCHEMA_CONSTRAINT_UNSUPPORTED, SCHEMA_NESTED_UNSUPPORTED, SUCCESS_MEDIA_TYPE_INFERRED]
-                addOrderItems SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                addOrderItemsWithBatchSession SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                getOrderWithNestedSelect SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                payOrder UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED, SUCCESS_SCHEMA_UNSUPPORTED]
-                shipOrder UNSUPPORTED [SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                getProducts SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                getProduct SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                getUsers SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                createUser UNSUPPORTED [SCHEMA_NULLABILITY_UNSUPPORTED, SCHEMA_NESTED_UNSUPPORTED, SUCCESS_MEDIA_TYPE_UNSUPPORTED]
-                updateUser UNSUPPORTED [SCHEMA_NULLABILITY_UNSUPPORTED, SCHEMA_NESTED_UNSUPPORTED, SUCCESS_MEDIA_TYPE_INFERRED]
-                getUserByUsername SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                getUser SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
-                deleteUser SUPPORTED_WITH_WARNING [SUCCESS_MEDIA_TYPE_INFERRED]
+                getManualReviews SUPPORTED []
+                reconcile SUPPORTED []
+                login SUPPORTED []
+                getCustomers SUPPORTED []
+                getCustomer SUPPORTED []
+                getOrders SUPPORTED []
+                createOrder SUPPORTED []
+                getOrdersWithNestedSelect SUPPORTED []
+                countOrdersByStatus SUPPORTED []
+                getOrdersByStatus SUPPORTED []
+                getOrder SUPPORTED []
+                cancelOrder SUPPORTED []
+                cancelOrderItems SUPPORTED []
+                addOrderItems SUPPORTED []
+                addOrderItemsWithBatchSession SUPPORTED []
+                getOrderWithNestedSelect SUPPORTED []
+                payOrder SUPPORTED []
+                shipOrder SUPPORTED []
+                getProducts SUPPORTED []
+                getProduct SUPPORTED []
+                getUsers SUPPORTED []
+                createUser SUPPORTED []
+                updateUser SUPPORTED []
+                getUserByUsername SUPPORTED []
+                getUser SUPPORTED []
+                deleteUser SUPPORTED []
                 """.lines().toList();
     }
 }

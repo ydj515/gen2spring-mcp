@@ -57,6 +57,42 @@ class ExpectedToolCallFactoryTest {
     }
 
     @Test
+    void preservesNullableArgumentsAndEnforcesArrayMinimums() {
+        ApiSchema nullableReason = new ApiSchema(
+                STRING, null, true, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema line = new ApiSchema(
+                STRING, null, false, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema lines = new ApiSchema(
+                ARRAY, null, false, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), line, 1, true, List.of());
+        ToolDefinition tool = new ToolDefinition(
+                "cancelOrderItems", "sample_cancel_order_items", "Cancel order items.",
+                List.of(
+                        new ToolInput("reason", "reason", "Reason", false, nullableReason),
+                        new ToolInput("lines", "lines", "Lines", true, lines)),
+                null, List.of(), OutputKind.GENERIC_JSON);
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("reason", null);
+        arguments.put("lines", List.of("line-1"));
+
+        ToolCallValidation configured = new ToolCallValidation("cancelOrderItems", arguments);
+        ExpectedToolCall result = factory.create(
+                List.of(tool), new ValidationConfiguration(configured));
+
+        assertTrue(result.arguments().containsKey("reason"));
+        assertEquals(null, result.arguments().get("reason"));
+        assertEquals(List.of("line-1"), result.arguments().get("lines"));
+
+        Map<String, Object> empty = new LinkedHashMap<>();
+        empty.put("reason", null);
+        empty.put("lines", List.of());
+        assertInvalid("lines", "empty-array",
+                new ValidationConfiguration(new ToolCallValidation("cancelOrderItems", empty)), tool);
+    }
+
+    @Test
     void normalizesGeneratedIntegerTypesRecursivelyAtTheirExactBoundaries() {
         Map<String, Object> arguments = new LinkedHashMap<>(validArguments());
         arguments.put("defaultInteger", new BigDecimal(Integer.MIN_VALUE + ".0"));
@@ -138,7 +174,7 @@ class ExpectedToolCallFactoryTest {
     }
 
     @Test
-    void defensivelyCopiesResponseFixturesAndAllowsNullOnlyOutsideArgumentsAndSchemas() {
+    void defensivelyCopiesResponseFixturesAndAllowsJsonNullInArgumentsAndResponses() {
         Map<String, Object> responseItem = new LinkedHashMap<>();
         responseItem.put("id", 1);
         List<Object> responseItems = new ArrayList<>();
@@ -166,8 +202,8 @@ class ExpectedToolCallFactoryTest {
                 () -> ((Map<String, Object>) expected.upstreamResponse().body()).put("extra", true));
         assertThrows(UnsupportedOperationException.class,
                 () -> ((Map<String, Object>) expected.expectedResult()).put("extra", true));
-        assertThrows(IllegalArgumentException.class,
-                () -> new ExpectedToolCall(weatherTool(), java.util.Collections.singletonMap("value", null)));
+        assertEquals(java.util.Collections.singletonMap("value", null),
+                new ExpectedToolCall(weatherTool(), java.util.Collections.singletonMap("value", null)).arguments());
         assertEquals(java.util.Collections.singletonMap("value", null),
                 new ExpectedUpstreamResponse(
                         200, "application/json", java.util.Collections.singletonMap("value", null)).body());
@@ -367,8 +403,16 @@ class ExpectedToolCallFactoryTest {
     }
 
     private void assertInvalid(String safeFieldName, String configuredValue, ValidationConfiguration configuration) {
+        assertInvalid(safeFieldName, configuredValue, configuration, weatherTool());
+    }
+
+    private void assertInvalid(
+            String safeFieldName,
+            String configuredValue,
+            ValidationConfiguration configuration,
+            ToolDefinition tool) {
         GeneratorException exception = assertThrows(GeneratorException.class,
-                () -> factory.create(List.of(weatherTool()), configuration));
+                () -> factory.create(List.of(tool), configuration));
 
         assertEquals(VALIDATION_ARGUMENT_INVALID, exception.code());
         assertEquals("TOOL_MODEL_VALIDATE", exception.stage());

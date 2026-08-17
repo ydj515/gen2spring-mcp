@@ -143,6 +143,7 @@ class P1GenerationIntegrationTest {
             "src/main/java/com/example/weather/runtime/RetryPolicy.java",
             "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
             "src/main/java/com/example/weather/runtime/SecretBinding.java",
+            "src/main/java/com/example/weather/runtime/ToolArgumentContext.java",
             "src/main/resources/application.yml",
             "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
             "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java");
@@ -224,6 +225,64 @@ class P1GenerationIntegrationTest {
                 openApi31.manifest().path("operationMappings"));
         assertEquals(mainSourceFiles(openApi30.projectRoot()), mainSourceFiles(openApi31.projectRoot()));
         assertEquals(openApi30.report().path("tools"), openApi31.report().path("tools"));
+    }
+
+    @Test
+    void suppliedOpenApiVersionPairPreservesNullableBodiesAndArrayMinimums() throws Exception {
+        Path configuration = Files.writeString(tempDir.resolve("paired-cancel-items-generation.yaml"), """
+                project:
+                  groupId: com.example
+                  artifactId: paired-orders-mcp-server
+                  packageName: com.example.orders
+                provider: sample
+                domain: orders
+                targetProfileId: spring-ai-2.0-java21-mvc-streamable
+                validationLevel: MCP_PROTOCOL
+                validation:
+                  toolCall:
+                    operationId: cancelOrderItems
+                    arguments:
+                      id: 2
+                      idempotencyKey: paired-cancel-key
+                      lines:
+                        - orderItemId: 1
+                          quantity: 1
+                      reason: null
+                operations:
+                  - operationId: cancelOrderItems
+                    enabled: true
+                    toolName: sample_orders_cancel_order_items
+                    toolDescription: Cancel selected order items.
+                """, UTF_8);
+
+        GenerationResult openApi30 = generate(
+                repositoryRoot().resolve("swagger-3.0.yml"), configuration,
+                tempDir.resolve("nullable-openapi-30"));
+        GenerationResult openApi31 = generate(
+                repositoryRoot().resolve("swagger-3.1.yml"), configuration,
+                tempDir.resolve("nullable-openapi-31"));
+
+        assertEquivalentNullableGeneration(openApi30);
+        assertEquivalentNullableGeneration(openApi31);
+        assertEquals(openApi30.manifest().path("operationMappings"),
+                openApi31.manifest().path("operationMappings"));
+        assertEquals(mainSourceFiles(openApi30.projectRoot()), mainSourceFiles(openApi31.projectRoot()));
+        assertEquals(openApi30.report().path("tools"), openApi31.report().path("tools"));
+
+        String validConfiguration = Files.readString(configuration, UTF_8);
+        String invalidConfigurationSource = validConfiguration.replace(
+                "      lines:\n        - orderItemId: 1\n          quantity: 1",
+                "      lines: []");
+        assertFalse(validConfiguration.equals(invalidConfigurationSource));
+        Path invalidConfiguration = Files.writeString(
+                tempDir.resolve("paired-empty-lines-generation.yaml"), invalidConfigurationSource, UTF_8);
+        Path invalidOutput = tempDir.resolve("nullable-empty-lines");
+        InstalledCliResult invalid = runInstalledCli(
+                repositoryRoot().resolve("swagger-3.1.yml"), invalidConfiguration, invalidOutput);
+
+        assertEquals(3, invalid.exitCode(), invalid.stderr() + invalid.stdout());
+        assertFalse(Files.exists(invalidOutput));
+        assertFalse(Files.exists(invalidOutput.resolveSibling(invalidOutput.getFileName() + ".zip")));
     }
 
     @Test
@@ -481,6 +540,21 @@ class P1GenerationIntegrationTest {
         assertEquals(List.of("sample_customers_get_customers"),
                 result.report().path("tools").findValuesAsText("name"));
         assertTrue(result.report().path("tools").get(0).path("inputSchemaPresent").asBoolean());
+    }
+
+    private void assertEquivalentNullableGeneration(GenerationResult result) throws IOException {
+        JsonNode mapping = result.manifest().path("operationMappings").get(0);
+        assertEquals("cancelOrderItems", mapping.path("operationId").asText());
+        assertEquals("sample_orders_cancel_order_items", mapping.path("toolName").asText());
+        assertEquals("VALIDATED", result.report().path("status").asText());
+        assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"),
+                result.report().path("stages").findValuesAsText("status"));
+        assertEquals("Representative MCP Tool call matched the mock upstream contract",
+                stage(result.report(), "MCP_TOOL_CALL").path("summary").asText());
+        String callbacks = Files.readString(result.projectRoot().resolve(
+                "src/main/java/com/example/orders/generated/tool/OrdersMcpToolCallbacks.java"), UTF_8);
+        assertTrue(callbacks.contains("\\\"minItems\\\":1"), callbacks);
+        assertTrue(callbacks.contains("\\\"type\\\":\\\"null\\\""), callbacks);
     }
 
     private Map<String, String> mainSourceFiles(Path projectRoot) throws IOException {

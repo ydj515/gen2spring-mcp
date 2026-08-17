@@ -17,7 +17,7 @@ public record ExpectedToolCall(
                 || upstreamInteractions.stream().anyMatch(Objects::isNull)) {
             throw new IllegalArgumentException("Expected Tool call is incomplete");
         }
-        arguments = ValidationJsonValue.immutableMap(arguments, false, false);
+        arguments = ValidationJsonValue.immutableMap(arguments, true, false);
         upstreamInteractions = List.copyOf(upstreamInteractions);
         expectedResult = ValidationJsonValue.immutableJsonValue(expectedResult, true, true);
     }

@@ -216,6 +216,9 @@ public record GenerationPreview(
         if (schema.maxLength() != null) {
             result.put("maxLength", schema.maxLength());
         }
+        if (schema.minItems() != null) {
+            result.put("minItems", schema.minItems());
+        }
         if (schema.pattern() != null) {
             result.put("pattern", schema.pattern());
         }

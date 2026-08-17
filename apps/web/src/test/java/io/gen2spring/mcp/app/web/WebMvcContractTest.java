@@ -241,9 +241,9 @@ class WebMvcContractTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.openApiVersion").value(version))
                 .andExpect(jsonPath("$.counts.total").value(26))
-                .andExpect(jsonPath("$.counts.supported").value(0))
-                .andExpect(jsonPath("$.counts.supportedWithWarning").value(13))
-                .andExpect(jsonPath("$.counts.unsupported").value(13))
+                .andExpect(jsonPath("$.counts.supported").value(26))
+                .andExpect(jsonPath("$.counts.supportedWithWarning").value(0))
+                .andExpect(jsonPath("$.counts.unsupported").value(0))
                 .andExpect(jsonPath("$.file.name").value(fileName))
                 .andExpect(jsonPath("$.file.byteSize").value(source.length))
                 .andReturn().getResponse().getContentAsByteArray());
@@ -251,8 +251,8 @@ class WebMvcContractTest {
                         analysis.path("operations").spliterator(), false)
                 .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
                 .findFirst().orElseThrow();
-        assertEquals("SUPPORTED_WITH_WARNING", customers.path("status").asText());
-        assertEquals("SUCCESS_MEDIA_TYPE_INFERRED", customers.path("issues").get(0).path("code").asText());
+        assertEquals("SUPPORTED", customers.path("status").asText());
+        assertTrue(customers.path("issues").isEmpty());
         return analysis;
     }
 
