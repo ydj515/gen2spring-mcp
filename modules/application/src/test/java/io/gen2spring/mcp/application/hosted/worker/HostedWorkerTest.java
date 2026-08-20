@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogPublication;
 import io.gen2spring.mcp.application.hosted.job.CreateJob;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
 import io.gen2spring.mcp.application.hosted.job.JobCompletion;
@@ -18,10 +19,16 @@ import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.storage.StoredObject;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import java.io.InputStream;
 import java.time.Clock;
 import java.time.Duration;
@@ -56,7 +63,7 @@ class HostedWorkerTest {
     void publishesGenerationArtifactsAndCompletesExactlyOnce() throws Exception {
         StubQueue queue = generationQueue();
         StubSandbox sandbox = new StubSandbox();
-        sandbox.result = new SandboxResult(List.of(artifact("archive", "zip")), "SUCCESS");
+        sandbox.result = generationResult();
         StubStorage storage = new StubStorage();
 
         HostedWorker.PollResult result = worker(queue, sandbox, (lease, target, limits) -> {
@@ -72,14 +79,11 @@ class HostedWorkerTest {
                         + "\"targetProfileId\":\"spring-ai-2.0-java21-mvc-streamable\","
                         + "\"validationLevel\":\"COMPILE\",\"operations\":[]}",
                 sandbox.input.generationConfiguration());
-        assertEquals(ObjectKey.parse("artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/11-archive"), storage.keys.getFirst());
-        assertEquals(List.of(new JobArtifact(
-                "ARCHIVE",
-                storage.keys.getFirst(),
-                sandbox.result.artifacts().getFirst().sha256(),
-                7,
-                "application/zip",
-                NOW.plus(Duration.ofDays(30)))), queue.artifacts);
+        assertEquals(List.of("ARCHIVE", "MANIFEST", "VALIDATION_REPORT"),
+                queue.artifacts.stream().map(JobArtifact::type).toList());
+        assertEquals(3, storage.keys.size());
+        assertTrue(queue.catalog.isPresent());
+        assertEquals("weather", queue.catalog.orElseThrow().entries().getFirst().tool().name());
         assertEquals(JobStatus.SUCCEEDED, queue.completion.status());
         assertEquals(1, queue.completions);
         assertTrue(queue.heartbeats.get() >= 1);
@@ -101,8 +105,45 @@ class HostedWorkerTest {
         assertEquals(1, imports.get());
         assertEquals(ObjectKey.parse("specifications/1a803410-a22a-4bc6-b951-7dbc301ae800/11-source"),
                 storage.keys.getFirst());
+        assertTrue(queue.catalog.isEmpty());
         assertFalse(queue.lease.toString().contains("wrappedKey"));
         assertFalse(queue.lease.toString().contains("ciphertext"));
+    }
+
+    @Test
+    void rejectsGenerationSuccessWithoutMetadataBeforeUploadingArtifacts() throws Exception {
+        StubQueue queue = generationQueue();
+        StubSandbox sandbox = new StubSandbox();
+        sandbox.result = new SandboxResult(List.of(
+                artifact("archive", "zip"),
+                artifact("manifest", "json"),
+                artifact("validation-report", "json")), "SUCCESS");
+        StubStorage storage = new StubStorage();
+
+        assertEquals(HostedWorker.PollResult.FAILED,
+                worker(queue, sandbox, (lease, target, limits) -> { throw new AssertionError(); }, storage)
+                        .pollOnce());
+
+        assertTrue(storage.keys.isEmpty());
+        assertTrue(queue.artifacts.isEmpty());
+        assertTrue(queue.catalog.isEmpty());
+        assertEquals("CATALOG_PUBLICATION_FAILED", queue.completion.safeCode());
+    }
+
+    @Test
+    void deletesEveryUploadedObjectWhenCatalogCompletionFails() throws Exception {
+        StubQueue queue = generationQueue();
+        queue.failCompletion = true;
+        StubSandbox sandbox = new StubSandbox();
+        sandbox.result = generationResult();
+        StubStorage storage = new StubStorage();
+
+        assertEquals(HostedWorker.PollResult.STALE,
+                worker(queue, sandbox, (lease, target, limits) -> { throw new AssertionError(); }, storage)
+                        .pollOnce());
+
+        assertEquals(storage.keys, storage.deleted);
+        assertTrue(queue.catalog.isEmpty());
     }
 
     @Test
@@ -110,14 +151,15 @@ class HostedWorkerTest {
         StubQueue queue = generationQueue();
         queue.acceptCompletion = false;
         StubSandbox sandbox = new StubSandbox();
-        sandbox.result = new SandboxResult(List.of(artifact("archive", "zip")), "SUCCESS");
+        sandbox.result = generationResult();
         StubStorage storage = new StubStorage();
 
         assertEquals(HostedWorker.PollResult.STALE,
                 worker(queue, sandbox, (lease, target, limits) -> { throw new AssertionError(); }, storage).pollOnce());
 
-        assertEquals(1, storage.deleted.size());
+        assertEquals(3, storage.deleted.size());
         assertEquals(1, queue.completions);
+        assertTrue(queue.catalog.isEmpty());
     }
 
     @Test
@@ -133,7 +175,9 @@ class HostedWorkerTest {
         StubQueue storageQueue = generationQueue();
         StubSandbox succeeds = new StubSandbox();
         succeeds.result = new SandboxResult(
-                List.of(artifact("archive", "zip"), artifact("report", "json")), "SUCCESS");
+                List.of(artifact("archive", "zip"), artifact("report", "json")),
+                Optional.of(runtimeMetadata()),
+                "SUCCESS");
         StubStorage storage = new StubStorage();
         storage.failAt = 2;
         assertEquals(HostedWorker.PollResult.FAILED,
@@ -233,6 +277,34 @@ class HostedWorkerTest {
                         : type.equals("json") ? "application/json" : "application/yaml");
     }
 
+    private SandboxResult generationResult() {
+        return new SandboxResult(
+                List.of(
+                        artifact("archive", "zip"),
+                        artifact("manifest", "json"),
+                        artifact("validation-report", "json")),
+                Optional.of(runtimeMetadata()),
+                "SUCCESS");
+    }
+
+    private RuntimeMetadataArtifact runtimeMetadata() {
+        RuntimeTool tool = new RuntimeTool(
+                "getWeather",
+                "weather",
+                "Get weather",
+                java.util.Map.of(
+                        "type", "object", "properties", java.util.Map.of(), "required", List.of()),
+                "GENERIC_JSON",
+                java.util.Map.of(),
+                new RuntimeHttp(GET, "https://api.example.test", "/weather", List.of(), false, false),
+                null,
+                null,
+                null,
+                List.of());
+        return new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(
+                RuntimeMetadataDocument.VERSION, "a".repeat(64), List.of(tool)));
+    }
+
     private String sha256(byte[] body) {
         try {
             return java.util.HexFormat.of().formatHex(
@@ -298,6 +370,8 @@ class HostedWorkerTest {
         private boolean acceptCompletion = true;
         private JobCompletion completion;
         private List<JobArtifact> artifacts = List.of();
+        private Optional<ToolCatalogPublication> catalog = Optional.empty();
+        private boolean failCompletion;
         private int completions;
         private final AtomicInteger heartbeats = new AtomicInteger();
 
@@ -328,6 +402,23 @@ class HostedWorkerTest {
         public boolean complete(JobLease lease, JobCompletion completion, List<JobArtifact> artifacts) {
             this.artifacts = List.copyOf(artifacts);
             return complete(lease, completion);
+        }
+
+        @Override
+        public boolean complete(
+                JobLease lease,
+                JobCompletion completion,
+                List<JobArtifact> artifacts,
+                Optional<ToolCatalogPublication> catalog) {
+            if (failCompletion) {
+                throw new IllegalStateException("private completion marker");
+            }
+            boolean accepted = complete(lease, completion);
+            if (accepted) {
+                this.artifacts = List.copyOf(artifacts);
+                this.catalog = catalog;
+            }
+            return accepted;
         }
 
         @Override public CreateJobResult create(CreateJob command) { throw new UnsupportedOperationException(); }
