@@ -104,10 +104,11 @@ final class HostedSpecificationController {
         var owner = accounts.resolve(authentication).accountId();
         var result = json.createObjectNode();
         var values = result.putArray("items");
-        java.util.Optional<HostedResourceStore.ResourceCursor> decoded;
+        java.util.Optional<HostedCursorCodec.Cursor> decoded;
         try { decoded = cursors.decode(cursor); }
         catch (IllegalArgumentException failure) { throw new HostedSubmissionService.HostedSubmissionFailure(); }
-        var page = resources.specifications(owner, limit + 1, decoded);
+        var page = resources.specifications(owner, limit + 1, decoded.map(value ->
+                new HostedResourceStore.ResourceCursor(value.createdAt(), value.id())));
         page.stream().limit(limit).forEach(specification -> values.addObject()
                 .put("id", specification.id().value().toString())
                 .put("sourceType", specification.sourceType())
@@ -116,7 +117,7 @@ final class HostedSpecificationController {
                 .put("createdAt", specification.createdAt().toString()));
         if (page.size() > limit) {
             var last = page.get(limit - 1);
-            result.put("nextCursor", cursors.encode(new HostedResourceStore.ResourceCursor(
+            result.put("nextCursor", cursors.encode(new HostedCursorCodec.Cursor(
                     last.createdAt(), last.id().value())));
         } else {
             result.putNull("nextCursor");
