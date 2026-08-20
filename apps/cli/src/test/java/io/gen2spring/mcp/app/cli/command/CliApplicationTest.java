@@ -316,6 +316,7 @@ class CliApplicationTest {
                 Map.entry(GeneratorErrorCode.SECRET_EXPOSURE_DETECTED, 3),
                 Map.entry(GeneratorErrorCode.TARGET_PROFILE_NOT_FOUND, 2),
                 Map.entry(GeneratorErrorCode.TARGET_COMBINATION_UNSUPPORTED, 2),
+                Map.entry(GeneratorErrorCode.RUNTIME_METADATA_INVALID, 4),
                 Map.entry(SOURCE_GENERATION_FAILED, 4),
                 Map.entry(GeneratorErrorCode.COMPILE_TIMEOUT, 5),
                 Map.entry(COMPILE_FAILED, 5),
