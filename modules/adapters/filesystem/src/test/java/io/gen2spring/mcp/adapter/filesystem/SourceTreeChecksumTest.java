@@ -102,6 +102,18 @@ class SourceTreeChecksumTest {
     }
 
     @Test
+    void runtimeMetadataParticipatesInTheSourceChecksum() {
+        var first = new GeneratedProjectFiles(Map.of(
+                "README.md", "same".getBytes(UTF_8),
+                "RUNTIME_METADATA.json", "{\"checksum\":\"first\"}\n".getBytes(UTF_8)));
+        var second = new GeneratedProjectFiles(Map.of(
+                "README.md", "same".getBytes(UTF_8),
+                "RUNTIME_METADATA.json", "{\"checksum\":\"second\"}\n".getBytes(UTF_8)));
+
+        assertNotEquals(checksum.calculate(first), checksum.calculate(second));
+    }
+
+    @Test
     void categoryMatchingDoesNotIgnoreSimilarSourcePaths() {
         var first = new GeneratedProjectFiles(new LinkedHashMap<>(java.util.Map.of(
                 "src/catalog.txt", "one".getBytes(UTF_8),

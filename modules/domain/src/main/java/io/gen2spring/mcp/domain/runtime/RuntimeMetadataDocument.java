@@ -102,10 +102,16 @@ public record RuntimeMetadataDocument(
         public RuntimeHttp {
             Objects.requireNonNull(method, "method");
             URI uri = parseBaseUrl(baseUrl);
+            boolean absoluteHttp = uri.isAbsolute()
+                    && uri.getHost() != null
+                    && ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()));
+            boolean pathAbsoluteRelative = !uri.isAbsolute()
+                    && uri.getRawAuthority() == null
+                    && uri.getPath() != null
+                    && uri.getPath().startsWith("/");
             if (!uri.toASCIIString().equals(baseUrl)
                     || uri.getUserInfo() != null || uri.getFragment() != null
-                    || !uri.isAbsolute() || uri.getHost() == null
-                    || !"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
+                    || !absoluteHttp && !pathAbsoluteRelative) {
                 throw new IllegalArgumentException("Runtime HTTP base URL is invalid");
             }
             if (path == null || path.isBlank() || !path.startsWith("/") || containsControl(path)) {

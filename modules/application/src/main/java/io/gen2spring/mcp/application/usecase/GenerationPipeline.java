@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.application.usecase;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
+import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.RUNTIME_METADATA_INVALID;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_COMBINATION_UNSUPPORTED;
 import static io.gen2spring.mcp.application.validation.StageStatus.FAILED;
@@ -10,6 +11,9 @@ import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATE
 import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.application.planning.GenerationPlanner;
 import io.gen2spring.mcp.application.planning.ProjectGeneratorRegistry;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
+import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataDocumentFactory;
 import io.gen2spring.mcp.application.port.outbound.ArtifactPackager;
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
@@ -26,6 +30,7 @@ import io.gen2spring.mcp.application.validation.ValidationRequest;
 import io.gen2spring.mcp.application.validation.ValidationStageResult;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.ParameterSource;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
@@ -50,6 +55,8 @@ public final class GenerationPipeline {
     private final GeneratedProjectValidator validator;
     private final ValidationReportStore reportStore;
     private final ArtifactPackager artifactPackager;
+    private final RuntimeMetadataDocumentFactory metadataFactory;
+    private final CanonicalRuntimeMetadataCodec metadataCodec;
 
     public GenerationPipeline(
             SpecificationAnalyzer analyzer,
@@ -107,6 +114,30 @@ public final class GenerationPipeline {
             GeneratedProjectValidator validator,
             ValidationReportStore reportStore,
             ArtifactPackager artifactPackager) {
+        this(
+                analyzer,
+                planner,
+                projectWorkspace,
+                sourceSnapshotter,
+                manifestWriter,
+                validator,
+                reportStore,
+                artifactPackager,
+                new RuntimeMetadataDocumentFactory(),
+                new CanonicalRuntimeMetadataCodec());
+    }
+
+    public GenerationPipeline(
+            SpecificationAnalyzer analyzer,
+            GenerationPlanner planner,
+            ProjectWorkspace projectWorkspace,
+            SourceSnapshotter sourceSnapshotter,
+            ManifestWriter manifestWriter,
+            GeneratedProjectValidator validator,
+            ValidationReportStore reportStore,
+            ArtifactPackager artifactPackager,
+            RuntimeMetadataDocumentFactory metadataFactory,
+            CanonicalRuntimeMetadataCodec metadataCodec) {
         this.analyzer = Objects.requireNonNull(analyzer, "analyzer");
         this.planner = Objects.requireNonNull(planner, "planner");
         this.projectWorkspace = Objects.requireNonNull(projectWorkspace, "projectWorkspace");
@@ -115,6 +146,8 @@ public final class GenerationPipeline {
         this.validator = Objects.requireNonNull(validator, "validator");
         this.reportStore = Objects.requireNonNull(reportStore, "reportStore");
         this.artifactPackager = Objects.requireNonNull(artifactPackager, "artifactPackager");
+        this.metadataFactory = Objects.requireNonNull(metadataFactory, "metadataFactory");
+        this.metadataCodec = Objects.requireNonNull(metadataCodec, "metadataCodec");
     }
 
     public GenerationOutcome generate(Path specification, GenerationCommand request, Path outputRoot) {
@@ -159,7 +192,8 @@ public final class GenerationPipeline {
                 "SOURCE_GENERATE",
                 "Generated project sources could not be created",
                 () -> plan.projectGenerator().generate(context));
-        GeneratedProjectFiles completeProject = includeOriginalSpecification(generated, context);
+        GeneratedProjectFiles completeProject = includeRuntimeMetadata(
+                includeOriginalSpecification(generated, context), context);
         Path projectRoot = projectWorkspace.write(requestedRoot, completeProject);
         SourceSnapshot sourceSnapshot = sourceSnapshotter.snapshot(projectRoot);
         String sourceChecksum = sourceSnapshot.checksum();
@@ -216,7 +250,8 @@ public final class GenerationPipeline {
                 "SOURCE_GENERATE",
                 "Generated project sources could not be created",
                 () -> plan.projectGenerator().generate(context));
-        GeneratedProjectFiles completeProject = includeOriginalSpecification(generated, context);
+        GeneratedProjectFiles completeProject = includeRuntimeMetadata(
+                includeOriginalSpecification(generated, context), context);
         TreeSet<String> paths = new TreeSet<>(completeProject.files().keySet());
         paths.add(ManifestWriter.MANIFEST_FILE);
         paths.add(ValidationReportStore.REPORT_FILE);
@@ -247,6 +282,21 @@ public final class GenerationPipeline {
                     SOURCE_GENERATION_FAILED,
                     "SOURCE_GENERATE",
                     "Project generator attempted to replace the original specification copy");
+        }
+        return new GeneratedProjectFiles(Collections.unmodifiableMap(files));
+    }
+
+    private GeneratedProjectFiles includeRuntimeMetadata(
+            GeneratedProjectFiles generated,
+            GenerationContext context) {
+        RuntimeMetadataArtifact metadata = metadataCodec.encode(
+                metadataFactory.create(context.document().checksum(), context.tools()));
+        Map<String, byte[]> files = new LinkedHashMap<>(generated.files());
+        if (files.putIfAbsent(RuntimeMetadataDocument.FILE_NAME, metadata.content()) != null) {
+            throw GeneratorException.user(
+                    RUNTIME_METADATA_INVALID,
+                    "RUNTIME_METADATA",
+                    "Runtime metadata could not be generated");
         }
         return new GeneratedProjectFiles(Collections.unmodifiableMap(files));
     }

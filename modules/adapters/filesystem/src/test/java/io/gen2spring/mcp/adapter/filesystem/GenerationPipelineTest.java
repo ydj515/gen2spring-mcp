@@ -30,6 +30,7 @@ import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelectio
 import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
 import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
 import io.gen2spring.mcp.application.planning.ProjectGeneratorRegistry;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
 import io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator;
@@ -53,6 +54,7 @@ import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
 import io.gen2spring.mcp.domain.tool.ToolOutput;
@@ -224,6 +226,14 @@ class GenerationPipelineTest {
         assertEquals(VALIDATED, outcome.validationStatus());
         assertNotNull(outcome.archive());
         assertTrue(Files.isRegularFile(outcome.archive()));
+        byte[] runtimeMetadata = Files.readAllBytes(
+                outcome.projectRoot().resolve(RuntimeMetadataDocument.FILE_NAME));
+        var decodedMetadata = new CanonicalRuntimeMetadataCodec().decode(runtimeMetadata);
+        assertEquals(RuntimeMetadataDocument.VERSION, decodedMetadata.document().metadataVersion());
+        assertEquals(1, decodedMetadata.document().tools().size());
+        assertEquals(TOOL_NAME, decodedMetadata.document().tools().getFirst().name());
+        assertFalse(new String(runtimeMetadata, UTF_8).contains("KMA_SERVICE_KEY"));
+        assertFalse(new String(runtimeMetadata, UTF_8).contains("targetProfile"));
         JsonNode manifest = objectMapper.readTree(outcome.projectRoot().resolve("GENERATION_MANIFEST.json").toFile());
         assertEquals("0.1.0", manifest.path("generatorVersion").asText());
         assertEquals("spring-ai-2-v3", manifest.path("templateVersion").asText());
@@ -240,6 +250,8 @@ class GenerationPipelineTest {
         assertEquals(TOOL_NAME, manifest.path("operationMappings").get(0).path("toolName").asText());
         try (var zip = new ZipFile(outcome.archive().toFile())) {
             assertNotNull(zip.getEntry("GENERATION_MANIFEST.json"));
+            assertArrayEquals(runtimeMetadata,
+                    zip.getInputStream(zip.getEntry(RuntimeMetadataDocument.FILE_NAME)).readAllBytes());
             assertNotNull(zip.getEntry("VALIDATION_REPORT.json"));
             assertNotNull(zip.getEntry("openapi/source.yaml"));
             assertNull(zip.getEntry("process-logs/compile.log"));
@@ -252,6 +264,76 @@ class GenerationPipelineTest {
             assertEquals(outcome.sourceChecksum(),
                     new SourceTreeChecksum().calculate(new GeneratedProjectFiles(archivedFiles)));
         }
+    }
+
+    @Test
+    void rejectsEmitterAttemptsToReplaceTheReservedRuntimeMetadataPath() {
+        ProjectGenerator conflicting = context -> new GeneratedProjectFiles(Map.of(
+                RuntimeMetadataDocument.FILE_NAME, "untrusted".getBytes(UTF_8)));
+
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> pipelineWith(conflicting, request -> validatedReport()).generate(
+                        specification, weatherGenerationCommand(), safeTempDir.resolve("metadata-collision")));
+
+        assertEquals(io.gen2spring.mcp.domain.error.GeneratorErrorCode.RUNTIME_METADATA_INVALID, failure.code());
+        assertEquals("RUNTIME_METADATA", failure.stage());
+        assertEquals("Runtime metadata could not be generated", failure.safeMessage());
+        assertFalse(Files.exists(safeTempDir.resolve("metadata-collision")));
+    }
+
+    @Test
+    void emitsIdenticalRuntimeMetadataForEquivalentToolIrAcrossAllProfiles() throws IOException {
+        CompatibilityProfileRegistry profiles = CompatibilityProfileRegistry.defaults();
+        ProjectGenerator generator = minimalGenerator();
+        GenerationPipeline pipeline = pipelineWithRegistries(
+                new SwaggerOpenApiAnalyzer(),
+                profiles,
+                ProjectGeneratorRegistry.of(Map.of(
+                        "generator-spring-ai-1", generator,
+                        "generator-spring-ai-2", generator)),
+                request -> new ValidationReport(UNVERIFIED, List.of(), List.of()));
+        byte[] expectedMetadata = null;
+        String expectedChecksum = null;
+
+        for (CompatibilityProfile profile : profiles.profiles()) {
+            var outcome = pipeline.generate(
+                    specification,
+                    requestWithProfile(profile.id()),
+                    safeTempDir.resolve("metadata-" + profile.id()));
+            byte[] metadata = Files.readAllBytes(
+                    outcome.projectRoot().resolve(RuntimeMetadataDocument.FILE_NAME));
+            if (expectedMetadata == null) {
+                expectedMetadata = metadata;
+                expectedChecksum = outcome.sourceChecksum();
+            } else {
+                assertArrayEquals(expectedMetadata, metadata);
+                assertEquals(expectedChecksum, outcome.sourceChecksum());
+            }
+        }
+    }
+
+    @Test
+    void changesRuntimeMetadataAndSourceChecksumWhenToolSemanticsChange() throws IOException {
+        GenerationCommand original = weatherGenerationCommand();
+        OperationSelection operation = original.operations().getFirst();
+        GenerationCommand changed = new GenerationCommand(
+                original.project(), original.provider(), original.domain(), original.targetProfileId(),
+                original.validationLevel(), original.validation(),
+                List.of(new OperationSelection(
+                        operation.operationId(), operation.enabled(), operation.toolName(),
+                        operation.toolDescription() + " Changed", operation.parameters(),
+                        operation.responseNormalization(), operation.output(), operation.retry(),
+                        operation.pagination())));
+        GenerationPipeline pipeline = pipelineWithValidator(
+                request -> new ValidationReport(UNVERIFIED, List.of(), List.of()));
+
+        var first = pipeline.generate(specification, original, safeTempDir.resolve("metadata-original"));
+        var second = pipeline.generate(specification, changed, safeTempDir.resolve("metadata-changed"));
+
+        assertFalse(java.util.Arrays.equals(
+                Files.readAllBytes(first.projectRoot().resolve(RuntimeMetadataDocument.FILE_NAME)),
+                Files.readAllBytes(second.projectRoot().resolve(RuntimeMetadataDocument.FILE_NAME))));
+        assertNotEquals(first.sourceChecksum(), second.sourceChecksum());
     }
 
     @Test

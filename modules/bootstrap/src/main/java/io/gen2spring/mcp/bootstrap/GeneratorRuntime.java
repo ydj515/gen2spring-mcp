@@ -7,6 +7,8 @@ import io.gen2spring.mcp.adapter.filesystem.GenerationManifestWriter;
 import io.gen2spring.mcp.application.usecase.GenerationPipeline;
 import io.gen2spring.mcp.application.planning.GenerationPlanner;
 import io.gen2spring.mcp.application.planning.ProjectGeneratorRegistry;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataDocumentFactory;
 import io.gen2spring.mcp.adapter.filesystem.SafeProjectWriter;
 import io.gen2spring.mcp.adapter.filesystem.SourceTreeChecksum;
 import io.gen2spring.mcp.adapter.filesystem.ValidationReportWriter;
@@ -54,7 +56,9 @@ public record GeneratorRuntime(
                 new GenerationManifestWriter(json),
                 new GradleMcpProjectValidator(),
                 new ValidationReportWriter(json),
-                new DeterministicZipPackager());
+                new DeterministicZipPackager(),
+                new RuntimeMetadataDocumentFactory(),
+                new CanonicalRuntimeMetadataCodec());
         return new GeneratorRuntime(
                 profiles,
                 analyzer,

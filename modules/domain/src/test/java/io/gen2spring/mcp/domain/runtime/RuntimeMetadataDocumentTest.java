@@ -52,6 +52,16 @@ class RuntimeMetadataDocumentTest {
     }
 
     @Test
+    void acceptsAPathAbsoluteRelativeBaseUrlWithoutWeakeningAuthorityChecks() {
+        RuntimeMetadataDocument document = new RuntimeMetadataDocument(
+                RuntimeMetadataDocument.VERSION, HASH, List.of(tool("weather", "/")));
+
+        assertEquals("/", document.tools().getFirst().http().baseUrl());
+        assertThrows(IllegalArgumentException.class,
+                () -> tool("weather", "//private.example.test/path"));
+    }
+
+    @Test
     void normalizesOrderingAndDefensivelyCopiesNestedCollections() {
         Map<String, Object> nested = new LinkedHashMap<>();
         List<String> mutableValues = new ArrayList<>(List.of("first"));

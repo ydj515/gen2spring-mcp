@@ -76,6 +76,7 @@ class GenerationPreviewTest {
         assertEquals(List.of("KMA_SERVICE_KEY"), preview.secretEnvironmentVariables());
         assertEquals(List.of(
                 "GENERATION_MANIFEST.json",
+                "RUNTIME_METADATA.json",
                 "VALIDATION_REPORT.json",
                 "a.txt",
                 "openapi/source.yaml",
