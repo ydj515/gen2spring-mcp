@@ -9,6 +9,7 @@ OpenAPI 3.0.x와 3.1.x operation을 실행 가능한 Spring AI Streamable HTTP M
 - Spring AI 1.1 / 2.0과 Java 17 / 21 조합 지원
 - Spring Boot + Thymeleaf 기반 로컬 operation editor와 CLI 제공
 - Tool schema, request binding, response normalization, retry·pagination 생성
+- 최종 Tool IR 기반의 결정적 `RUNTIME_METADATA.json` 생성
 - server secret 분리, bounded runtime, OpenTelemetry·Micrometer 기본 계약 제공
 - compile, ApplicationContext, MCP protocol, loopback upstream을 포함한 fail-closed 검증
 - PostgreSQL 17.9, private object storage, URL import, rootless sandbox 기반 hosted mode 제공
@@ -127,6 +128,20 @@ mise run hosted:acceptance
 ```
 
 secret 준비, 백업·복구와 운영 절차는 [Hosted 배포 가이드](deploy/hosted/README.md)를 따른다.
+
+validation report가 `VALIDATED`인 generation이 성공으로 완료되면 3개 다운로드 artifact와 함께
+immutable Tool Catalog가 같은 PostgreSQL transaction에서 게시된다. Catalog는 OIDC 인증 owner에게만
+다음 조회 API를 제공한다.
+
+```text
+GET /api/tool-catalogs
+GET /api/tool-catalogs/{catalogId}
+GET /api/tool-catalogs/{catalogId}/tools/{toolName}
+```
+
+Catalog metadata에는 Tool schema와 HTTP·policy·credential 요구사항만 포함하며 secret 값, 환경변수 이름,
+사용자·작업 식별자와 로컬 경로는 포함하지 않는다. 기존 generation은 backfill하지 않으며, 동적 Managed
+Runtime 실행과 Gateway authorization·sharing·credential routing은 아직 제공하지 않는다.
 
 ## 저장소 구조
 

@@ -103,7 +103,8 @@ OpenAPI 문서는 HTTP API 계약을 표현하지만, MCP Tool로 직접 사용�
 
 ### G1. OpenAPI 기반 프로젝트 자동 생성
 
-OpenAPI 3.0 명세를 입력받아 실행 가능한 Spring AI Remote MCP Server 프로젝트를 생성한다.
+OpenAPI 3.0.x 및 bounded OpenAPI 3.1.x 명세를 입력받아 실행 가능한 Spring AI Remote MCP Server
+프로젝트를 생성한다.
 
 ### G2. Target Platform 선택
 
@@ -277,6 +278,7 @@ GPT, Claude, Gemini 등에서 사용할 수 있는 MCP Tool을 빠르게 제공�
 ### OpenAPI
 
 - OpenAPI 3.0.x
+- OpenAPI 3.1.x 기본 dialect와 bounded `null` union
 - YAML
 - JSON
 - Local file upload
@@ -332,25 +334,33 @@ GPT, Claude, Gemini 등에서 사용할 수 있는 MCP Tool을 빠르게 제공�
 - Unit test
 - MCP smoke test
 - Generation manifest
+- Runtime metadata (`RUNTIME_METADATA.json`)
 - Validation report
 
 ---
 
-## 7.2 Phase 2
+## 7.2 Phase 2 상태
+
+완료된 수직 슬라이스:
+
+- bounded OpenAPI 3.1 입력과 schema 정규화
+- final Tool IR 기반 deterministic Managed Runtime metadata output
+- 검증된 hosted generation의 immutable PostgreSQL Tool Catalog 게시와 owner-scoped 조회 API
+
+남은 범위:
 
 - Maven
 - WebFlux
 - Async MCP Server
 - STDIO
 - Stateless Streamable HTTP
-- OpenAPI 3.1
 - OpenAPI 2.0 변환
 - Kotlin 생성
 - OAuth2 client credentials
 - API 변경 diff
 - Tool description AI enhancement
-- Managed Runtime metadata output
-- MCP Gateway Tool Catalog output
+- 동적 Managed Runtime `tools/list`·`tools/call`
+- Gateway policy, sharing, authorization, credential routing, audit execution
 
 ---
 
@@ -1065,6 +1075,7 @@ project-root
 ├── .gitignore
 ├── README.md
 ├── GENERATION_MANIFEST.json
+├── RUNTIME_METADATA.json
 ├── VALIDATION_REPORT.json
 ├── openapi
 │   └── source.yaml
@@ -1318,6 +1329,22 @@ GET /api/v1/generations/{generationId}/artifact
 GET /api/v1/generations/{generationId}/validation-report
 ```
 
+## FR-16.7 Tool Catalog 조회
+
+Hosted mode에서 OIDC 인증 owner는 검증 완료된 자신의 generation Catalog만 조회할 수 있다.
+
+```http
+GET /api/tool-catalogs?limit=50&cursor=...
+GET /api/tool-catalogs/{catalogId}
+GET /api/tool-catalogs/{catalogId}/tools/{toolName}
+```
+
+- 성공한 generation만 artifact, Catalog, Tool row, job state, terminal event를 한 transaction에서 게시한다.
+- import, failed, cancelled, stale, unverified generation은 Catalog를 만들지 않는다.
+- absent resource와 다른 owner의 resource는 동일한 `404` 응답을 반환한다.
+- metadata에는 secret 값, 환경변수 이름, owner/job 식별자, object key, filesystem path를 포함하지 않는다.
+- 기존 generation은 metadata version `1.0`으로 backfill하지 않는다.
+
 ---
 
 ## 9. 비기능 요구사항
@@ -1462,6 +1489,7 @@ Generator API
         - Packager
                 |
                 +---- Artifact Storage
+                +---- Owner-scoped Tool Catalog
                 +---- Metadata DB
                 +---- Metrics / Traces / Logs
 ```
@@ -1663,6 +1691,21 @@ public enum ParameterSource {
 - warningCount
 - errorCount
 - detailReference
+
+### ToolCatalog
+
+- id
+- ownerAccountId
+- generationJobId
+- metadataVersion
+- specificationChecksum
+- metadataChecksum
+- metadataDocument
+- toolCount
+- createdAt
+
+Catalog entry는 `(catalogId, toolName)`을 식별자로 사용하고 canonical Tool metadata와 deterministic ordinal을
+저장한다. Catalog는 수정·삭제·공유하지 않는 immutable 조회 모델이다.
 
 ---
 
@@ -1913,15 +1956,21 @@ owner-only Windows ACL을 요구한다. 관련 구현 경계는
 - bounded pagination
 - Windows validation host
 
-### P2
+### P2 완료
+
+- bounded OpenAPI 3.1
+- deterministic Managed Runtime metadata
+- persistent owner-scoped Tool Catalog query
+
+### P2 남은 범위
 
 - WebFlux
 - Async
 - Maven
 - STDIO
-- OpenAPI 3.1
 - Kotlin
-- Managed Runtime metadata
+- dynamic Managed Runtime execution
+- Gateway policy, sharing, authorization, credential routing, audit execution
 - AI description enhancement
 - version migration
 
@@ -2128,6 +2177,9 @@ OpenAPI
 
 기관별 MCP Server 배포 없이 중앙 runtime에서 tools/list와 tools/call을 처리한다.
 
+현재 구현은 이 구조의 입력 계약인 deterministic runtime metadata와 owner-scoped persistent Tool Catalog
+조회까지만 제공한다. 동적 registry와 `tools/list`·`tools/call` 실행은 후속 P2 범위다.
+
 ### 26.2 Composite Tool Designer
 
 여러 REST operation을 하나의 업무 의미 Tool로 묶는다.
@@ -2165,6 +2217,8 @@ OpenAPI
 - audit log
 - execution trace
 - Tool Catalog versioning
+
+현재 immutable Catalog 조회 API는 완료됐지만 위 Gateway 실행·정책 기능과 Catalog versioning은 완료되지 않았다.
 
 ---
 

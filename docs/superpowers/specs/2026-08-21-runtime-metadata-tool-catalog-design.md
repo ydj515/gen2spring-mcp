@@ -1,5 +1,9 @@
 # Deterministic Runtime Metadata and Persistent Tool Catalog Design
 
+Implementation status: completed for this bounded slice. The accepted scope includes canonical
+metadata generation, sandbox transport, atomic hosted publication, PostgreSQL storage, and owner-scoped query
+APIs. Dynamic Managed Runtime execution and Gateway policy remain explicitly out of scope.
+
 ## 1. Purpose
 
 This slice turns the final framework-neutral `ToolDefinition` list into a deterministic runtime metadata
@@ -427,3 +431,14 @@ unchanged.
 The PRD is updated to mark OpenAPI 3.1 as already supported, mark this bounded Managed Runtime metadata and
 Tool Catalog query slice complete, and keep dynamic Managed Runtime execution and Gateway policy features as
 future work.
+
+## 17. Implementation Evidence
+
+- generation and ZIP output use the shared `CanonicalRuntimeMetadataCodec`
+- generation runner protocol `2` transports metadata separately from the three downloadable artifacts; import
+  remains protocol `1`
+- hosted completion atomically commits artifacts, Catalog, ordered Tool rows, job status, and terminal event
+- PostgreSQL 17.9 tests verify rollback, fencing, owner predicates, pagination, and exact Tool readback
+- Web MVC tests verify authenticated list/detail/Tool routes, bounded queries, and absent/foreign `404` equivalence
+- crash-recovery integration verifies an injected completion rollback leaves no partial rows and a fenced retry
+  publishes exactly one Catalog
