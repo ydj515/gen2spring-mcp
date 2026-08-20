@@ -193,6 +193,10 @@ failure message.
 The runner copies the generated metadata to `runtime-metadata.json` only after the CLI exits successfully and
 the project archive, generation manifest, and validation report exist.
 
+Because this changes the mandatory runner output set, the generation runner protocol label is incremented
+from `1` to `2`. Worker readiness requires protocol `2`; old generation runner images fail readiness instead
+of producing an ambiguous partial result. The import runner protocol is unchanged.
+
 The sandbox collector expects exactly:
 
 - `archive.zip`
@@ -311,10 +315,13 @@ worker details.
 The application layer introduces separate write and read responsibilities:
 
 - `ToolCatalogPublication` carries validated immutable metadata into job completion
-- `ToolCatalogStore` owns atomic publication requirements and owner-scoped read models
+- `JobQueue.complete` carries publication into the existing fenced job-completion transaction
+- `ToolCatalogStore` owns owner-scoped read models
 - `ToolCatalogService` applies query bounds and not-found semantics
 
-The PostgreSQL adapter implements the store. The Web controller resolves the owner through
+`PostgresJobQueue` inserts Catalog rows inside the job transaction; a separate `PostgresToolCatalogStore`
+implements reads. This avoids a second transaction manager or a distributed application-level transaction.
+The Web controller resolves the owner through
 `HostedAccountResolver` and performs presentation only. It does not query JDBC or inspect job artifacts
 directly.
 
