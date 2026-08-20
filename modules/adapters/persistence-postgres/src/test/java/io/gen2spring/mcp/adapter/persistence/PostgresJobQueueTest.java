@@ -8,19 +8,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.application.hosted.job.CreateJob;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogPublication;
+import io.gen2spring.mcp.application.hosted.job.JobArtifact;
+import io.gen2spring.mcp.application.hosted.job.JobCompletion;
+import io.gen2spring.mcp.application.hosted.job.JobLease;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.job.JobQuota;
+import io.gen2spring.mcp.application.hosted.job.WorkerId;
 import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -148,6 +161,79 @@ class PostgresJobQueueTest {
         assertTrue(jobs.find(owner, created.job().id()).orElseThrow().cancellationRequested());
     }
 
+    @Test
+    void publishesArtifactsCatalogAndToolsInTheFencedCompletionTransaction() {
+        AccountId owner = account("https://issuer.example", "subject-1");
+        SpecificationId specification = insertSpecification(owner);
+        var created = jobs.create(generation(
+                owner, specification, "catalog-key", HASH_A, new JobQuota(2, 2)));
+        JobLease lease = jobs.claim(new WorkerId("worker-1"), NOW, Duration.ofSeconds(30)).orElseThrow();
+        ToolCatalogPublication publication = publication(List.of(tool("alpha", "alphaOperation"),
+                tool("zeta", "zetaOperation")));
+
+        assertTrue(jobs.complete(
+                lease, JobCompletion.success(), artifacts(lease), Optional.of(publication)));
+
+        assertEquals(JobStatus.SUCCEEDED, jobs.find(owner, created.job().id()).orElseThrow().status());
+        assertEquals(3, jdbc.queryForObject(
+                "select count(*) from artifact where job_id = ?", Integer.class, lease.jobId().value()));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tool_catalog where generation_job_id = ?",
+                Integer.class, lease.jobId().value()));
+        assertEquals(List.of("alpha", "zeta"), jdbc.queryForList(
+                """
+                select tool_name
+                  from tool_catalog_entry
+                 where catalog_id = (select id from tool_catalog where generation_job_id = ?)
+                 order by ordinal
+                """, String.class, lease.jobId().value()));
+    }
+
+    @Test
+    void rollsBackEveryCompletionRowWhenASecondToolViolatesTheDatabaseContract() {
+        AccountId owner = account("https://issuer.example", "subject-1");
+        SpecificationId specification = insertSpecification(owner);
+        jobs.create(generation(owner, specification, "rollback-key", HASH_A, new JobQuota(2, 2)));
+        JobLease lease = jobs.claim(new WorkerId("worker-1"), NOW, Duration.ofSeconds(30)).orElseThrow();
+        ToolCatalogPublication publication = publication(List.of(
+                tool("alpha", "alphaOperation"),
+                tool("zeta", "x".repeat(129))));
+
+        assertThrows(RuntimeException.class, () -> jobs.complete(
+                lease, JobCompletion.success(), artifacts(lease), Optional.of(publication)));
+
+        assertEquals(JobStatus.RUNNING, jobs.find(owner, lease.jobId()).orElseThrow().status());
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from artifact where job_id = ?", Integer.class, lease.jobId().value()));
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from tool_catalog where generation_job_id = ?",
+                Integer.class, lease.jobId().value()));
+        assertEquals(0, jdbc.queryForObject("select count(*) from tool_catalog_entry", Integer.class));
+        assertEquals(2, jdbc.queryForObject(
+                "select count(*) from generation_job_event where job_id = ?",
+                Integer.class, lease.jobId().value()));
+    }
+
+    @Test
+    void rejectsMissingGenerationCatalogAndImportCatalogBeforeWritingRows() {
+        AccountId owner = account("https://issuer.example", "subject-1");
+        SpecificationId specification = insertSpecification(owner);
+        jobs.create(generation(owner, specification, "missing-key", HASH_A, new JobQuota(2, 3)));
+        JobLease generation = jobs.claim(
+                new WorkerId("worker-1"), NOW, Duration.ofSeconds(30)).orElseThrow();
+
+        assertThrows(IllegalArgumentException.class, () -> jobs.complete(
+                generation, JobCompletion.success(), artifacts(generation), Optional.empty()));
+
+        jobs.create(importJob(owner, "import-key", HASH_B, new JobQuota(2, 3)));
+        JobLease imported = jobs.claim(
+                new WorkerId("worker-2"), NOW, Duration.ofSeconds(30)).orElseThrow();
+        assertThrows(IllegalArgumentException.class, () -> jobs.complete(
+                imported, JobCompletion.success(), List.of(), Optional.of(publication(List.of(
+                        tool("weather", "getWeather"))))));
+        assertEquals(0, jdbc.queryForObject("select count(*) from tool_catalog", Integer.class));
+    }
+
     private AccountId account(String issuer, String subject) {
         return accounts.findOrCreate(issuer, subject, NOW);
     }
@@ -200,5 +286,33 @@ class PostgresJobQueueTest {
                 "{\"target\":\"encrypted\"}",
                 Optional.empty(),
                 quota);
+    }
+
+    private List<JobArtifact> artifacts(JobLease lease) {
+        return List.of("ARCHIVE", "MANIFEST", "VALIDATION_REPORT").stream()
+                .map(type -> new JobArtifact(
+                        type,
+                        ObjectKey.parse("artifacts/" + lease.jobId().value() + "/"
+                                + lease.fencingToken() + "-"
+                                + type.toLowerCase(java.util.Locale.ROOT).replace('_', '-')),
+                        "c".repeat(64),
+                        10,
+                        "application/json",
+                        NOW.plus(Duration.ofDays(30))))
+                .toList();
+    }
+
+    private ToolCatalogPublication publication(List<RuntimeTool> tools) {
+        return ToolCatalogPublication.from(new CanonicalRuntimeMetadataCodec().encode(
+                new RuntimeMetadataDocument(RuntimeMetadataDocument.VERSION, HASH_A, tools)));
+    }
+
+    private RuntimeTool tool(String name, String operationId) {
+        return new RuntimeTool(
+                operationId, name, "Catalog Tool",
+                Map.of("type", "object", "properties", Map.of(), "required", List.of()),
+                "GENERIC_JSON", Map.of(),
+                new RuntimeHttp(GET, "https://api.example.test", "/weather", List.of(), false, false),
+                null, null, null, List.of());
     }
 }

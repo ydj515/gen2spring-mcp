@@ -37,7 +37,7 @@ class PostgresMigrationTest {
 
     @Test
     void createsTheHostedSchemaExactlyOnce() {
-        assertEquals(3, flyway.migrate().migrationsExecuted);
+        assertEquals(4, flyway.migrate().migrationsExecuted);
 
         Set<String> tables = jdbc.queryForList(
                         """
@@ -55,7 +55,38 @@ class PostgresMigrationTest {
                 "generation_job",
                 "generation_job_event",
                 "artifact",
+                "tool_catalog",
+                "tool_catalog_entry",
                 "worker_heartbeat"), tables);
+
+        assertEquals(Set.of(
+                        "tool_catalog_generation_owner_fk",
+                        "tool_catalog_generation_unique",
+                        "tool_catalog_metadata_checksum_valid",
+                        "tool_catalog_tool_count_valid"),
+                jdbc.queryForList(
+                                """
+                                select constraint_name
+                                  from information_schema.table_constraints
+                                 where table_schema = 'public'
+                                   and table_name = 'tool_catalog'
+                                   and constraint_name in (
+                                       'tool_catalog_generation_owner_fk',
+                                       'tool_catalog_generation_unique',
+                                       'tool_catalog_metadata_checksum_valid',
+                                       'tool_catalog_tool_count_valid')
+                                """,
+                                String.class)
+                        .stream()
+                        .collect(Collectors.toSet()));
+        assertEquals(1, jdbc.queryForObject(
+                """
+                select count(*)
+                  from pg_indexes
+                 where schemaname = 'public'
+                   and tablename = 'tool_catalog'
+                   and indexname = 'tool_catalog_owner_created_idx'
+                """, Integer.class));
 
         assertEquals(0, flyway.migrate().migrationsExecuted);
     }

@@ -41,6 +41,20 @@ public interface JobQueue {
         Objects.requireNonNull(completion, "completion");
         Objects.requireNonNull(artifacts, "artifacts");
         Objects.requireNonNull(catalog, "catalog");
+        requireCatalogPublication(lease, completion, catalog);
+        if (!artifacts.isEmpty() || catalog.isPresent()) {
+            throw new UnsupportedOperationException("Hosted artifact publication is unavailable");
+        }
+        return complete(lease, completion);
+    }
+
+    static void requireCatalogPublication(
+            JobLease lease,
+            JobCompletion completion,
+            Optional<ToolCatalogPublication> catalog) {
+        Objects.requireNonNull(lease, "lease");
+        Objects.requireNonNull(completion, "completion");
+        Objects.requireNonNull(catalog, "catalog");
         boolean generationSuccess = lease.kind() == JobKind.GENERATION
                 && completion.status() == JobStatus.SUCCEEDED;
         if (generationSuccess != catalog.isPresent()
@@ -48,10 +62,6 @@ public interface JobQueue {
                 || lease.kind() == JobKind.SPEC_IMPORT && catalog.isPresent()) {
             throw new IllegalArgumentException("Hosted Tool Catalog publication is invalid");
         }
-        if (!artifacts.isEmpty() || catalog.isPresent()) {
-            throw new UnsupportedOperationException("Hosted artifact publication is unavailable");
-        }
-        return complete(lease, completion);
     }
 
     int recoverExpired(Instant now, int maxAttempts);
