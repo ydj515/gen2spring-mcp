@@ -206,11 +206,19 @@ class WorkerApplicationTest {
         assertFalse(failure.toString().contains("private-marker"));
 
         FakeDocker wrongProtocol = new FakeDocker(properties.docker().generationImage());
-        wrongProtocol.protocol = "2";
+        wrongProtocol.generationProtocol = "1";
         assertThrows(
                 WorkerStartupFailure.class,
                 () -> new WorkerInfrastructureConfiguration()
                         .workerReadiness(dataSource, s3, wrongProtocol, properties)
+                        .verify());
+
+        FakeDocker wrongImportProtocol = new FakeDocker(properties.docker().generationImage());
+        wrongImportProtocol.importProtocol = "2";
+        assertThrows(
+                WorkerStartupFailure.class,
+                () -> new WorkerInfrastructureConfiguration()
+                        .workerReadiness(dataSource, s3, wrongImportProtocol, properties)
                         .verify());
     }
 
@@ -265,7 +273,9 @@ class WorkerApplicationTest {
         private final String image;
         private final List<String> operations = new ArrayList<>();
         private boolean rootless = true;
-        private String protocol = "1";
+        private String generationProtocol = "2";
+        private String importProtocol = "1";
+        private int protocolCalls;
 
         private FakeDocker(String image) {
             this.image = image;
@@ -279,7 +289,8 @@ class WorkerApplicationTest {
                 return new CommandResult(0, rootless ? "[\"name=rootless\"]" : "[]");
             }
             if (argv.contains("{{json (index .Config.Labels \"io.gen2spring.runner.protocol\")}}")) {
-                return new CommandResult(0, "\"" + protocol + "\"");
+                return new CommandResult(0, "\"" + (protocolCalls++ == 0
+                        ? generationProtocol : importProtocol) + "\"");
             }
             return new CommandResult(0, "[\"" + image + "\"]");
         }

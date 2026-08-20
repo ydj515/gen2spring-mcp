@@ -67,12 +67,16 @@ class WorkerInfrastructureConfiguration {
             if (info.exitCode() != 0 || !stringArray(info.output()).contains("name=rootless")) {
                 throw new IllegalStateException();
             }
-            verifyImage(docker, base, properties.docker().generationImage());
-            verifyImage(docker, base, properties.docker().importImage());
+            verifyImage(docker, base, properties.docker().generationImage(), "2");
+            verifyImage(docker, base, properties.docker().importImage(), "1");
         };
     }
 
-    private void verifyImage(DockerCommandRunner docker, List<String> base, String expected) throws Exception {
+    private void verifyImage(
+            DockerCommandRunner docker,
+            List<String> base,
+            String expected,
+            String expectedProtocol) throws Exception {
         DockerCommandRunner.CommandResult digest = docker.run(
                 command(base, "image", "inspect", "--format", "{{json .RepoDigests}}", expected),
                 PROBE_TIMEOUT);
@@ -89,7 +93,7 @@ class WorkerInfrastructureConfiguration {
                         expected),
                 PROBE_TIMEOUT);
         JsonNode value = protocol.exitCode() == 0 ? JSON.readTree(protocol.output()) : null;
-        if (value == null || !value.isTextual() || !"1".equals(value.textValue())) {
+        if (value == null || !value.isTextual() || !expectedProtocol.equals(value.textValue())) {
             throw new IllegalStateException();
         }
     }
