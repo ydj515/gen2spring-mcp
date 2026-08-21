@@ -20,6 +20,7 @@ include(
     ":apps:cli",
     ":apps:fetch-gateway",
     ":apps:import-runner",
+    ":apps:provider-egress",
     ":apps:worker",
     ":apps:web",
 )

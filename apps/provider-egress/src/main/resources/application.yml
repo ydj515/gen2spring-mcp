@@ -1,0 +1,19 @@
+server:
+  port: 9443
+  ssl:
+    enabled: true
+    client-auth: NEED
+    key-store: ${GEN2SPRING_PROVIDER_EGRESS_TLS_KEYSTORE}
+    trust-store: ${GEN2SPRING_PROVIDER_EGRESS_TLS_TRUSTSTORE}
+  tomcat:
+    accesslog:
+      enabled: false
+
+spring:
+  main:
+    banner-mode: "off"
+
+logging:
+  level:
+    root: WARN
+    org.apache.hc.client5: ERROR
