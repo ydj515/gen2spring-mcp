@@ -3,17 +3,25 @@ package io.gen2spring.mcp.app.runtime;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.gen2spring.mcp.adapter.cryptography.AesGcmCredentialProtector;
 import io.gen2spring.mcp.adapter.cryptography.HmacRuntimeTokenCodec;
 import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
+import io.gen2spring.mcp.adapter.persistence.PostgresManagedCredentialStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresManagedRuntimeStore;
+import io.gen2spring.mcp.adapter.persistence.PostgresRuntimePolicyStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresToolCatalogStore;
 import io.gen2spring.mcp.adapter.provideregress.GatewayProviderCallClient;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
+import io.gen2spring.mcp.application.managed.credential.CredentialProtector;
+import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore;
+import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver;
 import io.gen2spring.mcp.application.managed.execution.ManagedExecutionLimits;
+import io.gen2spring.mcp.application.managed.execution.ManagedExecutionContext;
 import io.gen2spring.mcp.application.managed.execution.ManagedRuntimeBinding;
 import io.gen2spring.mcp.application.managed.execution.ManagedToolExecutor;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallClient;
+import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
@@ -79,6 +87,26 @@ class RuntimeConfiguration {
         return new PostgresToolCatalogStore(dataSource);
     }
 
+    @Bean ManagedCredentialStore managedCredentialStore(DataSource dataSource) {
+        return new PostgresManagedCredentialStore(dataSource);
+    }
+
+    @Bean CredentialProtector credentialProtector(RuntimeProperties properties) {
+        return new AesGcmCredentialProtector(
+                properties.encryption().keyFiles(), properties.encryption().activeKeyId());
+    }
+
+    @Bean RuntimePolicyStore runtimePolicyStore(DataSource dataSource) {
+        return new PostgresRuntimePolicyStore(dataSource);
+    }
+
+    @Bean RuntimeCredentialResolver runtimeCredentialResolver(
+            ManagedRuntimeStore runtimes,
+            ManagedCredentialStore credentials,
+            CredentialProtector protector) {
+        return new RuntimeCredentialResolver(runtimes, credentials, protector);
+    }
+
     @Bean ToolCatalogService toolCatalogService(ToolCatalogStore store) {
         return new ToolCatalogService(store);
     }
@@ -92,8 +120,12 @@ class RuntimeConfiguration {
     }
 
     @Bean RuntimeAccessAuthenticator runtimeAccessAuthenticator(
-            ManagedRuntimeStore store, RuntimeTokenCodec tokens, Clock clock) {
-        return new RuntimeAccessAuthenticator(store, tokens, clock);
+            ManagedRuntimeStore store,
+            RuntimeTokenCodec tokens,
+            Clock clock,
+            ToolCatalogService catalogs,
+            RuntimePolicyStore policies) {
+        return new RuntimeAccessAuthenticator(store, tokens, clock, catalogs, policies);
     }
 
     @Bean ProviderCallClient providerCallClient(RuntimeProperties properties) {
@@ -101,14 +133,20 @@ class RuntimeConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    ManagedToolExecutor managedToolExecutor(ProviderCallClient client) {
-        return new ManagedToolExecutor(client, new ManagedExecutionLimits(Duration.ofSeconds(30), 16, 64));
+    ManagedToolExecutor managedToolExecutor(
+            ProviderCallClient client,
+            RuntimePolicyStore policies,
+            Clock clock) {
+        return new ManagedToolExecutor(
+                client, new ManagedExecutionLimits(Duration.ofSeconds(30), 16, 64),
+                policies, clock, java.util.UUID::randomUUID);
     }
 
     @Bean(destroyMethod = "close")
     RuntimeServerHandleRegistry runtimeServerHandleRegistry(
             ToolCatalogService catalogs,
             ManagedToolExecutor executor,
+            RuntimeCredentialResolver credentials,
             RuntimeProperties properties,
             Clock clock) {
         McpJavaSdkEmitter emitter = new McpJavaSdkEmitter();
@@ -118,8 +156,11 @@ class RuntimeConfiguration {
             var instance = access.instance();
             var catalog = catalogs.require(instance.owner(), instance.catalogId());
             ManagedRuntimeBinding binding = new ManagedRuntimeBinding(instance, catalog.metadata());
-            var specifications = emitter.emit(catalog.metadata().document().tools(),
-                    (toolName, arguments) -> executor.call(binding, toolName, arguments));
+            ManagedExecutionContext context = new ManagedExecutionContext(access, binding, credentials);
+            var tools = catalog.metadata().document().tools().stream()
+                    .filter(tool -> access.allowedTools().contains(tool.name())).toList();
+            var specifications = emitter.emit(tools,
+                    (toolName, arguments) -> executor.call(context, toolName, arguments));
             String endpoint = "/mcp/" + instance.id().value();
             var transport = WebMvcStreamableServerTransportProvider.builder()
                     .jsonMapper(mapper).mcpEndpoint(endpoint).disallowDelete(false).build();

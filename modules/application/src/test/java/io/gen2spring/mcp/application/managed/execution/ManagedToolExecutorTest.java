@@ -13,6 +13,22 @@ import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
+import io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId;
+import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
+import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
+import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditPage;
+import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.StoredGrant;
+import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver;
+import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore;
+import io.gen2spring.mcp.application.managed.credential.CredentialProtector;
+import io.gen2spring.mcp.application.managed.credential.CredentialSecret;
+import io.gen2spring.mcp.application.managed.credential.ProtectedCredential;
+import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredential;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
+import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
+import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
@@ -22,6 +38,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CompletableFuture;
@@ -191,6 +208,59 @@ class ManagedToolExecutorTest {
         }
     }
 
+    @Test
+    void enforcesVisibilityAuditThenRateAndDoesNotResolveOrCallWhenDenied() {
+        RuntimeTool tool = tool(null);
+        ManagedRuntimeBinding binding = binding(tool);
+        RuntimeAccess access = access(binding, Set.of(tool.name()));
+        PolicyStore policy = new PolicyStore(false, true);
+        AtomicInteger providerCalls = new AtomicInteger();
+        ManagedExecutionContext context = new ManagedExecutionContext(
+                access, binding, resolver(binding.instance()));
+
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+                (request, timeout) -> {
+                    providerCalls.incrementAndGet();
+                    return response(200, "{}");
+                }, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), policy,
+                java.time.Clock.fixed(Instant.parse("2026-08-21T00:01:00Z"), java.time.ZoneOffset.UTC),
+                () -> UUID.fromString("77777777-7777-7777-7777-777777777777"))) {
+            ManagedToolResult denied = executor.call(context, tool.name(), Map.of());
+            assertTrue(denied.error());
+            assertEquals(ManagedToolResult.ErrorCategory.RATE_LIMITED, denied.category());
+            assertEquals(List.of("audit-start", "rate", "audit-complete:RATE_LIMITED"), policy.events);
+            assertEquals(0, providerCalls.get());
+
+            policy.events.clear();
+            assertThrows(ManagedToolExecutor.ManagedToolRequestInvalid.class,
+                    () -> executor.call(new ManagedExecutionContext(
+                            access(binding, Set.of("other_tool")), binding, resolver(binding.instance())),
+                            tool.name(), Map.of()));
+            assertEquals(List.of(), policy.events);
+        }
+    }
+
+    @Test
+    void doesNotRetryWhenAuditCompletionFailsAfterOneProviderCall() {
+        RuntimeTool tool = tool(null);
+        ManagedRuntimeBinding binding = binding(tool);
+        PolicyStore policy = new PolicyStore(true, false);
+        AtomicInteger providerCalls = new AtomicInteger();
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+                (request, timeout) -> {
+                    providerCalls.incrementAndGet();
+                    return response(200, "{}");
+                }, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), policy,
+                java.time.Clock.fixed(Instant.parse("2026-08-21T00:01:00Z"), java.time.ZoneOffset.UTC),
+                UUID::randomUUID)) {
+            assertThrows(ManagedToolExecutor.ManagedToolInternalFailure.class, () -> executor.call(
+                    new ManagedExecutionContext(access(binding, Set.of(tool.name())), binding, resolver(binding.instance())),
+                    tool.name(), Map.of()));
+            assertEquals(1, providerCalls.get());
+            assertEquals(List.of("audit-start", "rate", "audit-complete:SUCCEEDED"), policy.events);
+        }
+    }
+
     private ManagedRuntimeBinding binding(RuntimeTool tool) {
         var artifact = new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(
                 RuntimeMetadataDocument.VERSION, "b".repeat(64), List.of(tool)));
@@ -199,6 +269,68 @@ class ManagedToolExecutorTest {
                 artifact.checksum(), Optional.empty(), Instant.parse("2026-08-21T00:00:00Z"),
                 Instant.parse("2026-08-22T00:00:00Z"), Optional.empty());
         return new ManagedRuntimeBinding(instance, artifact);
+    }
+
+    private RuntimeAccess access(ManagedRuntimeBinding binding, Set<String> tools) {
+        return new RuntimeAccess(
+                binding.instance(), Optional.of(new RuntimeGrantId(UUID.randomUUID())), "client-a",
+                tools, 5, false, "c".repeat(64));
+    }
+
+    private RuntimeCredentialResolver resolver(ManagedRuntimeInstance instance) {
+        ManagedRuntimeStore runtimes = new ManagedRuntimeStore() {
+            @Override public void create(ManagedRuntimeInstance value, RuntimeTokenDigest digest) {}
+            @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) {
+                return Optional.of(new StoredRuntime(instance, new RuntimeTokenDigest(new byte[32])));
+            }
+            @Override public boolean revoke(AccountId owner, RuntimeInstanceId id, Instant at) { return false; }
+        };
+        ManagedCredentialStore credentials = new ManagedCredentialStore() {
+            @Override public void create(ManagedCredential value, ProtectedCredential protectedValue) {}
+            @Override public boolean rotate(AccountId owner, ManagedCredentialId id, long version,
+                    ManagedCredential value, ProtectedCredential protectedValue) { return false; }
+            @Override public boolean revoke(AccountId owner, ManagedCredentialId id, Instant at) { return false; }
+            @Override public Optional<StoredCredential> find(AccountId owner, ManagedCredentialId id) { return Optional.empty(); }
+            @Override public List<ManagedCredential> list(AccountId owner) { return List.of(); }
+            @Override public long countActive(AccountId owner) { return 0; }
+        };
+        CredentialProtector protector = new CredentialProtector() {
+            @Override public ProtectedCredential protect(AccountId owner, ManagedCredentialId id, long version,
+                    CredentialSecret secret) { throw new UnsupportedOperationException(); }
+            @Override public CredentialSecret reveal(AccountId owner, ManagedCredentialId id, long version,
+                    ProtectedCredential value) { throw new UnsupportedOperationException(); }
+        };
+        return new RuntimeCredentialResolver(runtimes, credentials, protector);
+    }
+
+    private static final class PolicyStore implements RuntimePolicyStore {
+        private final boolean rate;
+        private final boolean completion;
+        private final List<String> events = new java.util.ArrayList<>();
+        private PolicyStore(boolean rate, boolean completion) {
+            this.rate = rate;
+            this.completion = completion;
+        }
+        @Override public void createGrant(ManagedRuntimeGrant grant, RuntimeTokenDigest digest) {}
+        @Override public Optional<StoredGrant> authenticateGrant(RuntimeInstanceId runtimeId, RuntimeTokenDigest digest) {
+            return Optional.empty();
+        }
+        @Override public List<ManagedRuntimeGrant> listGrants(AccountId owner, RuntimeInstanceId runtimeId) {
+            return List.of();
+        }
+        @Override public boolean revokeGrant(AccountId owner, RuntimeInstanceId runtimeId,
+                RuntimeGrantId grantId, Instant revokedAt) { return false; }
+        @Override public boolean acquireRate(RuntimeInstanceId runtimeId, Optional<RuntimeGrantId> grantId, int limit) {
+            events.add("rate");
+            return rate;
+        }
+        @Override public void startAudit(ToolExecutionAudit audit) { events.add("audit-start"); }
+        @Override public boolean completeAudit(ToolExecutionAudit audit) {
+            events.add("audit-complete:" + audit.status());
+            return completion;
+        }
+        @Override public AuditPage listAudits(AccountId owner, RuntimeInstanceId runtimeId, int limit,
+                Optional<AuditCursor> cursor) { return new AuditPage(List.of(), Optional.empty()); }
     }
 
     private RuntimeTool tool(RetryPolicy retry) {

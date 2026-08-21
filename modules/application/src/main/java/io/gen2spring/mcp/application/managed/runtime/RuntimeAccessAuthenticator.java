@@ -1,22 +1,47 @@
 package io.gen2spring.mcp.application.managed.runtime;
 
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
+import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore.StoredRuntime;
+import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant.GrantState;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance.RuntimeState;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.time.Clock;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 public final class RuntimeAccessAuthenticator {
     private static final int MAX_TOKEN_LENGTH = 512;
     private final ManagedRuntimeStore store;
     private final RuntimeTokenCodec tokens;
     private final Clock clock;
+    private final ToolCatalogService catalogs;
+    private final RuntimePolicyStore policies;
 
     public RuntimeAccessAuthenticator(ManagedRuntimeStore store, RuntimeTokenCodec tokens, Clock clock) {
         this.store = Objects.requireNonNull(store, "store");
         this.tokens = Objects.requireNonNull(tokens, "tokens");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.catalogs = null;
+        this.policies = null;
+    }
+
+    public RuntimeAccessAuthenticator(
+            ManagedRuntimeStore store,
+            RuntimeTokenCodec tokens,
+            Clock clock,
+            ToolCatalogService catalogs,
+            RuntimePolicyStore policies) {
+        this.store = Objects.requireNonNull(store, "store");
+        this.tokens = Objects.requireNonNull(tokens, "tokens");
+        this.clock = Objects.requireNonNull(clock, "clock");
+        this.catalogs = Objects.requireNonNull(catalogs, "catalogs");
+        this.policies = Objects.requireNonNull(policies, "policies");
     }
 
     public RuntimeAccess authenticate(RuntimeInstanceId id, String bearerToken) {
@@ -31,15 +56,60 @@ public final class RuntimeAccessAuthenticator {
             if (stored.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
                 throw inactive();
             }
-            if (!tokens.matches(bearerToken, stored.tokenDigest())) {
-                throw unauthorized();
+            if (catalogs == null || policies == null) {
+                if (!tokens.matches(bearerToken, stored.tokenDigest())) throw unauthorized();
+                return new RuntimeAccess(stored.instance());
             }
-            return new RuntimeAccess(stored.instance());
+            Set<String> catalogTools = new LinkedHashSet<>();
+            catalogs.require(stored.instance().owner(), stored.instance().catalogId())
+                    .metadata().document().tools().forEach(tool -> catalogTools.add(tool.name()));
+            if (tokens.matches(bearerToken, stored.tokenDigest())) {
+                return access(stored, Optional.empty(), "owner", catalogTools, 600, true);
+            }
+            RuntimeTokenDigest digest = tokens.digest(bearerToken);
+            var grant = Objects.requireNonNull(policies.authenticateGrant(id, digest))
+                    .orElseThrow(RuntimeAccessAuthenticator::unauthorized).grant();
+            if (!grant.runtimeId().equals(id)
+                    || !grant.owner().equals(stored.instance().owner())
+                    || grant.stateAt(clock.instant()) != GrantState.ACTIVE
+                    || !catalogTools.containsAll(grant.allowedTools())) throw unauthorized();
+            return access(stored, Optional.of(grant.id()), grant.principal(), grant.allowedTools(),
+                    grant.requestsPerMinute(), false);
         } catch (Error fatal) {
             throw fatal;
         } catch (RuntimeUnauthorized failure) {
             throw failure;
         } catch (RuntimeException failure) {
+            throw unavailable();
+        }
+    }
+
+    private RuntimeAccess access(
+            StoredRuntime stored,
+            Optional<io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId> grantId,
+            String principal,
+            Set<String> allowedTools,
+            int requestsPerMinute,
+            boolean ownerGrant) {
+        return new RuntimeAccess(
+                stored.instance(), grantId, principal, allowedTools, requestsPerMinute, ownerGrant,
+                policyChecksum(grantId, principal, allowedTools, requestsPerMinute, ownerGrant));
+    }
+
+    private String policyChecksum(
+            Optional<io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId> grantId,
+            String principal,
+            Set<String> tools,
+            int requestsPerMinute,
+            boolean ownerGrant) {
+        try {
+            String canonical = "runtime-policy:v1\n"
+                    + (grantId.isEmpty() ? "owner" : grantId.orElseThrow().value()) + "\n"
+                    + principal + "\n" + requestsPerMinute + "\n" + ownerGrant + "\n"
+                    + String.join("\n", new java.util.TreeSet<>(tools)) + "\n";
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception failure) {
             throw unavailable();
         }
     }

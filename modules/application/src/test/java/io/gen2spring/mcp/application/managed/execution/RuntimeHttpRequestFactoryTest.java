@@ -13,6 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import io.gen2spring.mcp.domain.platform.runtime.ProviderTarget;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeCredential;
+import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver.ResolvedCredentials;
+import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver.WireCredential;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -127,6 +130,67 @@ class RuntimeHttpRequestFactoryTest {
                         Map.of(), new byte[0])).getMessage());
     }
 
+    @Test
+    void injectsOpaqueQueryOpaqueHeaderBearerAndBasicAfterUserBindings() {
+        RuntimeTool tool = tool(
+                "https://api.example", "/items",
+                List.of(new ParameterBinding("city", QUERY, "city")), false, false,
+                Map.of("required", List.of("city")),
+                List.of(
+                        new RuntimeCredential("query-key", QUERY, "api_key", true),
+                        new RuntimeCredential("header-key", HEADER, "X-Service-Key", true),
+                        new RuntimeCredential("authorization", HEADER, "Authorization", true)));
+
+        try (ResolvedCredentials credentials = ResolvedCredentials.of(List.of(
+                new WireCredential("query-key", QUERY, "api_key", "query secret".getBytes(StandardCharsets.UTF_8)),
+                new WireCredential("header-key", HEADER, "X-Service-Key", "header-secret".getBytes(StandardCharsets.UTF_8)),
+                new WireCredential("authorization", HEADER, "Authorization", "Bearer bearer-secret".getBytes(StandardCharsets.UTF_8))))) {
+            ProviderCallRequest request = factory.create(
+                    tool, Optional.empty(), Map.of("city", "Seoul"), credentials);
+            assertEquals("city=Seoul&api_key=query%20secret", request.uri().getRawQuery());
+            assertEquals(Map.of(
+                    "X-Service-Key", List.of("header-secret"),
+                    "Authorization", List.of("Bearer bearer-secret")), request.headers());
+        }
+
+        RuntimeTool basic = tool(
+                "https://api.example", "/items", List.of(), false, false, Map.of(),
+                List.of(new RuntimeCredential("authorization", HEADER, "Authorization", true)));
+        try (ResolvedCredentials credentials = ResolvedCredentials.of(List.of(
+                new WireCredential("authorization", HEADER, "Authorization",
+                        "Basic dXNlcjpwYXNz".getBytes(StandardCharsets.UTF_8))))) {
+            assertEquals("Basic dXNlcjpwYXNz", factory.create(
+                    basic, Optional.empty(), Map.of(), credentials).headers().get("Authorization").getFirst());
+        }
+    }
+
+    @Test
+    void rejectsCredentialTargetCollisionsAndMissingOrUnknownResolvedSlotsWithoutLeakingValues() {
+        RuntimeTool collision = tool(
+                "https://api.example", "/items",
+                List.of(new ParameterBinding("userKey", HEADER, "x-service-key")), false, false,
+                Map.of("required", List.of("userKey")),
+                List.of(new RuntimeCredential("service-key", HEADER, "X-Service-Key", true)));
+        try (ResolvedCredentials credentials = ResolvedCredentials.of(List.of(
+                new WireCredential("service-key", HEADER, "X-Service-Key",
+                        "private-marker".getBytes(StandardCharsets.UTF_8))))) {
+            assertInvalid(() -> factory.create(
+                    collision, Optional.empty(), Map.of("userKey", "value"), credentials));
+        }
+
+        RuntimeTool required = tool(
+                "https://api.example", "/items", List.of(), false, false, Map.of(),
+                List.of(new RuntimeCredential("service-key", HEADER, "X-Service-Key", true)));
+        try (ResolvedCredentials empty = ResolvedCredentials.of(List.of())) {
+            assertInvalid(() -> factory.create(required, Optional.empty(), Map.of(), empty));
+        }
+        try (ResolvedCredentials unknown = ResolvedCredentials.of(List.of(
+                new WireCredential("unknown", HEADER, "X-Unknown",
+                        "private-marker".getBytes(StandardCharsets.UTF_8))))) {
+            assertInvalid(() -> factory.create(required, Optional.empty(), Map.of(), unknown));
+        }
+    }
+
     private void assertInvalid(Runnable action) {
         RuntimeHttpRequestFactory.RuntimeRequestInvalid failure = assertThrows(
                 RuntimeHttpRequestFactory.RuntimeRequestInvalid.class, action::run);
@@ -142,6 +206,17 @@ class RuntimeHttpRequestFactoryTest {
             boolean objectBody,
             boolean requiredBody,
             Map<String, Object> schemaExtras) {
+        return tool(baseUrl, path, bindings, objectBody, requiredBody, schemaExtras, List.of());
+    }
+
+    private RuntimeTool tool(
+            String baseUrl,
+            String path,
+            List<ParameterBinding> bindings,
+            boolean objectBody,
+            boolean requiredBody,
+            Map<String, Object> schemaExtras,
+            List<RuntimeCredential> credentials) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", Map.of());
@@ -150,6 +225,6 @@ class RuntimeHttpRequestFactoryTest {
                 "operation", "managed_tool", "Managed Tool", schema,
                 "GENERIC_JSON", Map.of(),
                 new RuntimeHttp(POST, baseUrl, path, bindings, objectBody, requiredBody),
-                null, null, null, List.of());
+                null, null, null, credentials);
     }
 }

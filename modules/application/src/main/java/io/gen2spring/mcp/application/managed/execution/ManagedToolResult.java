@@ -24,6 +24,10 @@ public final class ManagedToolResult {
         return new ManagedToolResult(json, false, null, null);
     }
 
+    public static ManagedToolResult success(byte[] json, int httpStatus) {
+        return new ManagedToolResult(json, false, null, httpStatus);
+    }
+
     public static ManagedToolResult providerError(byte[] json, ErrorCategory category, Integer httpStatus) {
         return new ManagedToolResult(json, true, Objects.requireNonNull(category, "category"), httpStatus);
     }
@@ -57,6 +61,7 @@ public final class ManagedToolResult {
         UPSTREAM_TIMEOUT,
         UPSTREAM_UNAVAILABLE,
         UPSTREAM_PROTOCOL,
-        LOCAL_RESOURCE
+        LOCAL_RESOURCE,
+        RATE_LIMITED
     }
 }

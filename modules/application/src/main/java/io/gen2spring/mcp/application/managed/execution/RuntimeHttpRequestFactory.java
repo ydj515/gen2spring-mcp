@@ -7,10 +7,16 @@ import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver.ResolvedCredentials;
+import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver.WireCredential;
 import java.lang.reflect.Array;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.nio.charset.CodingErrorAction;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,6 +36,23 @@ public final class RuntimeHttpRequestFactory {
             RuntimeTool tool,
             Optional<ProviderTarget> override,
             Map<String, Object> arguments) {
+        return createInternal(tool, override, arguments, null);
+    }
+
+    public ProviderCallRequest create(
+            RuntimeTool tool,
+            Optional<ProviderTarget> override,
+            Map<String, Object> arguments,
+            ResolvedCredentials credentials) {
+        if (credentials == null) throw invalid();
+        return createInternal(tool, override, arguments, credentials);
+    }
+
+    private ProviderCallRequest createInternal(
+            RuntimeTool tool,
+            Optional<ProviderTarget> override,
+            Map<String, Object> arguments,
+            ResolvedCredentials credentials) {
         try {
             if (tool == null || override == null || arguments == null) {
                 throw invalid();
@@ -66,6 +89,9 @@ public final class RuntimeHttpRequestFactory {
             if (path.indexOf('{') >= 0 || path.indexOf('}') >= 0) {
                 throw invalid();
             }
+            if (credentials != null) {
+                injectCredentials(tool, http.bindings(), credentials, query, headers);
+            }
             String uri = base.getScheme() + "://" + authority(base) + path;
             if (!query.isEmpty()) {
                 uri += "?" + String.join("&", query);
@@ -84,6 +110,76 @@ public final class RuntimeHttpRequestFactory {
         } catch (Exception failure) {
             throw invalid();
         }
+    }
+
+    private void injectCredentials(
+            RuntimeTool tool,
+            List<ParameterBinding> bindings,
+            ResolvedCredentials resolved,
+            List<String> query,
+            Map<String, List<String>> headers) {
+        Map<String, io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeCredential> expected =
+                new LinkedHashMap<>();
+        tool.credentials().forEach(value -> expected.put(value.credentialSlot(), value));
+        Map<String, WireCredential> supplied = new LinkedHashMap<>();
+        for (WireCredential value : resolved.values()) {
+            if (supplied.putIfAbsent(value.slot(), value) != null) throw invalid();
+        }
+        if (!expected.keySet().containsAll(supplied.keySet())
+                || expected.values().stream().anyMatch(value -> value.required()
+                        && !supplied.containsKey(value.credentialSlot()))) throw invalid();
+        Set<String> userTargets = bindings.stream()
+                .map(binding -> binding.targetLocation().name() + ":" + canonicalTarget(binding))
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> credentialTargets = new HashSet<>();
+        for (Map.Entry<String, WireCredential> entry : supplied.entrySet()) {
+            var contract = expected.get(entry.getKey());
+            WireCredential wire = entry.getValue();
+            if (wire.location() != contract.targetLocation()
+                    || !sameTarget(wire.location(), wire.targetName(), contract.targetName())) throw invalid();
+            String canonical = wire.location().name() + ":" + canonicalTarget(wire.location(), wire.targetName());
+            if (userTargets.contains(canonical) || !credentialTargets.add(canonical)) throw invalid();
+            if (wire.location() == ParameterLocation.HEADER && forbiddenCredentialHeader(wire.targetName())) {
+                throw invalid();
+            }
+            String value = decodeWire(wire.wireValue());
+            if (wire.location() == ParameterLocation.QUERY) {
+                query.add(encode(wire.targetName()) + "=" + encode(value));
+            } else {
+                headers.put(wire.targetName(), List.of(value));
+            }
+        }
+    }
+
+    private boolean sameTarget(ParameterLocation location, String left, String right) {
+        return location == ParameterLocation.HEADER ? left.equalsIgnoreCase(right) : left.equals(right);
+    }
+
+    private String canonicalTarget(ParameterLocation location, String name) {
+        return location == ParameterLocation.HEADER ? name.toLowerCase(Locale.ROOT) : name;
+    }
+
+    private String decodeWire(byte[] bytes) {
+        try {
+            String value = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes)).toString();
+            if (value.isEmpty() || value.chars().anyMatch(Character::isISOControl)) throw invalid();
+            return value;
+        } catch (RuntimeRequestInvalid failure) {
+            throw failure;
+        } catch (Exception failure) {
+            throw invalid();
+        } finally {
+            Arrays.fill(bytes, (byte) 0);
+        }
+    }
+
+    private boolean forbiddenCredentialHeader(String name) {
+        String value = name.toLowerCase(Locale.ROOT);
+        return !"authorization".equals(value)
+                && (RESERVED_HEADERS.contains(value) || value.startsWith("x-b3-"));
     }
 
     private URI base(String metadataBase, Optional<ProviderTarget> override) {
