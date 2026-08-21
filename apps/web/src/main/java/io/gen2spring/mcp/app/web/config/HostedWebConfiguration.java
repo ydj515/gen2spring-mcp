@@ -4,10 +4,13 @@ import io.gen2spring.mcp.adapter.cryptography.AesGcmImportTargetProtector;
 import io.gen2spring.mcp.adapter.persistence.PostgresAccountStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresHostedResourceStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
+import io.gen2spring.mcp.adapter.persistence.PostgresToolCatalogStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresSpecificationCatalog;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
 import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
 import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
@@ -115,6 +118,16 @@ public class HostedWebConfiguration {
     @Bean
     HostedResourceStore hostedResourceStore(DataSource dataSource) {
         return new PostgresHostedResourceStore(dataSource);
+    }
+
+    @Bean
+    ToolCatalogStore hostedToolCatalogStore(DataSource dataSource) {
+        return new PostgresToolCatalogStore(dataSource);
+    }
+
+    @Bean
+    ToolCatalogService hostedToolCatalogService(ToolCatalogStore store) {
+        return new ToolCatalogService(store);
     }
 
     @Bean

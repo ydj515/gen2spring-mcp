@@ -19,10 +19,12 @@ finish() {
   trap - EXIT
   rm -f "${output}/.staging-archive" \
     "${output}/.staging-manifest" \
+    "${output}/.staging-runtime-metadata" \
     "${output}/.staging-validation" \
     "${output}/.staging-result"
   if [ "${outcome}" != "SUCCESS" ]; then
-    rm -f "${output}/archive.zip" "${output}/manifest.json" "${output}/validation-report.json"
+    rm -f "${output}/archive.zip" "${output}/manifest.json" \
+      "${output}/runtime-metadata.json" "${output}/validation-report.json"
     if [ "${status}" -gt 0 ] && [ "${status}" -le 255 ]; then
       exit_code=${status}
     fi
@@ -68,14 +70,18 @@ fi
 
 [ -f "${project}.zip" ] && [ ! -L "${project}.zip" ]
 [ -f "${project}/GENERATION_MANIFEST.json" ] && [ ! -L "${project}/GENERATION_MANIFEST.json" ]
+[ -f "${project}/RUNTIME_METADATA.json" ] && [ ! -L "${project}/RUNTIME_METADATA.json" ]
 [ -f "${project}/VALIDATION_REPORT.json" ] && [ ! -L "${project}/VALIDATION_REPORT.json" ]
 
 cp "${project}.zip" "${output}/.staging-archive"
 cp "${project}/GENERATION_MANIFEST.json" "${output}/.staging-manifest"
+cp "${project}/RUNTIME_METADATA.json" "${output}/.staging-runtime-metadata"
 cp "${project}/VALIDATION_REPORT.json" "${output}/.staging-validation"
-chmod 0600 "${output}/.staging-archive" "${output}/.staging-manifest" "${output}/.staging-validation"
+chmod 0600 "${output}/.staging-archive" "${output}/.staging-manifest" \
+  "${output}/.staging-runtime-metadata" "${output}/.staging-validation"
 mv "${output}/.staging-archive" "${output}/archive.zip"
 mv "${output}/.staging-manifest" "${output}/manifest.json"
+mv "${output}/.staging-runtime-metadata" "${output}/runtime-metadata.json"
 mv "${output}/.staging-validation" "${output}/validation-report.json"
 outcome="SUCCESS"
 exit_code=0

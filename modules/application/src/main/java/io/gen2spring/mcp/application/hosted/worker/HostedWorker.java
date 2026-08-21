@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogPublication;
 import io.gen2spring.mcp.application.hosted.job.JobArtifact;
 import io.gen2spring.mcp.application.hosted.job.JobCompletion;
 import io.gen2spring.mcp.application.hosted.job.JobLease;
@@ -169,6 +170,15 @@ public final class HostedWorker {
     private PollResult publish(JobLease lease, SandboxResult result) {
         List<ObjectKey> published = new ArrayList<>();
         List<JobArtifact> artifacts = new ArrayList<>();
+        Optional<ToolCatalogPublication> catalog;
+        try {
+            catalog = catalogPublication(lease, result);
+        } catch (RuntimeException failure) {
+            return completeFailure(
+                    lease,
+                    "CATALOG_PUBLICATION_FAILED",
+                    "The Tool Catalog could not be published");
+        }
         try {
             for (SandboxArtifact artifact : result.artifacts()) {
                 ObjectKey key = artifactKey(lease, artifact.name());
@@ -209,7 +219,7 @@ public final class HostedWorker {
                 deleteAll(published);
                 return completeCancellation(lease);
             }
-            if (jobs.complete(lease, JobCompletion.success(), List.copyOf(artifacts))) {
+            if (jobs.complete(lease, JobCompletion.success(), List.copyOf(artifacts), catalog)) {
                 return PollResult.COMPLETED;
             }
         } catch (Error fatal) {
@@ -221,6 +231,16 @@ public final class HostedWorker {
         }
         deleteAll(published);
         return PollResult.STALE;
+    }
+
+    private Optional<ToolCatalogPublication> catalogPublication(JobLease lease, SandboxResult result) {
+        if (lease.kind() == JobKind.GENERATION) {
+            return Optional.of(ToolCatalogPublication.from(result.runtimeMetadata().orElseThrow()));
+        }
+        if (result.runtimeMetadata().isPresent()) {
+            throw new IllegalArgumentException("Hosted Tool Catalog publication is invalid");
+        }
+        return Optional.empty();
     }
 
     private ObjectKey artifactKey(JobLease lease, String name) {

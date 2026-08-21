@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -16,11 +17,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogDetails;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogPage;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogSummary;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.ToolDetails;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
 import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.job.JobView;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
 import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
@@ -33,6 +41,10 @@ import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import java.net.URI;
 import java.nio.file.Files;
@@ -59,7 +71,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(
-        controllers = {HostedSpecificationController.class, HostedJobController.class, HostedArtifactController.class},
+        controllers = {HostedSpecificationController.class, HostedJobController.class,
+                HostedArtifactController.class, HostedToolCatalogController.class},
         properties = "gen2spring.mode=hosted")
 // A WebMvcTest slice does not load plain @Configuration classes, and the job
 // controller needs the shared event stream, so import it the way production does.
@@ -75,6 +88,7 @@ class HostedWebMvcContractTest {
     @MockitoBean HostedJobService jobs;
     @MockitoBean HostedResourceStore resources;
     @MockitoBean ObjectStorage storage;
+    @MockitoBean ToolCatalogService catalogs;
 
     @BeforeEach
     void account() {
@@ -116,6 +130,87 @@ class HostedWebMvcContractTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(content().string(not(containsString(OWNER.value().toString()))));
+    }
+
+    @Test
+    void exposesAuthenticatedCatalogQueriesWithSafeOwnerScopedFailures() throws Exception {
+        when(catalogs.list(OWNER, 50, Optional.empty()))
+                .thenReturn(new CatalogPage(List.of(), Optional.empty()));
+        when(catalogs.list(OWNER, 100, Optional.empty()))
+                .thenReturn(new CatalogPage(List.of(), Optional.empty()));
+        when(catalogs.list(OWNER, 101, Optional.empty()))
+                .thenThrow(new ToolCatalogService.ToolCatalogQueryInvalid());
+
+        mvc.perform(get("/api/tool-catalogs"))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(get("/api/tool-catalogs").with(user()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(0))
+                .andExpect(jsonPath("$.nextCursor").isEmpty());
+        verify(catalogs).list(OWNER, 50, Optional.empty());
+        mvc.perform(get("/api/tool-catalogs").with(user()).param("limit", "100"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/tool-catalogs").with(user()).param("limit", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("CATALOG_QUERY_INVALID"));
+        for (String invalidLimit : List.of("abc", "2147483648")) {
+            mvc.perform(get("/api/tool-catalogs").with(user()).param("limit", invalidLimit))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("CATALOG_QUERY_INVALID"))
+                    .andExpect(jsonPath("$.error.stage").value("CATALOG_LOOKUP"))
+                    .andExpect(content().string(not(containsString(invalidLimit))));
+        }
+
+        mvc.perform(get("/api/tool-catalogs").with(user()).param("cursor", "private-marker"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("CATALOG_QUERY_INVALID"))
+                .andExpect(content().string(not(containsString("private-marker"))));
+        mvc.perform(get("/api/tool-catalogs/not-a-uuid").with(user()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.stage").value("CATALOG_LOOKUP"));
+
+        UUID missing = UUID.randomUUID();
+        when(catalogs.require(OWNER, missing)).thenThrow(new ToolCatalogService.ToolCatalogNotFound());
+        mvc.perform(get("/api/tool-catalogs/{id}", missing).with(user()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(content().string(not(containsString(missing.toString()))))
+                .andExpect(content().string(not(containsString(OWNER.value().toString()))));
+    }
+
+    @Test
+    void returnsCanonicalCatalogAndToolDocumentsWithoutPrivateCoordinates() throws Exception {
+        RuntimeMetadataArtifact metadata = runtimeMetadata();
+        UUID catalogId = UUID.fromString("6d65bd83-547b-4965-82f0-eb31af0dcd21");
+        CatalogSummary summary = new CatalogSummary(
+                catalogId,
+                new JobId(UUID.fromString("1a803410-a22a-4bc6-b951-7dbc301ae800")),
+                RuntimeMetadataDocument.VERSION,
+                metadata.checksum(),
+                1,
+                Instant.parse("2026-08-21T00:00:00Z"));
+        when(catalogs.require(OWNER, catalogId)).thenReturn(new CatalogDetails(
+                summary, metadata.document().specificationChecksum(), metadata));
+        when(catalogs.requireTool(OWNER, catalogId, "weather"))
+                .thenReturn(new ToolDetails(summary, metadata.document().tools().getFirst()));
+
+        mvc.perform(get("/api/tool-catalogs/{id}", catalogId).with(user()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.metadata.metadataVersion").value("1.0"))
+                .andExpect(jsonPath("$.metadata.checksum").value(metadata.checksum()))
+                .andExpect(content().string(not(containsString("KMA_SERVICE_KEY"))))
+                .andExpect(content().string(not(containsString("objectKey"))))
+                .andExpect(content().string(not(containsString("worker-01"))));
+        mvc.perform(get("/api/tool-catalogs/{id}/tools/weather", catalogId).with(user()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tool.name").value("weather"))
+                .andExpect(jsonPath("$.tool.http.path").value("/weather"));
+
+        when(catalogs.requireTool(OWNER, catalogId, "Bad-Tool"))
+                .thenThrow(new ToolCatalogService.ToolCatalogQueryInvalid());
+        mvc.perform(get("/api/tool-catalogs/{id}/tools/Bad-Tool", catalogId).with(user()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("CATALOG_QUERY_INVALID"));
     }
 
     @Test
@@ -257,6 +352,17 @@ class HostedWebMvcContractTest {
             throw new IllegalStateException("Unable to locate the repository root");
         }
         return current;
+    }
+
+    private RuntimeMetadataArtifact runtimeMetadata() {
+        RuntimeTool tool = new RuntimeTool(
+                "getWeather", "weather", "Get weather",
+                java.util.Map.of("type", "object", "properties", java.util.Map.of(), "required", List.of()),
+                "GENERIC_JSON", java.util.Map.of(),
+                new RuntimeHttp(GET, "https://api.example.test", "/weather", List.of(), false, false),
+                null, null, null, List.of());
+        return new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(
+                RuntimeMetadataDocument.VERSION, "a".repeat(64), List.of(tool)));
     }
 
     @TestConfiguration(proxyBeanMethods = false)

@@ -107,6 +107,7 @@ class P1GenerationIntegrationTest {
             ".gitignore",
             "Dockerfile",
             "GENERATION_MANIFEST.json",
+            "RUNTIME_METADATA.json",
             "README.md",
             "VALIDATION_REPORT.json",
             "build.gradle.kts",
@@ -412,6 +413,25 @@ class P1GenerationIntegrationTest {
         assertEquals(0755, centralDirectoryMode(Files.readAllBytes(result.archive()), "gradlew"));
         assertArrayEquals(Files.readAllBytes(specification),
                 Files.readAllBytes(result.projectRoot().resolve("openapi/source.yaml")));
+        byte[] runtimeMetadataBytes = Files.readAllBytes(result.projectRoot().resolve("RUNTIME_METADATA.json"));
+        assertArrayEquals(runtimeMetadataBytes, result.archiveEntries().get("RUNTIME_METADATA.json"));
+        JsonNode runtimeMetadata = JSON.readTree(runtimeMetadataBytes);
+        assertEquals(List.of("metadataVersion", "specificationChecksum", "checksum", "tools"),
+                iterable(runtimeMetadata.fieldNames()));
+        assertEquals("1.0", runtimeMetadata.path("metadataVersion").textValue());
+        assertEquals(sha256(Files.readAllBytes(specification)),
+                runtimeMetadata.path("specificationChecksum").textValue());
+        com.fasterxml.jackson.databind.node.ObjectNode checksumPayload = runtimeMetadata.deepCopy();
+        String metadataChecksum = checksumPayload.remove("checksum").textValue();
+        assertEquals(sha256(JSON.writeValueAsBytes(checksumPayload)), metadataChecksum);
+        assertEquals(1, runtimeMetadata.path("tools").size());
+        assertEquals(TOOL_NAME, runtimeMetadata.path("tools").get(0).path("name").textValue());
+        assertEquals("TYPED_DTO", runtimeMetadata.path("tools").get(0).path("outputKind").textValue());
+        String runtimeMetadataText = new String(runtimeMetadataBytes, UTF_8);
+        assertFalse(runtimeMetadataText.contains(profile.id()));
+        assertFalse(runtimeMetadataText.contains("KMA_SERVICE_KEY"));
+        assertFalse(runtimeMetadataText.contains(LIVE_QUERY_SECRET));
+        assertFalse(runtimeMetadataText.contains(LIVE_HEADER_SECRET));
 
         JsonNode manifest = result.manifest();
         assertEquals("0.1.0", manifest.path("generatorVersion").asText());

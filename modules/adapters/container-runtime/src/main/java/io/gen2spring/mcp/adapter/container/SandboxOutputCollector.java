@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.hosted.worker.SandboxArtifact;
 import io.gen2spring.mcp.application.hosted.worker.SandboxResult;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -32,11 +35,12 @@ final class SandboxOutputCollector {
     private static final long MAX_ARCHIVE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_JSON_BYTES = 1024L * 1024;
     private static final Set<String> OUTPUTS = Set.of(
-            "archive.zip", "manifest.json", "validation-report.json", "result.json");
+            "archive.zip", "manifest.json", "runtime-metadata.json", "validation-report.json", "result.json");
     private static final ObjectMapper JSON = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private static final Map<String, ArtifactDefinition> ARTIFACTS;
+    private static final CanonicalRuntimeMetadataCodec RUNTIME_METADATA = new CanonicalRuntimeMetadataCodec();
 
     static {
         Map<String, ArtifactDefinition> values = new LinkedHashMap<>();
@@ -125,6 +129,7 @@ final class SandboxOutputCollector {
         WorkspaceRelease release = new WorkspaceRelease(workspace, ARTIFACTS.size());
         List<SandboxArtifact> artifacts = new ArrayList<>();
         try {
+            RuntimeMetadataArtifact runtimeMetadata = readRuntimeMetadata(output.resolve("runtime-metadata.json"));
             for (Map.Entry<String, ArtifactDefinition> entry : ARTIFACTS.entrySet()) {
                 Path path = output.resolve(entry.getKey());
                 ArtifactDefinition definition = entry.getValue();
@@ -140,7 +145,7 @@ final class SandboxOutputCollector {
                 artifacts.add(SandboxArtifact.of(
                         definition.name(), content, attributes.size(), sha256, definition.contentType()));
             }
-            return new SandboxResult(artifacts, "SUCCESS");
+            return new SandboxResult(artifacts, Optional.of(runtimeMetadata), "SUCCESS");
         } catch (Error fatal) {
             artifacts.forEach(SandboxArtifact::close);
             release.force();
@@ -150,6 +155,24 @@ final class SandboxOutputCollector {
             release.force();
             throw failure;
         }
+    }
+
+    private RuntimeMetadataArtifact readRuntimeMetadata(Path path) throws Exception {
+        BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, NOFOLLOW_LINKS);
+        if (!attributes.isRegularFile()
+                || Files.isSymbolicLink(path)
+                || attributes.size() < 1
+                || attributes.size() > CanonicalRuntimeMetadataCodec.MAX_BYTES) {
+            throw failed();
+        }
+        byte[] content;
+        try (InputStream input = Files.newInputStream(path, READ, NOFOLLOW_LINKS)) {
+            content = input.readNBytes(CanonicalRuntimeMetadataCodec.MAX_BYTES + 1);
+        }
+        if (content.length != attributes.size() || content.length > CanonicalRuntimeMetadataCodec.MAX_BYTES) {
+            throw failed();
+        }
+        return RUNTIME_METADATA.decode(content);
     }
 
     private ResultMetadata parseResult(Path path) throws Exception {

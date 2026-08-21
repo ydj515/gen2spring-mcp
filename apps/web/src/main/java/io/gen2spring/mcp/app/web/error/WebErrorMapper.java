@@ -5,6 +5,7 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.app.web.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.job.JobWorkspace;
 import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.app.web.hosted.HostedArtifactController;
 import io.gen2spring.mcp.app.web.hosted.HostedJobController;
 import io.gen2spring.mcp.app.web.hosted.HostedSubmissionService;
@@ -23,6 +24,14 @@ public final class WebErrorMapper {
         if (failure instanceof HostedJobController.HostedResourceNotFound
                 || failure instanceof HostedSubmissionService.HostedSpecificationNotFound) {
             return new WebFailure(404, "RESOURCE_NOT_FOUND", "HOSTED_LOOKUP", "The hosted resource was not found");
+        }
+        if (failure instanceof ToolCatalogService.ToolCatalogNotFound) {
+            return new WebFailure(404, "RESOURCE_NOT_FOUND", "CATALOG_LOOKUP",
+                    "The hosted resource was not found");
+        }
+        if (failure instanceof ToolCatalogService.ToolCatalogQueryInvalid) {
+            return new WebFailure(400, "CATALOG_QUERY_INVALID", "CATALOG_LOOKUP",
+                    "The Tool Catalog query is invalid");
         }
         if (failure instanceof HostedJobFailure hosted) {
             return switch (hosted.code()) {

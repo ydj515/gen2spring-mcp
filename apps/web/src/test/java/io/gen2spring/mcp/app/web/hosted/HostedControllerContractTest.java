@@ -38,10 +38,22 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 class HostedControllerContractTest {
     private static final AccountId OWNER = new AccountId(UUID.fromString("41dd3b69-589c-4466-a78e-d448407d17b9"));
     private static final JobId JOB = new JobId(UUID.fromString("1a803410-a22a-4bc6-b951-7dbc301ae800"));
+
+    @Test
+    void registersTheToolCatalogControllerOnlyInHostedMode() {
+        ConditionalOnProperty condition = HostedToolCatalogController.class
+                .getAnnotation(ConditionalOnProperty.class);
+
+        assertNotNull(condition);
+        assertEquals(List.of("gen2spring.mode"), List.of(condition.name()));
+        assertEquals("hosted", condition.havingValue());
+        assertFalse(condition.matchIfMissing());
+    }
 
     @Test
     void exposesTheSharedAnalysisForUploadReadAndPlanningPreview() throws Exception {

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,6 +42,7 @@ class RunnerImageContractTest {
         assertTrue(dockerfile.contains("weather-generation-spring-ai1-java21.yaml"));
         assertTrue(dockerfile.contains("weather-generation-java17.yaml"));
         assertTrue(dockerfile.contains("weather-generation.yaml"));
+        assertTrue(dockerfile.contains("LABEL io.gen2spring.runner.protocol=\"2\""));
         String runtimeStage = dockerfile.substring(dockerfile.lastIndexOf("FROM "));
         assertFalse(runtimeStage.contains("apt-get install"));
         assertTrue(runtimeStage.contains(
@@ -200,8 +203,12 @@ class RunnerImageContractTest {
         assertTrue(process.waitFor(10, TimeUnit.SECONDS));
         assertEquals(0, process.exitValue());
         Path output = root.resolve("job/output");
-        assertEquals(Set.of("archive.zip", "manifest.json", "validation-report.json", "result.json"),
+        assertEquals(Set.of(
+                        "archive.zip", "manifest.json", "runtime-metadata.json",
+                        "validation-report.json", "result.json"),
                 Files.list(output).map(path -> path.getFileName().toString()).collect(java.util.stream.Collectors.toSet()));
+        assertEquals("1.0", new ObjectMapper().readTree(output.resolve("runtime-metadata.json").toFile())
+                .path("metadataVersion").asText());
         assertEquals("SUCCESS", new ObjectMapper().readTree(output.resolve("result.json").toFile())
                 .path("outcome").asText());
         assertFalse(Files.exists(output.resolve("process.log")));
@@ -238,6 +245,10 @@ class RunnerImageContractTest {
         Files.writeString(input.resolve("specification.yaml"), "openapi: 3.0.3\ninfo: {}\npaths: {}\n");
         Files.writeString(input.resolve("generation-config.json"), "{}");
         Files.createDirectories(root.resolve("tmp"));
+        Files.write(root.resolve("runtime-metadata.json"), new CanonicalRuntimeMetadataCodec().encode(
+                new RuntimeMetadataDocument(
+                        RuntimeMetadataDocument.VERSION, "a".repeat(64), java.util.List.of()))
+                .content());
         Files.createDirectories(root.resolve("opt/gen2spring/gradle-seed/caches/modules-2"));
         Files.createDirectories(root.resolve("opt/gen2spring/gradle-seed/wrapper/dists/gradle-9.6.1-bin/test"));
         Path cli = root.resolve("opt/gen2spring/openapi-mcp/bin/openapi-mcp");
@@ -254,6 +265,7 @@ class RunnerImageContractTest {
                 mkdir -p "$output"
                 printf '{}' > "$output/GENERATION_MANIFEST.json"
                 printf '{}' > "$output/VALIDATION_REPORT.json"
+                cp "$GEN2SPRING_RUNNER_ROOT/runtime-metadata.json" "$output/RUNTIME_METADATA.json"
                 printf 'zip' > "$output.zip"
                 """.formatted(exitCode, exitCode), StandardCharsets.UTF_8);
         Files.setPosixFilePermissions(cli, Set.of(

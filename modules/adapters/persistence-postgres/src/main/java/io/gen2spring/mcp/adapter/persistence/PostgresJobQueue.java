@@ -1,5 +1,8 @@
 package io.gen2spring.mcp.adapter.persistence;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogPublication;
 import io.gen2spring.mcp.application.hosted.job.CreateJob;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
 import io.gen2spring.mcp.application.hosted.job.JobArtifact;
@@ -8,6 +11,7 @@ import io.gen2spring.mcp.application.hosted.job.JobLease;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.job.JobView;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
@@ -40,6 +44,7 @@ public final class PostgresJobQueue implements JobQueue {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final Clock clock;
+    private final CanonicalRuntimeMetadataCodec metadataCodec = new CanonicalRuntimeMetadataCodec();
 
     public PostgresJobQueue(DataSource dataSource, Clock clock) {
         DataSource requiredDataSource = Objects.requireNonNull(dataSource, "dataSource");
@@ -131,21 +136,32 @@ public final class PostgresJobQueue implements JobQueue {
 
     @Override
     public boolean complete(JobLease lease, JobCompletion completion) {
-        return complete(lease, completion, List.of());
+        return complete(lease, completion, List.of(), Optional.empty());
     }
 
     @Override
     public boolean complete(JobLease lease, JobCompletion completion, List<JobArtifact> artifacts) {
+        return complete(lease, completion, artifacts, Optional.empty());
+    }
+
+    @Override
+    public boolean complete(
+            JobLease lease,
+            JobCompletion completion,
+            List<JobArtifact> artifacts,
+            Optional<ToolCatalogPublication> catalog) {
         Objects.requireNonNull(lease, "lease");
         Objects.requireNonNull(completion, "completion");
         Objects.requireNonNull(artifacts, "artifacts");
+        Objects.requireNonNull(catalog, "catalog");
+        JobQueue.requireCatalogPublication(lease, completion, catalog);
         List<JobArtifact> immutableArtifacts = List.copyOf(artifacts);
         if (immutableArtifacts.size() > 16
                 || (!immutableArtifacts.isEmpty() && completion.status() != JobStatus.SUCCEEDED)) {
             throw new IllegalArgumentException("Hosted job artifact publication is invalid");
         }
         return Boolean.TRUE.equals(transactions.execute(
-                status -> completeInTransaction(lease, completion, immutableArtifacts)));
+                status -> completeInTransaction(lease, completion, immutableArtifacts, catalog)));
     }
 
     @Override
@@ -341,7 +357,8 @@ public final class PostgresJobQueue implements JobQueue {
     private boolean completeInTransaction(
             JobLease lease,
             JobCompletion completion,
-            List<JobArtifact> artifacts) {
+            List<JobArtifact> artifacts,
+            Optional<ToolCatalogPublication> catalog) {
         JobTransitionPolicy.requireAllowed(JobStatus.RUNNING, completion.status());
         Instant now = clock.instant();
         Optional<CompletionTarget> candidate = jdbc.query(
@@ -366,7 +383,8 @@ public final class PostgresJobQueue implements JobQueue {
             return false;
         }
         CompletionTarget target = candidate.get();
-        if (target.cancellationRequested() && completion.status() != JobStatus.CANCELLED) {
+        if (target.kind() != lease.kind()
+                || target.cancellationRequested() && completion.status() != JobStatus.CANCELLED) {
             return false;
         }
         for (JobArtifact artifact : artifacts) {
@@ -397,6 +415,7 @@ public final class PostgresJobQueue implements JobQueue {
         if (target.kind() == JobKind.SPEC_IMPORT && completion.status() == JobStatus.SUCCEEDED) {
             publishImportedSpecification(lease, target.owner(), artifacts, now);
         }
+        catalog.ifPresent(publication -> publishToolCatalog(lease, target.owner(), publication, now));
         int updated = jdbc.update(
                 """
                 update generation_job
@@ -435,6 +454,51 @@ public final class PostgresJobQueue implements JobQueue {
                 completion.safeSummary(),
                 now);
         return true;
+    }
+
+    private void publishToolCatalog(
+            JobLease lease,
+            AccountId owner,
+            ToolCatalogPublication publication,
+            Instant now) {
+        UUID catalogId = UUID.randomUUID();
+        var metadata = publication.metadata();
+        int inserted = jdbc.update(
+                """
+                insert into tool_catalog(
+                    id, owner_account_id, generation_job_id, metadata_version,
+                    specification_checksum, metadata_checksum, metadata_document,
+                    tool_count, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                catalogId,
+                owner.value(),
+                lease.jobId().value(),
+                metadata.document().metadataVersion(),
+                metadata.document().specificationChecksum(),
+                metadata.checksum(),
+                new String(metadata.content(), UTF_8),
+                publication.entries().size(),
+                timestamp(now));
+        if (inserted != 1) {
+            throw new IllegalStateException("Hosted Tool Catalog publication failed");
+        }
+        for (ToolCatalogPublication.ToolEntry entry : publication.entries()) {
+            int toolInserted = jdbc.update(
+                    """
+                    insert into tool_catalog_entry(
+                        catalog_id, ordinal, tool_name, operation_id, metadata_document)
+                    values (?, ?, ?, ?, ?)
+                    """,
+                    catalogId,
+                    entry.ordinal(),
+                    entry.tool().name(),
+                    entry.tool().operationId(),
+                    metadataCodec.encodeTool(entry.tool()));
+            if (toolInserted != 1) {
+                throw new IllegalStateException("Hosted Tool Catalog publication failed");
+            }
+        }
     }
 
     private void publishImportedSpecification(

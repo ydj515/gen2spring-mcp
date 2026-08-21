@@ -14,8 +14,10 @@ import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
 import io.gen2spring.mcp.application.hosted.worker.SandboxInput;
 import io.gen2spring.mcp.application.hosted.worker.SandboxLimits;
 import io.gen2spring.mcp.application.hosted.worker.SandboxResult;
+import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,6 +60,9 @@ class DockerCliSandboxRuntimeTest {
         assertEquals("SUCCESS", result.outcome());
         assertEquals(List.of("archive", "manifest", "validation-report"),
                 result.artifacts().stream().map(artifact -> artifact.name()).toList());
+        assertTrue(result.runtimeMetadata().isPresent());
+        assertEquals(RuntimeMetadataDocument.VERSION,
+                result.runtimeMetadata().orElseThrow().document().metadataVersion());
         List<String> create = commands.invocations.getFirst();
         assertEquals(docker.toString(), create.getFirst());
         assertContainsPair(create, "--host", "unix:///run/user/10001/docker.sock");
@@ -152,12 +157,41 @@ class DockerCliSandboxRuntimeTest {
         assertFalse(failure.toString().contains("private marker"));
 
         FakeRunner symlink = new FakeRunner();
-        symlink.outputMode = OutputMode.SYMLINK;
+        symlink.outputMode = OutputMode.SYMLINK_ARTIFACT;
         DockerCliSandboxRuntime symlinkRuntime = new DockerCliSandboxRuntime(
                 executable(), Path.of("/run/user/10001/docker.sock"), IMAGE,
                 temporaryDirectory, new StubStorage(), symlink);
         assertThrows(SandboxRuntimeFailure.class, () -> symlinkRuntime.run(LEASE, input(), LIMITS));
         assertEquals("rm", symlink.operations().getLast());
+    }
+
+    @Test
+    void rejectsMissingOrNonCanonicalRuntimeMetadata() throws Exception {
+        for (OutputMode mode : List.of(
+                OutputMode.MISSING_METADATA,
+                OutputMode.SYMLINK_METADATA,
+                OutputMode.EMPTY_METADATA,
+                OutputMode.OVERSIZE_METADATA,
+                OutputMode.MALFORMED_METADATA,
+                OutputMode.DUPLICATE_METADATA,
+                OutputMode.TRAILING_METADATA,
+                OutputMode.CHECKSUM_METADATA,
+                OutputMode.REORDERED_METADATA,
+                OutputMode.EXTRA_LF_METADATA)) {
+            FakeRunner commands = new FakeRunner();
+            commands.outputMode = mode;
+            DockerCliSandboxRuntime runtime = new DockerCliSandboxRuntime(
+                    executable(), Path.of("/run/user/10001/docker.sock"), IMAGE,
+                    temporaryDirectory, new StubStorage(), commands);
+
+            SandboxRuntimeFailure failure = assertThrows(
+                    SandboxRuntimeFailure.class,
+                    () -> runtime.run(LEASE, input(), LIMITS), mode.name());
+
+            assertEquals("Sandbox container execution failed", failure.getMessage());
+            assertEquals("rm", commands.operations().getLast());
+            assertFalse(failure.toString().contains("private marker"));
+        }
     }
 
     @Test
@@ -219,7 +253,21 @@ class DockerCliSandboxRuntimeTest {
         throw new AssertionError(option + " pair is absent");
     }
 
-    private enum OutputMode { VALID, UNKNOWN, SYMLINK }
+    private enum OutputMode {
+        VALID,
+        UNKNOWN,
+        SYMLINK_ARTIFACT,
+        MISSING_METADATA,
+        SYMLINK_METADATA,
+        EMPTY_METADATA,
+        OVERSIZE_METADATA,
+        MALFORMED_METADATA,
+        DUPLICATE_METADATA,
+        TRAILING_METADATA,
+        CHECKSUM_METADATA,
+        REORDERED_METADATA,
+        EXTRA_LF_METADATA
+    }
 
     private static final class FakeRunner implements DockerCommandRunner {
         private final List<List<String>> invocations = new ArrayList<>();
@@ -263,17 +311,60 @@ class DockerCliSandboxRuntimeTest {
                 Files.write(output.resolve("archive.zip"), "archive".getBytes(StandardCharsets.UTF_8));
                 Files.writeString(output.resolve("manifest.json"), "{}");
                 Files.writeString(output.resolve("validation-report.json"), "{}");
+                Path metadata = output.resolve("runtime-metadata.json");
+                byte[] canonical = runtimeMetadata();
+                Files.write(metadata, canonical);
                 Files.writeString(output.resolve("result.json"),
                         "{\"outcome\":\"SUCCESS\",\"exitCode\":0}");
                 if (outputMode == OutputMode.UNKNOWN) {
                     Files.writeString(output.resolve("private-marker.txt"), "private marker");
-                } else if (outputMode == OutputMode.SYMLINK) {
+                } else if (outputMode == OutputMode.SYMLINK_ARTIFACT) {
                     Files.delete(output.resolve("archive.zip"));
                     Files.createSymbolicLink(output.resolve("archive.zip"), output.resolve("manifest.json"));
+                } else if (outputMode == OutputMode.MISSING_METADATA) {
+                    Files.delete(metadata);
+                } else if (outputMode == OutputMode.SYMLINK_METADATA) {
+                    Files.delete(metadata);
+                    Files.createSymbolicLink(metadata, output.resolve("manifest.json"));
+                } else if (outputMode == OutputMode.EMPTY_METADATA) {
+                    Files.write(metadata, new byte[0]);
+                } else if (outputMode == OutputMode.OVERSIZE_METADATA) {
+                    Files.write(metadata, new byte[CanonicalRuntimeMetadataCodec.MAX_BYTES + 1]);
+                } else if (outputMode == OutputMode.MALFORMED_METADATA) {
+                    Files.writeString(metadata, "{\n");
+                } else if (outputMode == OutputMode.DUPLICATE_METADATA) {
+                    mutate(metadata, canonical, value -> value.replaceFirst(
+                            "\\{", "{\\\"metadataVersion\\\":\\\"1.0\\\","));
+                } else if (outputMode == OutputMode.TRAILING_METADATA) {
+                    mutate(metadata, canonical, value -> value + "{}");
+                } else if (outputMode == OutputMode.CHECKSUM_METADATA) {
+                    mutate(metadata, canonical, value -> value.replaceFirst(
+                            "\\\"checksum\\\":\\\".", "\\\"checksum\\\":\\\"0"));
+                } else if (outputMode == OutputMode.REORDERED_METADATA) {
+                    mutate(metadata, canonical, value -> value.replaceFirst(
+                            "\\{\\\"metadataVersion\\\":\\\"1.0\\\",\\\"specificationChecksum\\\":\\\""
+                                    + "a".repeat(64) + "\\\"",
+                            "{\\\"specificationChecksum\\\":\\\"" + "a".repeat(64)
+                                    + "\\\",\\\"metadataVersion\\\":\\\"1.0\\\""));
+                } else if (outputMode == OutputMode.EXTRA_LF_METADATA) {
+                    Files.write(metadata, (new String(canonical, StandardCharsets.UTF_8) + "\n")
+                            .getBytes(StandardCharsets.UTF_8));
                 }
             } catch (Exception failure) {
                 throw new IllegalStateException(failure);
             }
+        }
+
+        private byte[] runtimeMetadata() {
+            return new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(
+                    RuntimeMetadataDocument.VERSION, "a".repeat(64), List.of())).content();
+        }
+
+        private void mutate(
+                Path metadata,
+                byte[] canonical,
+                java.util.function.UnaryOperator<String> mutation) throws IOException {
+            Files.writeString(metadata, mutation.apply(new String(canonical, StandardCharsets.UTF_8)));
         }
     }
 
