@@ -11,7 +11,7 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
     private final HandleFactory factory;
     private final int maximumSize;
     private final Clock clock;
-    private final LinkedHashMap<RuntimeInstanceId, RuntimeServerHandle> handles = new LinkedHashMap<>();
+    private final LinkedHashMap<HandleKey, RuntimeServerHandle> handles = new LinkedHashMap<>();
 
     RuntimeServerHandleRegistry(HandleFactory factory, int maximumSize, Clock clock) {
         this.factory = Objects.requireNonNull(factory, "factory");
@@ -26,16 +26,10 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
         if (access == null || access.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
             throw new IllegalStateException("Managed runtime handle is unavailable");
         }
-        RuntimeInstanceId id = access.instance().id();
-        RuntimeServerHandle existing = handles.get(id);
-        if (existing != null) {
-            if (!existing.instance().catalogChecksum().equals(access.instance().catalogChecksum())) {
-                handles.remove(id);
-                existing.close();
-            } else {
-                return existing;
-            }
-        }
+        HandleKey key = HandleKey.from(access);
+        RuntimeServerHandle existing = handles.get(key);
+        if (existing != null) return existing;
+        removeSupersededCatalogs(key);
         removeExpired();
         if (handles.size() >= maximumSize) {
             throw new RuntimeCapacityExceeded();
@@ -48,13 +42,19 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
         } catch (RuntimeException failure) {
             throw new IllegalStateException("Managed runtime handle could not be created");
         }
-        handles.put(id, created);
+        handles.put(key, created);
         return created;
     }
 
     synchronized void invalidate(RuntimeInstanceId id) {
-        RuntimeServerHandle removed = handles.remove(id);
-        if (removed != null) removed.close();
+        var iterator = handles.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (entry.getKey().runtimeId().equals(id)) {
+                entry.getValue().close();
+                iterator.remove();
+            }
+        }
     }
 
     @Override
@@ -80,6 +80,31 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
                 handle.close();
                 iterator.remove();
             }
+        }
+    }
+
+    private void removeSupersededCatalogs(HandleKey requested) {
+        var iterator = handles.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            HandleKey current = entry.getKey();
+            if (current.runtimeId().equals(requested.runtimeId())
+                    && !current.catalogChecksum().equals(requested.catalogChecksum())) {
+                entry.getValue().close();
+                iterator.remove();
+            }
+        }
+    }
+
+    private record HandleKey(RuntimeInstanceId runtimeId, String catalogChecksum, String policyChecksum) {
+        private static HandleKey from(RuntimeAccess access) {
+            return new HandleKey(
+                    access.instance().id(), access.instance().catalogChecksum(), access.policyChecksum());
+        }
+
+        @Override public String toString() {
+            return "HandleKey[runtimeId=" + runtimeId + ", catalogChecksum=" + catalogChecksum
+                    + ", policyChecksum=" + policyChecksum + "]";
         }
     }
 

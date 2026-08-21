@@ -27,7 +27,7 @@ import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
-import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
+import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -159,24 +159,18 @@ class RuntimeConfiguration {
             ManagedExecutionContext context = new ManagedExecutionContext(access, binding, credentials);
             var tools = catalog.metadata().document().tools().stream()
                     .filter(tool -> access.allowedTools().contains(tool.name())).toList();
-            var specifications = emitter.emit(tools,
+            var specifications = emitter.emitStateless(tools,
                     (toolName, arguments) -> executor.call(context, toolName, arguments));
             String endpoint = "/mcp/" + instance.id().value();
-            var transport = WebMvcStreamableServerTransportProvider.builder()
-                    .jsonMapper(mapper).mcpEndpoint(endpoint).disallowDelete(false).build();
+            var transport = WebMvcStatelessServerTransport.builder()
+                    .jsonMapper(mapper).messageEndpoint(endpoint).build();
             var server = McpServer.sync(transport)
                     .jsonMapper(mapper)
                     .serverInfo("gen2spring-managed-runtime", "1.0")
                     .requestTimeout(Duration.ofSeconds(30))
                     .tools(specifications)
                     .build();
-            return new RuntimeServerHandle(instance, transport.getRouterFunction(), () -> {
-                try {
-                    server.close();
-                } finally {
-                    transport.closeGracefully().block(Duration.ofSeconds(5));
-                }
-            });
+            return RuntimeServerHandle.stateless(instance, transport, server);
         }, properties.cacheSize(), clock);
     }
 

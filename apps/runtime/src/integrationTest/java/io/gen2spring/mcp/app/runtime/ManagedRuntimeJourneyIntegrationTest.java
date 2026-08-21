@@ -31,7 +31,7 @@ import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
-import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
+import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -63,7 +63,7 @@ class ManagedRuntimeJourneyIntegrationTest {
                 """);
             assertEquals(200, initialized.status());
             String session = initialized.session();
-            assertNotNull(session);
+            assertEquals(null, session);
             JsonNode initialize = responseJson(initialized.body());
             assertEquals("2025-03-26", initialize.path("result").path("protocolVersion").asText());
 
@@ -118,14 +118,14 @@ class ManagedRuntimeJourneyIntegrationTest {
         ManagedRuntimeBinding binding = new ManagedRuntimeBinding(instance, metadata);
         RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access -> {
             JacksonMcpJsonMapper mapper = new JacksonMcpJsonMapper(json);
-            var transport = WebMvcStreamableServerTransportProvider.builder()
-                    .jsonMapper(mapper).mcpEndpoint("/mcp/" + access.instance().id().value()).build();
+            var transport = WebMvcStatelessServerTransport.builder()
+                    .jsonMapper(mapper).messageEndpoint("/mcp/" + access.instance().id().value()).build();
             var server = McpServer.sync(transport).jsonMapper(mapper)
                     .serverInfo("managed-test", "1")
-                    .tools(new McpJavaSdkEmitter().emit(List.of(tool),
+                    .tools(new McpJavaSdkEmitter().emitStateless(List.of(tool),
                             (name, arguments) -> executor.call(binding, name, arguments)))
                     .build();
-            return new RuntimeServerHandle(access.instance(), transport.getRouterFunction(), server::close);
+            return RuntimeServerHandle.stateless(access.instance(), transport, server);
         }, 8, Clock.fixed(NOW, ZoneOffset.UTC));
         ManagedRuntimeStore store = new ManagedRuntimeStore() {
             @Override public void create(ManagedRuntimeInstance ignored, RuntimeTokenDigest digest) {}

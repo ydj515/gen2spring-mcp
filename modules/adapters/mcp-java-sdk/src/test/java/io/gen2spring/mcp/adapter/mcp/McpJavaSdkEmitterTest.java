@@ -118,6 +118,41 @@ class McpJavaSdkEmitterTest {
                 ((McpSchema.TextContent) result.content().getFirst()).text());
     }
 
+    @Test
+    void emitsStatelessSpecificationsWithTheSameExactSafeContract() {
+        RuntimeTool hidden = tool("hidden", "Hidden");
+        RuntimeTool visible = tool("visible", "Visible");
+        McpJavaSdkEmitter emitter = new McpJavaSdkEmitter();
+
+        var specs = emitter.emitStateless(List.of(visible), (name, arguments) ->
+                ManagedToolResult.success("{\"data\":true}".getBytes(StandardCharsets.UTF_8)));
+
+        assertEquals(1, specs.size());
+        assertEquals("visible", specs.getFirst().tool().name());
+        assertEquals(Map.of("city", Map.of("description", "City name", "type", "string")),
+                specs.getFirst().tool().inputSchema().properties());
+        McpSchema.CallToolResult success = specs.getFirst().callHandler().apply(
+                null, new McpSchema.CallToolRequest("visible", Map.of("city", "Seoul")));
+        assertFalse(success.isError());
+        assertEquals("{\"data\":true}", ((McpSchema.TextContent) success.content().getFirst()).text());
+
+        RuntimeException privateFailure = new RuntimeException("private stateless marker");
+        var failed = emitter.emitStateless(List.of(hidden), (name, arguments) -> {
+            throw privateFailure;
+        }).getFirst();
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> failed.callHandler().apply(null,
+                        new McpSchema.CallToolRequest("hidden", Map.of("city", "Seoul"))));
+        assertEquals("Managed Tool execution failed", failure.getMessage());
+        assertEquals(null, failure.getCause());
+        assertFalse(failure.toString().contains("private"));
+
+        AssertionError fatal = new AssertionError("fatal marker");
+        var fatalSpec = emitter.emitStateless(List.of(hidden), (name, arguments) -> { throw fatal; }).getFirst();
+        assertSame(fatal, assertThrows(AssertionError.class, () -> fatalSpec.callHandler().apply(
+                null, new McpSchema.CallToolRequest("hidden", Map.of("city", "Seoul")))));
+    }
+
     private RuntimeTool tool(String name, String description) {
         return tool(name, description, Map.of());
     }

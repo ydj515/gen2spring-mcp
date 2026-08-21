@@ -7,6 +7,7 @@ import io.gen2spring.mcp.application.managed.execution.ManagedToolCallHandler;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.Comparator;
 import java.util.Collections;
@@ -26,6 +27,18 @@ public final class McpJavaSdkEmitter {
     public List<McpServerFeatures.SyncToolSpecification> emit(
             List<RuntimeTool> tools,
             ManagedToolCallHandler handler) {
+        List<RuntimeTool> ordered = ordered(tools, handler);
+        return ordered.stream().map(tool -> specification(tool, handler)).toList();
+    }
+
+    public List<McpStatelessServerFeatures.SyncToolSpecification> emitStateless(
+            List<RuntimeTool> tools,
+            ManagedToolCallHandler handler) {
+        List<RuntimeTool> ordered = ordered(tools, handler);
+        return ordered.stream().map(tool -> statelessSpecification(tool, handler)).toList();
+    }
+
+    private List<RuntimeTool> ordered(List<RuntimeTool> tools, ManagedToolCallHandler handler) {
         Objects.requireNonNull(handler, "handler");
         if (tools == null) {
             throw invalid();
@@ -38,12 +51,29 @@ public final class McpJavaSdkEmitter {
         if (ordered.stream().anyMatch(tool -> !names.add(tool.name()))) {
             throw invalid();
         }
-        return ordered.stream().map(tool -> specification(tool, handler)).toList();
+        return ordered;
     }
 
     private McpServerFeatures.SyncToolSpecification specification(
             RuntimeTool runtimeTool,
             ManagedToolCallHandler handler) {
+        McpSchema.Tool tool = tool(runtimeTool);
+        return McpServerFeatures.SyncToolSpecification.builder()
+                .tool(tool)
+                .callHandler((exchange, request) -> call(runtimeTool, handler, request))
+                .build();
+    }
+
+    private McpStatelessServerFeatures.SyncToolSpecification statelessSpecification(
+            RuntimeTool runtimeTool,
+            ManagedToolCallHandler handler) {
+        return McpStatelessServerFeatures.SyncToolSpecification.builder()
+                .tool(tool(runtimeTool))
+                .callHandler((context, request) -> call(runtimeTool, handler, request))
+                .build();
+    }
+
+    private McpSchema.Tool tool(RuntimeTool runtimeTool) {
         McpSchema.Tool.Builder builder = McpSchema.Tool.builder()
                 .name(runtimeTool.name())
                 .description(runtimeTool.description())
@@ -51,23 +81,24 @@ public final class McpJavaSdkEmitter {
         if (!runtimeTool.outputSchema().isEmpty()) {
             builder.outputSchema(runtimeTool.outputSchema());
         }
-        McpSchema.Tool tool = builder.build();
-        return McpServerFeatures.SyncToolSpecification.builder()
-                .tool(tool)
-                .callHandler((exchange, request) -> {
-                    try {
-                        Map<String, Object> arguments = request.arguments() == null
-                                ? Map.of()
-                                : Collections.unmodifiableMap(new LinkedHashMap<>(request.arguments()));
-                        return resultMapper.map(
-                                handler.call(tool.name(), arguments), !runtimeTool.outputSchema().isEmpty());
-                    } catch (Error fatal) {
-                        throw fatal;
-                    } catch (RuntimeException failure) {
-                        throw new IllegalStateException("Managed Tool execution failed");
-                    }
-                })
-                .build();
+        return builder.build();
+    }
+
+    private McpSchema.CallToolResult call(
+            RuntimeTool runtimeTool,
+            ManagedToolCallHandler handler,
+            McpSchema.CallToolRequest request) {
+        try {
+            Map<String, Object> arguments = request.arguments() == null
+                    ? Map.of()
+                    : Collections.unmodifiableMap(new LinkedHashMap<>(request.arguments()));
+            return resultMapper.map(
+                    handler.call(runtimeTool.name(), arguments), !runtimeTool.outputSchema().isEmpty());
+        } catch (Error fatal) {
+            throw fatal;
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException("Managed Tool execution failed");
+        }
     }
 
     private String json(Map<String, Object> value) {

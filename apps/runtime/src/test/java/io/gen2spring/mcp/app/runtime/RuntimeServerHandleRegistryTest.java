@@ -17,6 +17,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
@@ -111,6 +112,34 @@ class RuntimeServerHandleRegistryTest {
         assertThrows(IllegalStateException.class, () -> registry.get(second));
         assertThrows(IllegalStateException.class, () -> registry.get(second));
         assertEquals(1, builds.get());
+    }
+
+    @Test
+    void separatesHandlesByCatalogAndGrantPolicyWithoutCachingBearerMaterial() {
+        AtomicInteger builds = new AtomicInteger();
+        RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access -> {
+            builds.incrementAndGet();
+            return RuntimeServerHandle.testing(access.instance(), () -> {});
+        }, 4, Clock.fixed(NOW, ZoneOffset.UTC));
+        ManagedRuntimeInstance runtime = instance(1);
+        RuntimeAccess owner = access(runtime, "a".repeat(64), "owner");
+        RuntimeAccess scoped = access(runtime, "b".repeat(64), "client-a");
+
+        assertSame(registry.get(owner), registry.get(owner));
+        registry.get(scoped);
+
+        assertEquals(2, builds.get());
+        assertEquals(false, registry.toString().contains("owner-private-token"));
+        assertEquals(false, registry.toString().contains("credential-private-marker"));
+        registry.close();
+    }
+
+    private RuntimeAccess access(ManagedRuntimeInstance instance, String policyChecksum, String principal) {
+        return new RuntimeAccess(
+                instance,
+                "owner".equals(principal) ? Optional.empty() : Optional.of(
+                        new io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId(UUID.randomUUID())),
+                principal, Set.of("managed_tool"), 5, "owner".equals(principal), policyChecksum);
     }
 
     private ManagedRuntimeInstance instance(int suffix) {
