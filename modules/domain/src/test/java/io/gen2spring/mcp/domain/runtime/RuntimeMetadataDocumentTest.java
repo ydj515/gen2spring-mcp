@@ -62,6 +62,19 @@ class RuntimeMetadataDocumentTest {
     }
 
     @Test
+    void acceptsSupportedToolDescriptionWhitespaceAndRejectsOtherControls() {
+        String description = "Weather summary\n\nWeather detail\tvalue\r\nNext line";
+        RuntimeTool accepted = new RuntimeTool(
+                "getWeather", "weather", description, Map.of(), "GENERIC_JSON", Map.of(),
+                http("https://api.test"), null, null, null, List.of());
+
+        assertEquals(description, accepted.description());
+        assertThrows(IllegalArgumentException.class, () -> new RuntimeTool(
+                "getWeather", "weather", "Weather\u0000detail", Map.of(), "GENERIC_JSON", Map.of(),
+                http("https://api.test"), null, null, null, List.of()));
+    }
+
+    @Test
     void normalizesOrderingAndDefensivelyCopiesNestedCollections() {
         Map<String, Object> nested = new LinkedHashMap<>();
         List<String> mutableValues = new ArrayList<>(List.of("first"));

@@ -153,6 +153,13 @@ class HostedWebMvcContractTest {
         mvc.perform(get("/api/tool-catalogs").with(user()).param("limit", "101"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("CATALOG_QUERY_INVALID"));
+        for (String invalidLimit : List.of("abc", "2147483648")) {
+            mvc.perform(get("/api/tool-catalogs").with(user()).param("limit", invalidLimit))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("CATALOG_QUERY_INVALID"))
+                    .andExpect(jsonPath("$.error.stage").value("CATALOG_LOOKUP"))
+                    .andExpect(content().string(not(containsString(invalidLimit))));
+        }
 
         mvc.perform(get("/api/tool-catalogs").with(user()).param("cursor", "private-marker"))
                 .andExpect(status().isBadRequest())

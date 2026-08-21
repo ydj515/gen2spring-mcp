@@ -94,6 +94,22 @@ class RuntimeMetadataDocumentFactoryTest {
         assertFalse(failure.safeMessage().contains("api_key"));
     }
 
+    @Test
+    void representsAnAbsentOpenApiServerAsTheProviderRelativeBaseUrl() {
+        ToolDefinition tool = new ToolDefinition(
+                "getForecast",
+                "forecast",
+                "Get forecast",
+                List.of(),
+                new HttpExecution(GET, null, "/forecast", List.of()),
+                List.of(),
+                GENERIC_JSON);
+
+        var document = factory.create(SPECIFICATION_CHECKSUM, List.of(tool));
+
+        assertEquals("/", document.tools().getFirst().http().baseUrl());
+    }
+
     private ToolDefinition toolWithSecret(
             String name,
             io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation location,

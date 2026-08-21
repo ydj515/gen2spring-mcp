@@ -39,7 +39,7 @@ final class HostedToolCatalogController {
     @GetMapping("/api/tool-catalogs")
     JsonNode catalogs(
             Authentication authentication,
-            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "50") String limit,
             @RequestParam(required = false) String cursor) {
         Optional<HostedCursorCodec.Cursor> decoded;
         try {
@@ -49,7 +49,7 @@ final class HostedToolCatalogController {
         }
         var page = catalogs.list(
                 accounts.resolve(authentication).accountId(),
-                limit,
+                limit(limit),
                 decoded.map(value -> new CatalogCursor(value.createdAt(), value.id())));
         ObjectNode response = json.createObjectNode();
         var items = response.putArray("items");
@@ -59,6 +59,14 @@ final class HostedToolCatalogController {
                         new HostedCursorCodec.Cursor(next.createdAt(), next.id()))),
                 () -> response.putNull("nextCursor"));
         return response;
+    }
+
+    private int limit(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (RuntimeException failure) {
+            throw new ToolCatalogService.ToolCatalogQueryInvalid();
+        }
     }
 
     @GetMapping("/api/tool-catalogs/{catalogId}")

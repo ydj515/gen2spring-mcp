@@ -75,7 +75,7 @@ public record RuntimeMetadataDocument(
         public RuntimeTool {
             requireText(operationId, "operationId");
             requireText(name, "name");
-            requireText(description, "description");
+            requireDescription(description);
             if (!"GENERIC_JSON".equals(outputKind) && !"TYPED_DTO".equals(outputKind)) {
                 throw new IllegalArgumentException("Runtime Tool output kind is invalid");
             }
@@ -216,6 +216,16 @@ public record RuntimeMetadataDocument(
     private static void requireText(String value, String name) {
         if (value == null || value.isBlank() || containsControl(value)) {
             throw new IllegalArgumentException("Runtime metadata " + name + " is invalid");
+        }
+    }
+
+    private static void requireDescription(String value) {
+        if (value == null || value.isBlank() || value.chars().anyMatch(character ->
+                Character.isISOControl(character)
+                        && character != '\t'
+                        && character != '\n'
+                        && character != '\r')) {
+            throw new IllegalArgumentException("Runtime metadata description is invalid");
         }
     }
 

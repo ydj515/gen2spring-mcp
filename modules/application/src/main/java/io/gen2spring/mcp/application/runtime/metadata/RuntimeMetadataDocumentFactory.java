@@ -54,7 +54,9 @@ public final class RuntimeMetadataDocumentFactory {
                 schemas.outputSchema(tool.output()),
                 new RuntimeHttp(
                         execution.method(),
-                        execution.baseUrl().normalize().toASCIIString(),
+                        execution.baseUrl() == null
+                                ? "/"
+                                : execution.baseUrl().normalize().toASCIIString(),
                         execution.path(),
                         execution.bindings(),
                         execution.objectRequestBody(),

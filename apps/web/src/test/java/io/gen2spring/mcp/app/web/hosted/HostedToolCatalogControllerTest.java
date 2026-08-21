@@ -56,7 +56,7 @@ class HostedToolCatalogControllerTest {
         HostedToolCatalogController controller = new HostedToolCatalogController(
                 accounts, service, new ObjectMapper());
 
-        JsonNode page = controller.catalogs(authentication, 50, null);
+        JsonNode page = controller.catalogs(authentication, "50", null);
         JsonNode details = controller.catalog(authentication, CATALOG.toString());
         JsonNode tool = controller.tool(authentication, CATALOG.toString(), "weather");
 
