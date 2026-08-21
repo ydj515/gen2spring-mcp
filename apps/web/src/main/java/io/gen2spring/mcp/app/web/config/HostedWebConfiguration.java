@@ -1,11 +1,14 @@
 package io.gen2spring.mcp.app.web.config;
 
 import io.gen2spring.mcp.adapter.cryptography.AesGcmImportTargetProtector;
+import io.gen2spring.mcp.adapter.cryptography.AesGcmCredentialProtector;
 import io.gen2spring.mcp.adapter.cryptography.HmacRuntimeTokenCodec;
 import io.gen2spring.mcp.adapter.persistence.PostgresAccountStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresHostedResourceStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
 import io.gen2spring.mcp.adapter.persistence.PostgresManagedRuntimeStore;
+import io.gen2spring.mcp.adapter.persistence.PostgresManagedCredentialStore;
+import io.gen2spring.mcp.adapter.persistence.PostgresRuntimePolicyStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresToolCatalogStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresSpecificationCatalog;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
@@ -23,6 +26,12 @@ import io.gen2spring.mcp.application.hosted.worker.WorkerHeartbeatStore;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
+import io.gen2spring.mcp.application.managed.credential.CredentialProtector;
+import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
+import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore;
+import io.gen2spring.mcp.application.managed.policy.RuntimeGrantService;
+import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
+import io.gen2spring.mcp.application.managed.audit.RuntimeAuditService;
 import io.gen2spring.mcp.app.web.hosted.HostedSubmissionService;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import java.nio.charset.StandardCharsets;
@@ -141,6 +150,30 @@ public class HostedWebConfiguration {
     }
 
     @Bean
+    ManagedCredentialStore hostedManagedCredentialStore(DataSource dataSource) {
+        return new PostgresManagedCredentialStore(dataSource);
+    }
+
+    @Bean
+    CredentialProtector hostedCredentialProtector(HostedWebProperties properties) {
+        return new AesGcmCredentialProtector(
+                properties.encryption().keyFiles(), properties.encryption().activeKeyId());
+    }
+
+    @Bean
+    ManagedCredentialService hostedManagedCredentialService(
+            ManagedCredentialStore store,
+            CredentialProtector protector,
+            Clock hostedClock) {
+        return new ManagedCredentialService(store, protector, hostedClock);
+    }
+
+    @Bean
+    RuntimePolicyStore hostedRuntimePolicyStore(DataSource dataSource) {
+        return new PostgresRuntimePolicyStore(dataSource);
+    }
+
+    @Bean
     RuntimeTokenCodec hostedRuntimeTokenCodec(HostedWebProperties properties) {
         return new HmacRuntimeTokenCodec(properties.runtime().tokenPepperFile());
     }
@@ -149,11 +182,29 @@ public class HostedWebConfiguration {
     ManagedRuntimeService hostedManagedRuntimeService(
             ToolCatalogService catalogs,
             ManagedRuntimeStore runtimes,
+            ManagedCredentialService credentials,
             RuntimeTokenCodec tokens,
             Clock hostedClock,
             HostedWebProperties properties) {
         return new ManagedRuntimeService(
-                catalogs, runtimes, tokens, hostedClock, properties.runtime().baseUri());
+                catalogs, runtimes, credentials, tokens, hostedClock, properties.runtime().baseUri());
+    }
+
+    @Bean
+    RuntimeGrantService hostedRuntimeGrantService(
+            ManagedRuntimeService runtimes,
+            ToolCatalogService catalogs,
+            RuntimePolicyStore policies,
+            RuntimeTokenCodec tokens,
+            Clock hostedClock) {
+        return new RuntimeGrantService(runtimes, catalogs, policies, tokens, hostedClock);
+    }
+
+    @Bean
+    RuntimeAuditService hostedRuntimeAuditService(
+            ManagedRuntimeService runtimes,
+            RuntimePolicyStore policies) {
+        return new RuntimeAuditService(runtimes, policies);
     }
 
     @Bean

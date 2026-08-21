@@ -2,6 +2,7 @@ package io.gen2spring.mcp.application.managed.runtime;
 
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -11,6 +12,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
+import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore;
+import io.gen2spring.mcp.application.managed.credential.CredentialProtector;
+import io.gen2spring.mcp.application.managed.credential.CredentialSecret;
+import io.gen2spring.mcp.application.managed.credential.ProtectedCredential;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredential;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialKind;
 import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
@@ -97,6 +106,51 @@ class ManagedRuntimeServiceTest {
     }
 
     @Test
+    void bindsOwnedActiveCredentialsWithExactSlotAndKindCompatibility() {
+        CredentialStore credentialStore = new CredentialStore();
+        ManagedCredentialService credentials = credentialService(credentialStore);
+        ManagedCredentialId opaqueId = credentials.create(OWNER, "opaque", CredentialSecret.opaque("private")).id();
+        ManagedCredentialId bearerId = credentials.create(OWNER, "bearer", CredentialSecret.bearer("private")).id();
+        Fixture fixture = fixture(
+                List.of(tool("https://api.example.com", "weather", List.of(
+                        new RuntimeCredential("service-key", QUERY, "api_key", true),
+                        new RuntimeCredential("authorization", HEADER, "Authorization", false)))),
+                credentials);
+
+        fixture.service.activate(
+                OWNER, CATALOG, Optional.empty(), Optional.empty(),
+                Map.of("service-key", opaqueId, "authorization", bearerId));
+
+        assertEquals(Map.of("service-key", opaqueId, "authorization", bearerId),
+                fixture.runtimeStore.created.credentialBindings());
+    }
+
+    @Test
+    void rejectsMissingUnknownRevokedAndIncompatibleCredentialBindingsBeforePersistence() {
+        CredentialStore credentialStore = new CredentialStore();
+        ManagedCredentialService credentials = credentialService(credentialStore);
+        ManagedCredentialId id = credentials.create(OWNER, "bearer", CredentialSecret.bearer("private")).id();
+        Fixture fixture = fixture(
+                List.of(tool("https://api.example.com", "weather", List.of(
+                        new RuntimeCredential("service-key", QUERY, "api_key", true)))),
+                credentials);
+
+        assertInvalid(() -> fixture.service.activate(
+                OWNER, CATALOG, Optional.empty(), Optional.empty(), Map.of()));
+        assertInvalid(() -> fixture.service.activate(
+                OWNER, CATALOG, Optional.empty(), Optional.empty(), Map.of("unknown", id)));
+        credentialStore.values.put(id, new ManagedCredentialStore.StoredCredential(
+                credential(id, ManagedCredentialKind.BEARER, Optional.of(NOW.minusSeconds(1))), protectedValue(1)));
+        assertInvalid(() -> fixture.service.activate(
+                OWNER, CATALOG, Optional.empty(), Optional.empty(), Map.of("service-key", id)));
+        credentialStore.values.put(id, new ManagedCredentialStore.StoredCredential(
+                credential(id, ManagedCredentialKind.BEARER, Optional.empty()), protectedValue(1)));
+        assertInvalid(() -> fixture.service.activate(
+                OWNER, CATALOG, Optional.empty(), Optional.empty(), Map.of("service-key", id)));
+        assertEquals(0, fixture.runtimeStore.createCount);
+    }
+
+    @Test
     void preservesOwnerIsolationAndProvidesIdempotentRevocation() {
         Fixture fixture = fixture(tool("https://api.example.com", List.of()));
         ManagedRuntimeInstance runtime = fixture.service.activate(
@@ -138,17 +192,52 @@ class ManagedRuntimeServiceTest {
     }
 
     private Fixture fixture(List<RuntimeTool> tools) {
+        return fixture(tools, null);
+    }
+
+    private Fixture fixture(List<RuntimeTool> tools, ManagedCredentialService credentials) {
         CatalogStore catalogStore = new CatalogStore(metadata(tools));
         RuntimeStore runtimeStore = new RuntimeStore();
         TokenCodec tokenCodec = new TokenCodec();
-        ManagedRuntimeService service = new ManagedRuntimeService(
-                new ToolCatalogService(catalogStore),
-                runtimeStore,
-                tokenCodec,
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                URI.create("https://runtime.example"),
-                () -> RUNTIME);
+        ManagedRuntimeService service = credentials == null
+                ? new ManagedRuntimeService(
+                        new ToolCatalogService(catalogStore), runtimeStore, tokenCodec,
+                        Clock.fixed(NOW, ZoneOffset.UTC), URI.create("https://runtime.example"), () -> RUNTIME)
+                : new ManagedRuntimeService(
+                        new ToolCatalogService(catalogStore), runtimeStore, credentials, tokenCodec,
+                        Clock.fixed(NOW, ZoneOffset.UTC), URI.create("https://runtime.example"), () -> RUNTIME);
         return new Fixture(service, catalogStore, runtimeStore, tokenCodec);
+    }
+
+    private ManagedCredential credential(
+            ManagedCredentialId id,
+            ManagedCredentialKind kind,
+            Optional<Instant> revokedAt) {
+        return new ManagedCredential(id, OWNER, "provider", kind, 1, NOW.minusSeconds(10), NOW.minusSeconds(10), revokedAt);
+    }
+
+    private ManagedCredentialService credentialService(CredentialStore store) {
+        CredentialProtector protector = new CredentialProtector() {
+            @Override public ProtectedCredential protect(
+                    AccountId owner, ManagedCredentialId id, long version, CredentialSecret secret) {
+                return protectedValue(version);
+            }
+            @Override public CredentialSecret reveal(
+                    AccountId owner, ManagedCredentialId id, long version, ProtectedCredential value) {
+                return CredentialSecret.opaque("private");
+            }
+        };
+        return new ManagedCredentialService(store, protector, Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    private ProtectedCredential protectedValue(long version) {
+        return new ProtectedCredential(1, version, "test-key", bytes(12), bytes(48), bytes(12), bytes(32));
+    }
+
+    private byte[] bytes(int size) {
+        byte[] value = new byte[size];
+        java.util.Arrays.fill(value, (byte) 1);
+        return value;
     }
 
     private RuntimeTool tool(String baseUrl, List<RuntimeCredential> credentials) {
@@ -236,9 +325,17 @@ class ManagedRuntimeServiceTest {
 
         @Override
         public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest) {
+            create(instance, digest, Map.of());
+        }
+
+        @Override
+        public void create(
+                ManagedRuntimeInstance instance,
+                RuntimeTokenDigest digest,
+                Map<String, ManagedCredentialId> bindings) {
             throwFailure();
             createCount++;
-            created = new StoredRuntime(instance, digest);
+            created = new StoredRuntime(instance, digest, bindings);
             stored = created;
         }
 
@@ -256,7 +353,8 @@ class ManagedRuntimeServiceTest {
                 return false;
             }
             revokeCount++;
-            stored = new StoredRuntime(stored.instance().revokeAt(revokedAt), stored.tokenDigest());
+            stored = new StoredRuntime(
+                    stored.instance().revokeAt(revokedAt), stored.tokenDigest(), stored.credentialBindings());
             return true;
         }
 
@@ -268,6 +366,22 @@ class ManagedRuntimeServiceTest {
                 throw failure;
             }
         }
+    }
+
+    private static final class CredentialStore implements ManagedCredentialStore {
+        private final Map<ManagedCredentialId, StoredCredential> values = new java.util.HashMap<>();
+        @Override public void create(ManagedCredential credential, ProtectedCredential protectedCredential) {
+            values.put(credential.id(), new StoredCredential(credential, protectedCredential));
+        }
+        @Override public boolean rotate(AccountId owner, ManagedCredentialId id, long expectedVersion,
+                ManagedCredential credential, ProtectedCredential protectedCredential) { return false; }
+        @Override public boolean revoke(AccountId owner, ManagedCredentialId id, Instant revokedAt) { return false; }
+        @Override public Optional<StoredCredential> find(AccountId owner, ManagedCredentialId id) {
+            StoredCredential value = values.get(id);
+            return value != null && value.credential().owner().equals(owner) ? Optional.of(value) : Optional.empty();
+        }
+        @Override public List<ManagedCredential> list(AccountId owner) { return List.of(); }
+        @Override public long countActive(AccountId owner) { return 0; }
     }
 
     private static final class TokenCodec implements RuntimeTokenCodec {

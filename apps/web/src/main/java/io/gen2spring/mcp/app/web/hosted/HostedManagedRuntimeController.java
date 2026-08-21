@@ -7,6 +7,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Map;
+import java.util.TreeMap;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -40,12 +43,13 @@ final class HostedManagedRuntimeController {
             Authentication authentication,
             @PathVariable String catalogId,
             @RequestBody(required = false) ActivationRequest request) {
-        ActivationRequest value = request == null ? new ActivationRequest(null, null) : request;
+        ActivationRequest value = request == null ? new ActivationRequest(null, null, null) : request;
         var activation = runtimes.activate(
                 accounts.resolve(authentication).accountId(),
                 uuid(catalogId),
                 Optional.ofNullable(value.providerBaseUrl()),
-                Optional.ofNullable(value.lifetimeSeconds()).map(this::duration));
+                Optional.ofNullable(value.lifetimeSeconds()).map(this::duration),
+                credentialBindings(value.credentialBindings()));
         return ManagedRuntimeResponse.activated(activation, clock.instant());
     }
 
@@ -82,5 +86,19 @@ final class HostedManagedRuntimeController {
         }
     }
 
-    record ActivationRequest(String providerBaseUrl, Long lifetimeSeconds) {}
+    private Map<String, ManagedCredentialId> credentialBindings(Map<String, String> requested) {
+        if (requested == null) return Map.of();
+        try {
+            Map<String, ManagedCredentialId> result = new TreeMap<>();
+            requested.forEach((slot, id) -> result.put(slot, ManagedCredentialId.parse(id)));
+            return java.util.Collections.unmodifiableMap(result);
+        } catch (RuntimeException failure) {
+            throw new ManagedRuntimeService.ManagedRuntimeRequestInvalid();
+        }
+    }
+
+    record ActivationRequest(
+            String providerBaseUrl,
+            Long lifetimeSeconds,
+            Map<String, String> credentialBindings) {}
 }
