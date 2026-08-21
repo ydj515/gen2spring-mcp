@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gen2Spring Managed MCP Runtime</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#667085; --paper:#f6f8fb; --surface:#fff; --line:#dce2ec; --blue:#4263a9; --green:#238263; --orange:#b6692b; --red:#a94747; --navy:#111a2e; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--paper); font-family:Inter,Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.55; }
+    .hero { padding:64px 24px 52px; color:#fff; background:radial-gradient(circle at 82% 12%,#36558f 0,var(--navy) 44%,#0c1323 100%); }
+    .hero>div, main { max-width:1160px; margin:auto; }
+    h1 { margin:10px 0 12px; max-width:850px; font-size:clamp(34px,6vw,62px); line-height:1.03; letter-spacing:-.04em; }
+    .hero p { max-width:780px; color:#ccd6e8; }
+    .pill { display:inline-block; margin:14px 6px 0 0; padding:6px 10px; border:1px solid #ffffff3d; border-radius:999px; font-size:12px; }
+    main { padding:36px 20px 84px; }
+    section { margin-top:44px; }
+    h2 { border-bottom:1px solid var(--line); padding-bottom:10px; font-size:26px; }
+    .flow { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:9px; align-items:stretch; }
+    .node,.card { padding:15px; border:1px solid var(--line); border-radius:14px; background:var(--surface); box-shadow:0 5px 16px #111a2e09; }
+    .node { min-height:126px; }
+    .node strong,.card strong { display:block; margin-bottom:7px; font-size:13px; }
+    .node p,.card p,.card li { margin:0; color:var(--muted); font-size:11px; }
+    .arrow { align-self:center; text-align:center; color:var(--muted); font-size:23px; }
+    .green { border-top:4px solid var(--green); } .blue { border-top:4px solid var(--blue); } .orange { border-top:4px solid var(--orange); } .red { border-top:4px solid var(--red); }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .callout { margin:18px 0; padding:14px 16px; border-left:4px solid var(--green); border-radius:9px; background:#edf8f4; font-size:12px; }
+    .warning { border-left-color:var(--orange); background:#fff6ec; }
+    table { width:100%; border-collapse:collapse; background:var(--surface); }
+    th,td { padding:11px; border:1px solid var(--line); text-align:left; vertical-align:top; font-size:11px; }
+    th { color:var(--muted); background:#f1f4fa; }
+    code { padding:.1em .35em; border-radius:4px; background:#eef2f8; }
+    @media(max-width:900px){ .flow,.grid{grid-template-columns:1fr}.arrow{transform:rotate(90deg)} }
+  </style>
+</head>
+<body>
+  <header class="hero"><div>
+    <div>Gen2Spring MCP · Implemented P2 v1</div>
+    <h1>Managed MCP Runtime</h1>
+    <p>Immutable Tool Catalog를 일회성 bearer token으로 활성화하고, MCP Java SDK 세션과 provider egress를 runtime별로 격리한다.</p>
+    <span class="pill">Not a Gateway</span><span class="pill">MCP SDK 0.18.3</span><span class="pill">PostgreSQL 17.9</span><span class="pill">mTLS egress</span>
+  </div></header>
+  <main>
+    <section>
+      <h2>1. Control plane to data plane</h2>
+      <div class="flow">
+        <div class="node blue"><strong>Owner + Tool Catalog</strong><p>OIDC owner가 immutable checksum과 credential-free Tool 집합을 선택한다.</p></div>
+        <div class="arrow">→</div>
+        <div class="node green"><strong>Activation API</strong><p>24h default, 30d max. plaintext token은 응답에 한 번만 제공한다.</p></div>
+        <div class="arrow">→</div>
+        <div class="node green"><strong>Managed Runtime</strong><p>요청마다 digest 인증 후 runtime별 고정 SDK server handle로 라우팅한다.</p></div>
+        <div class="arrow">→</div>
+        <div class="node orange"><strong>Provider Egress</strong><p>mTLS wire만 수신하고 public HTTP/S 80/443 destination으로만 연결한다.</p></div>
+      </div>
+      <div class="callout"><strong>생성 결과와 분리:</strong> Managed Runtime은 다운로드 ZIP의 generated Spring AI 서버를 수정하거나 그 안에 포함되지 않는다.</div>
+    </section>
+    <section>
+      <h2>2. Runtime request lifecycle</h2>
+      <div class="grid">
+        <div class="card blue"><strong>1. Authenticate</strong><p><code>/mcp/{runtimeId}</code> 경로와 bearer token을 매 요청 검증한다. miss, wrong, expired, revoked는 동일한 401이다.</p></div>
+        <div class="card green"><strong>2. Isolate handle</strong><p>runtime ID와 Catalog checksum별 transport, server, session, Tool specifications를 한 번 생성한다.</p></div>
+        <div class="card green"><strong>3. Execute Tool</strong><p>exact schema로 SDK가 입력을 검증하고 bounded executor가 request binding과 normalization을 수행한다.</p></div>
+        <div class="card orange"><strong>4. Cross mTLS</strong><p>runtime은 provider URL에 직접 연결하지 않고 bounded internal JSON을 provider-egress로 보낸다.</p></div>
+        <div class="card orange"><strong>5. Resolve and connect</strong><p>모든 DNS answer를 검사하고 connect-time resolver snapshot을 사용한다. redirect는 없다.</p></div>
+        <div class="card red"><strong>6. Close safely</strong><p>다음 요청에서 감지한 만료·revoke와 eviction, build failure, shutdown에서 server와 session handle을 종료한다.</p></div>
+      </div>
+    </section>
+    <section>
+      <h2>3. Trust and network boundaries</h2>
+      <table><thead><tr><th>Process</th><th>Can access</th><th>Cannot access</th></tr></thead><tbody>
+        <tr><td>apps/web</td><td>OIDC, PostgreSQL, owner control API</td><td>runtime sessions, provider egress</td></tr>
+        <tr><td>apps/runtime</td><td>PostgreSQL, internal provider-call, proxy ingress</td><td>direct external egress, MinIO, OIDC secret, Docker socket</td></tr>
+        <tr><td>apps/provider-egress</td><td>mTLS request, public network 80/443</td><td>PostgreSQL, Catalog, token, account, MinIO, Docker</td></tr>
+      </tbody></table>
+      <div class="callout warning"><strong>Provider policy:</strong> loopback, private, link-local, multicast, reserved, metadata, mixed DNS answer, redirects, caller Host, hop-by-hop headers와 1 MiB 초과 body를 거부한다.</div>
+    </section>
+    <section>
+      <h2>4. Explicit v1 boundary</h2>
+      <div class="grid">
+        <div class="card green"><strong>Completed</strong><p>credential-free 단일 Catalog, activation/revocation, exact tools/list, bounded tools/call, normalized result.</p></div>
+        <div class="card orange"><strong>Single replica</strong><p>Streamable HTTP session은 한 runtime replica에 유지한다. stateless/multi-replica를 주장하지 않는다.</p></div>
+        <div class="card red"><strong>Not completed</strong><p>Gateway sharing, per-user Tool authorization, credential routing, rate limit, audit execution, Catalog version migration.</p></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

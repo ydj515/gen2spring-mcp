@@ -170,7 +170,7 @@ Activation fails before persistence when:
 - Runtime Metadata checksum or version verification fails
 - no Tool is present, Tool names are not unique, or bounds exceed the Runtime Metadata contract
 - any Tool declares a credential slot
-- an absolute provider base URL violates provider-egress policy
+- an absolute provider base URL violates the provider scheme, authority, or port policy
 - a provider-relative base URL has no explicit activation `providerBaseUrl`
 - the supplied base URL has userinfo, query, fragment, unsupported scheme or port, or a private/reserved target
 
@@ -318,8 +318,8 @@ Execution audit history remains out of scope and must not be implied by metrics 
 Hosted Compose adds runtime and provider-egress services:
 
 - proxy routes `/mcp/` only to `apps/runtime`
-- runtime joins the proxy, platform, and private runtime-egress networks but no external egress network
-- provider-egress joins only the private runtime-egress and external egress networks
+- runtime joins the proxy, runtime-control, and provider-call networks but no external egress network
+- provider-egress joins only the provider-call and egress networks
 - runtime receives PostgreSQL credentials, token-HMAC pepper, and mTLS client material only
 - provider-egress receives mTLS server material only
 - neither service receives OIDC client secrets, MinIO credentials, Docker socket, or worker workspace

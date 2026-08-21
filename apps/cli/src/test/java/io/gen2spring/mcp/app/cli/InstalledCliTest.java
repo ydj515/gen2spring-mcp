@@ -183,6 +183,15 @@ class InstalledCliTest {
         assertTrue(prd.contains("FR-5.3 구현 상태: 완료"));
         assertTrue(prd.contains("FR-5.4 구현 상태: 완료"));
         assertTrue(prd.contains("플랫폼 검증 상태: Linux와 Windows 완료"));
+        assertTrue(readme.contains("credential-free 단일 Tool Catalog"));
+        assertTrue(readme.contains("Gateway가 아니다"));
+        assertTrue(userGuide.contains("POST /api/tool-catalogs/{catalogId}/runtimes"));
+        assertTrue(userGuide.contains("POST /api/runtimes/{runtimeId}/revocation"));
+        assertTrue(userGuide.contains("Authorization: Bearer <one-time-token>"));
+        assertTrue(userGuide.contains("single-replica session transport"));
+        assertTrue(userGuide.contains("provider-egress"));
+        assertTrue(prd.contains("dynamic Managed Runtime 실행: 완료 (P2 v1 지원 범위)"));
+        assertTrue(prd.contains("Gateway policy, sharing, authorization, credential routing, audit execution은 미완료"));
     }
 
     @Test

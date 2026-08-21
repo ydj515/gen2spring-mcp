@@ -140,8 +140,12 @@ GET /api/tool-catalogs/{catalogId}/tools/{toolName}
 ```
 
 Catalog metadata에는 Tool schema와 HTTP·policy·credential 요구사항만 포함하며 secret 값, 환경변수 이름,
-사용자·작업 식별자와 로컬 경로는 포함하지 않는다. 기존 generation은 backfill하지 않으며, 동적 Managed
-Runtime 실행과 Gateway authorization·sharing·credential routing은 아직 제공하지 않는다.
+사용자·작업 식별자와 로컬 경로는 포함하지 않는다. 기존 generation은 backfill하지 않는다.
+
+Hosted mode의 Managed Runtime은 credential-free 단일 Tool Catalog를 bearer token으로 활성화해
+`/mcp/{runtimeId}`에서 SDK 기반 `tools/list`와 bounded `tools/call`을 제공한다. provider HTTP는 mTLS
+`provider-egress`만 통과한다. 이 기능은 생성 ZIP에 포함되는 서버도, 공유·권한·credential routing을
+제공하는 Gateway가 아니다. v1은 single-replica session transport이며 multi-replica/stateless 운영은 지원하지 않는다.
 
 ## 저장소 구조
 
@@ -175,6 +179,7 @@ Gradle Wrapper JVM은 host의 Java 21로 시작될 수 있다. generated compile
 - [사용자 가이드](docs/user-guide.md): 설치, CLI, 설정, runtime, 검증, 지원 범위
 - [제품 요구사항](docs/prd.md): 기능 요구와 구현 상태
 - [Hosted 플랫폼 구조도](docs/architecture/hosted-generation-platform.html): 배포·데이터 흐름 시각화
+- [Managed Runtime 구조도](docs/architecture/managed-mcp-runtime.html): 제어·실행·egress 격리 시각화
 - [Hosted 배포 가이드](deploy/hosted/README.md): 구성, 기동, 백업·복구
 - [설계 기록](docs/superpowers/specs/): 승인된 기능 설계
 - [구현 계획](docs/superpowers/plans/): 단계별 검증 계획

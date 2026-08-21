@@ -96,6 +96,30 @@ mise run hosted:up
 mise run hosted:acceptance
 ```
 
+### Managed Runtime
+
+Hosted owner는 validation을 통과한 immutable Tool Catalog 중 credential slot이 없는 Catalog 하나를 runtime으로
+활성화할 수 있다. 응답의 plaintext token은 한 번만 노출되고 PostgreSQL에는 HMAC digest만 저장된다.
+
+```text
+POST /api/tool-catalogs/{catalogId}/runtimes
+GET  /api/runtimes/{runtimeId}
+POST /api/runtimes/{runtimeId}/revocation
+```
+
+활성화 응답의 endpoint에 `Authorization: Bearer <one-time-token>`을 보내 MCP Streamable HTTP
+`initialize`, `tools/list`, `tools/call`을 수행한다. 활성화 기본 수명은 24시간, 최대 수명은 30일이며
+만료 또는 revoke 이후 요청은 동일한 401 응답으로 거부된다.
+
+Managed Runtime은 Catalog checksum별 immutable MCP Java SDK server handle을 사용한다. provider 요청은
+database와 외부 egress를 함께 가진 프로세스에서 실행하지 않고, mTLS 전용 `provider-egress`가 public
+HTTP/HTTPS 80/443 destination만 resolve-and-connect한다. redirect, private/reserved/mixed DNS answer,
+hop-by-hop header, 1 MiB 초과 body는 fail-closed로 거부한다.
+
+v1은 credential-free 단일 Catalog, bearer activation/revocation, single-replica session transport만 지원한다.
+공유 Gateway, 사용자별 Tool visibility, credential routing, audit execution, stateless/multi-replica session은
+아직 제공하지 않으며 생성 ZIP의 독립 MCP 서버 내용도 변경하지 않는다.
+
 ## CLI 사용법
 
 설치된 실행 파일을 변수로 둔다.
