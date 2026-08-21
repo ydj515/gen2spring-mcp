@@ -119,6 +119,25 @@ class RuntimeServerHandleRegistryTest {
     }
 
     @Test
+    void evictsScopedHandlesWhenTheirGrantPolicyExpiresBeforeTheRuntime() {
+        MutableClock clock = new MutableClock(NOW);
+        AtomicInteger closes = new AtomicInteger();
+        RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(
+                access -> RuntimeServerHandle.testing(access.instance(), closes::incrementAndGet),
+                1, clock);
+        ManagedRuntimeInstance runtime = instance(1, NOW.plusSeconds(3600));
+        RuntimeAccess scoped = access(
+                runtime, "a".repeat(64), "client-a", NOW.plusSeconds(1));
+
+        registry.get(scoped);
+        clock.now = NOW.plusSeconds(2);
+        registry.get(access(instance(2), "b".repeat(64), "owner"));
+
+        assertEquals(1, closes.get());
+        registry.close();
+    }
+
+    @Test
     void closesHandlesOutsideTheRegistryMonitorAndKeepsFailedHandlesClosed() throws Exception {
         CountDownLatch closeEntered = new CountDownLatch(1);
         CountDownLatch releaseClose = new CountDownLatch(1);
@@ -176,11 +195,19 @@ class RuntimeServerHandleRegistryTest {
     }
 
     private RuntimeAccess access(ManagedRuntimeInstance instance, String policyChecksum, String principal) {
+        return access(instance, policyChecksum, principal, instance.expiresAt());
+    }
+
+    private RuntimeAccess access(
+            ManagedRuntimeInstance instance,
+            String policyChecksum,
+            String principal,
+            Instant validUntil) {
         return new RuntimeAccess(
                 instance,
                 "owner".equals(principal) ? Optional.empty() : Optional.of(
                         new io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId(UUID.randomUUID())),
-                principal, Set.of("managed_tool"), 5, "owner".equals(principal), policyChecksum);
+                principal, Set.of("managed_tool"), 5, "owner".equals(principal), policyChecksum, validUntil);
     }
 
     private ManagedRuntimeInstance instance(int suffix) {

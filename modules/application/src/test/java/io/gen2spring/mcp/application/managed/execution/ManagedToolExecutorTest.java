@@ -299,7 +299,7 @@ class ManagedToolExecutorTest {
     private RuntimeAccess access(ManagedRuntimeBinding binding, Set<String> tools) {
         return new RuntimeAccess(
                 binding.instance(), Optional.of(new RuntimeGrantId(UUID.randomUUID())), "client-a",
-                tools, 5, false, "c".repeat(64));
+                tools, 5, false, "c".repeat(64), binding.instance().expiresAt());
     }
 
     private RuntimeCredentialResolver resolver(ManagedRuntimeInstance instance) {

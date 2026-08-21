@@ -55,6 +55,31 @@ class RuntimeMetadataDocumentTest {
     }
 
     @Test
+    void rejectsCredentialTargetsThatCollideWithinOneTool() {
+        RuntimeTool duplicateCredentials = new RuntimeTool(
+                "getWeather", "weather", "Weather", Map.of(), "GENERIC_JSON", Map.of(),
+                http("https://api.test"), null, null, null,
+                List.of(
+                        credential("primary-key", HEADER, "X-API-Key"),
+                        credential("secondary-key", HEADER, "x-api-key")));
+        RuntimeTool bindingCollision = new RuntimeTool(
+                "getWeather", "weather", "Weather", Map.of(), "GENERIC_JSON", Map.of(),
+                new RuntimeHttp(
+                        GET, "https://api.test", "/weather",
+                        List.of(new ParameterBinding("apiKey", HEADER, "X-API-Key")),
+                        false, false),
+                null, null, null,
+                List.of(credential("service-key", HEADER, "x-api-key")));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new RuntimeMetadataDocument(RuntimeMetadataDocument.VERSION, HASH,
+                        List.of(duplicateCredentials)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new RuntimeMetadataDocument(RuntimeMetadataDocument.VERSION, HASH,
+                        List.of(bindingCollision)));
+    }
+
+    @Test
     void acceptsAPathAbsoluteRelativeBaseUrlWithoutWeakeningAuthorityChecks() {
         RuntimeMetadataDocument document = new RuntimeMetadataDocument(
                 RuntimeMetadataDocument.VERSION, HASH, List.of(tool("weather", "/")));

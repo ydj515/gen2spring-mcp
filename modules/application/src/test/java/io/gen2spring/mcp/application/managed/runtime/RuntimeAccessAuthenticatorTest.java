@@ -99,7 +99,7 @@ class RuntimeAccessAuthenticatorTest {
                 UUID.fromString("40000000-0000-0000-0000-000000000001"));
         ManagedRuntimeGrant grant = new ManagedRuntimeGrant(
                 grantId, ID, runtime.owner(), "client-a", Set.of("forecast_tool"), 7,
-                NOW.minusSeconds(60), NOW.plusSeconds(60), Optional.empty());
+                NOW.minusSeconds(60), NOW.plusSeconds(30), Optional.empty());
         RuntimeAccessAuthenticator authenticator = new RuntimeAccessAuthenticator(
                 new Store(runtime), tokenCodec(), Clock.fixed(NOW, ZoneOffset.UTC),
                 catalog(runtime), new GrantPolicy(grant));
@@ -110,10 +110,12 @@ class RuntimeAccessAuthenticatorTest {
         assertEquals(Set.of("forecast_tool", "status_tool"), owner.allowedTools());
         assertEquals(600, owner.requestsPerMinute());
         assertEquals(true, owner.ownerGrant());
+        assertEquals(runtime.expiresAt(), owner.validUntil());
         assertEquals(Set.of("forecast_tool"), scoped.allowedTools());
         assertEquals(7, scoped.requestsPerMinute());
         assertEquals(Optional.of(grantId), scoped.grantId());
         assertEquals("client-a", scoped.principal());
+        assertEquals(NOW.plusSeconds(30), scoped.validUntil());
         assertNotEquals(owner.policyChecksum(), scoped.policyChecksum());
         assertEquals(scoped.policyChecksum(), authenticator.authenticate(ID, "grant-token").policyChecksum());
     }

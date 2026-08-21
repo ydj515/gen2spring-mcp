@@ -39,7 +39,8 @@ class ManagedRuntimeIsolationIntegrationTest {
 
     private RuntimeAccess access(ManagedRuntimeInstance instance) {
         return new RuntimeAccess(
-                instance, Optional.empty(), "owner", Set.of("managed_tool"), 600, true, "a".repeat(64));
+                instance, Optional.empty(), "owner", Set.of("managed_tool"), 600, true,
+                "a".repeat(64), instance.expiresAt());
     }
 
     private ManagedRuntimeInstance instance(int suffix, Instant now) {

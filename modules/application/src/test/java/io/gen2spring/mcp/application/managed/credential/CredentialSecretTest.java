@@ -43,7 +43,10 @@ class CredentialSecretTest {
     void rejectsUnsafeOrOversizedValuesAndUseAfterCloseWithOneFixedMessage() {
         assertInvalid(() -> CredentialSecret.opaque(""));
         assertInvalid(() -> CredentialSecret.opaque("line\nbreak"));
-        assertInvalid(() -> CredentialSecret.bearer("a".repeat(8193)));
+        try (CredentialSecret maximumBearer = CredentialSecret.bearer("a".repeat(8185))) {
+            assertEquals(8192, maximumBearer.wireValue().length);
+        }
+        assertInvalid(() -> CredentialSecret.bearer("a".repeat(8186)));
         assertInvalid(() -> CredentialSecret.basic("user:name", "password"));
         assertInvalid(() -> CredentialSecret.basic("user", "line\nbreak"));
 

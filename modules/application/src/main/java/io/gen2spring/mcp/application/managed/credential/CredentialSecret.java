@@ -11,6 +11,8 @@ import java.util.Objects;
 public final class CredentialSecret implements AutoCloseable {
     private static final String INVALID = "Managed credential secret is invalid";
     private static final int ENCODING_VERSION = 1;
+    private static final int MAX_WIRE_BYTES = 8192;
+    private static final int BEARER_PREFIX_BYTES = 7;
     private final ManagedCredentialKind kind;
     private byte[] first;
     private byte[] second;
@@ -20,7 +22,13 @@ public final class CredentialSecret implements AutoCloseable {
         this.kind = Objects.requireNonNull(kind, "kind");
         this.first = first.clone();
         this.second = second.clone();
-        validate();
+        try {
+            validate();
+        } catch (RuntimeException failure) {
+            Arrays.fill(this.first, (byte) 0);
+            Arrays.fill(this.second, (byte) 0);
+            throw failure;
+        }
     }
 
     public static CredentialSecret opaque(String value) {
@@ -43,9 +51,11 @@ public final class CredentialSecret implements AutoCloseable {
     }
 
     public static CredentialSecret decode(byte[] encoded) {
+        byte[] first = null;
+        byte[] second = null;
         try {
             if (encoded == null || encoded.length < 10) throw invalid();
-            ByteBuffer buffer = ByteBuffer.wrap(encoded.clone());
+            ByteBuffer buffer = ByteBuffer.wrap(encoded);
             if (Byte.toUnsignedInt(buffer.get()) != ENCODING_VERSION) throw invalid();
             int ordinal = Byte.toUnsignedInt(buffer.get());
             if (ordinal >= ManagedCredentialKind.values().length) throw invalid();
@@ -54,8 +64,8 @@ public final class CredentialSecret implements AutoCloseable {
             if (firstLength < 0 || secondLength < 0
                     || firstLength > buffer.remaining()
                     || secondLength != buffer.remaining() - firstLength) throw invalid();
-            byte[] first = new byte[firstLength];
-            byte[] second = new byte[secondLength];
+            first = new byte[firstLength];
+            second = new byte[secondLength];
             buffer.get(first);
             buffer.get(second);
             decodeUtf8(first);
@@ -66,6 +76,9 @@ public final class CredentialSecret implements AutoCloseable {
             throw invalid();
         } catch (RuntimeException failure) {
             throw invalid();
+        } finally {
+            if (first != null) Arrays.fill(first, (byte) 0);
+            if (second != null) Arrays.fill(second, (byte) 0);
         }
     }
 
@@ -123,7 +136,9 @@ public final class CredentialSecret implements AutoCloseable {
         String firstValue = decodeUtf8(first);
         String secondValue = decodeUtf8(second);
         if (kind == ManagedCredentialKind.OPAQUE || kind == ManagedCredentialKind.BEARER) {
-            if (!secondValue.isEmpty() || !safe(firstValue, 1, 8192)) throw invalid();
+            int maximumBytes = kind == ManagedCredentialKind.BEARER
+                    ? MAX_WIRE_BYTES - BEARER_PREFIX_BYTES : MAX_WIRE_BYTES;
+            if (!secondValue.isEmpty() || !safe(firstValue, 1, maximumBytes)) throw invalid();
             return;
         }
         if (!safe(firstValue, 1, 256) || firstValue.indexOf(':') >= 0

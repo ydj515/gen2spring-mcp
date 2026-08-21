@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -52,7 +53,8 @@ public final class RuntimeAccessAuthenticator {
             catalogs.require(stored.instance().owner(), stored.instance().catalogId())
                     .metadata().document().tools().forEach(tool -> catalogTools.add(tool.name()));
             if (tokens.matches(bearerToken, stored.tokenDigest())) {
-                return access(stored, Optional.empty(), "owner", catalogTools, 600, true);
+                return access(stored, Optional.empty(), "owner", catalogTools, 600, true,
+                        stored.instance().expiresAt());
             }
             RuntimeTokenDigest digest = tokens.digest(bearerToken);
             var grant = Objects.requireNonNull(policies.authenticateGrant(id, digest))
@@ -62,7 +64,7 @@ public final class RuntimeAccessAuthenticator {
                     || grant.stateAt(clock.instant()) != GrantState.ACTIVE
                     || !catalogTools.containsAll(grant.allowedTools())) throw unauthorized();
             return access(stored, Optional.of(grant.id()), grant.principal(), grant.allowedTools(),
-                    grant.requestsPerMinute(), false);
+                    grant.requestsPerMinute(), false, grant.expiresAt());
         } catch (Error fatal) {
             throw fatal;
         } catch (RuntimeUnauthorized failure) {
@@ -78,10 +80,12 @@ public final class RuntimeAccessAuthenticator {
             String principal,
             Set<String> allowedTools,
             int requestsPerMinute,
-            boolean ownerGrant) {
+            boolean ownerGrant,
+            Instant validUntil) {
         return new RuntimeAccess(
                 stored.instance(), grantId, principal, allowedTools, requestsPerMinute, ownerGrant,
-                policyChecksum(grantId, principal, allowedTools, requestsPerMinute, ownerGrant));
+                policyChecksum(grantId, principal, allowedTools, requestsPerMinute, ownerGrant, validUntil),
+                validUntil);
     }
 
     private String policyChecksum(
@@ -89,11 +93,13 @@ public final class RuntimeAccessAuthenticator {
             String principal,
             Set<String> tools,
             int requestsPerMinute,
-            boolean ownerGrant) {
+            boolean ownerGrant,
+            Instant validUntil) {
         try {
             String canonical = "runtime-policy:v1\n"
                     + (grantId.isEmpty() ? "owner" : grantId.orElseThrow().value()) + "\n"
                     + principal + "\n" + requestsPerMinute + "\n" + ownerGrant + "\n"
+                    + validUntil + "\n"
                     + String.join("\n", new java.util.TreeSet<>(tools)) + "\n";
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(canonical.getBytes(StandardCharsets.UTF_8)));

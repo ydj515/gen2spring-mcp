@@ -102,7 +102,8 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
         RuntimePolicyStore policies = new PostgresRuntimePolicyStore(dataSource);
         policies.createGrant(grant, new RuntimeTokenDigest(new byte[32]));
         RuntimeAccess access = new RuntimeAccess(
-                instance, Optional.of(GRANT_ID), "client-a", Set.of(tool.name()), 1, false, "b".repeat(64));
+                instance, Optional.of(GRANT_ID), "client-a", Set.of(tool.name()), 1, false,
+                "b".repeat(64), grant.expiresAt());
         AtomicInteger providerCalls = new AtomicInteger();
         Replica first = replica(access, metadata, policies, providerCalls);
         Replica second = replica(access, metadata, policies, providerCalls);

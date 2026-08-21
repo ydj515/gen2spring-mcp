@@ -4,6 +4,7 @@ import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance.RuntimeState;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,14 +30,16 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
         RuntimeServerHandle created = null;
         Throwable primary = null;
         synchronized (this) {
-            if (access == null || access.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
+            Instant now = clock.instant();
+            if (access == null || access.instance().stateAt(now) != RuntimeState.ACTIVE
+                    || !now.isBefore(access.validUntil())) {
                 throw new IllegalStateException("Managed runtime handle is unavailable");
             }
             HandleKey key = HandleKey.from(access);
             RuntimeServerHandle existing = handles.get(key);
             if (existing != null) return existing;
             stale = removeSupersededCatalogs(key);
-            stale.addAll(removeExpired());
+            stale.addAll(removeExpired(now));
             if (handles.size() >= maximumSize) {
                 primary = new RuntimeCapacityExceeded();
             } else {
@@ -111,13 +114,15 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
         throw (RuntimeException) failure;
     }
 
-    private List<RuntimeServerHandle> removeExpired() {
+    private List<RuntimeServerHandle> removeExpired(Instant now) {
         List<RuntimeServerHandle> removed = new ArrayList<>();
         var iterator = handles.entrySet().iterator();
         while (iterator.hasNext()) {
-            RuntimeServerHandle handle = iterator.next().getValue();
-            if (handle.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
-                removed.add(handle);
+            var entry = iterator.next();
+            RuntimeServerHandle handle = entry.getValue();
+            if (handle.instance().stateAt(now) != RuntimeState.ACTIVE
+                    || !now.isBefore(entry.getKey().validUntil())) {
+                removed.add(entry.getValue());
                 iterator.remove();
             }
         }
@@ -139,10 +144,15 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
         return removed;
     }
 
-    private record HandleKey(RuntimeInstanceId runtimeId, String catalogChecksum, String policyChecksum) {
+    private record HandleKey(
+            RuntimeInstanceId runtimeId,
+            String catalogChecksum,
+            String policyChecksum,
+            Instant validUntil) {
         private static HandleKey from(RuntimeAccess access) {
             return new HandleKey(
-                    access.instance().id(), access.instance().catalogChecksum(), access.policyChecksum());
+                    access.instance().id(), access.instance().catalogChecksum(), access.policyChecksum(),
+                    access.validUntil());
         }
 
         @Override public String toString() {
