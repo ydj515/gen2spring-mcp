@@ -80,6 +80,24 @@ class McpJavaSdkEmitterTest {
                         new McpSchema.CallToolRequest("weather", Map.of()))));
     }
 
+    @Test
+    void preservesExplicitNullArgumentsForSchemaValidatedHandlers() {
+        RuntimeTool tool = tool("weather", "Weather");
+        LinkedHashMap<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("city", null);
+        var specification = new McpJavaSdkEmitter().emit(List.of(tool), (name, observed) -> {
+            assertTrue(observed.containsKey("city"));
+            assertEquals(null, observed.get("city"));
+            assertThrows(UnsupportedOperationException.class, () -> observed.put("other", "value"));
+            return ManagedToolResult.success("null".getBytes(StandardCharsets.UTF_8));
+        }).getFirst();
+
+        McpSchema.CallToolResult result = specification.callHandler().apply(
+                null, new McpSchema.CallToolRequest("weather", arguments));
+
+        assertFalse(result.isError());
+    }
+
     private RuntimeTool tool(String name, String description) {
         Map<String, Object> city = new LinkedHashMap<>();
         city.put("description", "City name");

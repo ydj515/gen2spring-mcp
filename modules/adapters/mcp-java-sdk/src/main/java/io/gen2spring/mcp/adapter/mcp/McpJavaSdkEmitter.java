@@ -9,7 +9,9 @@ import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,7 +57,8 @@ public final class McpJavaSdkEmitter {
                 .callHandler((exchange, request) -> {
                     try {
                         Map<String, Object> arguments = request.arguments() == null
-                                ? Map.of() : Map.copyOf(request.arguments());
+                                ? Map.of()
+                                : Collections.unmodifiableMap(new LinkedHashMap<>(request.arguments()));
                         return resultMapper.map(handler.call(tool.name(), arguments));
                     } catch (Error fatal) {
                         throw fatal;

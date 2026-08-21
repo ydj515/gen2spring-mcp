@@ -15,6 +15,7 @@ import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -120,6 +121,10 @@ class RuntimeHttpRequestFactoryTest {
         assertInvalid(() -> factory.create(normal, Optional.empty(), Map.of()));
         assertInvalid(() -> factory.create(normal,
                 Optional.of(ProviderTarget.parse("https://override.example/")), Map.of("id", "1")));
+
+        assertEquals("Provider call request is invalid", assertThrows(IllegalArgumentException.class,
+                () -> new ProviderCallRequest(POST, URI.create("file://localhost/private"),
+                        Map.of(), new byte[0])).getMessage());
     }
 
     private void assertInvalid(Runnable action) {

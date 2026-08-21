@@ -58,13 +58,15 @@ class ProviderEgressContractTest {
                 Map.of("Accept", List.of("application/json")),
                 "{\"city\":\"Seoul\"}".getBytes(StandardCharsets.UTF_8)), Duration.ofSeconds(2));
 
-        assertThrows(ProviderEgressFailure.class,
-                () -> controller.call(wire, new MockHttpServletRequest()));
+        MockHttpServletRequest unauthenticated = new MockHttpServletRequest();
+        unauthenticated.setContent(wire);
+        assertThrows(ProviderEgressFailure.class, () -> controller.call(unauthenticated));
 
         MockHttpServletRequest authenticated = new MockHttpServletRequest();
+        authenticated.setContent(wire);
         authenticated.setAttribute("jakarta.servlet.request.X509Certificate",
                 new X509Certificate[] {org.mockito.Mockito.mock(X509Certificate.class)});
-        byte[] response = controller.call(wire, authenticated).getBody();
+        byte[] response = controller.call(authenticated).getBody();
 
         ProviderCallResponse decoded = codec.decodeResponse(response);
         assertEquals(201, decoded.status());
@@ -84,11 +86,16 @@ class ProviderEgressContractTest {
                 HttpMethod.GET, URI.create("https://api.example.com:8443/private"),
                 Map.of("Accept", List.of("application/json")), new byte[0]), Duration.ofSeconds(1));
         ProviderEgressFailure portFailure = assertThrows(
-                ProviderEgressFailure.class, () -> controller.call(invalidPort, authenticated));
+                ProviderEgressFailure.class, () -> {
+                    authenticated.setContent(invalidPort);
+                    controller.call(authenticated);
+                });
         assertEquals("Provider egress request failed", portFailure.getMessage());
         assertEquals(null, portFailure.getCause());
 
-        assertThrows(ProviderEgressFailure.class,
-                () -> controller.call(new byte[ProviderEgressCodec.MAX_WIRE_BYTES + 1], authenticated));
+        assertThrows(ProviderEgressFailure.class, () -> {
+            authenticated.setContent(new byte[ProviderEgressCodec.MAX_WIRE_BYTES + 1]);
+            controller.call(authenticated);
+        });
     }
 }

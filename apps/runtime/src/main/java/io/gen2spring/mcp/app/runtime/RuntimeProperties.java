@@ -16,6 +16,12 @@ public record RuntimeProperties(
                 || providerEgressEndpoint == null || tls == null || database == null) {
             throw new IllegalArgumentException("Managed runtime configuration is invalid");
         }
+        if (!"https".equals(providerEgressEndpoint.getScheme()) || providerEgressEndpoint.getHost() == null
+                || !"/internal/provider-call".equals(providerEgressEndpoint.getRawPath())
+                || providerEgressEndpoint.getRawUserInfo() != null || providerEgressEndpoint.getRawQuery() != null
+                || providerEgressEndpoint.getRawFragment() != null) {
+            throw new IllegalArgumentException("Managed runtime configuration is invalid");
+        }
     }
 
     public record Tls(

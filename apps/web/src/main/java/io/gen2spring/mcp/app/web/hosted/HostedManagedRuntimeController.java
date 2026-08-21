@@ -63,11 +63,7 @@ final class HostedManagedRuntimeController {
     }
 
     private Duration duration(long seconds) {
-        try {
-            return Duration.ofSeconds(seconds);
-        } catch (RuntimeException failure) {
-            throw new ManagedRuntimeService.ManagedRuntimeRequestInvalid();
-        }
+        return Duration.ofSeconds(seconds);
     }
 
     private UUID uuid(String value) {

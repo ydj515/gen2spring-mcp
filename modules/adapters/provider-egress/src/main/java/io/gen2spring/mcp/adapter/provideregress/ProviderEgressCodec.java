@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.TreeMap;
 
 public final class ProviderEgressCodec {
-    public static final int MAX_WIRE_BYTES = 1_500_000;
+    public static final int MAX_WIRE_BYTES = 4_000_000;
     private final ObjectMapper json = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);

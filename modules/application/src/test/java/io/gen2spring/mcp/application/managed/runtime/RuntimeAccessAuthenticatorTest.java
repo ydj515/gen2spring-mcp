@@ -41,6 +41,30 @@ class RuntimeAccessAuthenticatorTest {
         assertUnauthorized(authenticator(new Store(active()), true), "x".repeat(513));
     }
 
+    @Test
+    void separatesStoreFailureFromInvalidCredentials() {
+        Store store = new Store(active());
+        store.failure = new IllegalStateException("private database marker");
+
+        RuntimeAccessAuthenticator.RuntimeAccessUnavailable failure = assertThrows(
+                RuntimeAccessAuthenticator.RuntimeAccessUnavailable.class,
+                () -> authenticator(store, true).authenticate(ID, "g2s_rt_valid"));
+
+        assertEquals("Managed runtime authentication is unavailable", failure.getMessage());
+        assertFalse(failure.toString().contains("private database marker"));
+    }
+
+    @Test
+    void identifiesInactiveRuntimesWithoutChangingThePublicFailureMessage() {
+        RuntimeAccessAuthenticator authenticator = authenticator(new Store(instance(NOW)), true);
+
+        RuntimeAccessAuthenticator.RuntimeInactive failure = assertThrows(
+                RuntimeAccessAuthenticator.RuntimeInactive.class,
+                () -> authenticator.authenticate(ID, "g2s_rt_valid"));
+
+        assertEquals("Managed runtime authentication failed", failure.getMessage());
+    }
+
     private RuntimeAccessAuthenticator authenticator(Store store, boolean matches) {
         return new RuntimeAccessAuthenticator(
                 store,
@@ -86,6 +110,7 @@ class RuntimeAccessAuthenticatorTest {
     private static final class Store implements ManagedRuntimeStore {
         private final StoredRuntime stored;
         private int findCount;
+        private RuntimeException failure;
 
         private Store(ManagedRuntimeInstance instance) {
             stored = instance == null ? null : new StoredRuntime(instance, new RuntimeTokenDigest(new byte[32]));
@@ -99,6 +124,7 @@ class RuntimeAccessAuthenticatorTest {
         @Override
         public Optional<StoredRuntime> find(RuntimeInstanceId id) {
             findCount++;
+            if (failure != null) throw failure;
             return Optional.ofNullable(stored);
         }
 

@@ -6,6 +6,7 @@ import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -65,13 +66,16 @@ public final class ManagedToolExecutor implements AutoCloseable {
             throw new ManagedToolRequestInvalid();
         }
         Future<ManagedToolResult> future;
+        long deadline = System.nanoTime() + limits.timeout().toNanos();
         try {
-            future = executor.submit(() -> execute(tool, request));
+            future = executor.submit(() -> execute(tool, request, deadline));
         } catch (java.util.concurrent.RejectedExecutionException failure) {
             return responses.error(tool, ManagedToolResult.ErrorCategory.LOCAL_RESOURCE, null, null, null);
         }
         try {
-            return future.get(limits.timeout().toMillis(), TimeUnit.MILLISECONDS);
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) throw new TimeoutException();
+            return future.get(remaining, TimeUnit.NANOSECONDS);
         } catch (TimeoutException failure) {
             future.cancel(true);
             return responses.error(tool, ManagedToolResult.ErrorCategory.UPSTREAM_TIMEOUT, null, null, null);
@@ -95,23 +99,30 @@ public final class ManagedToolExecutor implements AutoCloseable {
         }
     }
 
-    private ManagedToolResult execute(RuntimeTool tool, ProviderCallRequest request) {
+    private ManagedToolResult execute(RuntimeTool tool, ProviderCallRequest request, long deadline) {
         if (tool.pagination() != null) {
-            return executePaginated(tool, request);
+            return executePaginated(tool, request, deadline);
         }
-        Attempt attempt = providerAttempt(tool, request);
+        Attempt attempt = providerAttempt(tool, request, deadline);
         return attempt.result() == null ? responses.normalize(tool, attempt.response()) : attempt.result();
     }
 
-    private Attempt providerAttempt(RuntimeTool tool, ProviderCallRequest request) {
+    private Attempt providerAttempt(RuntimeTool tool, ProviderCallRequest request, long deadline) {
         RetryPolicy retry = tool.retry();
         int retryCount = 0;
         while (true) {
             try {
-                ProviderCallResponse response = client.execute(request, limits.timeout());
+                Duration remaining = remaining(deadline);
+                if (remaining == null) {
+                    return new Attempt(null, responses.error(
+                            tool, ManagedToolResult.ErrorCategory.UPSTREAM_TIMEOUT, null, null, null));
+                }
+                ProviderCallResponse response = client.execute(request, remaining);
                 if (retry != null && retryCount < retry.maxRetries()
                         && retry.statusCodes().contains(response.status())) {
-                    backoff(retry, retryCount++, response.firstHeader("Retry-After"));
+                    ManagedToolResult waitFailure = backoffResult(
+                            tool, backoff(retry, retryCount++, response.firstHeader("Retry-After"), deadline));
+                    if (waitFailure != null) return new Attempt(null, waitFailure);
                     continue;
                 }
                 return new Attempt(response, null);
@@ -120,7 +131,9 @@ public final class ManagedToolExecutor implements AutoCloseable {
             } catch (ProviderCallClient.ProviderCallFailure failure) {
                 if (retry != null && retry.networkErrors() && retryCount < retry.maxRetries()
                         && failure.kind() != ProviderCallClient.ProviderCallFailure.Kind.PROTOCOL) {
-                    backoff(retry, retryCount++, null);
+                    ManagedToolResult waitFailure = backoffResult(
+                            tool, backoff(retry, retryCount++, null, deadline));
+                    if (waitFailure != null) return new Attempt(null, waitFailure);
                     continue;
                 }
                 return new Attempt(null, responses.error(tool, category(failure), null, null, null));
@@ -130,7 +143,8 @@ public final class ManagedToolExecutor implements AutoCloseable {
         }
     }
 
-    private ManagedToolResult executePaginated(RuntimeTool tool, ProviderCallRequest baseRequest) {
+    private ManagedToolResult executePaginated(
+            RuntimeTool tool, ProviderCallRequest baseRequest, long deadline) {
         PaginationPolicy policy = tool.pagination();
         PaginationAccumulator accumulator = new PaginationAccumulator(policy);
         Object cursor = policy.initialValue();
@@ -138,7 +152,7 @@ public final class ManagedToolExecutor implements AutoCloseable {
         while (true) {
             ProviderCallRequest pageRequest = cursor == null
                     ? baseRequest : withQuery(baseRequest, policy.requestParameter(), cursor);
-            Attempt attempt = providerAttempt(tool, pageRequest);
+            Attempt attempt = providerAttempt(tool, pageRequest, deadline);
             if (attempt.result() != null) {
                 return attempt.result();
             }
@@ -185,17 +199,35 @@ public final class ManagedToolExecutor implements AutoCloseable {
         return result.toString();
     }
 
-    private void backoff(RetryPolicy retry, int retryCount, String retryAfter) {
+    private WaitResult backoff(RetryPolicy retry, int retryCount, String retryAfter, long deadline) {
         long multiplier = 1L << retryCount;
         long exponential = Math.min(retry.maxBackoffMillis(), retry.initialBackoffMillis() * multiplier);
         long providerDelay = retry.respectRetryAfter() ? retryAfterMillis(retryAfter) : 0;
         long delay = Math.min(retry.maxBackoffMillis(), Math.max(exponential, providerDelay));
+        long delayNanos = TimeUnit.MILLISECONDS.toNanos(delay);
+        if (deadline - System.nanoTime() <= delayNanos) return WaitResult.DEADLINE;
         try {
-            Thread.sleep(delay);
+            TimeUnit.NANOSECONDS.sleep(delayNanos);
+            return WaitResult.READY;
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
-            throw ProviderCallClient.ProviderCallFailure.timeout();
+            return WaitResult.INTERRUPTED;
         }
+    }
+
+    private ManagedToolResult backoffResult(RuntimeTool tool, WaitResult wait) {
+        return switch (wait) {
+            case READY -> null;
+            case DEADLINE -> responses.error(
+                    tool, ManagedToolResult.ErrorCategory.UPSTREAM_TIMEOUT, null, null, null);
+            case INTERRUPTED -> responses.error(
+                    tool, ManagedToolResult.ErrorCategory.LOCAL_RESOURCE, null, null, null);
+        };
+    }
+
+    private Duration remaining(long deadline) {
+        long nanos = deadline - System.nanoTime();
+        return nanos < TimeUnit.MILLISECONDS.toNanos(10) ? null : Duration.ofNanos(nanos);
     }
 
     private long retryAfterMillis(String value) {
@@ -250,4 +282,10 @@ public final class ManagedToolExecutor implements AutoCloseable {
     }
 
     private record Attempt(ProviderCallResponse response, ManagedToolResult result) {}
+
+    private enum WaitResult {
+        READY,
+        DEADLINE,
+        INTERRUPTED
+    }
 }

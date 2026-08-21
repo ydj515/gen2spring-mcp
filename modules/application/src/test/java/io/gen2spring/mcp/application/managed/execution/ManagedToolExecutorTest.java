@@ -24,7 +24,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -135,6 +138,56 @@ class ManagedToolExecutorTest {
             assertEquals(2, json.path("items").size());
             assertTrue(json.path("next").isNull());
             assertEquals(2, calls.get());
+        }
+    }
+
+    @Test
+    void passesOnlyTheRemainingEndToEndDeadlineToRetries() {
+        AtomicInteger calls = new AtomicInteger();
+        java.util.concurrent.CopyOnWriteArrayList<Duration> timeouts = new java.util.concurrent.CopyOnWriteArrayList<>();
+        ProviderCallClient client = (request, timeout) -> {
+            timeouts.add(timeout);
+            return calls.getAndIncrement() == 0
+                    ? response(503, "{\"busy\":true}")
+                    : response(200, "{\"ok\":true}");
+        };
+        RuntimeTool tool = tool(new RetryPolicy(List.of(503), false, 1, 20, 20, false));
+
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+                client, new ManagedExecutionLimits(Duration.ofSeconds(2), 1, 1))) {
+            ManagedToolResult result = executor.call(binding(tool), tool.name(), Map.of());
+
+            assertFalse(result.error());
+            assertEquals(2, calls.get());
+            assertTrue(timeouts.get(1).compareTo(timeouts.get(0)) < 0);
+        }
+    }
+
+    @Test
+    void mapsBackoffInterruptionToLocalResourceWithoutRetrying() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        CountDownLatch attempted = new CountDownLatch(1);
+        ProviderCallClient client = (request, timeout) -> {
+            worker.set(Thread.currentThread());
+            calls.incrementAndGet();
+            attempted.countDown();
+            return response(503, "{\"busy\":true}");
+        };
+        RuntimeTool tool = tool(new RetryPolicy(List.of(503), true, 1, 5_000, 5_000, false));
+
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+                client, new ManagedExecutionLimits(Duration.ofSeconds(10), 1, 1))) {
+            CompletableFuture<ManagedToolResult> call = CompletableFuture.supplyAsync(
+                    () -> executor.call(binding(tool), tool.name(), Map.of()));
+            assertTrue(attempted.await(1, TimeUnit.SECONDS));
+            Thread.sleep(50);
+            worker.get().interrupt();
+
+            ManagedToolResult result = call.get(2, TimeUnit.SECONDS);
+            assertTrue(result.error());
+            assertEquals(ManagedToolResult.ErrorCategory.LOCAL_RESOURCE, result.category());
+            assertEquals(1, calls.get());
         }
     }
 

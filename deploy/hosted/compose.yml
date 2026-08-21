@@ -187,6 +187,16 @@ services:
       - source: provider-egress-server-trust-password
         target: server.ssl.trust-store-password
     networks: [provider-call, egress]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          /bin/bash -ec 'exec 3<>/dev/tcp/127.0.0.1/9092;
+          printf "GET /actuator/health HTTP/1.0\r\n\r\n" >&3;
+          grep -q "200" <&3'
+      interval: 5s
+      timeout: 3s
+      retries: 20
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -199,7 +209,7 @@ services:
     restart: unless-stopped
     depends_on:
       postgres: {condition: service_healthy}
-      provider-egress: {condition: service_started}
+      provider-egress: {condition: service_healthy}
     environment:
       GEN2SPRING_DATABASE_URL: jdbc:postgresql://postgres:5432/gen2spring
       GEN2SPRING_DATABASE_USERNAME: gen2spring
@@ -218,6 +228,16 @@ services:
       - provider-egress-client-trust.p12
       - provider-egress-client-trust-password
     networks: [runtime-control, provider-call, proxy]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          /bin/bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8081;
+          printf "GET /actuator/health HTTP/1.0\r\n\r\n" >&3;
+          grep -q "200" <&3'
+      interval: 5s
+      timeout: 3s
+      retries: 20
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

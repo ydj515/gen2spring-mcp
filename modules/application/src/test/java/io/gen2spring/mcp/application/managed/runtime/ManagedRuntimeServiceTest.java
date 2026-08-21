@@ -74,6 +74,12 @@ class ManagedRuntimeServiceTest {
         Fixture absolute = fixture(tool("https://api.example.com", List.of()));
         assertInvalid(() -> absolute.service.activate(
                 OWNER, CATALOG, Optional.of("https://ignored.example"), Optional.empty()));
+
+        Fixture mixed = fixture(List.of(
+                tool("https://api.example.com", List.of()),
+                tool("/v2", "forecast", List.of())));
+        assertInvalid(() -> mixed.service.activate(
+                OWNER, CATALOG, Optional.of("https://provider.example"), Optional.empty()));
     }
 
     @Test
@@ -128,7 +134,11 @@ class ManagedRuntimeServiceTest {
     }
 
     private Fixture fixture(RuntimeTool tool) {
-        CatalogStore catalogStore = new CatalogStore(metadata(tool));
+        return fixture(List.of(tool));
+    }
+
+    private Fixture fixture(List<RuntimeTool> tools) {
+        CatalogStore catalogStore = new CatalogStore(metadata(tools));
         RuntimeStore runtimeStore = new RuntimeStore();
         TokenCodec tokenCodec = new TokenCodec();
         ManagedRuntimeService service = new ManagedRuntimeService(
@@ -142,9 +152,13 @@ class ManagedRuntimeServiceTest {
     }
 
     private RuntimeTool tool(String baseUrl, List<RuntimeCredential> credentials) {
+        return tool(baseUrl, "weather", credentials);
+    }
+
+    private RuntimeTool tool(String baseUrl, String name, List<RuntimeCredential> credentials) {
         return new RuntimeTool(
-                "getWeather",
-                "weather",
+                "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1),
+                name,
                 "Get weather",
                 Map.of("type", "object", "properties", Map.of(), "required", List.of()),
                 "GENERIC_JSON",
@@ -156,9 +170,9 @@ class ManagedRuntimeServiceTest {
                 credentials);
     }
 
-    private RuntimeMetadataArtifact metadata(RuntimeTool tool) {
+    private RuntimeMetadataArtifact metadata(List<RuntimeTool> tools) {
         return new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(
-                RuntimeMetadataDocument.VERSION, "a".repeat(64), List.of(tool)));
+                RuntimeMetadataDocument.VERSION, "a".repeat(64), tools));
     }
 
     private void assertInvalid(Runnable action) {

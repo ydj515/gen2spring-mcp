@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":modules:application"))
     implementation(project(":modules:adapters:provider-egress"))
     implementation(platform(libs.spring.boot.bom))
+    implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.security)
     implementation(libs.spring.boot.starter.web)
     implementation(libs.httpclient5)

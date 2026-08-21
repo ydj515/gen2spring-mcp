@@ -8,6 +8,15 @@ spring:
   main:
     banner-mode: "off"
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 gen2spring:
   runtime:
     cache-size: ${GEN2SPRING_RUNTIME_CACHE_SIZE:1000}

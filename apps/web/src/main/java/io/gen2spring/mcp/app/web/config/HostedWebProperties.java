@@ -63,7 +63,10 @@ public record HostedWebProperties(
         public Runtime {
             if (baseUri == null || !"https".equals(baseUri.getScheme()) || baseUri.getHost() == null
                     || baseUri.getRawUserInfo() != null || baseUri.getRawQuery() != null
-                    || baseUri.getRawFragment() != null || !absolute(tokenPepperFile)) throw invalid();
+                    || baseUri.getRawFragment() != null
+                    || !(baseUri.getRawPath() == null || baseUri.getRawPath().isEmpty()
+                            || "/".equals(baseUri.getRawPath()))
+                    || !absolute(tokenPepperFile)) throw invalid();
         }
     }
 

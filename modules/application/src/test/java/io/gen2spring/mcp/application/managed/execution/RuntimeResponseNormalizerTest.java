@@ -89,6 +89,7 @@ class RuntimeResponseNormalizerTest {
         assertTrue(result.error());
         assertEquals(ManagedToolResult.ErrorCategory.PROVIDER_BUSINESS, result.category());
         assertFalse(json(result).at("/error/providerMessage").asText().contains("Authorization"));
+        assertFalse(json(result).at("/error/providerMessage").asText().contains("token rejected"));
     }
 
     private JsonNode json(ManagedToolResult result) throws Exception {

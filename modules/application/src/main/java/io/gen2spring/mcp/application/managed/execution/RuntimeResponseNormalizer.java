@@ -20,6 +20,9 @@ public final class RuntimeResponseNormalizer {
     private static final String UNSAFE_MESSAGE = "Provider returned an unsafe error message";
     private static final List<String> SENSITIVE_NAMES = List.of(
             "authorization", "api key", "api_key", "apikey", "servicekey", "clientsecret", "cookie");
+    private static final List<Pattern> SENSITIVE_PATTERNS = SENSITIVE_NAMES.stream()
+            .map(name -> Pattern.compile(Pattern.quote(name), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE))
+            .toList();
 
     private final ObjectMapper json = new ObjectMapper()
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
@@ -257,11 +260,8 @@ public final class RuntimeResponseNormalizer {
     private String sanitize(String message) {
         if (message == null) return null;
         if (message.codePoints().anyMatch(Character::isISOControl)) return UNSAFE_MESSAGE;
+        if (SENSITIVE_PATTERNS.stream().anyMatch(pattern -> pattern.matcher(message).find())) return UNSAFE_MESSAGE;
         String safe = message;
-        for (String name : SENSITIVE_NAMES) {
-            safe = Pattern.compile(Pattern.quote(name), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
-                    .matcher(safe).replaceAll("***");
-        }
         if (safe.codePointCount(0, safe.length()) > 512) {
             safe = safe.substring(0, safe.offsetByCodePoints(0, 512));
         }

@@ -3,15 +3,35 @@ server:
   ssl:
     enabled: true
     client-auth: NEED
+    key-store-type: PKCS12
     key-store: ${GEN2SPRING_PROVIDER_EGRESS_TLS_KEYSTORE}
+    trust-store-type: PKCS12
     trust-store: ${GEN2SPRING_PROVIDER_EGRESS_TLS_TRUSTSTORE}
+    enabled-protocols: TLSv1.3
+    protocol: TLS
   tomcat:
+    max-http-form-post-size: 4MB
+    max-swallow-size: 4MB
     accesslog:
       enabled: false
 
 spring:
   main:
     banner-mode: "off"
+
+management:
+  server:
+    address: 127.0.0.1
+    port: 9092
+    ssl:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
 
 logging:
   level:

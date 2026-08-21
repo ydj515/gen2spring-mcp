@@ -143,14 +143,18 @@ class RuntimeConfiguration {
         return new ManagedMcpRouter(handles);
     }
 
-    @Bean RuntimeBearerFilter runtimeBearerFilter(RuntimeAccessAuthenticator authenticator) {
-        return new RuntimeBearerFilter(authenticator);
+    @Bean RuntimeBearerFilter runtimeBearerFilter(
+            RuntimeAccessAuthenticator authenticator,
+            RuntimeServerHandleRegistry handles) {
+        return new RuntimeBearerFilter(authenticator, handles::invalidate);
     }
 
     @Bean SecurityFilterChain runtimeSecurity(HttpSecurity http, RuntimeBearerFilter filter) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(requests -> requests.anyRequest().permitAll())
+                .authorizeHttpRequests(requests -> requests
+                        .requestMatchers("/mcp/**", "/actuator/health/**").permitAll()
+                        .anyRequest().denyAll())
                 .addFilterBefore(filter, AnonymousAuthenticationFilter.class);
         return http.build();
     }

@@ -47,6 +47,8 @@ final class ApacheProviderTransport implements ProviderTransport, AutoCloseable 
 
     @Override
     public ProviderCallResponse execute(ProviderCallRequest unsafe, Duration timeout) {
+        if (timeout == null || timeout.isZero() || timeout.isNegative()
+                || timeout.compareTo(Duration.ofSeconds(60)) > 0) throw new ProviderEgressFailure();
         ProviderCallRequest request = ProviderRequestPolicy.requireAllowed(unsafe);
         var outbound = new HttpUriRequestBase(request.method().name(), request.uri());
         outbound.setConfig(RequestConfig.custom()

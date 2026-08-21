@@ -147,6 +147,7 @@ public final class ManagedRuntimeService {
 
     private Optional<ProviderTarget> provider(CatalogDetails catalog, Optional<String> requested) {
         boolean relative = false;
+        boolean absolute = false;
         try {
             for (RuntimeTool tool : catalog.metadata().document().tools()) {
                 if (!tool.credentials().isEmpty()) {
@@ -155,11 +156,12 @@ public final class ManagedRuntimeService {
                 URI base = URI.create(tool.http().baseUrl());
                 if (base.isAbsolute()) {
                     ProviderTarget.parse(base.toASCIIString());
+                    absolute = true;
                 } else {
                     relative = true;
                 }
             }
-            if (relative != requested.isPresent()) {
+            if (relative && absolute || relative != requested.isPresent()) {
                 throw invalid();
             }
             return requested.map(ProviderTarget::parse);

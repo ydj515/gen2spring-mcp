@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import java.net.URI;
+import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -36,11 +38,16 @@ class ProviderEgressSecurityTest {
         assertEquals("Provider egress request failed", redirect.getMessage());
         assertFalse(redirect.toString().contains("private.example"));
 
-        ProviderEgressFailure scheme = assertThrows(ProviderEgressFailure.class,
-                () -> ProviderRequestPolicy.requireAllowed(new ProviderCallRequest(
+        IllegalArgumentException scheme = assertThrows(IllegalArgumentException.class,
+                () -> new ProviderCallRequest(
                         HttpMethod.GET, URI.create("file://localhost/private"),
-                        Map.of("Accept", List.of("application/json")), new byte[0])));
+                        Map.of("Accept", List.of("application/json")), new byte[0]));
+        assertEquals("Provider call request is invalid", scheme.getMessage());
         assertEquals(null, scheme.getCause());
+
+        assertThrows(ProviderEgressFailure.class,
+                () -> ProviderResponsePolicy.requireAllowed(
+                        200, Map.of("Content-Encoding", List.of("gzip")), new byte[] {1, 2, 3}));
     }
 
     @Test
@@ -53,5 +60,33 @@ class ProviderEgressSecurityTest {
                         .encodeRequest(new ProviderCallRequest(
                                 HttpMethod.GET, URI.create("https://api.example.com/resource"),
                                 Map.of(), new byte[0]), Duration.ofSeconds(61)));
+
+        try (ApacheProviderTransport transport = new ApacheProviderTransport(
+                new ValidatedProviderResolver(host -> new InetAddress[] {
+                        InetAddress.getByName("93.184.216.34")
+                }), Duration.ofSeconds(1))) {
+            ProviderCallRequest request = new ProviderCallRequest(
+                    HttpMethod.GET, URI.create("https://api.example.com/resource"), Map.of(), new byte[0]);
+            assertThrows(ProviderEgressFailure.class, () -> transport.execute(request, null));
+            assertThrows(ProviderEgressFailure.class, () -> transport.execute(request, Duration.ZERO));
+            assertThrows(ProviderEgressFailure.class, () -> transport.execute(request, Duration.ofSeconds(61)));
+        } catch (java.io.IOException failure) {
+            throw new AssertionError(failure);
+        }
+    }
+
+    @Test
+    void pinsMutualTlsStoreTypesAndProtocol() throws Exception {
+        String yaml;
+        try (var input = ProviderEgressSecurityTest.class.getResourceAsStream("/application.yml")) {
+            yaml = new String(java.util.Objects.requireNonNull(input).readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        assertFalse(yaml.contains("key-store-password:"));
+        assertFalse(yaml.contains("trust-store-password:"));
+        org.junit.jupiter.api.Assertions.assertTrue(yaml.contains("key-store-type: PKCS12"));
+        org.junit.jupiter.api.Assertions.assertTrue(yaml.contains("trust-store-type: PKCS12"));
+        org.junit.jupiter.api.Assertions.assertTrue(yaml.contains("enabled-protocols: TLSv1.3"));
+        org.junit.jupiter.api.Assertions.assertTrue(yaml.contains("protocol: TLS"));
     }
 }

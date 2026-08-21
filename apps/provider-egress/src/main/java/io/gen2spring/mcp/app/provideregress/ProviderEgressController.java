@@ -7,7 +7,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -22,9 +21,14 @@ final class ProviderEgressController {
 
     @PostMapping(path = "/internal/provider-call", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<byte[]> call(@RequestBody byte[] wire, HttpServletRequest servletRequest) {
+    ResponseEntity<byte[]> call(HttpServletRequest servletRequest) {
         requireCertificate(servletRequest);
         try {
+            if (servletRequest.getContentLengthLong() > ProviderEgressCodec.MAX_WIRE_BYTES) {
+                throw new ProviderEgressFailure();
+            }
+            byte[] wire = servletRequest.getInputStream().readNBytes(ProviderEgressCodec.MAX_WIRE_BYTES + 1);
+            if (wire.length > ProviderEgressCodec.MAX_WIRE_BYTES) throw new ProviderEgressFailure();
             ProviderEgressCodec.DecodedProviderCall decoded = codec.decodeRequest(wire);
             byte[] response = codec.encodeResponse(transport.execute(
                     ProviderRequestPolicy.requireAllowed(decoded.request()), decoded.timeout()));
@@ -33,7 +37,7 @@ final class ProviderEgressController {
             throw failure;
         } catch (Error fatal) {
             throw fatal;
-        } catch (RuntimeException failure) {
+        } catch (java.io.IOException | RuntimeException failure) {
             throw new ProviderEgressFailure();
         }
     }

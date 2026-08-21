@@ -20,6 +20,13 @@ class HostedComposeContractTest {
         assertTrue(compose.contains("postgres:17.9-alpine@sha256:c7526c0f6c3f30260a563d7bcf8ad778effac59a44f8ffa86678c35418338609"));
         assertTrue(compose.contains("provider-egress-client.p12"));
         assertTrue(compose.contains("provider-egress-server.p12"));
+        assertTrue(runtimeBlock(compose).contains("healthcheck:"));
+        assertTrue(runtimeBlock(compose).contains("/actuator/health"));
+        assertTrue(providerBlock(compose).contains("healthcheck:"));
+        assertTrue(providerBlock(compose).contains("/actuator/health"));
+        assertTrue(runtimeBlock(compose).contains("provider-egress: {condition: service_healthy}"));
+        assertTrue(providerBlock(compose).contains("provider-egress-server-password"));
+        assertTrue(providerBlock(compose).contains("provider-egress-server-trust-password"));
         assertFalse(runtimeBlock(compose).contains("minio"));
         assertFalse(runtimeBlock(compose).contains("docker.sock"));
         assertFalse(providerBlock(compose).contains("postgres-password"));

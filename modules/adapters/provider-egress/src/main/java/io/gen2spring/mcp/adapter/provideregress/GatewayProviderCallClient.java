@@ -44,7 +44,11 @@ public final class GatewayProviderCallClient implements ProviderCallClient {
             HttpResponse<InputStream> response = http.send(internal, HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream body = response.body()) {
                 byte[] responseWire = body.readNBytes(ProviderEgressCodec.MAX_WIRE_BYTES + 1);
-                if (response.statusCode() != 200 || responseWire.length > ProviderEgressCodec.MAX_WIRE_BYTES
+                int status = response.statusCode();
+                if (status == 429 || status >= 500) {
+                    throw ProviderCallFailure.unavailable();
+                }
+                if (status != 200 || responseWire.length > ProviderEgressCodec.MAX_WIRE_BYTES
                         || response.headers().firstValue("Content-Type")
                                 .map(value -> !value.toLowerCase(java.util.Locale.ROOT).startsWith("application/json"))
                                 .orElse(true)) {

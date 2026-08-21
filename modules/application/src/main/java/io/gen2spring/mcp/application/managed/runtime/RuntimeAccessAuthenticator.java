@@ -28,8 +28,10 @@ public final class RuntimeAccessAuthenticator {
         try {
             Optional<StoredRuntime> found = Objects.requireNonNull(store.find(id));
             StoredRuntime stored = found.orElseThrow(RuntimeAccessAuthenticator::unauthorized);
-            if (stored.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE
-                    || !tokens.matches(bearerToken, stored.tokenDigest())) {
+            if (stored.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
+                throw inactive();
+            }
+            if (!tokens.matches(bearerToken, stored.tokenDigest())) {
                 throw unauthorized();
             }
             return new RuntimeAccess(stored.instance());
@@ -38,7 +40,7 @@ public final class RuntimeAccessAuthenticator {
         } catch (RuntimeUnauthorized failure) {
             throw failure;
         } catch (RuntimeException failure) {
-            throw unauthorized();
+            throw unavailable();
         }
     }
 
@@ -46,9 +48,27 @@ public final class RuntimeAccessAuthenticator {
         return new RuntimeUnauthorized();
     }
 
-    public static final class RuntimeUnauthorized extends RuntimeException {
+    private static RuntimeAccessUnavailable unavailable() {
+        return new RuntimeAccessUnavailable();
+    }
+
+    private static RuntimeInactive inactive() {
+        return new RuntimeInactive();
+    }
+
+    public static class RuntimeUnauthorized extends RuntimeException {
         public RuntimeUnauthorized() {
             super("Managed runtime authentication failed", null, false, false);
+        }
+    }
+
+    public static final class RuntimeInactive extends RuntimeUnauthorized {
+        public RuntimeInactive() {}
+    }
+
+    public static final class RuntimeAccessUnavailable extends RuntimeException {
+        public RuntimeAccessUnavailable() {
+            super("Managed runtime authentication is unavailable", null, false, false);
         }
     }
 }

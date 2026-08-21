@@ -48,6 +48,7 @@ public final class ProviderCallRequest {
 
     private URI requireUri(URI value) {
         if (value == null || !value.isAbsolute() || value.getHost() == null
+                || !java.util.Set.of("http", "https").contains(value.getScheme())
                 || value.toASCIIString().length() > MAX_URI || value.getRawUserInfo() != null
                 || value.getRawFragment() != null) {
             throw invalid();

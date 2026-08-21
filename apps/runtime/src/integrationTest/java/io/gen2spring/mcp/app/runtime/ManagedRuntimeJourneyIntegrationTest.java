@@ -55,42 +55,45 @@ class ManagedRuntimeJourneyIntegrationTest {
     @Test
     void servesExactToolsAndOneNormalizedProviderCallThenRejectsRevocation() throws Exception {
         RuntimeFixture fixture = fixture(1, "token-one");
-        String endpoint = "/mcp/" + fixture.instance.id().value();
+        try {
+            String endpoint = "/mcp/" + fixture.instance.id().value();
 
-        var initialized = send(fixture.mvc, endpoint, "token-one", null, """
+            var initialized = send(fixture.mvc, endpoint, "token-one", null, """
                 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"raw-test","version":"1"}}}
                 """);
-        assertEquals(200, initialized.status());
-        String session = initialized.session();
-        assertNotNull(session);
-        JsonNode initialize = responseJson(initialized.body());
-        assertEquals("2025-03-26", initialize.path("result").path("protocolVersion").asText());
+            assertEquals(200, initialized.status());
+            String session = initialized.session();
+            assertNotNull(session);
+            JsonNode initialize = responseJson(initialized.body());
+            assertEquals("2025-03-26", initialize.path("result").path("protocolVersion").asText());
 
-        assertEquals(202, send(fixture.mvc, endpoint, "token-one", session,
-                "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}").status());
+            assertEquals(202, send(fixture.mvc, endpoint, "token-one", session,
+                    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}").status());
 
-        JsonNode list = responseJson(send(fixture.mvc, endpoint, "token-one", session,
-                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}").body());
-        JsonNode tools = list.path("result").path("tools");
-        assertEquals(1, tools.size());
-        assertEquals("weather", tools.get(0).path("name").asText());
-        assertEquals("object", tools.get(0).path("inputSchema").path("type").asText());
-        assertEquals("city", tools.get(0).path("inputSchema").path("required").get(0).asText());
+            JsonNode list = responseJson(send(fixture.mvc, endpoint, "token-one", session,
+                    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}").body());
+            JsonNode tools = list.path("result").path("tools");
+            assertEquals(1, tools.size());
+            assertEquals("weather", tools.get(0).path("name").asText());
+            assertEquals("object", tools.get(0).path("inputSchema").path("type").asText());
+            assertEquals("city", tools.get(0).path("inputSchema").path("required").get(0).asText());
 
-        JsonNode call = responseJson(send(fixture.mvc, endpoint, "token-one", session, """
+            JsonNode call = responseJson(send(fixture.mvc, endpoint, "token-one", session, """
                 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"weather","arguments":{"city":"Seoul"}}}
                 """).body());
-        JsonNode result = call.path("result");
-        assertTrue(result.path("isError").isBoolean(), call.toPrettyString());
-        assertFalse(result.path("isError").booleanValue());
-        assertEquals(json.readTree("{\"data\":{\"temperature\":12.50}}"),
-                json.readTree(result.path("content").get(0).path("text").asText()));
-        assertEquals(1, fixture.providerCalls.get());
+            JsonNode result = call.path("result");
+            assertTrue(result.path("isError").isBoolean(), call.toPrettyString());
+            assertFalse(result.path("isError").booleanValue());
+            assertEquals(json.readTree("{\"data\":{\"temperature\":12.50}}"),
+                    json.readTree(result.path("content").get(0).path("text").asText()));
+            assertEquals(1, fixture.providerCalls.get());
 
-        fixture.stored.set(fixture.instance.revokeAt(NOW.plusSeconds(1)));
-        assertEquals(401, send(fixture.mvc, endpoint, "token-one", session,
-                "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/list\",\"params\":{}}").status());
-        fixture.close();
+            fixture.stored.set(fixture.instance.revokeAt(NOW.plusSeconds(1)));
+            assertEquals(401, send(fixture.mvc, endpoint, "token-one", session,
+                    "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/list\",\"params\":{}}").status());
+        } finally {
+            fixture.close();
+        }
     }
 
     private RuntimeFixture fixture(int suffix, String token) {

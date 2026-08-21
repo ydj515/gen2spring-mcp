@@ -18,6 +18,12 @@ final class ProviderResponsePolicy {
         if (status >= 300 && status <= 399 || source == null || body == null || body.length > 1_048_576) {
             throw new ProviderEgressFailure();
         }
+        if (source.entrySet().stream()
+                .filter(entry -> entry.getKey().equalsIgnoreCase("Content-Encoding"))
+                .flatMap(entry -> entry.getValue().stream())
+                .anyMatch(value -> !"identity".equalsIgnoreCase(value.strip()))) {
+            throw new ProviderEgressFailure();
+        }
         Map<String, List<String>> headers = new LinkedHashMap<>();
         source.forEach((name, values) -> {
             String normalized = name.toLowerCase(Locale.ROOT);
