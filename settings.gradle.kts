@@ -22,6 +22,7 @@ include(
     ":apps:fetch-gateway",
     ":apps:import-runner",
     ":apps:provider-egress",
+    ":apps:runtime",
     ":apps:worker",
     ":apps:web",
 )
