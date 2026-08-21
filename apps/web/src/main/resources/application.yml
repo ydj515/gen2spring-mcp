@@ -46,3 +46,6 @@ gen2spring:
       active-key-id: key-1
       key-files:
         key-1: ${GEN2SPRING_IMPORT_KEY_FILE:/run/secrets/import-target-key}
+    runtime:
+      base-uri: ${GEN2SPRING_RUNTIME_BASE_URI:https://localhost}
+      token-pepper-file: ${GEN2SPRING_RUNTIME_TOKEN_PEPPER_FILE:/run/secrets/runtime-token-pepper}

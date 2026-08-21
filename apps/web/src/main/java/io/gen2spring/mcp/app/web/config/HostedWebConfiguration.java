@@ -1,9 +1,11 @@
 package io.gen2spring.mcp.app.web.config;
 
 import io.gen2spring.mcp.adapter.cryptography.AesGcmImportTargetProtector;
+import io.gen2spring.mcp.adapter.cryptography.HmacRuntimeTokenCodec;
 import io.gen2spring.mcp.adapter.persistence.PostgresAccountStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresHostedResourceStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
+import io.gen2spring.mcp.adapter.persistence.PostgresManagedRuntimeStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresToolCatalogStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresSpecificationCatalog;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
@@ -18,6 +20,9 @@ import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.worker.WorkerHeartbeatStore;
+import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
+import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
 import io.gen2spring.mcp.app.web.hosted.HostedSubmissionService;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import java.nio.charset.StandardCharsets;
@@ -128,6 +133,27 @@ public class HostedWebConfiguration {
     @Bean
     ToolCatalogService hostedToolCatalogService(ToolCatalogStore store) {
         return new ToolCatalogService(store);
+    }
+
+    @Bean
+    ManagedRuntimeStore hostedManagedRuntimeStore(DataSource dataSource) {
+        return new PostgresManagedRuntimeStore(dataSource);
+    }
+
+    @Bean
+    RuntimeTokenCodec hostedRuntimeTokenCodec(HostedWebProperties properties) {
+        return new HmacRuntimeTokenCodec(properties.runtime().tokenPepperFile());
+    }
+
+    @Bean
+    ManagedRuntimeService hostedManagedRuntimeService(
+            ToolCatalogService catalogs,
+            ManagedRuntimeStore runtimes,
+            RuntimeTokenCodec tokens,
+            Clock hostedClock,
+            HostedWebProperties properties) {
+        return new ManagedRuntimeService(
+                catalogs, runtimes, tokens, hostedClock, properties.runtime().baseUri());
     }
 
     @Bean

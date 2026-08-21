@@ -13,14 +13,15 @@ public record HostedWebProperties(
         Duration workerStaleAfter,
         Database database,
         Storage storage,
-        Encryption encryption) {
+        Encryption encryption,
+        Runtime runtime) {
     private static final Pattern ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
 
     public HostedWebProperties {
         if (!absolute(workRoot) || workerStaleAfter == null
                 || workerStaleAfter.compareTo(Duration.ofSeconds(10)) < 0
                 || workerStaleAfter.compareTo(Duration.ofMinutes(10)) > 0
-                || database == null || storage == null || encryption == null) throw invalid();
+                || database == null || storage == null || encryption == null || runtime == null) throw invalid();
     }
 
     public record Database(String url, String username, Path passwordFile) {
@@ -55,6 +56,14 @@ public record HostedWebProperties(
                     || !keyFiles.containsKey(activeKeyId)
                     || keyFiles.entrySet().stream().anyMatch(entry ->
                             !ID.matcher(entry.getKey()).matches() || !absolute(entry.getValue()))) throw invalid();
+        }
+    }
+
+    public record Runtime(URI baseUri, Path tokenPepperFile) {
+        public Runtime {
+            if (baseUri == null || !"https".equals(baseUri.getScheme()) || baseUri.getHost() == null
+                    || baseUri.getRawUserInfo() != null || baseUri.getRawQuery() != null
+                    || baseUri.getRawFragment() != null || !absolute(tokenPepperFile)) throw invalid();
         }
     }
 
