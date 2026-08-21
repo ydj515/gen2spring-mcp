@@ -1,0 +1,37 @@
+server:
+  port: 8081
+  servlet:
+    session:
+      persistent: false
+
+spring:
+  main:
+    banner-mode: "off"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+gen2spring:
+  runtime:
+    cache-size: ${GEN2SPRING_RUNTIME_CACHE_SIZE:1000}
+    token-pepper-file: ${GEN2SPRING_RUNTIME_TOKEN_PEPPER_FILE}
+    provider-egress-endpoint: ${GEN2SPRING_PROVIDER_EGRESS_ENDPOINT:https://provider-egress:9443/internal/provider-call}
+    tls:
+      key-store: ${GEN2SPRING_RUNTIME_TLS_KEYSTORE}
+      key-store-password-file: ${GEN2SPRING_RUNTIME_TLS_KEYSTORE_PASSWORD_FILE}
+      trust-store: ${GEN2SPRING_RUNTIME_TLS_TRUSTSTORE}
+      trust-store-password-file: ${GEN2SPRING_RUNTIME_TLS_TRUSTSTORE_PASSWORD_FILE}
+    database:
+      url: ${GEN2SPRING_DATABASE_URL}
+      username: ${GEN2SPRING_DATABASE_USERNAME:gen2spring}
+      password-file: ${GEN2SPRING_DATABASE_PASSWORD_FILE}
+
+logging:
+  level:
+    root: WARN

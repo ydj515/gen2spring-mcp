@@ -31,10 +31,10 @@ description = "Validate the Linux hosted Compose configuration"
 run = "deploy/hosted/bin/validate.sh"
 
 [tasks."hosted:build"]
-description = "Build hosted Web, Worker, and fetch gateway images"
+description = "Build hosted Web, Worker, Runtime, and egress images"
 run = '''
 deploy/hosted/bin/validate.sh
-docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml build web worker fetch-gateway
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml build web worker fetch-gateway runtime provider-egress
 '''
 
 [tasks."hosted:deps"]
@@ -62,13 +62,22 @@ deploy/hosted/bin/validate.sh
 docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d --build worker
 '''
 
+[tasks."hosted:runtime"]
+description = "Start or restart the isolated Managed Runtime services"
+run = '''
+deploy/hosted/bin/validate.sh
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d --build provider-egress runtime proxy
+'''
+
 [tasks."hosted:acceptance"]
 description = "Run hosted persistence, worker, sandbox, and Web acceptance tests"
 run = '''
 ./gradlew :modules:domain:test :modules:application:test \
   :modules:adapters:persistence-postgres:test :modules:adapters:object-storage-s3:test \
   :modules:adapters:url-fetch:test :modules:adapters:container-runtime:test \
-  :apps:fetch-gateway:test :apps:worker:test :apps:worker:integrationTest :apps:web:test \
+  :modules:adapters:provider-egress:test :modules:adapters:mcp-java-sdk:test \
+  :apps:fetch-gateway:test :apps:provider-egress:test :apps:runtime:test :apps:runtime:integrationTest \
+  :apps:worker:test :apps:worker:integrationTest :apps:web:test \
   --no-daemon --non-interactive --rerun-tasks
 '''
 

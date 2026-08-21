@@ -6,6 +6,7 @@ import io.gen2spring.mcp.app.web.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.job.JobWorkspace;
 import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
+import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
 import io.gen2spring.mcp.app.web.hosted.HostedArtifactController;
 import io.gen2spring.mcp.app.web.hosted.HostedJobController;
 import io.gen2spring.mcp.app.web.hosted.HostedSubmissionService;
@@ -32,6 +33,18 @@ public final class WebErrorMapper {
         if (failure instanceof ToolCatalogService.ToolCatalogQueryInvalid) {
             return new WebFailure(400, "CATALOG_QUERY_INVALID", "CATALOG_LOOKUP",
                     "The Tool Catalog query is invalid");
+        }
+        if (failure instanceof ManagedRuntimeService.ManagedRuntimeRequestInvalid) {
+            return new WebFailure(400, "RUNTIME_REQUEST_INVALID", "RUNTIME_CONTROL",
+                    "The managed runtime request is invalid");
+        }
+        if (failure instanceof ManagedRuntimeService.ManagedRuntimeNotFound) {
+            return new WebFailure(404, "RESOURCE_NOT_FOUND", "RUNTIME_CONTROL",
+                    "The hosted resource was not found");
+        }
+        if (failure instanceof ManagedRuntimeService.ManagedRuntimeUnavailable) {
+            return new WebFailure(503, "RUNTIME_UNAVAILABLE", "RUNTIME_CONTROL",
+                    "The managed runtime is unavailable");
         }
         if (failure instanceof HostedJobFailure hosted) {
             return switch (hosted.code()) {

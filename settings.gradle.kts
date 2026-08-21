@@ -10,6 +10,8 @@ include(
     ":modules:adapters:filesystem",
     ":modules:adapters:object-storage-s3",
     ":modules:adapters:persistence-postgres",
+    ":modules:adapters:provider-egress",
+    ":modules:adapters:mcp-java-sdk",
     ":modules:adapters:url-fetch",
     ":modules:bootstrap",
     ":modules:adapters:emitters:support",
@@ -19,6 +21,8 @@ include(
     ":apps:cli",
     ":apps:fetch-gateway",
     ":apps:import-runner",
+    ":apps:provider-egress",
+    ":apps:runtime",
     ":apps:worker",
     ":apps:web",
 )

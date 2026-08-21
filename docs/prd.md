@@ -1961,6 +1961,11 @@ owner-only Windows ACL을 요구한다. 관련 구현 경계는
 - bounded OpenAPI 3.1
 - deterministic Managed Runtime metadata
 - persistent owner-scoped Tool Catalog query
+- dynamic Managed Runtime 실행: 완료 (P2 v1 지원 범위)
+  - credential-free 단일 Catalog activation/revocation
+  - bearer token digest persistence와 single-replica Streamable HTTP session
+  - exact MCP Java SDK `tools/list`·bounded `tools/call`
+  - mTLS provider-egress와 public HTTP/HTTPS 80/443 destination policy
 
 ### P2 남은 범위
 
@@ -1969,8 +1974,8 @@ owner-only Windows ACL을 요구한다. 관련 구현 경계는
 - Maven
 - STDIO
 - Kotlin
-- dynamic Managed Runtime execution
-- Gateway policy, sharing, authorization, credential routing, audit execution
+- Gateway policy, sharing, authorization, credential routing, audit execution은 미완료
+- Managed Runtime credential slot, stateless session, multi-replica transport
 - AI description enhancement
 - version migration
 
@@ -2172,13 +2177,13 @@ OpenAPI
   -> Tool IR
   -> Runtime Metadata
   -> Dynamic Tool Registry
-  -> Shared MCP Gateway
+  -> Managed MCP Runtime
 ```
 
-기관별 MCP Server 배포 없이 중앙 runtime에서 tools/list와 tools/call을 처리한다.
-
-현재 구현은 이 구조의 입력 계약인 deterministic runtime metadata와 owner-scoped persistent Tool Catalog
-조회까지만 제공한다. 동적 registry와 `tools/list`·`tools/call` 실행은 후속 P2 범위다.
+기관별 MCP Server를 새로 배포하지 않고 credential-free immutable Catalog 하나를 bearer token으로 활성화해
+`tools/list`와 bounded `tools/call`을 처리한다. Runtime은 Catalog checksum별 SDK server handle을 격리하며,
+provider 요청은 mTLS provider-egress를 통해서만 실행한다. 이 Managed Runtime은 공유·권한·credential routing을
+제공하는 Gateway가 아니고 생성된 다운로드 프로젝트에도 포함되지 않는다. v1은 single-replica session transport다.
 
 ### 26.2 Composite Tool Designer
 
@@ -2218,7 +2223,8 @@ OpenAPI
 - execution trace
 - Tool Catalog versioning
 
-현재 immutable Catalog 조회 API는 완료됐지만 위 Gateway 실행·정책 기능과 Catalog versioning은 완료되지 않았다.
+현재 immutable Catalog 조회와 credential-free Managed Runtime은 완료됐지만 위 Gateway 실행·정책 기능과
+Catalog versioning은 완료되지 않았다.
 
 ---
 

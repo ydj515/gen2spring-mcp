@@ -108,7 +108,7 @@
     <div class="hero-inner">
       <div class="eyebrow">Gen2Spring MCP · Implemented architecture</div>
       <h1>Hosted Generation Platform</h1>
-      <p>URL import, persistent jobs, multi-user ownership, private artifacts, and sandboxed project generation on a single Linux host.</p>
+      <p>URL import, persistent jobs, multi-user ownership, private artifacts, sandboxed generation, and isolated Managed MCP Runtime on a single Linux host.</p>
       <div class="meta">
         <span class="pill">Implemented 2026-08-13</span>
         <span class="pill">PostgreSQL 17.9 Alpine</span>
@@ -153,6 +153,8 @@
           <div class="node accent-blue"><strong>PostgreSQL 17.9 Alpine</strong><span>account, specification, job, event, lease, artifact metadata</span></div>
           <div class="node accent-blue"><strong>Private MinIO</strong><span>OpenAPI source와 artifact. Public bucket 없음</span></div>
           <div class="node accent-orange"><strong>URL Fetch Gateway</strong><span>DNS/CIDR/redirect/size 제한을 적용한 유일한 egress</span></div>
+          <div class="node accent-green"><strong>Managed Runtime</strong><span>bearer auth, Catalog-pinned SDK handles, session MCP</span></div>
+          <div class="node accent-orange"><strong>Provider Egress</strong><span>mTLS, public 80/443 resolve-and-connect only</span></div>
         </div>
         <div class="flow">→</div>
         <div class="zone">
@@ -273,9 +275,12 @@
           <tr><td>GET /api/jobs/{id}</td><td>State, events, artifact metadata</td><td>Consistent 404 on owner miss</td></tr>
           <tr><td>POST /api/jobs/{id}/cancellation</td><td>Set cancel request</td><td>Terminal state immutable</td></tr>
           <tr><td>GET /api/artifacts/{id}/content</td><td>Authorized streaming</td><td>No public or presigned URL</td></tr>
+          <tr><td>POST /api/tool-catalogs/{id}/runtimes</td><td>One-time bearer activation</td><td>Credential-free owner Catalog only</td></tr>
+          <tr><td>POST, GET, DELETE /mcp/{runtimeId}</td><td>Session Streamable HTTP MCP</td><td>Bearer auth before isolated handle lookup</td></tr>
         </tbody>
       </table>
       <div class="callout"><strong>Public exposure gate:</strong> local filter를 느슨하게 바꾸지 않는다. hosted configuration은 OIDC, DB, private storage, Worker, trusted proxy 검증이 하나라도 실패하면 startup을 거부한다.</div>
+      <div class="callout warning"><strong>Managed Runtime boundary:</strong> 생성 ZIP을 수정하거나 공유 Gateway 역할을 하지 않는다. runtime은 DB와 provider-call network만 사용하고 외부 연결은 provider-egress에 위임한다. 상세 흐름은 <a href="managed-mcp-runtime.html">Managed Runtime 구조도</a>에 정리한다.</div>
     </section>
 
     <section class="section" id="deployment">
