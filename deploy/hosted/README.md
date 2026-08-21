@@ -1,7 +1,7 @@
 # Hosted single-host deployment
 
 This deployment is a fail-closed reference for one Linux host. The only published endpoint is the TLS proxy on
-`GEN2SPRING_HTTPS_BIND:8443`. PostgreSQL, MinIO, Web, Worker, and the fetch gateway have no host ports.
+`GEN2SPRING_HTTPS_BIND:8443`. PostgreSQL, MinIO, Web, Worker, Managed Runtime, and both egress services have no host ports.
 
 ## Prerequisites
 
@@ -15,6 +15,11 @@ Copy `compose.env.example` to a private environment file and replace every place
 `compose.yml`; passwords, OIDC credentials, encryption keys, and TLS key stores must not be placed in the environment
 file or committed. The import encryption key is 32 random bytes. Keep prior encryption keys available while encrypted
 queued jobs can still reference them.
+
+Managed Runtime tokens use `runtime-token-pepper`. Runtime-to-provider traffic uses a dedicated client/server mTLS
+pair (`provider-egress-client*` and `provider-egress-server*`). Runtime can reach PostgreSQL and the internal
+provider-call network but has no direct external egress; provider-egress has no database, object-storage, OIDC, or
+Docker credentials.
 
 ## Validate and start
 
