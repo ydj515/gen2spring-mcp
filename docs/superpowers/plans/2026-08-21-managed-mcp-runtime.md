@@ -328,9 +328,9 @@ public final class McpJavaSdkEmitter {
 
 **Handle contract:** One fixed `/mcp/{runtimeId}` WebMVC transport, one `McpSyncServer`, one router function, and one Catalog checksum per handle.
 
-- [ ] Write RED tests proving authentication before cache access, equivalent 401 responses, no browser session acceptance, one handle build under concurrency, no handle sharing across runtime IDs, no global `addTool/removeTool`, exact router delegation, bounded cache/TTL, graceful session cleanup on expiry/revocation/eviction, failure eviction, and fixed startup bounds.
+- [ ] Write RED tests proving authentication before cache access, equivalent 401 responses, no browser session acceptance, one handle build under concurrency, no handle sharing across runtime IDs, no global `addTool/removeTool`, exact router delegation, bounded cache/TTL, graceful session cleanup on expiry/revocation, active-session-preserving capacity rejection, failed-cleanup retention, and fixed startup bounds.
 - [ ] Run focused application tests; expect missing app/types RED.
-- [ ] Assemble Boot/JDBC/Micrometer/MCP SDK wiring and a dynamic delegating router. Build each SDK server once, close it on every removal path, and keep SDK 0.18.3 types inside app/adapter boundaries.
+- [ ] Assemble Boot/JDBC/Micrometer/MCP SDK wiring and a dynamic delegating router. Build each SDK server once, close it on lifecycle removal paths, return fixed HTTP 503 instead of evicting a live handle at capacity, and keep SDK 0.18.3 types inside app/adapter boundaries.
 - [ ] Re-run focused and full runtime tests; inspect for leftover threads and sessions; expect GREEN.
 - [ ] Commit with `feat(runtime): serve catalog-backed MCP sessions`.
 
@@ -345,7 +345,7 @@ public final class McpJavaSdkEmitter {
 **Journey:** owner activation -> one-time token -> raw MCP initialize -> exact `tools/list` -> exact `tools/call` -> one provider-egress request -> normalized result -> revoke -> next request denied.
 
 - [ ] Write the integration test first with an independent raw MCP client, literal schema/result fixtures, PostgreSQL 17.9, and a test provider-egress server; intentionally mutate one schema property to capture RED.
-- [ ] Add cross-runtime isolation tests with two owners, two Catalogs, two tokens, concurrent sessions, wrong-token/runtime pairs, cache eviction, and no Tool leakage.
+- [ ] Add cross-runtime isolation tests with two owners, two Catalogs, two tokens, concurrent sessions, wrong-token/runtime pairs, capacity rejection without active-session eviction, and no Tool leakage.
 - [ ] Run `:apps:runtime:integrationTest`; expect RED before final wiring and GREEN after restoring the exact schema.
 - [ ] Verify exact one upstream request, 250 ms late-request seal, safe provider/internal errors, revocation, expiry, process/thread cleanup, and token/argument/body leak scans.
 - [ ] Commit with `test(runtime): verify managed MCP isolation`.

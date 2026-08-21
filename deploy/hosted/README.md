@@ -16,6 +16,8 @@ Copy `compose.env.example` to a private environment file and replace every place
 file or committed. The import encryption key is 32 random bytes. Keep prior encryption keys available while encrypted
 queued jobs can still reference them.
 
+Set `GEN2SPRING_RUNTIME_BASE_URI` to the externally reachable HTTPS proxy origin returned to MCP clients.
+
 Managed Runtime tokens use `runtime-token-pepper`. Runtime-to-provider traffic uses a dedicated client/server mTLS
 pair (`provider-egress-client*` and `provider-egress-server*`). Runtime can reach PostgreSQL and the internal
 provider-call network but has no direct external egress; provider-egress has no database, object-storage, OIDC, or

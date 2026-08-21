@@ -3,6 +3,7 @@ package io.gen2spring.mcp.app.runtime;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.http.MediaType;
 import org.springframework.web.servlet.function.HandlerFunction;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerRequest;
@@ -22,6 +23,12 @@ final class ManagedMcpRouter implements RouterFunction<ServerResponse> {
                 || !request.path().equals("/mcp/" + access.instance().id().value())) {
             return Optional.empty();
         }
-        return handles.get(access).router().route(request);
+        try {
+            return handles.get(access).router().route(request);
+        } catch (RuntimeServerHandleRegistry.RuntimeCapacityExceeded exhausted) {
+            return Optional.of(ignored -> ServerResponse.status(503)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("{\"error\":\"MANAGED_RUNTIME_CAPACITY_EXHAUSTED\"}"));
+        }
     }
 }

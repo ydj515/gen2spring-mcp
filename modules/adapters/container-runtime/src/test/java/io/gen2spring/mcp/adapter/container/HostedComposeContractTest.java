@@ -13,6 +13,7 @@ class HostedComposeContractTest {
     @Test
     void isolatesRuntimeDatabaseAndProviderEgressCapabilities() throws Exception {
         String compose = Files.readString(ROOT.resolve("deploy/hosted/compose.yml"));
+        String environment = Files.readString(ROOT.resolve("deploy/hosted/compose.env.example"));
         assertTrue(compose.contains("  runtime:"));
         assertTrue(compose.contains("  provider-egress:"));
         assertTrue(compose.contains("networks: [runtime-control, provider-call, proxy]"));
@@ -31,6 +32,11 @@ class HostedComposeContractTest {
         assertFalse(runtimeBlock(compose).contains("docker.sock"));
         assertFalse(providerBlock(compose).contains("postgres-password"));
         assertFalse(providerBlock(compose).contains("OIDC"));
+        assertTrue(webBlock(compose).contains("GEN2SPRING_RUNTIME_TOKEN_PEPPER_FILE: /run/secrets/runtime-token-pepper"));
+        assertTrue(webBlock(compose).contains("- runtime-token-pepper"));
+        assertTrue(webBlock(compose).contains(
+                "GEN2SPRING_RUNTIME_BASE_URI: ${GEN2SPRING_RUNTIME_BASE_URI:?set externally reachable HTTPS runtime base URI}"));
+        assertTrue(environment.contains("GEN2SPRING_RUNTIME_BASE_URI=https://gen2spring.example.com"));
     }
 
     @Test
@@ -50,11 +56,27 @@ class HostedComposeContractTest {
         }
     }
 
+    @Test
+    void includesManagedRuntimeProjectsInTheDockerBuildContext() throws Exception {
+        String dockerignore = Files.readString(ROOT.resolve(".dockerignore"));
+        for (String path : new String[] {
+                "apps/runtime", "apps/provider-egress",
+                "modules/adapters/mcp-java-sdk", "modules/adapters/provider-egress"
+        }) {
+            assertTrue(dockerignore.contains("!" + path + "/build.gradle.kts"));
+            assertTrue(dockerignore.contains("!" + path + "/src/main/**"));
+        }
+    }
+
     private String runtimeBlock(String compose) {
         return compose.substring(compose.indexOf("  runtime:"), compose.indexOf("  proxy:"));
     }
 
     private String providerBlock(String compose) {
         return compose.substring(compose.indexOf("  provider-egress:"), compose.indexOf("  runtime:"));
+    }
+
+    private String webBlock(String compose) {
+        return compose.substring(compose.indexOf("  web:"), compose.indexOf("  provider-egress:"));
     }
 }

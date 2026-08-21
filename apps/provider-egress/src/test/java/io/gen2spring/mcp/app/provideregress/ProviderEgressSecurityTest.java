@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import org.apache.hc.core5.http.ContentType;
 import org.junit.jupiter.api.Test;
 
 class ProviderEgressSecurityTest {
@@ -72,6 +73,15 @@ class ProviderEgressSecurityTest {
             assertThrows(ProviderEgressFailure.class, () -> transport.execute(request, Duration.ofSeconds(61)));
         } catch (java.io.IOException failure) {
             throw new AssertionError(failure);
+        }
+    }
+
+    @Test
+    void labelsManagedRequestBodiesAsJson() throws Exception {
+        try (var entity = ApacheProviderTransport.jsonEntity("{\"city\":\"Seoul\"}"
+                .getBytes(StandardCharsets.UTF_8))) {
+            assertEquals(ContentType.APPLICATION_JSON.toString(), entity.getContentType());
+            assertEquals("{\"city\":\"Seoul\"}", new String(entity.getContent().readAllBytes(), StandardCharsets.UTF_8));
         }
     }
 

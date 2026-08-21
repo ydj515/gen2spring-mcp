@@ -156,11 +156,14 @@ services:
       GEN2SPRING_S3_ACCESS_KEY_FILE: /run/secrets/minio-app-access-key
       GEN2SPRING_S3_SECRET_KEY_FILE: /run/secrets/minio-app-secret-key
       GEN2SPRING_IMPORT_KEY_FILE: /run/secrets/import-target-key
+      GEN2SPRING_RUNTIME_BASE_URI: ${GEN2SPRING_RUNTIME_BASE_URI:?set externally reachable HTTPS runtime base URI}
+      GEN2SPRING_RUNTIME_TOKEN_PEPPER_FILE: /run/secrets/runtime-token-pepper
     secrets:
       - postgres-password
       - minio-app-access-key
       - minio-app-secret-key
       - import-target-key
+      - runtime-token-pepper
       - spring.security.oauth2.client.registration.gen2spring.client-secret
     networks: [platform, proxy, egress]
     read_only: true

@@ -213,22 +213,25 @@ materializes an isolated server handle containing:
 
 A single application-owned delegating router authenticates the request, resolves the exact runtime handle,
 and invokes only that handle's router function. SDK server `addTool` and `removeTool` are not used after build.
-Eviction, expiry, and revocation close the server and transport gracefully, terminate their sessions within a
-fixed timeout, and then remove the handle. A handle is never shared across runtime IDs even when two instances
-reference the same Catalog.
+Expiry and revocation close the server and transport gracefully, terminate their sessions within a fixed timeout,
+and then remove the handle. Capacity never evicts an active handle: a new runtime receives one fixed HTTP 503 until
+an expired, revoked, or explicitly closed handle frees capacity. A handle is never shared across runtime IDs even
+when two instances reference the same Catalog.
 
 The emitter maps each Runtime Tool to one MCP Java SDK specification containing:
 
 - exact name and description
 - exact canonical input schema
+- exact normalized output schema and successful `structuredContent` when the schema is present
 - a handler bound to the immutable runtime ID, Catalog checksum, and Tool name
 
 The handler does not capture bearer tokens, account identities, mutable database objects, or caller argument
 maps beyond the call lifetime.
 
 The server-handle cache key is `(runtimeId, catalogChecksum)`. It is bounded by entry count and time, uses
-single-flight materialization, and evicts failures immediately. Runtime instance authentication still reaches
-the store for every request in v1. Cache eviction changes performance only, never authorization or semantics.
+single-flight materialization, and never admits a replacement by closing a live session handle. Failed builds are
+not cached, while failed cleanup remains tracked and consumes capacity until a later cleanup succeeds. Runtime
+instance authentication still reaches the store for every request in v1.
 
 `tools/list` returns every Tool in the activated Catalog exactly once. Because credential-bearing Catalogs are
 rejected during activation, a listed Tool is never knowingly uncallable due to missing credentials.

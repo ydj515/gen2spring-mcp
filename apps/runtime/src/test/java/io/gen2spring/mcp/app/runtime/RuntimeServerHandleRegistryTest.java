@@ -1,9 +1,11 @@
 package io.gen2spring.mcp.app.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
@@ -25,7 +27,7 @@ class RuntimeServerHandleRegistryTest {
     private static final Instant NOW = Instant.parse("2026-08-21T00:00:00Z");
 
     @Test
-    void buildsOneIsolatedHandlePerRuntimeUnderConcurrencyAndClosesOnEviction() throws Exception {
+    void buildsOneIsolatedHandlePerRuntimeAndRejectsCapacityWithoutClosingLiveSessions() throws Exception {
         AtomicInteger builds = new AtomicInteger();
         AtomicInteger closes = new AtomicInteger();
         RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(
@@ -46,11 +48,32 @@ class RuntimeServerHandleRegistryTest {
         }
         assertEquals(1, builds.get());
 
-        RuntimeServerHandle second = registry.get(new RuntimeAccess(instance(2)));
-        assertNotSame(registry.get(new RuntimeAccess(instance(1))), second);
-        assertEquals(2, closes.get());
+        assertThrows(RuntimeServerHandleRegistry.RuntimeCapacityExceeded.class,
+                () -> registry.get(new RuntimeAccess(instance(2))));
+        assertSame(registry.get(new RuntimeAccess(instance(1))), registry.get(first));
+        assertEquals(0, closes.get());
         registry.close();
-        assertEquals(3, closes.get());
+        assertEquals(1, closes.get());
+    }
+
+    @Test
+    void mapsCapacityExhaustionToOneFixedServiceUnavailableResponse() throws Exception {
+        RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(
+                access -> RuntimeServerHandle.testing(access.instance(), () -> {}),
+                1,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        registry.get(new RuntimeAccess(instance(1)));
+        RuntimeAccess second = new RuntimeAccess(instance(2));
+
+        org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .routerFunctions(new ManagedMcpRouter(registry))
+                .build()
+                .perform(get("/mcp/" + second.instance().id().value())
+                        .requestAttr(RuntimeBearerFilter.RUNTIME_ACCESS, second))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentType("application/json"))
+                .andExpect(content().json("{\"error\":\"MANAGED_RUNTIME_CAPACITY_EXHAUSTED\"}", true));
+        registry.close();
     }
 
     @Test
@@ -71,12 +94,58 @@ class RuntimeServerHandleRegistryTest {
         assertThrows(IllegalStateException.class, () -> registry.get(new RuntimeAccess(expired)));
     }
 
+    @Test
+    void keepsExpiredHandlesTrackedWhenCleanupFails() {
+        MutableClock clock = new MutableClock(NOW);
+        AtomicInteger builds = new AtomicInteger();
+        RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access -> {
+            builds.incrementAndGet();
+            return RuntimeServerHandle.testing(access.instance(), () -> {
+                throw new IllegalStateException("private close failure");
+            });
+        }, 1, clock);
+        registry.get(new RuntimeAccess(instance(1, NOW.plusSeconds(1))));
+        clock.now = NOW.plusSeconds(2);
+        RuntimeAccess second = new RuntimeAccess(instance(2, NOW.plusSeconds(3600)));
+
+        assertThrows(IllegalStateException.class, () -> registry.get(second));
+        assertThrows(IllegalStateException.class, () -> registry.get(second));
+        assertEquals(1, builds.get());
+    }
+
     private ManagedRuntimeInstance instance(int suffix) {
+        return instance(suffix, NOW.plusSeconds(3600));
+    }
+
+    private ManagedRuntimeInstance instance(int suffix, Instant expiresAt) {
         return new ManagedRuntimeInstance(
                 new RuntimeInstanceId(UUID.fromString("10000000-0000-0000-0000-00000000000" + suffix)),
                 new AccountId(UUID.fromString("20000000-0000-0000-0000-00000000000" + suffix)),
                 UUID.fromString("30000000-0000-0000-0000-00000000000" + suffix),
                 Integer.toHexString(suffix).repeat(64), Optional.empty(),
-                NOW.minusSeconds(1), NOW.plusSeconds(3600), Optional.empty());
+                NOW.minusSeconds(1), expiresAt, Optional.empty());
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant now;
+
+        private MutableClock(Instant now) {
+            this.now = now;
+        }
+
+        @Override
+        public java.time.ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
+        }
     }
 }

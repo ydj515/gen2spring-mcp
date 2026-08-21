@@ -5,15 +5,13 @@ import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance.RuntimeS
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import java.time.Clock;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 final class RuntimeServerHandleRegistry implements AutoCloseable {
     private final HandleFactory factory;
     private final int maximumSize;
     private final Clock clock;
-    private final LinkedHashMap<RuntimeInstanceId, RuntimeServerHandle> handles =
-            new LinkedHashMap<>(16, 0.75f, true);
+    private final LinkedHashMap<RuntimeInstanceId, RuntimeServerHandle> handles = new LinkedHashMap<>();
 
     RuntimeServerHandleRegistry(HandleFactory factory, int maximumSize, Clock clock) {
         this.factory = Objects.requireNonNull(factory, "factory");
@@ -38,6 +36,10 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
                 return existing;
             }
         }
+        removeExpired();
+        if (handles.size() >= maximumSize) {
+            throw new RuntimeCapacityExceeded();
+        }
         RuntimeServerHandle created;
         try {
             created = Objects.requireNonNull(factory.create(access));
@@ -47,7 +49,6 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
             throw new IllegalStateException("Managed runtime handle could not be created");
         }
         handles.put(id, created);
-        evictOverflow();
         return created;
     }
 
@@ -71,11 +72,20 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
         if (failure != null) throw failure;
     }
 
-    private void evictOverflow() {
-        while (handles.size() > maximumSize) {
-            Map.Entry<RuntimeInstanceId, RuntimeServerHandle> eldest = handles.entrySet().iterator().next();
-            handles.remove(eldest.getKey());
-            eldest.getValue().close();
+    private void removeExpired() {
+        var iterator = handles.entrySet().iterator();
+        while (iterator.hasNext()) {
+            RuntimeServerHandle handle = iterator.next().getValue();
+            if (handle.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
+                handle.close();
+                iterator.remove();
+            }
+        }
+    }
+
+    static final class RuntimeCapacityExceeded extends RuntimeException {
+        private RuntimeCapacityExceeded() {
+            super("Managed runtime capacity is exhausted", null, false, false);
         }
     }
 

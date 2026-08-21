@@ -21,7 +21,7 @@ public final class McpJavaSdkEmitter {
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final JacksonMcpJsonMapper mcpJsonMapper = new JacksonMcpJsonMapper(objectMapper);
-    private final McpToolResultMapper resultMapper = new McpToolResultMapper();
+    private final McpToolResultMapper resultMapper = new McpToolResultMapper(mcpJsonMapper);
 
     public List<McpServerFeatures.SyncToolSpecification> emit(
             List<RuntimeTool> tools,
@@ -59,7 +59,8 @@ public final class McpJavaSdkEmitter {
                         Map<String, Object> arguments = request.arguments() == null
                                 ? Map.of()
                                 : Collections.unmodifiableMap(new LinkedHashMap<>(request.arguments()));
-                        return resultMapper.map(handler.call(tool.name(), arguments));
+                        return resultMapper.map(
+                                handler.call(tool.name(), arguments), !runtimeTool.outputSchema().isEmpty());
                     } catch (Error fatal) {
                         throw fatal;
                     } catch (RuntimeException failure) {

@@ -56,7 +56,7 @@ final class ApacheProviderTransport implements ProviderTransport, AutoCloseable 
                 .setResponseTimeout(Timeout.of(timeout)).build());
         request.headers().forEach((name, values) -> values.forEach(value -> outbound.addHeader(name, value)));
         if (request.body().length > 0) {
-            outbound.setEntity(new ByteArrayEntity(request.body(), ContentType.APPLICATION_OCTET_STREAM));
+            outbound.setEntity(jsonEntity(request.body()));
         }
         try (var response = client.execute(outbound)) {
             byte[] body = readBounded(response.getEntity() == null
@@ -93,5 +93,9 @@ final class ApacheProviderTransport implements ProviderTransport, AutoCloseable 
             values.computeIfAbsent(header.getName(), ignored -> new ArrayList<>()).add(header.getValue());
         }
         return values;
+    }
+
+    static ByteArrayEntity jsonEntity(byte[] body) {
+        return new ByteArrayEntity(body, ContentType.APPLICATION_JSON);
     }
 }

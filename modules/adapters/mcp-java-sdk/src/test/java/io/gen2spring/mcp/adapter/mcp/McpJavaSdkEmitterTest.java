@@ -98,7 +98,31 @@ class McpJavaSdkEmitterTest {
         assertFalse(result.isError());
     }
 
+    @Test
+    void returnsStructuredContentForSuccessfulToolsWithOutputSchemas() {
+        RuntimeTool typed = tool("weather", "Weather", Map.of(
+                "type", "object",
+                "properties", Map.of("data", Map.of("type", "object")),
+                "required", List.of("data"),
+                "additionalProperties", false));
+        var specification = new McpJavaSdkEmitter().emit(List.of(typed), (name, arguments) ->
+                ManagedToolResult.success("{\"data\":{\"condition\":\"sunny\"}}"
+                        .getBytes(StandardCharsets.UTF_8))).getFirst();
+
+        McpSchema.CallToolResult result = specification.callHandler().apply(
+                null, new McpSchema.CallToolRequest("weather", Map.of("city", "Seoul")));
+
+        assertFalse(result.isError());
+        assertEquals(Map.of("data", Map.of("condition", "sunny")), result.structuredContent());
+        assertEquals("{\"data\":{\"condition\":\"sunny\"}}",
+                ((McpSchema.TextContent) result.content().getFirst()).text());
+    }
+
     private RuntimeTool tool(String name, String description) {
+        return tool(name, description, Map.of());
+    }
+
+    private RuntimeTool tool(String name, String description, Map<String, Object> outputSchema) {
         Map<String, Object> city = new LinkedHashMap<>();
         city.put("description", "City name");
         city.put("type", "string");
@@ -109,7 +133,7 @@ class McpJavaSdkEmitterTest {
         schema.put("additionalProperties", false);
         return new RuntimeTool(
                 "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1), name, description,
-                schema, "GENERIC_JSON", Map.of(),
+                schema, outputSchema.isEmpty() ? "GENERIC_JSON" : "TYPED_DTO", outputSchema,
                 new RuntimeHttp(HttpMethod.GET, "https://api.example.com", "/weather",
                         List.of(), false, false), null, null, null, List.of());
     }

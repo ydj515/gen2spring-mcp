@@ -116,6 +116,9 @@ database와 외부 egress를 함께 가진 프로세스에서 실행하지 않�
 HTTP/HTTPS 80/443 destination만 resolve-and-connect한다. redirect, private/reserved/mixed DNS answer,
 hop-by-hop header, 1 MiB 초과 body는 fail-closed로 거부한다.
 
+runtime handle 용량이 가득 차면 활성 MCP session을 evict하지 않고 새 runtime 요청을 고정 503으로 거부한다.
+typed output schema가 있는 Tool의 성공 응답은 text content와 동일한 normalized `structuredContent`를 함께 반환한다.
+
 v1은 credential-free 단일 Catalog, bearer activation/revocation, single-replica session transport만 지원한다.
 공유 Gateway, 사용자별 Tool visibility, credential routing, audit execution, stateless/multi-replica session은
 아직 제공하지 않으며 생성 ZIP의 독립 MCP 서버 내용도 변경하지 않는다.
