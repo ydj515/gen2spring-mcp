@@ -11,6 +11,7 @@ include(
     ":modules:adapters:object-storage-s3",
     ":modules:adapters:persistence-postgres",
     ":modules:adapters:provider-egress",
+    ":modules:adapters:mcp-java-sdk",
     ":modules:adapters:url-fetch",
     ":modules:bootstrap",
     ":modules:adapters:emitters:support",

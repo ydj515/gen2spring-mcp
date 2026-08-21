@@ -5,6 +5,7 @@ junit = "5.13.4"
 slf4j = "2.0.9"
 spring-boot = "3.5.16"
 aws-sdk = "2.49.6"
+mcp-java-sdk = "0.18.3"
 
 [libraries]
 swagger-parser = { module = "io.swagger.parser.v3:swagger-parser", version.ref = "swagger-parser" }
@@ -34,6 +35,9 @@ aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
 aws-s3 = { module = "software.amazon.awssdk:s3" }
 aws-url-connection-client = { module = "software.amazon.awssdk:url-connection-client" }
 httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5" }
+mcp-java-sdk = { module = "io.modelcontextprotocol.sdk:mcp", version.ref = "mcp-java-sdk" }
+mcp-java-sdk-jackson2 = { module = "io.modelcontextprotocol.sdk:mcp-json-jackson2", version.ref = "mcp-java-sdk" }
+mcp-java-sdk-webmvc = { module = "io.modelcontextprotocol.sdk:mcp-spring-webmvc", version.ref = "mcp-java-sdk" }
 
 [bundles]
 jackson = ["jackson-databind", "jackson-yaml"]
