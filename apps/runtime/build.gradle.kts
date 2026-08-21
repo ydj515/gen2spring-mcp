@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.spring.boot)
 }
 
+import org.gradle.api.plugins.jvm.JvmTestSuite
+
 dependencies {
     implementation(project(":modules:domain"))
     implementation(project(":modules:application"))
@@ -24,3 +26,29 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)
 }
+
+testing {
+    suites {
+        register<JvmTestSuite>("integrationTest") {
+            useJUnitJupiter(libs.versions.junit.get())
+            dependencies {
+                implementation(project())
+                implementation(project(":modules:domain"))
+                implementation(project(":modules:application"))
+                implementation(project(":modules:adapters:mcp-java-sdk"))
+                implementation(platform(libs.spring.boot.bom))
+                implementation(libs.jackson.databind)
+                implementation(libs.mcp.java.sdk)
+                implementation(libs.mcp.java.sdk.jackson2)
+                implementation(libs.mcp.java.sdk.webmvc)
+                implementation(libs.spring.boot.starter.test)
+                implementation(libs.spring.boot.starter.web)
+            }
+            targets.all {
+                testTask.configure { shouldRunAfter(tasks.test) }
+            }
+        }
+    }
+}
+
+tasks.check { dependsOn(testing.suites.named("integrationTest")) }
