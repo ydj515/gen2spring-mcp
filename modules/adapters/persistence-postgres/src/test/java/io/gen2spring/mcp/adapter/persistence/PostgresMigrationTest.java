@@ -37,7 +37,7 @@ class PostgresMigrationTest {
 
     @Test
     void createsTheHostedSchemaExactlyOnce() {
-        assertEquals(4, flyway.migrate().migrationsExecuted);
+        assertEquals(5, flyway.migrate().migrationsExecuted);
 
         Set<String> tables = jdbc.queryForList(
                         """
@@ -57,6 +57,7 @@ class PostgresMigrationTest {
                 "artifact",
                 "tool_catalog",
                 "tool_catalog_entry",
+                "managed_runtime_instance",
                 "worker_heartbeat"), tables);
 
         assertEquals(Set.of(
@@ -87,6 +88,25 @@ class PostgresMigrationTest {
                    and tablename = 'tool_catalog'
                    and indexname = 'tool_catalog_owner_created_idx'
                 """, Integer.class));
+
+        assertEquals(Set.of(
+                        "managed_runtime_catalog_owner_fk",
+                        "managed_runtime_digest_valid",
+                        "managed_runtime_lifetime_valid"),
+                jdbc.queryForList(
+                                """
+                                select constraint_name
+                                  from information_schema.table_constraints
+                                 where table_schema = 'public'
+                                   and table_name = 'managed_runtime_instance'
+                                   and constraint_name in (
+                                       'managed_runtime_catalog_owner_fk',
+                                       'managed_runtime_digest_valid',
+                                       'managed_runtime_lifetime_valid')
+                                """,
+                                String.class)
+                        .stream()
+                        .collect(Collectors.toSet()));
 
         assertEquals(0, flyway.migrate().migrationsExecuted);
     }
