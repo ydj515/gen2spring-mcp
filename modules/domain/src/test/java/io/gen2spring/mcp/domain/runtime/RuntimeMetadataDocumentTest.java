@@ -2,6 +2,7 @@ package io.gen2spring.mcp.domain.runtime;
 
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.BODY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -34,6 +35,8 @@ class RuntimeMetadataDocumentTest {
         assertThrows(IllegalArgumentException.class,
                 () -> credential("Service.Key", HEADER, "X-API-Key"));
         assertThrows(IllegalArgumentException.class,
+                () -> credential("service-key", BODY, "apiKey"));
+        assertThrows(IllegalArgumentException.class,
                 () -> new RuntimeMetadataDocument(RuntimeMetadataDocument.VERSION, HASH,
                         List.of(tool("weather", "https://api.test"), tool("weather", "https://api.test"))));
     }
@@ -49,6 +52,31 @@ class RuntimeMetadataDocumentTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new RuntimeMetadataDocument(RuntimeMetadataDocument.VERSION, HASH,
                         List.of(first, conflicting)));
+    }
+
+    @Test
+    void rejectsCredentialTargetsThatCollideWithinOneTool() {
+        RuntimeTool duplicateCredentials = new RuntimeTool(
+                "getWeather", "weather", "Weather", Map.of(), "GENERIC_JSON", Map.of(),
+                http("https://api.test"), null, null, null,
+                List.of(
+                        credential("primary-key", HEADER, "X-API-Key"),
+                        credential("secondary-key", HEADER, "x-api-key")));
+        RuntimeTool bindingCollision = new RuntimeTool(
+                "getWeather", "weather", "Weather", Map.of(), "GENERIC_JSON", Map.of(),
+                new RuntimeHttp(
+                        GET, "https://api.test", "/weather",
+                        List.of(new ParameterBinding("apiKey", HEADER, "X-API-Key")),
+                        false, false),
+                null, null, null,
+                List.of(credential("service-key", HEADER, "x-api-key")));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new RuntimeMetadataDocument(RuntimeMetadataDocument.VERSION, HASH,
+                        List.of(duplicateCredentials)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new RuntimeMetadataDocument(RuntimeMetadataDocument.VERSION, HASH,
+                        List.of(bindingCollision)));
     }
 
     @Test

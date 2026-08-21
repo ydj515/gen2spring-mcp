@@ -37,7 +37,7 @@ class PostgresMigrationTest {
 
     @Test
     void createsTheHostedSchemaExactlyOnce() {
-        assertEquals(5, flyway.migrate().migrationsExecuted);
+        assertEquals(6, flyway.migrate().migrationsExecuted);
 
         Set<String> tables = jdbc.queryForList(
                         """
@@ -58,6 +58,11 @@ class PostgresMigrationTest {
                 "tool_catalog",
                 "tool_catalog_entry",
                 "managed_runtime_instance",
+                "managed_credential",
+                "managed_runtime_credential_binding",
+                "managed_runtime_grant",
+                "managed_runtime_rate_window",
+                "managed_tool_execution_audit",
                 "worker_heartbeat"), tables);
 
         assertEquals(Set.of(
@@ -76,6 +81,23 @@ class PostgresMigrationTest {
                                        'tool_catalog_generation_unique',
                                        'tool_catalog_metadata_checksum_valid',
                                        'tool_catalog_tool_count_valid')
+                                """,
+                                String.class)
+                        .stream()
+                        .collect(Collectors.toSet()));
+
+        assertEquals(Set.of(
+                        "managed_runtime_binding_runtime_owner_fk",
+                        "managed_runtime_binding_credential_owner_fk"),
+                jdbc.queryForList(
+                                """
+                                select constraint_name
+                                  from information_schema.table_constraints
+                                 where table_schema = 'public'
+                                   and table_name = 'managed_runtime_credential_binding'
+                                   and constraint_name in (
+                                       'managed_runtime_binding_runtime_owner_fk',
+                                       'managed_runtime_binding_credential_owner_fk')
                                 """,
                                 String.class)
                         .stream()

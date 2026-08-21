@@ -13,11 +13,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 public record RuntimeMetadataDocument(
@@ -50,10 +52,14 @@ public record RuntimeMetadataDocument(
     private static void validateCredentialSlots(List<RuntimeTool> tools) {
         Map<String, CredentialTarget> targets = new HashMap<>();
         for (RuntimeTool tool : tools) {
+            Set<CredentialTarget> toolTargets = new HashSet<>();
+            tool.http().bindings().stream()
+                    .map(CredentialTarget::from)
+                    .forEach(toolTargets::add);
             for (RuntimeCredential credential : tool.credentials()) {
                 CredentialTarget target = CredentialTarget.from(credential);
                 CredentialTarget previous = targets.putIfAbsent(credential.credentialSlot(), target);
-                if (previous != null && !previous.equals(target)) {
+                if (previous != null && !previous.equals(target) || !toolTargets.add(target)) {
                     throw new IllegalArgumentException("Runtime credential slots must target one parameter");
                 }
             }
@@ -147,6 +153,9 @@ public record RuntimeMetadataDocument(
                 throw new IllegalArgumentException("Runtime credential slot is invalid");
             }
             Objects.requireNonNull(targetLocation, "targetLocation");
+            if (targetLocation != ParameterLocation.HEADER && targetLocation != ParameterLocation.QUERY) {
+                throw new IllegalArgumentException("Runtime credential target is invalid");
+            }
             requireText(targetName, "targetName");
         }
 
@@ -159,6 +168,12 @@ public record RuntimeMetadataDocument(
     private record CredentialTarget(ParameterLocation location, String name) {
         private static CredentialTarget from(RuntimeCredential credential) {
             return new CredentialTarget(credential.targetLocation(), credential.canonicalTargetName());
+        }
+
+        private static CredentialTarget from(ParameterBinding binding) {
+            String name = binding.targetLocation() == ParameterLocation.HEADER
+                    ? binding.targetName().toLowerCase(Locale.ROOT) : binding.targetName();
+            return new CredentialTarget(binding.targetLocation(), name);
         }
     }
 

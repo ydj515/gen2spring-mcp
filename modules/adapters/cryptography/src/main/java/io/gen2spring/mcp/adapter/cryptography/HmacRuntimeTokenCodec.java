@@ -83,7 +83,12 @@ public final class HmacRuntimeTokenCodec implements RuntimeTokenCodec {
         }
     }
 
-    private RuntimeTokenDigest digest(String plaintext) {
+    @Override
+    public RuntimeTokenDigest digest(String plaintext) {
+        if (plaintext == null || plaintext.isBlank() || plaintext.length() > 512
+                || plaintext.chars().anyMatch(Character::isISOControl)) {
+            throw failed();
+        }
         byte[] value = hmac(plaintext);
         try {
             return new RuntimeTokenDigest(value);

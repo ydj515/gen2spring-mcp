@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RuntimePropertiesTest {
@@ -26,6 +27,8 @@ class RuntimePropertiesTest {
         return new RuntimeProperties(
                 8,
                 Path.of("/run/secrets/token-pepper"),
+                new RuntimeProperties.Encryption(
+                        "key-1", Map.of("key-1", Path.of("/run/secrets/credential-key"))),
                 endpoint,
                 new RuntimeProperties.Tls(
                         Path.of("/run/secrets/client.p12"), Path.of("/run/secrets/client-password"),

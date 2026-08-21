@@ -14,6 +14,7 @@ public record HostedWebProperties(
         Database database,
         Storage storage,
         Encryption encryption,
+        Encryption credentialEncryption,
         Runtime runtime) {
     private static final Pattern ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
 
@@ -21,7 +22,8 @@ public record HostedWebProperties(
         if (!absolute(workRoot) || workerStaleAfter == null
                 || workerStaleAfter.compareTo(Duration.ofSeconds(10)) < 0
                 || workerStaleAfter.compareTo(Duration.ofMinutes(10)) > 0
-                || database == null || storage == null || encryption == null || runtime == null) throw invalid();
+                || database == null || storage == null || encryption == null
+                || credentialEncryption == null || runtime == null) throw invalid();
     }
 
     public record Database(String url, String username, Path passwordFile) {

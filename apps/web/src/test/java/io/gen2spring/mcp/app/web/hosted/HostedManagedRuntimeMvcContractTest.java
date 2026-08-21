@@ -67,7 +67,7 @@ class HostedManagedRuntimeMvcContractTest {
     @Test
     void protectsMutationWithOidcAndCsrfAndReturnsTheTokenOnlyOnce() throws Exception {
         ManagedRuntimeInstance instance = instance();
-        when(runtimes.activate(eq(OWNER), eq(CATALOG), eq(Optional.empty()), eq(Optional.empty())))
+        when(runtimes.activate(eq(OWNER), eq(CATALOG), eq(Optional.empty()), eq(Optional.empty()), eq(java.util.Map.of())))
                 .thenReturn(new RuntimeActivation(
                         instance, "g2s_rt_private-token", URI.create("https://runtime.example/mcp/" + RUNTIME.value())));
         when(runtimes.require(OWNER, RUNTIME)).thenReturn(instance);
@@ -93,7 +93,7 @@ class HostedManagedRuntimeMvcContractTest {
     @Test
     void mapsBoundedSafeControlFailuresWithoutEchoingInputs() throws Exception {
         String privateMarker = "https://private-marker.example/";
-        when(runtimes.activate(eq(OWNER), eq(CATALOG), eq(Optional.of(privateMarker)), any()))
+        when(runtimes.activate(eq(OWNER), eq(CATALOG), eq(Optional.of(privateMarker)), any(), eq(java.util.Map.of())))
                 .thenThrow(new ManagedRuntimeService.ManagedRuntimeRequestInvalid());
         mvc.perform(post("/api/tool-catalogs/{id}/runtimes", CATALOG)
                         .with(user()).with(csrf()).contentType("application/json")

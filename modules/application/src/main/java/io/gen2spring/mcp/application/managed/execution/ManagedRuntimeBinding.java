@@ -11,8 +11,7 @@ public record ManagedRuntimeBinding(
         Objects.requireNonNull(instance, "instance");
         Objects.requireNonNull(metadata, "metadata");
         if (!instance.catalogChecksum().equals(metadata.checksum())
-                || metadata.document().tools().isEmpty()
-                || metadata.document().tools().stream().anyMatch(tool -> !tool.credentials().isEmpty())) {
+                || metadata.document().tools().isEmpty()) {
             throw new IllegalArgumentException("Managed runtime binding is invalid");
         }
     }

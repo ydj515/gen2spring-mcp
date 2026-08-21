@@ -7,6 +7,9 @@ import io.gen2spring.mcp.app.web.job.JobWorkspace;
 import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
+import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
+import io.gen2spring.mcp.application.managed.policy.RuntimeGrantService;
+import io.gen2spring.mcp.application.managed.audit.RuntimeAuditService;
 import io.gen2spring.mcp.app.web.hosted.HostedArtifactController;
 import io.gen2spring.mcp.app.web.hosted.HostedJobController;
 import io.gen2spring.mcp.app.web.hosted.HostedSubmissionService;
@@ -45,6 +48,36 @@ public final class WebErrorMapper {
         if (failure instanceof ManagedRuntimeService.ManagedRuntimeUnavailable) {
             return new WebFailure(503, "RUNTIME_UNAVAILABLE", "RUNTIME_CONTROL",
                     "The managed runtime is unavailable");
+        }
+        if (failure instanceof ManagedCredentialService.ManagedCredentialRequestInvalid) {
+            return new WebFailure(400, "CREDENTIAL_REQUEST_INVALID", "CREDENTIAL_CONTROL",
+                    "The managed credential request is invalid");
+        }
+        if (failure instanceof ManagedCredentialService.ManagedCredentialNotFound) {
+            return new WebFailure(404, "RESOURCE_NOT_FOUND", "CREDENTIAL_CONTROL",
+                    "The hosted resource was not found");
+        }
+        if (failure instanceof ManagedCredentialService.ManagedCredentialUnavailable) {
+            return new WebFailure(503, "CREDENTIAL_UNAVAILABLE", "CREDENTIAL_CONTROL",
+                    "The managed credential service is unavailable");
+        }
+        if (failure instanceof RuntimeGrantService.RuntimeGrantRequestInvalid) {
+            return new WebFailure(400, "RUNTIME_GRANT_REQUEST_INVALID", "RUNTIME_GRANT_CONTROL",
+                    "The managed runtime grant request is invalid");
+        }
+        if (failure instanceof RuntimeGrantService.RuntimeGrantNotFound
+                || failure instanceof RuntimeAuditService.RuntimeAuditNotFound) {
+            return new WebFailure(404, "RESOURCE_NOT_FOUND", "RUNTIME_POLICY_CONTROL",
+                    "The hosted resource was not found");
+        }
+        if (failure instanceof RuntimeGrantService.RuntimeGrantUnavailable
+                || failure instanceof RuntimeAuditService.RuntimeAuditUnavailable) {
+            return new WebFailure(503, "RUNTIME_POLICY_UNAVAILABLE", "RUNTIME_POLICY_CONTROL",
+                    "The managed runtime policy is unavailable");
+        }
+        if (failure instanceof RuntimeAuditService.RuntimeAuditRequestInvalid) {
+            return new WebFailure(400, "RUNTIME_AUDIT_REQUEST_INVALID", "RUNTIME_AUDIT_QUERY",
+                    "The managed runtime audit request is invalid");
         }
         if (failure instanceof HostedJobFailure hosted) {
             return switch (hosted.code()) {

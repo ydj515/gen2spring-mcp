@@ -10,6 +10,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -25,8 +26,8 @@ class ManagedRuntimeIsolationIntegrationTest {
             return RuntimeServerHandle.testing(access.instance(), closes::incrementAndGet);
         }, 4, Clock.fixed(now, ZoneOffset.UTC));
 
-        RuntimeAccess first = new RuntimeAccess(instance(1, now));
-        RuntimeAccess second = new RuntimeAccess(instance(2, now));
+        RuntimeAccess first = access(instance(1, now));
+        RuntimeAccess second = access(instance(2, now));
         registry.get(first);
         registry.get(second);
         registry.get(first);
@@ -34,6 +35,12 @@ class ManagedRuntimeIsolationIntegrationTest {
         assertEquals(2, builds.get());
         registry.close();
         assertEquals(2, closes.get());
+    }
+
+    private RuntimeAccess access(ManagedRuntimeInstance instance) {
+        return new RuntimeAccess(
+                instance, Optional.empty(), "owner", Set.of("managed_tool"), 600, true,
+                "a".repeat(64), instance.expiresAt());
     }
 
     private ManagedRuntimeInstance instance(int suffix, Instant now) {

@@ -8,6 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore.StoredRuntime;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredential;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialKind;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.ProviderTarget;
@@ -16,6 +19,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -125,6 +129,34 @@ class PostgresManagedRuntimeStoreTest {
         assertTrue(store.find(instance.id()).isEmpty());
     }
 
+    @Test
+    void insertsRuntimeAndCredentialBindingsAtomicallyAndRejectsForeignCredentials() {
+        AccountId owner = account();
+        UUID catalog = catalog(owner);
+        ManagedRuntimeInstance instance = instance(owner, catalog, Optional.empty());
+        ManagedCredential credential = credential(owner);
+        new PostgresManagedCredentialStore(jdbc.getDataSource()).create(
+                credential,
+                new io.gen2spring.mcp.application.managed.credential.ProtectedCredential(
+                        1, 1, "operator-key", bytes(12), bytes(48), bytes(12), bytes(32)));
+
+        store.create(instance, new RuntimeTokenDigest(digest()), Map.of("service-key", credential.id()));
+
+        assertEquals(Map.of("service-key", credential.id()), store.find(instance.id()).orElseThrow().credentialBindings());
+
+        AccountId foreign = account();
+        ManagedCredential foreignCredential = credential(foreign);
+        new PostgresManagedCredentialStore(jdbc.getDataSource()).create(
+                foreignCredential,
+                new io.gen2spring.mcp.application.managed.credential.ProtectedCredential(
+                        1, 1, "operator-key", bytes(12), bytes(48), bytes(12), bytes(32)));
+        ManagedRuntimeInstance rejected = instance(owner, catalog, Optional.empty());
+        RuntimeException failure = assertThrows(RuntimeException.class, () -> store.create(
+                rejected, new RuntimeTokenDigest(digest()), Map.of("service-key", foreignCredential.id())));
+        assertEquals("Managed runtime storage write failed", failure.getMessage());
+        assertTrue(store.find(rejected.id()).isEmpty());
+    }
+
     private ManagedRuntimeInstance instance(AccountId owner, UUID catalog, Optional<ProviderTarget> provider) {
         return new ManagedRuntimeInstance(
                 new RuntimeInstanceId(UUID.randomUUID()), owner, catalog, CHECKSUM, provider,
@@ -171,6 +203,18 @@ class PostgresManagedRuntimeStoreTest {
     private byte[] digest() {
         byte[] value = new byte[32];
         java.util.Arrays.fill(value, (byte) 0x5a);
+        return value;
+    }
+
+    private ManagedCredential credential(AccountId owner) {
+        return new ManagedCredential(
+                new ManagedCredentialId(UUID.randomUUID()), owner, "provider-key",
+                ManagedCredentialKind.OPAQUE, 1, NOW, NOW, Optional.empty());
+    }
+
+    private byte[] bytes(int size) {
+        byte[] value = new byte[size];
+        java.util.Arrays.fill(value, (byte) 7);
         return value;
     }
 }

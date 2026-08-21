@@ -1,7 +1,11 @@
 package io.gen2spring.mcp.application.managed.execution;
 
+import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver.ResolvedCredentials;
+import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit;
+import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit.AuditStatus;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -10,12 +14,15 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 public final class ManagedToolExecutor implements AutoCloseable {
     private final ProviderCallClient client;
@@ -24,15 +31,37 @@ public final class ManagedToolExecutor implements AutoCloseable {
     private final RuntimeResponseNormalizer responses;
     private final ThreadPoolExecutor executor;
     private final Clock clock;
+    private final RuntimePolicyStore policies;
+    private final Supplier<UUID> executionIds;
 
     public ManagedToolExecutor(ProviderCallClient client, ManagedExecutionLimits limits) {
-        this(client, limits, Clock.systemUTC());
+        this(client, limits, Clock.systemUTC(), null, UUID::randomUUID);
     }
 
     ManagedToolExecutor(ProviderCallClient client, ManagedExecutionLimits limits, Clock clock) {
+        this(client, limits, clock, null, UUID::randomUUID);
+    }
+
+    public ManagedToolExecutor(
+            ProviderCallClient client,
+            ManagedExecutionLimits limits,
+            RuntimePolicyStore policies,
+            Clock clock,
+            Supplier<UUID> executionIds) {
+        this(client, limits, clock, Objects.requireNonNull(policies, "policies"), executionIds);
+    }
+
+    private ManagedToolExecutor(
+            ProviderCallClient client,
+            ManagedExecutionLimits limits,
+            Clock clock,
+            RuntimePolicyStore policies,
+            Supplier<UUID> executionIds) {
         this.client = Objects.requireNonNull(client, "client");
         this.limits = Objects.requireNonNull(limits, "limits");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.policies = policies;
+        this.executionIds = Objects.requireNonNull(executionIds, "executionIds");
         this.requests = new RuntimeHttpRequestFactory();
         this.responses = new RuntimeResponseNormalizer();
         this.executor = new ThreadPoolExecutor(
@@ -65,6 +94,90 @@ public final class ManagedToolExecutor implements AutoCloseable {
         } catch (RuntimeHttpRequestFactory.RuntimeRequestInvalid failure) {
             throw new ManagedToolRequestInvalid();
         }
+        return submit(tool, request);
+    }
+
+    public ManagedToolResult call(
+            ManagedExecutionContext context,
+            String toolName,
+            Map<String, Object> arguments) {
+        if (policies == null || context == null || toolName == null || arguments == null
+                || context.access().instance().stateAt(clock.instant())
+                        != io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance.RuntimeState.ACTIVE
+                || !context.access().allowedTools().contains(toolName)) {
+            throw new ManagedToolRequestInvalid();
+        }
+        ManagedRuntimeBinding runtime = context.binding();
+        RuntimeTool tool = runtime.metadata().document().tools().stream()
+                .filter(candidate -> candidate.name().equals(toolName))
+                .findFirst()
+                .orElseThrow(ManagedToolRequestInvalid::new);
+        ProviderCallRequest baseRequest;
+        try {
+            baseRequest = requests.create(tool, runtime.instance().providerBaseUrl(), arguments);
+        } catch (RuntimeHttpRequestFactory.RuntimeRequestInvalid failure) {
+            throw new ManagedToolRequestInvalid();
+        }
+
+        InstantPair timing = new InstantPair(clock.instant(), System.nanoTime());
+        ToolExecutionAudit started = ToolExecutionAudit.start(
+                Objects.requireNonNull(executionIds.get(), "executionId"), runtime.instance().owner(),
+                runtime.instance().id(), context.access().grantId(), context.access().principal(),
+                runtime.instance().catalogChecksum(), tool.name(), timing.startedAt());
+        try {
+            policies.startAudit(started);
+        } catch (Error fatal) {
+            throw fatal;
+        } catch (RuntimeException failure) {
+            throw new ManagedToolInternalFailure(failure.getClass().getSimpleName());
+        }
+
+        boolean acquired;
+        try {
+            acquired = policies.acquireRate(
+                    runtime.instance().id(), context.access().grantId(), context.access().requestsPerMinute());
+        } catch (Error fatal) {
+            completeFatal(started, timing, baseRequest, fatal);
+            throw fatal;
+        } catch (RuntimeException failure) {
+            ManagedToolInternalFailure primary = internal(failure);
+            completeInternalPreserving(started, timing, baseRequest, primary);
+            throw primary;
+        }
+        if (!acquired) {
+            ManagedToolResult result = responses.error(
+                    tool, ManagedToolResult.ErrorCategory.RATE_LIMITED, null, null, null);
+            complete(started, AuditStatus.RATE_LIMITED, Optional.of("RATE_LIMITED"),
+                    Optional.empty(), timing, baseRequest, result);
+            return result;
+        }
+
+        ManagedToolResult result;
+        ProviderCallRequest request = baseRequest;
+        try (ResolvedCredentials resolved = context.credentials().resolve(runtime.instance(), tool)) {
+            request = requests.create(tool, runtime.instance().providerBaseUrl(), arguments, resolved);
+            result = submit(tool, request);
+        } catch (Error fatal) {
+            completeFatal(started, timing, request, fatal);
+            throw fatal;
+        } catch (ManagedToolInternalFailure failure) {
+            completeInternalPreserving(started, timing, request, failure);
+            throw failure;
+        } catch (RuntimeException failure) {
+            ManagedToolInternalFailure primary = internal(failure);
+            completeInternalPreserving(started, timing, request, primary);
+            throw primary;
+        }
+
+        AuditStatus terminal = result.error() ? AuditStatus.TOOL_ERROR : AuditStatus.SUCCEEDED;
+        Optional<String> category = result.error()
+                ? Optional.of(result.category().name()) : Optional.empty();
+        complete(started, terminal, category, Optional.ofNullable(result.httpStatus()),
+                timing, request, result);
+        return result;
+    }
+
+    private ManagedToolResult submit(RuntimeTool tool, ProviderCallRequest request) {
         Future<ManagedToolResult> future;
         long deadline = System.nanoTime() + limits.timeout().toNanos();
         try {
@@ -96,6 +209,69 @@ public final class ManagedToolExecutor implements AutoCloseable {
             }
             throw new ManagedToolInternalFailure(cause == null
                     ? "Unknown" : cause.getClass().getSimpleName());
+        }
+    }
+
+    private void completeInternal(
+            ToolExecutionAudit started,
+            InstantPair timing,
+            ProviderCallRequest request) {
+        complete(started, AuditStatus.INTERNAL_ERROR, Optional.of("INTERNAL_ERROR"), Optional.empty(),
+                timing, request, null);
+    }
+
+    private void completeInternalPreserving(
+            ToolExecutionAudit started,
+            InstantPair timing,
+            ProviderCallRequest request,
+            ManagedToolInternalFailure primary) {
+        try {
+            completeInternal(started, timing, request);
+        } catch (Throwable completionFailure) {
+            if (completionFailure != primary) primary.addSuppressed(completionFailure);
+        }
+    }
+
+    private ManagedToolInternalFailure internal(RuntimeException failure) {
+        return failure instanceof ManagedToolInternalFailure internal
+                ? internal : new ManagedToolInternalFailure(failure.getClass().getSimpleName());
+    }
+
+    private void completeFatal(
+            ToolExecutionAudit started,
+            InstantPair timing,
+            ProviderCallRequest request,
+            Error fatal) {
+        try {
+            completeInternal(started, timing, request);
+        } catch (Throwable completionFailure) {
+            if (completionFailure != fatal) fatal.addSuppressed(completionFailure);
+        }
+    }
+
+    private void complete(
+            ToolExecutionAudit started,
+            AuditStatus status,
+            Optional<String> category,
+            Optional<Integer> providerStatus,
+            InstantPair timing,
+            ProviderCallRequest request,
+            ManagedToolResult result) {
+        long duration = Math.max(0, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - timing.startedNanos()));
+        long responseBytes = result == null ? 0 : result.json().length;
+        ToolExecutionAudit terminal = started.complete(
+                status, category, providerStatus, duration, request.body().length,
+                responseBytes, clock.instant());
+        try {
+            if (!policies.completeAudit(terminal)) {
+                throw new ManagedToolInternalFailure("AuditCompletionFailed");
+            }
+        } catch (ManagedToolInternalFailure failure) {
+            throw failure;
+        } catch (Error fatal) {
+            throw fatal;
+        } catch (RuntimeException failure) {
+            throw new ManagedToolInternalFailure(failure.getClass().getSimpleName());
         }
     }
 
@@ -272,7 +448,7 @@ public final class ManagedToolExecutor implements AutoCloseable {
         private final String failureType;
 
         private ManagedToolInternalFailure(String failureType) {
-            super("Managed Tool execution failed", null, false, false);
+            super("Managed Tool execution failed", null, true, false);
             this.failureType = failureType == null || failureType.isBlank() ? "Unknown" : failureType;
         }
 
@@ -282,6 +458,8 @@ public final class ManagedToolExecutor implements AutoCloseable {
     }
 
     private record Attempt(ProviderCallResponse response, ManagedToolResult result) {}
+
+    private record InstantPair(java.time.Instant startedAt, long startedNanos) {}
 
     private enum WaitResult {
         READY,

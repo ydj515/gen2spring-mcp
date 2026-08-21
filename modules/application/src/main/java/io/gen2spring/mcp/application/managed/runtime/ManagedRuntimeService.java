@@ -3,6 +3,10 @@ package io.gen2spring.mcp.application.managed.runtime;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogDetails;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore.StoredRuntime;
+import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredential;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialKind;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.ProviderTarget;
@@ -13,6 +17,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -23,6 +29,7 @@ public final class ManagedRuntimeService {
 
     private final ToolCatalogService catalogs;
     private final ManagedRuntimeStore runtimes;
+    private final ManagedCredentialService credentials;
     private final RuntimeTokenCodec tokens;
     private final Clock clock;
     private final URI runtimeBaseUri;
@@ -34,7 +41,17 @@ public final class ManagedRuntimeService {
             RuntimeTokenCodec tokens,
             Clock clock,
             URI runtimeBaseUri) {
-        this(catalogs, runtimes, tokens, clock, runtimeBaseUri, UUID::randomUUID);
+        this(catalogs, runtimes, null, tokens, clock, runtimeBaseUri, UUID::randomUUID);
+    }
+
+    public ManagedRuntimeService(
+            ToolCatalogService catalogs,
+            ManagedRuntimeStore runtimes,
+            ManagedCredentialService credentials,
+            RuntimeTokenCodec tokens,
+            Clock clock,
+            URI runtimeBaseUri) {
+        this(catalogs, runtimes, credentials, tokens, clock, runtimeBaseUri, UUID::randomUUID);
     }
 
     ManagedRuntimeService(
@@ -44,8 +61,20 @@ public final class ManagedRuntimeService {
             Clock clock,
             URI runtimeBaseUri,
             Supplier<UUID> identifiers) {
+        this(catalogs, runtimes, null, tokens, clock, runtimeBaseUri, identifiers);
+    }
+
+    ManagedRuntimeService(
+            ToolCatalogService catalogs,
+            ManagedRuntimeStore runtimes,
+            ManagedCredentialService credentials,
+            RuntimeTokenCodec tokens,
+            Clock clock,
+            URI runtimeBaseUri,
+            Supplier<UUID> identifiers) {
         this.catalogs = Objects.requireNonNull(catalogs, "catalogs");
         this.runtimes = Objects.requireNonNull(runtimes, "runtimes");
+        this.credentials = credentials;
         this.tokens = Objects.requireNonNull(tokens, "tokens");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.runtimeBaseUri = runtimeBase(runtimeBaseUri);
@@ -57,7 +86,17 @@ public final class ManagedRuntimeService {
             UUID catalogId,
             Optional<String> providerBaseUrl,
             Optional<Duration> requestedLifetime) {
-        if (owner == null || catalogId == null || providerBaseUrl == null || requestedLifetime == null) {
+        return activate(owner, catalogId, providerBaseUrl, requestedLifetime, Map.of());
+    }
+
+    public RuntimeActivation activate(
+            AccountId owner,
+            UUID catalogId,
+            Optional<String> providerBaseUrl,
+            Optional<Duration> requestedLifetime,
+            Map<String, ManagedCredentialId> credentialBindings) {
+        if (owner == null || catalogId == null || providerBaseUrl == null
+                || requestedLifetime == null || credentialBindings == null) {
             throw invalid();
         }
         Duration lifetime = requestedLifetime.orElse(DEFAULT_LIFETIME);
@@ -66,6 +105,7 @@ public final class ManagedRuntimeService {
         }
         CatalogDetails catalog = requireCatalog(owner, catalogId);
         Optional<ProviderTarget> provider = provider(catalog, providerBaseUrl);
+        Map<String, ManagedCredentialId> bindings = bindings(owner, catalog, credentialBindings);
         IssuedRuntimeToken issued = tokens.issue();
         Instant now = clock.instant();
         RuntimeInstanceId id = new RuntimeInstanceId(Objects.requireNonNull(identifiers.get()));
@@ -79,7 +119,7 @@ public final class ManagedRuntimeService {
                 now.plus(lifetime),
                 Optional.empty());
         try {
-            runtimes.create(instance, issued.digest());
+            runtimes.create(instance, issued.digest(), bindings);
         } catch (Error fatal) {
             throw fatal;
         } catch (RuntimeException failure) {
@@ -150,9 +190,6 @@ public final class ManagedRuntimeService {
         boolean absolute = false;
         try {
             for (RuntimeTool tool : catalog.metadata().document().tools()) {
-                if (!tool.credentials().isEmpty()) {
-                    throw invalid();
-                }
                 URI base = URI.create(tool.http().baseUrl());
                 if (base.isAbsolute()) {
                     ProviderTarget.parse(base.toASCIIString());
@@ -169,6 +206,81 @@ public final class ManagedRuntimeService {
             throw failure;
         } catch (RuntimeException failure) {
             throw invalid();
+        }
+    }
+
+    private Map<String, ManagedCredentialId> bindings(
+            AccountId owner,
+            CatalogDetails catalog,
+            Map<String, ManagedCredentialId> requested) {
+        Map<String, SlotRequirement> slots = new LinkedHashMap<>();
+        for (RuntimeTool tool : catalog.metadata().document().tools()) {
+            for (var slot : tool.credentials()) {
+                if (slot.targetLocation()
+                        != io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER
+                        && slot.targetLocation()
+                        != io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY) {
+                    throw invalid();
+                }
+                slots.merge(
+                        slot.credentialSlot(),
+                        new SlotRequirement(slot.targetLocation(), slot.targetName(), slot.required()),
+                        SlotRequirement::merge);
+            }
+        }
+        if (credentials == null && !slots.isEmpty()) throw unavailable();
+        if (!slots.keySet().containsAll(requested.keySet())
+                || slots.entrySet().stream().anyMatch(entry -> entry.getValue().required()
+                        && !requested.containsKey(entry.getKey()))
+                || requested.entrySet().stream().anyMatch(entry -> entry.getKey() == null || entry.getValue() == null)) {
+            throw invalid();
+        }
+        if (requested.isEmpty()) return Map.of();
+        if (credentials == null) throw invalid();
+        Map<String, ManagedCredentialId> validated = new java.util.TreeMap<>();
+        for (Map.Entry<String, ManagedCredentialId> entry : requested.entrySet()) {
+            ManagedCredential credential;
+            try {
+                credential = credentials.require(owner, entry.getValue());
+            } catch (ManagedCredentialService.ManagedCredentialNotFound
+                    | ManagedCredentialService.ManagedCredentialRequestInvalid failure) {
+                throw invalid();
+            } catch (ManagedCredentialService.ManagedCredentialUnavailable failure) {
+                throw unavailable();
+            }
+            SlotRequirement slot = slots.get(entry.getKey());
+            if (credential.state() != ManagedCredential.CredentialState.ACTIVE
+                    || !compatible(credential.kind(), slot)) throw invalid();
+            validated.put(entry.getKey(), credential.id());
+        }
+        return java.util.Collections.unmodifiableMap(validated);
+    }
+
+    private boolean compatible(ManagedCredentialKind kind, SlotRequirement slot) {
+        return switch (kind) {
+            case OPAQUE -> slot.location()
+                    == io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER
+                    || slot.location()
+                    == io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY;
+            case BEARER, BASIC -> slot.location()
+                    == io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER
+                    && "authorization".equalsIgnoreCase(slot.targetName());
+        };
+    }
+
+    private record SlotRequirement(
+            io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation location,
+            String targetName,
+            boolean required) {
+        private SlotRequirement merge(SlotRequirement other) {
+            boolean sameTarget = location
+                    == io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER
+                    ? targetName.equalsIgnoreCase(other == null ? "" : other.targetName)
+                    : targetName.equals(other == null ? "" : other.targetName);
+            if (other == null || location != other.location || !sameTarget) {
+                throw invalid();
+            }
+            return new SlotRequirement(location, targetName, required || other.required);
         }
     }
 

@@ -142,10 +142,11 @@ GET /api/tool-catalogs/{catalogId}/tools/{toolName}
 Catalog metadata에는 Tool schema와 HTTP·policy·credential 요구사항만 포함하며 secret 값, 환경변수 이름,
 사용자·작업 식별자와 로컬 경로는 포함하지 않는다. 기존 generation은 backfill하지 않는다.
 
-Hosted mode의 Managed Runtime은 credential-free 단일 Tool Catalog를 bearer token으로 활성화해
-`/mcp/{runtimeId}`에서 SDK 기반 `tools/list`와 bounded `tools/call`을 제공한다. provider HTTP는 mTLS
-`provider-egress`만 통과한다. 이 기능은 생성 ZIP에 포함되는 서버도, 공유·권한·credential routing을
-제공하는 Gateway가 아니다. v1은 single-replica session transport이며 multi-replica/stateless 운영은 지원하지 않는다.
+Hosted mode의 Managed Runtime은 단일 immutable Tool Catalog를 bearer token으로 활성화해
+`/mcp/{runtimeId}`에서 stateless `tools/list`와 bounded `tools/call`을 제공한다. owner는 암호화된
+OPAQUE·Bearer·Basic credential을 Catalog slot에 연결하고, Tool visibility와 분당 요청 수가 제한된 grant를
+발급하며, 안전한 실행 audit을 조회할 수 있다. PostgreSQL이 replica 간 rate·audit 정합성을 제공하고 provider
+HTTP는 mTLS `provider-egress`만 통과한다. 이 기능은 생성 ZIP의 서버나 여러 Catalog를 중개하는 공개 Gateway가 아니다.
 
 ## 저장소 구조
 

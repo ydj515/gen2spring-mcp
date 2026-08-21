@@ -42,10 +42,10 @@ public final class RuntimeResponseNormalizer {
         ResponseNormalizationPolicy policy = tool.responseNormalization();
         if (body.length == 0) {
             if (policy == null) {
-                return success(NullNode.getInstance());
+                return success(NullNode.getInstance(), response.status());
             }
             if (empty(policy)) {
-                return success(envelope(NullNode.getInstance(), null, null, null, policy));
+                return success(envelope(NullNode.getInstance(), null, null, null, policy), response.status());
             }
             return error(tool, ManagedToolResult.ErrorCategory.UPSTREAM_PROTOCOL, response.status(), null, null);
         }
@@ -54,7 +54,7 @@ public final class RuntimeResponseNormalizer {
         try {
             JsonNode root = parse(response.firstHeader("Content-Type"), body);
             if (policy == null) {
-                return success(root);
+                return success(root, response.status());
             }
             if (policy.successCodePointer() != null) {
                 providerCode = scalar(root, policy.successCodePointer());
@@ -78,7 +78,7 @@ public final class RuntimeResponseNormalizer {
                     throw new ProtocolMismatch();
                 }
             }
-            return success(envelope(data, total, providerCode, providerMessage, policy));
+            return success(envelope(data, total, providerCode, providerMessage, policy), response.status());
         } catch (ProtocolMismatch | java.io.IOException failure) {
             return error(tool, ManagedToolResult.ErrorCategory.UPSTREAM_PROTOCOL,
                     response.status(), providerCode, providerMessage);
@@ -225,8 +225,8 @@ public final class RuntimeResponseNormalizer {
         return result;
     }
 
-    private ManagedToolResult success(JsonNode node) {
-        return ManagedToolResult.success(write(node));
+    private ManagedToolResult success(JsonNode node, int status) {
+        return ManagedToolResult.success(write(node), status);
     }
 
     private byte[] write(JsonNode node) {
@@ -246,7 +246,7 @@ public final class RuntimeResponseNormalizer {
 
     private boolean retryable(ManagedToolResult.ErrorCategory category, Integer status) {
         return switch (category) {
-            case UPSTREAM_SERVER, UPSTREAM_TIMEOUT, UPSTREAM_UNAVAILABLE -> true;
+            case UPSTREAM_SERVER, UPSTREAM_TIMEOUT, UPSTREAM_UNAVAILABLE, RATE_LIMITED -> true;
             case UPSTREAM_CLIENT -> status != null && (status == 408 || status == 425 || status == 429);
             default -> false;
         };

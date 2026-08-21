@@ -17,9 +17,12 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +38,7 @@ class RuntimeServerHandleRegistryTest {
                     builds.incrementAndGet();
                     return RuntimeServerHandle.testing(access.instance(), closes::incrementAndGet);
                 }, 1, Clock.fixed(NOW, ZoneOffset.UTC));
-        RuntimeAccess first = new RuntimeAccess(instance(1));
+        RuntimeAccess first = access(instance(1), "a".repeat(64), "owner");
 
         try (var pool = Executors.newFixedThreadPool(8)) {
             List<Callable<RuntimeServerHandle>> calls = new ArrayList<>();
@@ -49,8 +52,8 @@ class RuntimeServerHandleRegistryTest {
         assertEquals(1, builds.get());
 
         assertThrows(RuntimeServerHandleRegistry.RuntimeCapacityExceeded.class,
-                () -> registry.get(new RuntimeAccess(instance(2))));
-        assertSame(registry.get(new RuntimeAccess(instance(1))), registry.get(first));
+                () -> registry.get(access(instance(2), "a".repeat(64), "owner")));
+        assertSame(registry.get(access(instance(1), "a".repeat(64), "owner")), registry.get(first));
         assertEquals(0, closes.get());
         registry.close();
         assertEquals(1, closes.get());
@@ -62,8 +65,8 @@ class RuntimeServerHandleRegistryTest {
                 access -> RuntimeServerHandle.testing(access.instance(), () -> {}),
                 1,
                 Clock.fixed(NOW, ZoneOffset.UTC));
-        registry.get(new RuntimeAccess(instance(1)));
-        RuntimeAccess second = new RuntimeAccess(instance(2));
+        registry.get(access(instance(1), "a".repeat(64), "owner"));
+        RuntimeAccess second = access(instance(2), "a".repeat(64), "owner");
 
         org.springframework.test.web.servlet.setup.MockMvcBuilders
                 .routerFunctions(new ManagedMcpRouter(registry))
@@ -84,18 +87,20 @@ class RuntimeServerHandleRegistryTest {
             return RuntimeServerHandle.testing(access.instance(), () -> {});
         }, 2, Clock.fixed(NOW, ZoneOffset.UTC));
 
-        assertThrows(IllegalStateException.class, () -> registry.get(new RuntimeAccess(instance(1))));
-        registry.get(new RuntimeAccess(instance(1)));
+        assertThrows(IllegalStateException.class,
+                () -> registry.get(access(instance(1), "a".repeat(64), "owner")));
+        registry.get(access(instance(1), "a".repeat(64), "owner"));
         assertEquals(2, attempts.get());
 
         ManagedRuntimeInstance expired = new ManagedRuntimeInstance(
                 new RuntimeInstanceId(UUID.randomUUID()), instance(1).owner(), UUID.randomUUID(), "b".repeat(64),
                 Optional.empty(), NOW.minusSeconds(20), NOW.minusSeconds(1), Optional.empty());
-        assertThrows(IllegalStateException.class, () -> registry.get(new RuntimeAccess(expired)));
+        assertThrows(IllegalStateException.class,
+                () -> registry.get(access(expired, "a".repeat(64), "owner")));
     }
 
     @Test
-    void keepsExpiredHandlesTrackedWhenCleanupFails() {
+    void removesExpiredHandlesEvenWhenCleanupFails() {
         MutableClock clock = new MutableClock(NOW);
         AtomicInteger builds = new AtomicInteger();
         RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access -> {
@@ -104,13 +109,105 @@ class RuntimeServerHandleRegistryTest {
                 throw new IllegalStateException("private close failure");
             });
         }, 1, clock);
-        registry.get(new RuntimeAccess(instance(1, NOW.plusSeconds(1))));
+        registry.get(access(instance(1, NOW.plusSeconds(1)), "a".repeat(64), "owner"));
         clock.now = NOW.plusSeconds(2);
-        RuntimeAccess second = new RuntimeAccess(instance(2, NOW.plusSeconds(3600)));
+        RuntimeAccess second = access(instance(2, NOW.plusSeconds(3600)), "a".repeat(64), "owner");
 
         assertThrows(IllegalStateException.class, () -> registry.get(second));
-        assertThrows(IllegalStateException.class, () -> registry.get(second));
-        assertEquals(1, builds.get());
+        registry.get(second);
+        assertEquals(2, builds.get());
+    }
+
+    @Test
+    void evictsScopedHandlesWhenTheirGrantPolicyExpiresBeforeTheRuntime() {
+        MutableClock clock = new MutableClock(NOW);
+        AtomicInteger closes = new AtomicInteger();
+        RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(
+                access -> RuntimeServerHandle.testing(access.instance(), closes::incrementAndGet),
+                1, clock);
+        ManagedRuntimeInstance runtime = instance(1, NOW.plusSeconds(3600));
+        RuntimeAccess scoped = access(
+                runtime, "a".repeat(64), "client-a", NOW.plusSeconds(1));
+
+        registry.get(scoped);
+        clock.now = NOW.plusSeconds(2);
+        registry.get(access(instance(2), "b".repeat(64), "owner"));
+
+        assertEquals(1, closes.get());
+        registry.close();
+    }
+
+    @Test
+    void closesHandlesOutsideTheRegistryMonitorAndKeepsFailedHandlesClosed() throws Exception {
+        CountDownLatch closeEntered = new CountDownLatch(1);
+        CountDownLatch releaseClose = new CountDownLatch(1);
+        RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access ->
+                RuntimeServerHandle.testing(access.instance(), access.instance().id().equals(instance(1).id()) ? () -> {
+                    closeEntered.countDown();
+                    try {
+                        if (!releaseClose.await(2, TimeUnit.SECONDS)) throw new IllegalStateException("timeout");
+                    } catch (InterruptedException failure) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("interrupted");
+                    }
+                    throw new IllegalStateException("private close failure");
+                } : () -> {}), 2, Clock.fixed(NOW, ZoneOffset.UTC));
+        RuntimeAccess first = access(instance(1), "a".repeat(64), "owner");
+        RuntimeAccess second = access(instance(2), "b".repeat(64), "owner");
+        RuntimeServerHandle firstHandle = registry.get(first);
+
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var invalidation = pool.submit(() -> registry.invalidate(first.instance().id()));
+            org.junit.jupiter.api.Assertions.assertTrue(closeEntered.await(1, TimeUnit.SECONDS));
+            var lookup = pool.submit(() -> registry.get(second));
+            assertSame(lookup.get(1, TimeUnit.SECONDS), registry.get(second));
+            releaseClose.countDown();
+            assertThrows(java.util.concurrent.ExecutionException.class,
+                    () -> invalidation.get(1, TimeUnit.SECONDS));
+        } finally {
+            releaseClose.countDown();
+        }
+
+        assertThrows(IllegalStateException.class, firstHandle::router);
+        registry.close();
+    }
+
+    @Test
+    void separatesHandlesByCatalogAndGrantPolicyWithoutCachingBearerMaterial() {
+        AtomicInteger builds = new AtomicInteger();
+        RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access -> {
+            builds.incrementAndGet();
+            return RuntimeServerHandle.testing(access.instance(), () -> {});
+        }, 4, Clock.fixed(NOW, ZoneOffset.UTC));
+        ManagedRuntimeInstance runtime = instance(1);
+        RuntimeAccess owner = access(runtime, "a".repeat(64), "owner");
+        RuntimeAccess scoped = access(runtime, "b".repeat(64), "client-a");
+
+        assertSame(registry.get(owner), registry.get(owner));
+        registry.get(scoped);
+
+        assertEquals(2, builds.get());
+        String cached = registry.cachedKeyDescriptions().toString();
+        assertEquals(false, cached.contains("owner-private-token"));
+        assertEquals(false, cached.contains("credential-private-marker"));
+        assertEquals(false, cached.contains("client-a"));
+        registry.close();
+    }
+
+    private RuntimeAccess access(ManagedRuntimeInstance instance, String policyChecksum, String principal) {
+        return access(instance, policyChecksum, principal, instance.expiresAt());
+    }
+
+    private RuntimeAccess access(
+            ManagedRuntimeInstance instance,
+            String policyChecksum,
+            String principal,
+            Instant validUntil) {
+        return new RuntimeAccess(
+                instance,
+                "owner".equals(principal) ? Optional.empty() : Optional.of(
+                        new io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId(UUID.randomUUID())),
+                principal, Set.of("managed_tool"), 5, "owner".equals(principal), policyChecksum, validUntil);
     }
 
     private ManagedRuntimeInstance instance(int suffix) {
