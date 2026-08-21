@@ -191,6 +191,19 @@ class RuntimeHttpRequestFactoryTest {
         }
     }
 
+    @Test
+    void rejectsCredentialDeclaringToolsOnTheCredentialFreeExecutionPath() {
+        RuntimeTool required = tool(
+                "https://api.example", "/items", List.of(), false, false, Map.of(),
+                List.of(new RuntimeCredential("service-key", HEADER, "X-Service-Key", true)));
+        RuntimeTool optional = tool(
+                "https://api.example", "/items", List.of(), false, false, Map.of(),
+                List.of(new RuntimeCredential("service-key", HEADER, "X-Service-Key", false)));
+
+        assertInvalid(() -> factory.create(required, Optional.empty(), Map.of()));
+        assertInvalid(() -> factory.create(optional, Optional.empty(), Map.of()));
+    }
+
     private void assertInvalid(Runnable action) {
         RuntimeHttpRequestFactory.RuntimeRequestInvalid failure = assertThrows(
                 RuntimeHttpRequestFactory.RuntimeRequestInvalid.class, action::run);

@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -149,8 +150,15 @@ public final class RuntimeCredentialResolver {
                 copy.sort(Comparator.comparing(WireCredential::slot));
                 return new ResolvedCredentials(Collections.unmodifiableList(copy));
             } catch (RuntimeException failure) {
-                RuntimeCredentialResolver.close(copy);
+                closeDistinct(source);
                 throw unavailable();
+            }
+        }
+
+        private static void closeDistinct(List<WireCredential> source) {
+            Set<WireCredential> closed = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (WireCredential value : source) {
+                if (value != null && closed.add(value)) value.close();
             }
         }
 

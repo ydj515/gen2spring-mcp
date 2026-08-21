@@ -86,8 +86,14 @@ class HostedRuntimePolicyMvcContractTest {
                 .andExpect(content().string(not(containsString("cipher"))));
         mvc.perform(get("/api/credentials").with(user()))
                 .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
                 .andExpect(jsonPath("$[0].kind").value("BEARER"))
                 .andExpect(content().string(not(containsString("value"))));
+        when(credentials.require(OWNER, CREDENTIAL)).thenReturn(credential);
+        mvc.perform(get("/api/credentials/{credentialId}", CREDENTIAL.value()).with(user()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(jsonPath("$.credentialId").value(CREDENTIAL.value().toString()));
 
         org.junit.jupiter.api.Assertions.assertFalse(
                 new HostedCredentialController.CredentialRequest(

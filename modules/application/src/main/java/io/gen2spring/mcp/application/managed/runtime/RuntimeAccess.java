@@ -34,8 +34,4 @@ public record RuntimeAccess(
         }
         allowedTools = Collections.unmodifiableSet(new TreeSet<>(allowedTools));
     }
-
-    public RuntimeAccess(ManagedRuntimeInstance instance) {
-        this(instance, Optional.empty(), "owner", Set.of("legacy_tool"), 600, true, "0".repeat(64));
-    }
 }

@@ -3,6 +3,7 @@ package io.gen2spring.mcp.adapter.persistence;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore.StoredCredential;
 import io.gen2spring.mcp.application.managed.credential.ProtectedCredential;
@@ -82,6 +83,20 @@ class PostgresManagedCredentialStoreTest {
         StoredCredential revoked = store.find(owner, initial.id()).orElseThrow();
         assertEquals(Optional.of(NOW.plusSeconds(20)), revoked.credential().revokedAt());
         assertEquals(0, store.countActive(owner));
+    }
+
+    @Test
+    void rejectsTheAtomicOneHundredAndFirstActiveCredentialWithTheQuotaFailure() {
+        AccountId owner = account();
+        for (int index = 0; index < io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore
+                .MAX_ACTIVE_PER_OWNER; index++) {
+            store.create(credential(owner, 1, Optional.empty()), protectedValue(1, (byte) index));
+        }
+
+        assertThrows(
+                io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore
+                        .ManagedCredentialQuotaExceeded.class,
+                () -> store.create(credential(owner, 1, Optional.empty()), protectedValue(1, (byte) 1)));
     }
 
     private AccountId account() {

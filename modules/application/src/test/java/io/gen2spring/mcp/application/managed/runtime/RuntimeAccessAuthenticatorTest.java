@@ -38,6 +38,15 @@ class RuntimeAccessAuthenticatorTest {
             UUID.fromString("30000000-0000-0000-0000-000000000001"));
 
     @Test
+    void exposesOnlyThePolicyAwareAuthenticationContract() {
+        assertThrows(NoSuchMethodException.class,
+                () -> RuntimeAccess.class.getConstructor(ManagedRuntimeInstance.class));
+        assertThrows(NoSuchMethodException.class,
+                () -> RuntimeAccessAuthenticator.class.getConstructor(
+                        ManagedRuntimeStore.class, RuntimeTokenCodec.class, Clock.class));
+    }
+
+    @Test
     void authenticatesOneActiveRuntimeWithOneStoreLookup() {
         Store store = new Store(active());
         RuntimeAccessAuthenticator authenticator = authenticator(store, true);
@@ -122,8 +131,13 @@ class RuntimeAccessAuthenticatorTest {
                     public boolean matches(String token, RuntimeTokenDigest digest) {
                         return matches;
                     }
+
+                    @Override
+                    public RuntimeTokenDigest digest(String token) {
+                        return new RuntimeTokenDigest(new byte[32]);
+                    }
                 },
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC), catalog(active()), new EmptyPolicy());
     }
 
     private RuntimeTokenCodec tokenCodec() {
@@ -192,6 +206,25 @@ class RuntimeAccessAuthenticatorTest {
                 Optional<RuntimePolicyStore.AuditCursor> cursor) { return new AuditPage(List.of(), Optional.empty()); }
     }
 
+    private static final class EmptyPolicy implements RuntimePolicyStore {
+        @Override public void createGrant(ManagedRuntimeGrant value, RuntimeTokenDigest digest) {}
+        @Override public Optional<StoredGrant> authenticateGrant(
+                RuntimeInstanceId runtimeId, RuntimeTokenDigest digest) { return Optional.empty(); }
+        @Override public List<ManagedRuntimeGrant> listGrants(AccountId owner, RuntimeInstanceId runtimeId) {
+            return List.of();
+        }
+        @Override public boolean revokeGrant(AccountId owner, RuntimeInstanceId runtimeId,
+                RuntimeGrantId grantId, Instant revokedAt) { return false; }
+        @Override public boolean acquireRate(RuntimeInstanceId runtimeId, Optional<RuntimeGrantId> grantId,
+                int requestsPerMinute) { return true; }
+        @Override public void startAudit(ToolExecutionAudit audit) {}
+        @Override public boolean completeAudit(ToolExecutionAudit audit) { return true; }
+        @Override public AuditPage listAudits(AccountId owner, RuntimeInstanceId runtimeId, int limit,
+                Optional<RuntimePolicyStore.AuditCursor> cursor) {
+            return new AuditPage(List.of(), Optional.empty());
+        }
+    }
+
     private ManagedRuntimeInstance active() {
         return instance(NOW.plusSeconds(60));
     }
@@ -227,7 +260,8 @@ class RuntimeAccessAuthenticatorTest {
         }
 
         @Override
-        public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest) {
+        public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest,
+                Map<String, io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId> credentialBindings) {
             throw new UnsupportedOperationException();
         }
 

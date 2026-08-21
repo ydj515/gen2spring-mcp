@@ -11,17 +11,14 @@ import java.util.TreeMap;
 import java.util.Optional;
 
 public interface ManagedRuntimeStore {
-    void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest);
+    default void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest) {
+        create(instance, digest, Map.of());
+    }
 
-    default void create(
+    void create(
             ManagedRuntimeInstance instance,
             RuntimeTokenDigest digest,
-            Map<String, ManagedCredentialId> credentialBindings) {
-        if (credentialBindings == null || !credentialBindings.isEmpty()) {
-            throw new IllegalArgumentException("Managed runtime storage request is invalid");
-        }
-        create(instance, digest);
-    }
+            Map<String, ManagedCredentialId> credentialBindings);
 
     Optional<StoredRuntime> find(RuntimeInstanceId id);
 

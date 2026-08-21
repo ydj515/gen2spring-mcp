@@ -1962,8 +1962,10 @@ owner-only Windows ACL을 요구한다. 관련 구현 경계는
 - deterministic Managed Runtime metadata
 - persistent owner-scoped Tool Catalog query
 - dynamic Managed Runtime 실행: 완료 (P2 v1 지원 범위)
-  - credential-free 단일 Catalog activation/revocation
-  - bearer token digest persistence와 single-replica Streamable HTTP session
+  - 단일 Catalog activation/revocation과 exact credential slot binding
+  - OPAQUE·Bearer·Basic encrypted credential create/rotate/revoke
+  - owner token과 scoped Tool grant, PostgreSQL distributed rate limit, safe execution audit
+  - bearer token digest persistence와 stateless multi-replica Streamable HTTP
   - exact MCP Java SDK `tools/list`·bounded `tools/call`
   - mTLS provider-egress와 public HTTP/HTTPS 80/443 destination policy
 
@@ -1974,10 +1976,9 @@ owner-only Windows ACL을 요구한다. 관련 구현 경계는
 - Maven
 - STDIO
 - Kotlin
-- Gateway policy, sharing, authorization, credential routing, audit execution은 미완료
-- Managed Runtime credential slot, stateless session, multi-replica transport
+- cross-Catalog public Gateway, sharing, OAuth2 credential acquisition, billing
 - AI description enhancement
-- version migration
+- Catalog version migration
 
 ---
 
@@ -2180,10 +2181,10 @@ OpenAPI
   -> Managed MCP Runtime
 ```
 
-기관별 MCP Server를 새로 배포하지 않고 credential-free immutable Catalog 하나를 bearer token으로 활성화해
-`tools/list`와 bounded `tools/call`을 처리한다. Runtime은 Catalog checksum별 SDK server handle을 격리하며,
-provider 요청은 mTLS provider-egress를 통해서만 실행한다. 이 Managed Runtime은 공유·권한·credential routing을
-제공하는 Gateway가 아니고 생성된 다운로드 프로젝트에도 포함되지 않는다. v1은 single-replica session transport다.
+기관별 MCP Server를 새로 배포하지 않고 immutable Catalog 하나를 bearer token으로 활성화해 `tools/list`와
+bounded `tools/call`을 처리한다. Runtime은 exact credential slot binding, scoped Tool grant, PostgreSQL rate·audit,
+stateless multi-replica SDK handle을 제공하고 provider 요청은 mTLS provider-egress를 통해서만 실행한다. 이
+Managed Runtime은 여러 Catalog를 공유·중개하는 공개 Gateway가 아니고 생성된 다운로드 프로젝트에도 포함되지 않는다.
 
 ### 26.2 Composite Tool Designer
 
@@ -2215,16 +2216,15 @@ provider 요청은 mTLS provider-egress를 통해서만 실행한다. 이 Manage
 
 ### 26.5 Gateway Integration
 
-- 사용자별 Tool visibility
-- Tool authorization
-- Rate Limit
-- 기관별 credential routing
-- audit log
+- 여러 Catalog를 결합한 사용자별 Tool discovery와 sharing
+- 외부 조직·tenant federation authorization
+- OAuth2 credential acquisition
+- billing and usage settlement
 - execution trace
 - Tool Catalog versioning
 
-현재 immutable Catalog 조회와 credential-free Managed Runtime은 완료됐지만 위 Gateway 실행·정책 기능과
-Catalog versioning은 완료되지 않았다.
+현재 단일 Catalog의 scoped Tool visibility, credential routing, rate limit, audit은 완료됐지만 위 공개 Gateway
+기능과 Catalog versioning은 완료되지 않았다.
 
 ---
 

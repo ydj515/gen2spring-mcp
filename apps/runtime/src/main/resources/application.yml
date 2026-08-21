@@ -22,9 +22,10 @@ gen2spring:
     cache-size: ${GEN2SPRING_RUNTIME_CACHE_SIZE:1000}
     token-pepper-file: ${GEN2SPRING_RUNTIME_TOKEN_PEPPER_FILE}
     encryption:
-      active-key-id: ${GEN2SPRING_CREDENTIAL_ACTIVE_KEY_ID:key-1}
+      active-key-id: ${GEN2SPRING_CREDENTIAL_ACTIVE_KEY_ID:key-2}
       key-files:
-        key-1: ${GEN2SPRING_CREDENTIAL_KEY_FILE}
+        key-1: ${GEN2SPRING_CREDENTIAL_RETIRED_KEY_FILE}
+        key-2: ${GEN2SPRING_CREDENTIAL_ACTIVE_KEY_FILE}
     provider-egress-endpoint: ${GEN2SPRING_PROVIDER_EGRESS_ENDPOINT:https://provider-egress:9443/internal/provider-call}
     tls:
       key-store: ${GEN2SPRING_RUNTIME_TLS_KEYSTORE}

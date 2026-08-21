@@ -3,6 +3,7 @@ package io.gen2spring.mcp.adapter.persistence;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditCursor;
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.StoredGrant;
@@ -77,22 +78,34 @@ class PostgresRuntimePolicyStoreTest {
     @Test
     void sharesOneAtomicDatabaseTimeRateWindowAcrossStoreInstances() throws Exception {
         PostgresRuntimePolicyStore second = new PostgresRuntimePolicyStore(jdbc.getDataSource());
-        RuntimeGrantId grantId = new RuntimeGrantId(UUID.randomUUID());
-        CountDownLatch start = new CountDownLatch(1);
-        try (var executor = Executors.newFixedThreadPool(12)) {
-            java.util.List<Future<Boolean>> calls = new java.util.ArrayList<>();
-            for (int i = 0; i < 12; i++) {
-                PostgresRuntimePolicyStore target = i % 2 == 0 ? store : second;
-                calls.add(executor.submit(() -> {
-                    start.await();
-                    return target.acquireRate(runtimeId, Optional.of(grantId), 5);
-                }));
-            }
-            start.countDown();
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Instant before = databaseMinute();
+            RuntimeGrantId grantId = new RuntimeGrantId(UUID.randomUUID());
+            CountDownLatch start = new CountDownLatch(1);
             int accepted = 0;
-            for (Future<Boolean> call : calls) if (call.get()) accepted++;
-            assertEquals(5, accepted);
+            try (var executor = Executors.newFixedThreadPool(12)) {
+                java.util.List<Future<Boolean>> calls = new java.util.ArrayList<>();
+                for (int i = 0; i < 12; i++) {
+                    PostgresRuntimePolicyStore target = i % 2 == 0 ? store : second;
+                    calls.add(executor.submit(() -> {
+                        start.await();
+                        return target.acquireRate(runtimeId, Optional.of(grantId), 5);
+                    }));
+                }
+                start.countDown();
+                for (Future<Boolean> call : calls) if (call.get()) accepted++;
+            }
+            if (before.equals(databaseMinute())) {
+                assertEquals(5, accepted);
+                return;
+            }
         }
+        fail("Database minute changed during every bounded rate-limit attempt");
+    }
+
+    private Instant databaseMinute() {
+        return jdbc.queryForObject(
+                "select date_trunc('minute', clock_timestamp())", Timestamp.class).toInstant();
     }
 
     @Test

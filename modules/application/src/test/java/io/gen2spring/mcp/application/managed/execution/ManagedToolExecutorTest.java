@@ -209,7 +209,7 @@ class ManagedToolExecutorTest {
     }
 
     @Test
-    void enforcesVisibilityAuditThenRateAndDoesNotResolveOrCallWhenDenied() {
+    void enforcesVisibilityAuditThenRateAndDoesNotResolveOrCallWhenDenied() throws Exception {
         RuntimeTool tool = tool(null);
         ManagedRuntimeBinding binding = binding(tool);
         RuntimeAccess access = access(binding, Set.of(tool.name()));
@@ -228,6 +228,7 @@ class ManagedToolExecutorTest {
             ManagedToolResult denied = executor.call(context, tool.name(), Map.of());
             assertTrue(denied.error());
             assertEquals(ManagedToolResult.ErrorCategory.RATE_LIMITED, denied.category());
+            assertTrue(new ObjectMapper().readTree(denied.json()).path("error").path("retryable").booleanValue());
             assertEquals(List.of("audit-start", "rate", "audit-complete:RATE_LIMITED"), policy.events);
             assertEquals(0, providerCalls.get());
 
@@ -261,6 +262,30 @@ class ManagedToolExecutorTest {
         }
     }
 
+    @Test
+    void preservesThePrimaryInternalFailureWhenAuditCompletionAlsoFails() {
+        RuntimeTool tool = tool(null);
+        ManagedRuntimeBinding binding = binding(tool);
+        PolicyStore policy = new PolicyStore(true, false);
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+                (request, timeout) -> { throw new IllegalArgumentException("private-provider-marker"); },
+                new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), policy,
+                java.time.Clock.fixed(Instant.parse("2026-08-21T00:01:00Z"), java.time.ZoneOffset.UTC),
+                UUID::randomUUID)) {
+            ManagedToolExecutor.ManagedToolInternalFailure failure = assertThrows(
+                    ManagedToolExecutor.ManagedToolInternalFailure.class,
+                    () -> executor.call(new ManagedExecutionContext(
+                                    access(binding, Set.of(tool.name())), binding, resolver(binding.instance())),
+                            tool.name(), Map.of()));
+
+            assertEquals("IllegalArgumentException", failure.failureType());
+            assertEquals(1, failure.getSuppressed().length);
+            assertEquals("AuditCompletionFailed",
+                    ((ManagedToolExecutor.ManagedToolInternalFailure) failure.getSuppressed()[0]).failureType());
+            assertFalse(failure.toString().contains("private-provider-marker"));
+        }
+    }
+
     private ManagedRuntimeBinding binding(RuntimeTool tool) {
         var artifact = new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(
                 RuntimeMetadataDocument.VERSION, "b".repeat(64), List.of(tool)));
@@ -279,7 +304,8 @@ class ManagedToolExecutorTest {
 
     private RuntimeCredentialResolver resolver(ManagedRuntimeInstance instance) {
         ManagedRuntimeStore runtimes = new ManagedRuntimeStore() {
-            @Override public void create(ManagedRuntimeInstance value, RuntimeTokenDigest digest) {}
+            @Override public void create(ManagedRuntimeInstance value, RuntimeTokenDigest digest,
+                    Map<String, ManagedCredentialId> credentialBindings) {}
             @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) {
                 return Optional.of(new StoredRuntime(instance, new RuntimeTokenDigest(new byte[32])));
             }

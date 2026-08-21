@@ -2,6 +2,7 @@ package io.gen2spring.mcp.domain.runtime;
 
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.BODY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -33,6 +34,8 @@ class RuntimeMetadataDocumentTest {
                 () -> tool("weather", "https://api.test#private"));
         assertThrows(IllegalArgumentException.class,
                 () -> credential("Service.Key", HEADER, "X-API-Key"));
+        assertThrows(IllegalArgumentException.class,
+                () -> credential("service-key", BODY, "apiKey"));
         assertThrows(IllegalArgumentException.class,
                 () -> new RuntimeMetadataDocument(RuntimeMetadataDocument.VERSION, HASH,
                         List.of(tool("weather", "https://api.test"), tool("weather", "https://api.test"))));

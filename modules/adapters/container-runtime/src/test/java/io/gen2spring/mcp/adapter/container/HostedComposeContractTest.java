@@ -34,6 +34,15 @@ class HostedComposeContractTest {
         assertFalse(providerBlock(compose).contains("OIDC"));
         assertTrue(webBlock(compose).contains("GEN2SPRING_RUNTIME_TOKEN_PEPPER_FILE: /run/secrets/runtime-token-pepper"));
         assertTrue(webBlock(compose).contains("- runtime-token-pepper"));
+        assertTrue(webBlock(compose).contains("- credential-key-active"));
+        assertTrue(webBlock(compose).contains("- credential-key-retired"));
+        assertTrue(runtimeBlock(compose).contains("- credential-key-active"));
+        assertTrue(runtimeBlock(compose).contains("- credential-key-retired"));
+        assertFalse(workerBlock(compose).contains("credential-key-"));
+        assertFalse(providerBlock(compose).contains("credential-key-"));
+        assertFalse(providerBlock(compose).contains("GEN2SPRING_DATABASE"));
+        assertFalse(runtimeBlock(compose).contains("container_name:"));
+        assertFalse(runtimeBlock(compose).contains("ports:"));
         assertTrue(webBlock(compose).contains(
                 "GEN2SPRING_RUNTIME_BASE_URI: ${GEN2SPRING_RUNTIME_BASE_URI:?set externally reachable HTTPS runtime base URI}"));
         assertTrue(environment.contains("GEN2SPRING_RUNTIME_BASE_URI=https://gen2spring.example.com"));
@@ -45,6 +54,9 @@ class HostedComposeContractTest {
         assertTrue(nginx.contains("location ~ \"^/mcp/[a-f0-9-]{36}$\""));
         assertTrue(nginx.contains("proxy_pass http://runtime:8081;"));
         assertTrue(nginx.contains("proxy_buffering off;"));
+        assertFalse(nginx.contains("ip_hash"));
+        assertFalse(nginx.contains("hash $"));
+        assertFalse(nginx.contains("Mcp-Session-Id"));
     }
 
     @Test
@@ -68,6 +80,15 @@ class HostedComposeContractTest {
         }
     }
 
+    @Test
+    void documentsMultiGenerationCredentialKeyRotationWithoutInPlaceReplacement() throws Exception {
+        String deployment = Files.readString(ROOT.resolve("deploy/hosted/README.md"));
+        assertTrue(deployment.contains("select distinct key_id from managed_credential"));
+        assertTrue(deployment.contains("one\nmapping and immutable key file for every ID"));
+        assertTrue(deployment.contains("select count(*) from managed_credential where key_id"));
+        assertTrue(deployment.contains("Never overwrite a key file in place or reuse a key ID"));
+    }
+
     private String runtimeBlock(String compose) {
         return compose.substring(compose.indexOf("  runtime:"), compose.indexOf("  proxy:"));
     }
@@ -78,5 +99,9 @@ class HostedComposeContractTest {
 
     private String webBlock(String compose) {
         return compose.substring(compose.indexOf("  web:"), compose.indexOf("  provider-egress:"));
+    }
+
+    private String workerBlock(String compose) {
+        return compose.substring(compose.indexOf("  worker:"), compose.indexOf("  web:"));
     }
 }

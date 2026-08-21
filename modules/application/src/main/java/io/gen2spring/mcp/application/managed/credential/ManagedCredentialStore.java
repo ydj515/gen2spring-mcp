@@ -9,6 +9,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 public interface ManagedCredentialStore {
+    int MAX_ACTIVE_PER_OWNER = 100;
+
     void create(ManagedCredential credential, ProtectedCredential protectedCredential);
 
     boolean rotate(
@@ -25,6 +27,12 @@ public interface ManagedCredentialStore {
     List<ManagedCredential> list(AccountId owner);
 
     long countActive(AccountId owner);
+
+    final class ManagedCredentialQuotaExceeded extends RuntimeException {
+        public ManagedCredentialQuotaExceeded() {
+            super("Managed credential quota is exhausted", null, false, false);
+        }
+    }
 
     record StoredCredential(ManagedCredential credential, ProtectedCredential protectedValue) {
         public StoredCredential {

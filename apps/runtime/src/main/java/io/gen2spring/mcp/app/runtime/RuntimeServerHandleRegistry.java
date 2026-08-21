@@ -4,7 +4,9 @@ import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance.RuntimeState;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Objects;
 
 final class RuntimeServerHandleRegistry implements AutoCloseable {
@@ -22,45 +24,68 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
         this.maximumSize = maximumSize;
     }
 
-    synchronized RuntimeServerHandle get(RuntimeAccess access) {
-        if (access == null || access.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
-            throw new IllegalStateException("Managed runtime handle is unavailable");
+    RuntimeServerHandle get(RuntimeAccess access) {
+        List<RuntimeServerHandle> stale;
+        RuntimeServerHandle created = null;
+        Throwable primary = null;
+        synchronized (this) {
+            if (access == null || access.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
+                throw new IllegalStateException("Managed runtime handle is unavailable");
+            }
+            HandleKey key = HandleKey.from(access);
+            RuntimeServerHandle existing = handles.get(key);
+            if (existing != null) return existing;
+            stale = removeSupersededCatalogs(key);
+            stale.addAll(removeExpired());
+            if (handles.size() >= maximumSize) {
+                primary = new RuntimeCapacityExceeded();
+            } else {
+                try {
+                    created = Objects.requireNonNull(factory.create(access));
+                    handles.put(key, created);
+                } catch (Error fatal) {
+                    primary = fatal;
+                } catch (RuntimeException failure) {
+                    primary = new IllegalStateException("Managed runtime handle could not be created");
+                }
+            }
         }
-        HandleKey key = HandleKey.from(access);
-        RuntimeServerHandle existing = handles.get(key);
-        if (existing != null) return existing;
-        removeSupersededCatalogs(key);
-        removeExpired();
-        if (handles.size() >= maximumSize) {
-            throw new RuntimeCapacityExceeded();
-        }
-        RuntimeServerHandle created;
-        try {
-            created = Objects.requireNonNull(factory.create(access));
-        } catch (Error fatal) {
-            throw fatal;
-        } catch (RuntimeException failure) {
-            throw new IllegalStateException("Managed runtime handle could not be created");
-        }
-        handles.put(key, created);
+        closeHandlesPreserving(stale, primary);
         return created;
     }
 
-    synchronized void invalidate(RuntimeInstanceId id) {
-        var iterator = handles.entrySet().iterator();
-        while (iterator.hasNext()) {
-            var entry = iterator.next();
-            if (entry.getKey().runtimeId().equals(id)) {
-                entry.getValue().close();
-                iterator.remove();
+    void invalidate(RuntimeInstanceId id) {
+        List<RuntimeServerHandle> removed = new ArrayList<>();
+        synchronized (this) {
+            var iterator = handles.entrySet().iterator();
+            while (iterator.hasNext()) {
+                var entry = iterator.next();
+                if (entry.getKey().runtimeId().equals(id)) {
+                    removed.add(entry.getValue());
+                    iterator.remove();
+                }
             }
         }
+        closeHandles(removed);
     }
 
     @Override
-    public synchronized void close() {
+    public void close() {
+        List<RuntimeServerHandle> removed;
+        synchronized (this) {
+            removed = new ArrayList<>(handles.values());
+            handles.clear();
+        }
+        closeHandles(removed);
+    }
+
+    synchronized List<String> cachedKeyDescriptions() {
+        return handles.keySet().stream().map(HandleKey::toString).toList();
+    }
+
+    private void closeHandles(List<RuntimeServerHandle> removed) {
         RuntimeException failure = null;
-        for (RuntimeServerHandle handle : handles.values()) {
+        for (RuntimeServerHandle handle : removed) {
             try {
                 handle.close();
             } catch (RuntimeException closeFailure) {
@@ -68,32 +93,50 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
                 else failure.addSuppressed(closeFailure);
             }
         }
-        handles.clear();
         if (failure != null) throw failure;
     }
 
-    private void removeExpired() {
+    private void closeHandlesPreserving(List<RuntimeServerHandle> removed, Throwable primary) {
+        try {
+            closeHandles(removed);
+        } catch (Throwable cleanupFailure) {
+            if (primary == null) rethrow(cleanupFailure);
+            if (cleanupFailure != primary) primary.addSuppressed(cleanupFailure);
+        }
+        if (primary != null) rethrow(primary);
+    }
+
+    private static void rethrow(Throwable failure) {
+        if (failure instanceof Error fatal) throw fatal;
+        throw (RuntimeException) failure;
+    }
+
+    private List<RuntimeServerHandle> removeExpired() {
+        List<RuntimeServerHandle> removed = new ArrayList<>();
         var iterator = handles.entrySet().iterator();
         while (iterator.hasNext()) {
             RuntimeServerHandle handle = iterator.next().getValue();
             if (handle.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
-                handle.close();
+                removed.add(handle);
                 iterator.remove();
             }
         }
+        return removed;
     }
 
-    private void removeSupersededCatalogs(HandleKey requested) {
+    private List<RuntimeServerHandle> removeSupersededCatalogs(HandleKey requested) {
+        List<RuntimeServerHandle> removed = new ArrayList<>();
         var iterator = handles.entrySet().iterator();
         while (iterator.hasNext()) {
             var entry = iterator.next();
             HandleKey current = entry.getKey();
             if (current.runtimeId().equals(requested.runtimeId())
                     && !current.catalogChecksum().equals(requested.catalogChecksum())) {
-                entry.getValue().close();
+                removed.add(entry.getValue());
                 iterator.remove();
             }
         }
+        return removed;
     }
 
     private record HandleKey(RuntimeInstanceId runtimeId, String catalogChecksum, String policyChecksum) {

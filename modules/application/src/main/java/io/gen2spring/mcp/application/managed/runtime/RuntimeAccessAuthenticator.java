@@ -23,14 +23,6 @@ public final class RuntimeAccessAuthenticator {
     private final ToolCatalogService catalogs;
     private final RuntimePolicyStore policies;
 
-    public RuntimeAccessAuthenticator(ManagedRuntimeStore store, RuntimeTokenCodec tokens, Clock clock) {
-        this.store = Objects.requireNonNull(store, "store");
-        this.tokens = Objects.requireNonNull(tokens, "tokens");
-        this.clock = Objects.requireNonNull(clock, "clock");
-        this.catalogs = null;
-        this.policies = null;
-    }
-
     public RuntimeAccessAuthenticator(
             ManagedRuntimeStore store,
             RuntimeTokenCodec tokens,
@@ -55,10 +47,6 @@ public final class RuntimeAccessAuthenticator {
             StoredRuntime stored = found.orElseThrow(RuntimeAccessAuthenticator::unauthorized);
             if (stored.instance().stateAt(clock.instant()) != RuntimeState.ACTIVE) {
                 throw inactive();
-            }
-            if (catalogs == null || policies == null) {
-                if (!tokens.matches(bearerToken, stored.tokenDigest())) throw unauthorized();
-                return new RuntimeAccess(stored.instance());
             }
             Set<String> catalogTools = new LinkedHashSet<>();
             catalogs.require(stored.instance().owner(), stored.instance().catalogId())

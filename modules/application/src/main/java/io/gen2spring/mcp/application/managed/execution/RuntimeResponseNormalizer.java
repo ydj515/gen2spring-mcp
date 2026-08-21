@@ -246,7 +246,7 @@ public final class RuntimeResponseNormalizer {
 
     private boolean retryable(ManagedToolResult.ErrorCategory category, Integer status) {
         return switch (category) {
-            case UPSTREAM_SERVER, UPSTREAM_TIMEOUT, UPSTREAM_UNAVAILABLE -> true;
+            case UPSTREAM_SERVER, UPSTREAM_TIMEOUT, UPSTREAM_UNAVAILABLE, RATE_LIMITED -> true;
             case UPSTREAM_CLIENT -> status != null && (status == 408 || status == 425 || status == 429);
             default -> false;
         };

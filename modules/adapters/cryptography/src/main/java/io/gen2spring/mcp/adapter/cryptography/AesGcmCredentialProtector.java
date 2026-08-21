@@ -7,9 +7,13 @@ import io.gen2spring.mcp.application.managed.credential.ProtectedCredential;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
@@ -145,12 +149,26 @@ public final class AesGcmCredentialProtector implements CredentialProtector {
     private SecretKey loadKey(Path path) {
         byte[] bytes = null;
         try {
-            if (path == null || !path.isAbsolute() || Files.isSymbolicLink(path)
-                    || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
-                    || Files.size(path) != KEY_BYTES) throw failed();
+            if (path == null || !path.isAbsolute()) throw failed();
+            BasicFileAttributes before = Files.readAttributes(
+                    path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (!before.isRegularFile() || before.size() != KEY_BYTES) throw failed();
             requireOwnerOnly(path);
-            bytes = Files.readAllBytes(path);
-            if (bytes.length != KEY_BYTES) throw failed();
+            bytes = new byte[KEY_BYTES];
+            try (FileChannel channel = FileChannel.open(
+                    path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+                if (channel.size() != KEY_BYTES) throw failed();
+                ByteBuffer target = ByteBuffer.wrap(bytes);
+                while (target.hasRemaining()) {
+                    if (channel.read(target) < 0) throw failed();
+                }
+                if (channel.read(ByteBuffer.allocate(1)) >= 0) throw failed();
+            }
+            BasicFileAttributes after = Files.readAttributes(
+                    path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (!after.isRegularFile() || after.size() != KEY_BYTES
+                    || before.fileKey() != null && !before.fileKey().equals(after.fileKey())) throw failed();
+            requireOwnerOnly(path);
             return new SecretKeySpec(bytes, "AES");
         } catch (CredentialProtectionFailure failure) {
             throw failure;

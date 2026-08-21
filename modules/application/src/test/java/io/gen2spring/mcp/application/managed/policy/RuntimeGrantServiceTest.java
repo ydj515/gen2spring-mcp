@@ -148,7 +148,8 @@ class RuntimeGrantServiceTest {
         private RuntimeStore(ManagedRuntimeInstance instance) {
             runtime = new StoredRuntime(instance, new RuntimeTokenDigest(new byte[32]));
         }
-        @Override public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest) {}
+        @Override public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest,
+                Map<String, io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId> credentialBindings) {}
         @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) {
             return runtime.instance().id().equals(id) ? Optional.of(runtime) : Optional.empty();
         }

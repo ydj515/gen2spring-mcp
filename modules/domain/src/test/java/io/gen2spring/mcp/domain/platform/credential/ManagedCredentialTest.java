@@ -26,7 +26,7 @@ class ManagedCredentialTest {
             IllegalArgumentException failure = assertThrows(
                     IllegalArgumentException.class, () -> ManagedCredentialId.parse(invalid));
             assertEquals("Platform identifier is invalid", failure.getMessage());
-            assertFalse(failure.getMessage().contains("private-credential-id"));
+            assertFalse(failure.toString().contains("private-credential-id"));
         }
     }
 

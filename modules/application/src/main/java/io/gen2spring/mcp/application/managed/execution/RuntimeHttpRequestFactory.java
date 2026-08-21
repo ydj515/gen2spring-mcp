@@ -57,6 +57,9 @@ public final class RuntimeHttpRequestFactory {
             if (tool == null || override == null || arguments == null) {
                 throw invalid();
             }
+            if (credentials == null && !tool.credentials().isEmpty()) {
+                throw invalid();
+            }
             RuntimeHttp http = tool.http();
             validateBindings(http.bindings());
             validateArguments(tool, http.bindings(), arguments);

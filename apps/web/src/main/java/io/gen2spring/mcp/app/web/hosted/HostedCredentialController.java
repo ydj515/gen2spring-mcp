@@ -41,15 +41,17 @@ final class HostedCredentialController {
     }
 
     @GetMapping("/api/credentials")
-    List<CredentialResponse> list(Authentication authentication) {
-        return credentials.list(accounts.resolve(authentication).accountId()).stream()
+    ResponseEntity<List<CredentialResponse>> list(Authentication authentication) {
+        List<CredentialResponse> result = credentials.list(accounts.resolve(authentication).accountId()).stream()
                 .map(HostedCredentialController::response).toList();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
     }
 
     @GetMapping("/api/credentials/{credentialId}")
-    CredentialResponse get(Authentication authentication, @PathVariable String credentialId) {
-        return response(credentials.require(
+    ResponseEntity<CredentialResponse> get(Authentication authentication, @PathVariable String credentialId) {
+        CredentialResponse result = response(credentials.require(
                 accounts.resolve(authentication).accountId(), credentialId(credentialId)));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
     }
 
     @PostMapping("/api/credentials/{credentialId}/rotation")

@@ -199,13 +199,16 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
         ManagedRuntimeInstance instance = new ManagedRuntimeInstance(
                 RUNTIME_ID, OWNER, catalogId, metadata.checksum(), Optional.empty(),
                 NOW.minusSeconds(60), NOW.plusSeconds(3600), Optional.empty());
-        new PostgresManagedRuntimeStore(dataSource).create(instance, new RuntimeTokenDigest(new byte[32]));
+        new PostgresManagedRuntimeStore(dataSource)
+                .create(instance, new RuntimeTokenDigest(new byte[32]), Map.of());
         return instance;
     }
 
     private RuntimeCredentialResolver resolver() {
         ManagedRuntimeStore runtimes = new ManagedRuntimeStore() {
-            @Override public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest) {}
+            @Override public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest,
+                    Map<String, io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId>
+                            credentialBindings) {}
             @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) { return Optional.empty(); }
             @Override public boolean revoke(AccountId owner, RuntimeInstanceId id, Instant revokedAt) { return false; }
         };

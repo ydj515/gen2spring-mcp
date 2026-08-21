@@ -72,6 +72,23 @@ class RuntimeCredentialResolverTest {
                 new RuntimeCredential("query-key", QUERY, "api_key", true)))));
     }
 
+    @Test
+    void closesEverySourceCredentialWhenTheResolvedSetIsInvalid() {
+        var first = new RuntimeCredentialResolver.WireCredential(
+                "duplicate", HEADER, "X-First", "first-secret".getBytes(StandardCharsets.UTF_8));
+        var duplicate = new RuntimeCredentialResolver.WireCredential(
+                "duplicate", HEADER, "X-Second", "second-secret".getBytes(StandardCharsets.UTF_8));
+        var unprocessed = new RuntimeCredentialResolver.WireCredential(
+                "later", HEADER, "X-Later", "later-secret".getBytes(StandardCharsets.UTF_8));
+
+        assertUnavailable(() -> RuntimeCredentialResolver.ResolvedCredentials.of(
+                List.of(first, duplicate, unprocessed)));
+
+        assertThrows(RuntimeCredentialResolver.RuntimeCredentialUnavailable.class, first::wireValue);
+        assertThrows(RuntimeCredentialResolver.RuntimeCredentialUnavailable.class, duplicate::wireValue);
+        assertThrows(RuntimeCredentialResolver.RuntimeCredentialUnavailable.class, unprocessed::wireValue);
+    }
+
     private void assertUnavailable(Runnable action) {
         RuntimeCredentialResolver.RuntimeCredentialUnavailable failure = assertThrows(
                 RuntimeCredentialResolver.RuntimeCredentialUnavailable.class, action::run);
@@ -139,7 +156,8 @@ class RuntimeCredentialResolverTest {
         private RuntimeStore(ManagedRuntimeInstance instance, Map<String, ManagedCredentialId> bindings) {
             stored = new StoredRuntime(instance, new RuntimeTokenDigest(new byte[32]), bindings);
         }
-        @Override public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest) {}
+        @Override public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest,
+                Map<String, ManagedCredentialId> credentialBindings) {}
         @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) {
             return stored.instance().id().equals(id) ? Optional.of(stored) : Optional.empty();
         }

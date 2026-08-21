@@ -140,8 +140,9 @@ public final class ManagedToolExecutor implements AutoCloseable {
             completeFatal(started, timing, baseRequest, fatal);
             throw fatal;
         } catch (RuntimeException failure) {
-            completeInternal(started, timing, baseRequest);
-            throw new ManagedToolInternalFailure(failure.getClass().getSimpleName());
+            ManagedToolInternalFailure primary = internal(failure);
+            completeInternalPreserving(started, timing, baseRequest, primary);
+            throw primary;
         }
         if (!acquired) {
             ManagedToolResult result = responses.error(
@@ -160,11 +161,12 @@ public final class ManagedToolExecutor implements AutoCloseable {
             completeFatal(started, timing, request, fatal);
             throw fatal;
         } catch (ManagedToolInternalFailure failure) {
-            completeInternal(started, timing, request);
+            completeInternalPreserving(started, timing, request, failure);
             throw failure;
         } catch (RuntimeException failure) {
-            completeInternal(started, timing, request);
-            throw new ManagedToolInternalFailure(failure.getClass().getSimpleName());
+            ManagedToolInternalFailure primary = internal(failure);
+            completeInternalPreserving(started, timing, request, primary);
+            throw primary;
         }
 
         AuditStatus terminal = result.error() ? AuditStatus.TOOL_ERROR : AuditStatus.SUCCEEDED;
@@ -216,6 +218,23 @@ public final class ManagedToolExecutor implements AutoCloseable {
             ProviderCallRequest request) {
         complete(started, AuditStatus.INTERNAL_ERROR, Optional.of("INTERNAL_ERROR"), Optional.empty(),
                 timing, request, null);
+    }
+
+    private void completeInternalPreserving(
+            ToolExecutionAudit started,
+            InstantPair timing,
+            ProviderCallRequest request,
+            ManagedToolInternalFailure primary) {
+        try {
+            completeInternal(started, timing, request);
+        } catch (Throwable completionFailure) {
+            if (completionFailure != primary) primary.addSuppressed(completionFailure);
+        }
+    }
+
+    private ManagedToolInternalFailure internal(RuntimeException failure) {
+        return failure instanceof ManagedToolInternalFailure internal
+                ? internal : new ManagedToolInternalFailure(failure.getClass().getSimpleName());
     }
 
     private void completeFatal(
@@ -429,7 +448,7 @@ public final class ManagedToolExecutor implements AutoCloseable {
         private final String failureType;
 
         private ManagedToolInternalFailure(String failureType) {
-            super("Managed Tool execution failed", null, false, false);
+            super("Managed Tool execution failed", null, true, false);
             this.failureType = failureType == null || failureType.isBlank() ? "Unknown" : failureType;
         }
 

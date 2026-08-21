@@ -147,6 +147,9 @@ public record RuntimeMetadataDocument(
                 throw new IllegalArgumentException("Runtime credential slot is invalid");
             }
             Objects.requireNonNull(targetLocation, "targetLocation");
+            if (targetLocation != ParameterLocation.HEADER && targetLocation != ParameterLocation.QUERY) {
+                throw new IllegalArgumentException("Runtime credential target is invalid");
+            }
             requireText(targetName, "targetName");
         }
 

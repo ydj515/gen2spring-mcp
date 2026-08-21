@@ -14,7 +14,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 public final class ManagedCredentialService {
-    private static final int MAX_ACTIVE = 100;
+    private static final int MAX_LISTED = 10_000;
     private final ManagedCredentialStore store;
     private final CredentialProtector protector;
     private final Clock clock;
@@ -40,7 +40,9 @@ public final class ManagedCredentialService {
 
     public ManagedCredential create(AccountId owner, String label, CredentialSecret secret) {
         try (CredentialSecret value = requireSecret(secret)) {
-            if (owner == null || store.countActive(owner) >= MAX_ACTIVE) throw invalid();
+            if (owner == null || store.countActive(owner) >= ManagedCredentialStore.MAX_ACTIVE_PER_OWNER) {
+                throw invalid();
+            }
             Instant now = clock.instant();
             ManagedCredential credential = new ManagedCredential(
                     new ManagedCredentialId(identifiers.get()), owner, label, value.kind(), 1,
@@ -52,6 +54,8 @@ public final class ManagedCredentialService {
             throw fatal;
         } catch (ManagedCredentialRequestInvalid failure) {
             throw failure;
+        } catch (ManagedCredentialStore.ManagedCredentialQuotaExceeded failure) {
+            throw invalid();
         } catch (IllegalArgumentException failure) {
             throw invalid();
         } catch (RuntimeException failure) {
@@ -87,7 +91,7 @@ public final class ManagedCredentialService {
         if (owner == null) throw invalid();
         try {
             List<ManagedCredential> result = List.copyOf(store.list(owner));
-            if (result.size() > MAX_ACTIVE || result.stream().anyMatch(value -> value == null
+            if (result.size() > MAX_LISTED || result.stream().anyMatch(value -> value == null
                     || !value.owner().equals(owner))) throw unavailable();
             return result;
         } catch (Error fatal) {

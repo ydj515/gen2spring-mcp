@@ -157,7 +157,8 @@ public class HostedWebConfiguration {
     @Bean
     CredentialProtector hostedCredentialProtector(HostedWebProperties properties) {
         return new AesGcmCredentialProtector(
-                properties.encryption().keyFiles(), properties.encryption().activeKeyId());
+                properties.credentialEncryption().keyFiles(),
+                properties.credentialEncryption().activeKeyId());
     }
 
     @Bean

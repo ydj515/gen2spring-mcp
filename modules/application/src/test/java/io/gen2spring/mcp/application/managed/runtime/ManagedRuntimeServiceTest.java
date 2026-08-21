@@ -97,7 +97,7 @@ class ManagedRuntimeServiceTest {
                 "https://api.example.com",
                 List.of(new RuntimeCredential("api-key", HEADER, "X-Api-Key", true))));
 
-        assertInvalid(() -> credentialed.service.activate(OWNER, CATALOG, Optional.empty(), Optional.empty()));
+        assertUnavailable(() -> credentialed.service.activate(OWNER, CATALOG, Optional.empty(), Optional.empty()));
         assertInvalid(() -> fixture(tool("https://api.example.com", List.of())).service.activate(
                 OWNER, CATALOG, Optional.empty(), Optional.of(Duration.ZERO)));
         assertInvalid(() -> fixture(tool("https://api.example.com", List.of())).service.activate(
@@ -140,7 +140,7 @@ class ManagedRuntimeServiceTest {
         assertInvalid(() -> fixture.service.activate(
                 OWNER, CATALOG, Optional.empty(), Optional.empty(), Map.of("unknown", id)));
         credentialStore.values.put(id, new ManagedCredentialStore.StoredCredential(
-                credential(id, ManagedCredentialKind.BEARER, Optional.of(NOW.minusSeconds(1))), protectedValue(1)));
+                credential(id, ManagedCredentialKind.OPAQUE, Optional.of(NOW.minusSeconds(1))), protectedValue(1)));
         assertInvalid(() -> fixture.service.activate(
                 OWNER, CATALOG, Optional.empty(), Optional.empty(), Map.of("service-key", id)));
         credentialStore.values.put(id, new ManagedCredentialStore.StoredCredential(
@@ -276,6 +276,12 @@ class ManagedRuntimeServiceTest {
         assertEquals("Managed runtime was not found", failure.getMessage());
         assertFalse(failure.toString().contains(CATALOG.toString()));
         assertFalse(failure.toString().contains(RUNTIME.toString()));
+    }
+
+    private void assertUnavailable(Runnable action) {
+        ManagedRuntimeService.ManagedRuntimeUnavailable failure = assertThrows(
+                ManagedRuntimeService.ManagedRuntimeUnavailable.class, action::run);
+        assertEquals("Managed runtime is unavailable", failure.getMessage());
     }
 
     private record Fixture(

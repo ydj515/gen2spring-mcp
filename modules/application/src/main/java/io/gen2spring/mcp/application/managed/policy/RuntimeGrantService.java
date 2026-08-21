@@ -64,7 +64,7 @@ public final class RuntimeGrantService {
             throw invalid();
         }
         try {
-            ManagedRuntimeInstance runtime = runtimes.require(owner, runtimeId);
+            ManagedRuntimeInstance runtime = requireRuntime(owner, runtimeId);
             Instant now = clock.instant();
             if (runtime.stateAt(now) != ManagedRuntimeInstance.RuntimeState.ACTIVE
                     || now.plus(lifetime).isAfter(runtime.expiresAt())) throw invalid();
@@ -82,8 +82,10 @@ public final class RuntimeGrantService {
             throw fatal;
         } catch (RuntimeGrantRequestInvalid failure) {
             throw failure;
-        } catch (ManagedRuntimeService.ManagedRuntimeNotFound | ToolCatalogService.ToolCatalogNotFound failure) {
+        } catch (RuntimeGrantNotFound | ToolCatalogService.ToolCatalogNotFound failure) {
             throw notFound();
+        } catch (RuntimeGrantUnavailable failure) {
+            throw failure;
         } catch (IllegalArgumentException | ToolCatalogService.ToolCatalogQueryInvalid failure) {
             throw invalid();
         } catch (RuntimeException failure) {

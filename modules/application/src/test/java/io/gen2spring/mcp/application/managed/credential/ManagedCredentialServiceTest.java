@@ -67,6 +67,10 @@ class ManagedCredentialServiceTest {
 
         store.activeCount = 100;
         assertInvalid(() -> service.create(OWNER, "Another", CredentialSecret.opaque("private")));
+
+        store.activeCount = 0;
+        store.failure = new ManagedCredentialStore.ManagedCredentialQuotaExceeded();
+        assertInvalid(() -> service.create(OWNER, "Concurrent", CredentialSecret.opaque("private")));
     }
 
     @Test
@@ -85,6 +89,21 @@ class ManagedCredentialServiceTest {
         store.failure = fatal;
         assertSame(fatal, assertThrows(AssertionError.class,
                 () -> service.list(OWNER)));
+    }
+
+    @Test
+    void listsBoundedRevokedHistoryBeyondTheActiveCredentialQuota() {
+        Store store = new Store();
+        for (int index = 0; index < 101; index++) {
+            ManagedCredential credential = new ManagedCredential(
+                    new ManagedCredentialId(new UUID(0, index + 1)), OWNER, "credential-" + index,
+                    io.gen2spring.mcp.domain.platform.credential.ManagedCredentialKind.OPAQUE, 1,
+                    NOW.minusSeconds(200 - index), NOW.minusSeconds(200 - index), Optional.of(NOW));
+            store.values.put(credential.id(),
+                    new ManagedCredentialStore.StoredCredential(credential, protectedValue(1)));
+        }
+
+        assertEquals(101, service(store, new Protector()).list(OWNER).size());
     }
 
     private ManagedCredentialService service(Store store, Protector protector) {

@@ -228,6 +228,7 @@ public final class ManagedRuntimeService {
                         SlotRequirement::merge);
             }
         }
+        if (credentials == null && !slots.isEmpty()) throw unavailable();
         if (!slots.keySet().containsAll(requested.keySet())
                 || slots.entrySet().stream().anyMatch(entry -> entry.getValue().required()
                         && !requested.containsKey(entry.getKey()))

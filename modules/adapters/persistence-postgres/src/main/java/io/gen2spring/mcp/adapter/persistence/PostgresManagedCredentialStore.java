@@ -21,6 +21,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 public final class PostgresManagedCredentialStore implements ManagedCredentialStore {
+    private static final int MAX_LIST_ROWS = 10_001;
     private static final String COLUMNS = """
             id, owner_account_id, label, kind, credential_version, envelope_version, key_id,
             wrapped_key_nonce, wrapped_key, payload_nonce, ciphertext, created_at, rotated_at, revoked_at
@@ -47,7 +48,10 @@ public final class PostgresManagedCredentialStore implements ManagedCredentialSt
                         select count(*) from managed_credential
                          where owner_account_id = ? and revoked_at is null
                         """, Long.class, credential.owner().value());
-                if (active == null || active >= 100) throw writeFailed();
+                if (active == null) throw writeFailed();
+                if (active >= ManagedCredentialStore.MAX_ACTIVE_PER_OWNER) {
+                    throw new ManagedCredentialStore.ManagedCredentialQuotaExceeded();
+                }
                 jdbc.update("""
                         insert into managed_credential(
                             id, owner_account_id, label, kind, credential_version,
@@ -63,6 +67,8 @@ public final class PostgresManagedCredentialStore implements ManagedCredentialSt
             });
         } catch (Error fatal) {
             throw fatal;
+        } catch (ManagedCredentialStore.ManagedCredentialQuotaExceeded failure) {
+            throw failure;
         } catch (RuntimeException failure) {
             throw writeFailed();
         } finally {
@@ -141,10 +147,11 @@ public final class PostgresManagedCredentialStore implements ManagedCredentialSt
             return List.copyOf(jdbc.query("""
                     select id, owner_account_id, label, kind, credential_version,
                            created_at, rotated_at, revoked_at
-                      from managed_credential
+                     from managed_credential
                      where owner_account_id = ?
                      order by created_at, id
-                    """, (resultSet, row) -> credential(resultSet), owner.value()));
+                     limit ?
+                    """, (resultSet, row) -> credential(resultSet), owner.value(), MAX_LIST_ROWS));
         } catch (Error fatal) {
             throw fatal;
         } catch (RuntimeException failure) {

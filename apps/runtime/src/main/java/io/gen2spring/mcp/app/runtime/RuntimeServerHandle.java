@@ -55,12 +55,7 @@ final class RuntimeServerHandle implements AutoCloseable {
     @Override
     public void close() {
         if (closed.compareAndSet(false, true)) {
-            try {
-                closeAction.run();
-            } catch (RuntimeException | Error failure) {
-                closed.set(false);
-                throw failure;
-            }
+            closeAction.run();
         }
     }
 }
