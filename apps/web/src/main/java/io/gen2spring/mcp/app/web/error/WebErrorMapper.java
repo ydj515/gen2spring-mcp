@@ -8,6 +8,7 @@ import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
 import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
+import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService;
 import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
 import io.gen2spring.mcp.application.managed.policy.RuntimeGrantService;
 import io.gen2spring.mcp.application.managed.audit.RuntimeAuditService;
@@ -18,6 +19,8 @@ import io.gen2spring.mcp.app.web.security.HostedAccountResolver;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @org.springframework.stereotype.Component
@@ -61,6 +64,30 @@ public final class WebErrorMapper {
         if (failure instanceof ManagedRuntimeService.ManagedRuntimeUnavailable) {
             return new WebFailure(503, "RUNTIME_UNAVAILABLE", "RUNTIME_CONTROL",
                     "The managed runtime is unavailable");
+        }
+        if (failure instanceof ManagedRuntimeMigrationService.RuntimeMigrationRequestInvalid) {
+            return new WebFailure(400, "RUNTIME_MIGRATION_REQUEST_INVALID", "RUNTIME_MIGRATION",
+                    "The runtime migration request is invalid");
+        }
+        if (failure instanceof ManagedRuntimeMigrationService.RuntimeMigrationNotFound) {
+            return new WebFailure(404, "RESOURCE_NOT_FOUND", "RUNTIME_MIGRATION",
+                    "The hosted resource was not found");
+        }
+        if (failure instanceof ManagedRuntimeMigrationService.CatalogVersionConflict) {
+            return new WebFailure(409, "CATALOG_VERSION_CONFLICT", "RUNTIME_MIGRATION",
+                    "The Catalog version changed before the request was applied");
+        }
+        if (failure instanceof ManagedRuntimeMigrationService.CatalogMigrationBreaking) {
+            return new WebFailure(409, "CATALOG_MIGRATION_BREAKING", "RUNTIME_MIGRATION",
+                    "The target Catalog contains breaking changes");
+        }
+        if (failure instanceof ManagedRuntimeMigrationService.CatalogMigrationBlocked) {
+            return new WebFailure(409, "CATALOG_MIGRATION_BLOCKED", "RUNTIME_MIGRATION",
+                    "The Catalog migration is blocked by the active Runtime policy");
+        }
+        if (failure instanceof ManagedRuntimeMigrationService.RuntimeMigrationUnavailable) {
+            return new WebFailure(503, "RUNTIME_MIGRATION_UNAVAILABLE", "RUNTIME_MIGRATION",
+                    "The runtime migration service is unavailable");
         }
         if (failure instanceof ManagedCredentialService.ManagedCredentialRequestInvalid) {
             return new WebFailure(400, "CREDENTIAL_REQUEST_INVALID", "CREDENTIAL_CONTROL",
@@ -118,6 +145,10 @@ public final class WebErrorMapper {
                     "The request method is not allowed");
         }
         if (failure instanceof MissingRequestHeaderException) {
+            return new WebFailure(400, "REQUEST_INVALID", "HTTP", "The request is invalid");
+        }
+        if (failure instanceof HttpMessageNotReadableException
+                || failure instanceof MethodArgumentTypeMismatchException) {
             return new WebFailure(400, "REQUEST_INVALID", "HTTP", "The request is invalid");
         }
         if (failure instanceof NoResourceFoundException) {

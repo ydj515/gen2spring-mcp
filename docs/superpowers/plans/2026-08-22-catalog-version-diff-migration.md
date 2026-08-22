@@ -294,18 +294,18 @@ public MigrationResult rollback(
 returns `APPLIED`, `CONFLICT`, or `BLOCKED` and performs Runtime lock, active-grant Tool-subset validation,
 compare-and-set, and transition insert in one transaction.
 
-- [ ] **Step 1: Write service RED tests**
+- [x] **Step 1: Write service RED tests**
 
   Cover compatible forward migration, breaking diff, wrong target checksum, cross-family/owner target, expired or
   revoked Runtime, stale expected Catalog, identical credential contract, credential mismatch, history bounds, valid
   rollback, and rollback blocked by an active grant using a newly added Tool.
 
-- [ ] **Step 2: Write persistence and concurrency RED tests**
+- [x] **Step 2: Write persistence and concurrency RED tests**
 
   Assert one of two concurrent CAS migrations wins, the loser records no transition, token/bindings/grants/rate/audit
   rows stay byte-for-byte unchanged, and rollback appends rather than edits history.
 
-- [ ] **Step 3: Run focused tests and confirm RED**
+- [x] **Step 3: Run focused tests and confirm RED**
 
   Run:
 
@@ -315,23 +315,23 @@ compare-and-set, and transition insert in one transaction.
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 4: Implement the service and atomic adapter**
+- [x] **Step 4: Implement the service and atomic adapter**
 
   Keep migration outside `ManagedRuntimeService` so activation/revocation and version transition remain separate
   responsibilities. Lock the Runtime and current active grants, compare source ID/checksum, validate target Tool
   subset and slot contract, update Catalog ID/checksum, and append the transition. Restore interruption and rethrow
   fatal errors unchanged.
 
-- [ ] **Step 5: Add migration/history/rollback HTTP contracts**
+- [x] **Step 5: Add migration/history/rollback HTTP contracts**
 
   Implement the three spec endpoints, bounded history parsing, fixed 409 codes, generic 404 ownership masking, and
   503 failure mapping. Never repeat activation tokens in any response.
 
-- [ ] **Step 6: Run application, persistence, and Web tests to GREEN**
+- [x] **Step 6: Run application, persistence, and Web tests to GREEN**
 
   Run the Step 3 command with `:apps:web:test` added to the Gradle task list.
 
-- [ ] **Step 7: Commit Runtime transition behavior**
+- [x] **Step 7: Commit Runtime transition behavior**
 
   Commit title: `feat(runtime): migrate compatible catalog revisions`
 

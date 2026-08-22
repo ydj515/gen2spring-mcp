@@ -15,6 +15,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
+import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService;
+import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService.MigrationResult;
+import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.RuntimeCatalogTransition;
+import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionKind;
+import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionPage;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeActivation;
 import io.gen2spring.mcp.app.web.config.JobEventStreamConfiguration;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
@@ -28,6 +33,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,6 +64,7 @@ class HostedManagedRuntimeMvcContractTest {
     @Autowired MockMvc mvc;
     @MockitoBean AccountStore accounts;
     @MockitoBean ManagedRuntimeService runtimes;
+    @MockitoBean ManagedRuntimeMigrationService migrations;
 
     @BeforeEach
     void account() {
@@ -111,6 +118,83 @@ class HostedManagedRuntimeMvcContractTest {
         mvc.perform(get("/api/runtimes/not-a-uuid").with(user()))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(not(containsString("not-a-uuid"))));
+    }
+
+    @Test
+    void protectsMigrationAndRollbackAndReturnsBoundedTransitionHistory() throws Exception {
+        UUID target = UUID.fromString("8f5a48fd-f34b-4ba5-b749-eb79008370d5");
+        ManagedRuntimeInstance migrated = new ManagedRuntimeInstance(
+                RUNTIME, OWNER, target, "b".repeat(64), Optional.empty(),
+                NOW, NOW.plusSeconds(3600), Optional.empty());
+        RuntimeCatalogTransition transition = new RuntimeCatalogTransition(
+                1, RUNTIME, CATALOG, "a".repeat(64), target, "b".repeat(64),
+                "d".repeat(64), TransitionKind.MIGRATION, NOW);
+        MigrationResult result = new MigrationResult(migrated, transition, "d".repeat(64));
+        when(migrations.migrate(OWNER, RUNTIME, CATALOG, target, "b".repeat(64))).thenReturn(result);
+        when(migrations.history(OWNER, RUNTIME, 25, Optional.empty()))
+                .thenReturn(new TransitionPage(List.of(transition), Optional.empty()));
+        when(migrations.rollback(OWNER, RUNTIME, target)).thenReturn(result);
+
+        String migrationBody = """
+                {"expectedCurrentCatalogId":"%s","targetCatalogId":"%s","targetChecksum":"%s"}
+                """.formatted(CATALOG, target, "b".repeat(64));
+        mvc.perform(post("/api/runtimes/{id}/migrations", RUNTIME.value())
+                        .with(user()).contentType("application/json").content(migrationBody))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/runtimes/{id}/migrations", RUNTIME.value())
+                        .with(user()).with(csrf()).contentType("application/json").content(migrationBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.catalogId").value(target.toString()))
+                .andExpect(jsonPath("$.transition.kind").value("MIGRATION"))
+                .andExpect(jsonPath("$.token").doesNotExist());
+        mvc.perform(get("/api/runtimes/{id}/migrations", RUNTIME.value())
+                        .queryParam("limit", "25").with(user()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].sequence").value(1))
+                .andExpect(jsonPath("$.items[0].sourceCatalogId").value(CATALOG.toString()));
+        mvc.perform(post("/api/runtimes/{id}/rollback", RUNTIME.value())
+                        .with(user()).with(csrf()).contentType("application/json")
+                        .content("{\"expectedCurrentCatalogId\":\"" + target + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").doesNotExist());
+    }
+
+    @Test
+    void mapsMigrationConflictsToFixedSafeErrorCodes() throws Exception {
+        UUID target = UUID.fromString("8f5a48fd-f34b-4ba5-b749-eb79008370d5");
+        when(migrations.migrate(eq(OWNER), eq(RUNTIME), eq(CATALOG), eq(target), any()))
+                .thenThrow(new ManagedRuntimeMigrationService.CatalogMigrationBreaking());
+
+        mvc.perform(post("/api/runtimes/{id}/migrations", RUNTIME.value())
+                        .with(user()).with(csrf()).contentType("application/json")
+                        .content("""
+                                {"expectedCurrentCatalogId":"%s","targetCatalogId":"%s","targetChecksum":"%s"}
+                                """.formatted(CATALOG, target, "f".repeat(64))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CATALOG_MIGRATION_BREAKING"))
+                .andExpect(content().string(not(containsString(target.toString()))));
+
+        when(migrations.rollback(OWNER, RUNTIME, target))
+                .thenThrow(new ManagedRuntimeMigrationService.CatalogMigrationBlocked());
+        mvc.perform(post("/api/runtimes/{id}/rollback", RUNTIME.value())
+                        .with(user()).with(csrf()).contentType("application/json")
+                        .content("{\"expectedCurrentCatalogId\":\"" + target + "\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CATALOG_MIGRATION_BLOCKED"))
+                .andExpect(content().string(not(containsString(target.toString()))));
+    }
+
+    @Test
+    void rejectsMalformedMigrationJsonAndHistoryBoundsAsBadRequests() throws Exception {
+        mvc.perform(post("/api/runtimes/{id}/migrations", RUNTIME.value())
+                        .with(user()).with(csrf()).contentType("application/json").content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("REQUEST_INVALID"));
+
+        mvc.perform(get("/api/runtimes/{id}/migrations", RUNTIME.value())
+                        .queryParam("limit", "not-a-number").with(user()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("REQUEST_INVALID"));
     }
 
     private ManagedRuntimeInstance instance() {
