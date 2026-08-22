@@ -115,18 +115,18 @@ public final class SchemaValueValidator {
 `CanonicalJsonValue` produces bounded structural hash/equality values with object-order independence and numeric
 `BigDecimal.compareTo` equality. It never renders raw values into an exception or log.
 
-- [ ] **Step 1: Write schema projection RED tests**
+- [x] **Step 1: Write schema projection RED tests**
 
   Assert exact `maxItems`, `uniqueItems`, `oneOf`, `anyOf`, nullable wrappers, sorted properties/required values, and
   metadata codec round-trip. Reject unknown keywords, invalid type/keyword combinations, oversized branch lists, and
   non-canonical numbers.
 
-- [ ] **Step 2: Write value-validation RED tests**
+- [x] **Step 2: Write value-validation RED tests**
 
   Cover min/max arrays, duplicate nested objects with different key order, `1` versus `1.0`, ordered nested arrays,
   exactly-one `oneOf`, at-least-one `anyOf`, nullability, branch budget, and fixed value-free failures.
 
-- [ ] **Step 3: Run application tests and confirm RED**
+- [x] **Step 3: Run application tests and confirm RED**
 
   Run:
 
@@ -140,17 +140,17 @@ public final class SchemaValueValidator {
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 4: Implement projection, canonical uniqueness, and shared validation**
+- [x] **Step 4: Implement projection, canonical uniqueness, and shared validation**
 
   Preserve immutable sorted maps/lists, treat an SDK validation pass as additional rather than authoritative, call
   the validator before representative and Managed Runtime provider request construction, and keep the failure type at
   the existing safe boundary.
 
-- [ ] **Step 5: Run application tests to GREEN**
+- [x] **Step 5: Run application tests to GREEN**
 
   Run the Step 3 command and the complete `:modules:application:test` suite.
 
-- [ ] **Step 6: Commit schema projection and validation**
+- [x] **Step 6: Commit schema projection and validation**
 
   Commit title: `feat(schema): enforce bounded JSON schema values`
 

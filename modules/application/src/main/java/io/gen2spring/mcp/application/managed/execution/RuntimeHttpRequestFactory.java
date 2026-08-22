@@ -7,6 +7,7 @@ import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.application.toolmodel.schema.SchemaValueValidator;
 import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver.ResolvedCredentials;
 import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver.WireCredential;
 import java.lang.reflect.Array;
@@ -27,6 +28,7 @@ import java.util.Set;
 
 public final class RuntimeHttpRequestFactory {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final SchemaValueValidator SCHEMA_VALUES = new SchemaValueValidator();
     private static final Set<String> RESERVED_HEADERS = Set.of(
             "authorization", "proxy-authorization", "host", "content-length", "content-type", "accept",
             "connection", "keep-alive", "proxy-authenticate", "te", "trailer", "transfer-encoding", "upgrade",
@@ -240,6 +242,11 @@ public final class RuntimeHttpRequestFactory {
         Set<String> names = bindings.stream().map(ParameterBinding::sourceName)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         if (!names.containsAll(arguments.keySet()) || arguments.keySet().stream().anyMatch(name -> name == null)) {
+            throw invalid();
+        }
+        try {
+            SCHEMA_VALUES.validate(tool.inputSchema(), arguments);
+        } catch (IllegalArgumentException failure) {
             throw invalid();
         }
         Object requiredValue = tool.inputSchema().get("required");

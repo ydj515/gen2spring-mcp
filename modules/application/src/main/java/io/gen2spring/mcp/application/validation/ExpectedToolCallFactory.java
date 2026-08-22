@@ -4,6 +4,7 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.VALIDATION_ARGUM
 
 import io.gen2spring.mcp.application.command.GenerationCommand.ToolCallValidation;
 import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfiguration;
+import io.gen2spring.mcp.application.toolmodel.schema.SchemaValueValidator;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.validation.ExpectedToolCall;
 import io.gen2spring.mcp.application.validation.ExpectedUpstreamInteraction;
@@ -28,6 +29,7 @@ public final class ExpectedToolCallFactory {
     private static final int MAX_VALIDATION_PATTERN_CHARACTERS = 512;
     private static final int MAX_VALIDATION_PATTERN_GROUP_DEPTH = 32;
     private static final int MAX_PATTERN_CHARACTER_ACCESSES = 100_000;
+    private final SchemaValueValidator schemaValues = new SchemaValueValidator();
 
     public ExpectedToolCall create(List<ToolDefinition> tools, ValidationConfiguration configuration) {
         ToolCallValidation toolCall = configuration == null ? null : configuration.toolCall();
@@ -122,11 +124,13 @@ public final class ExpectedToolCallFactory {
         if (schema == null || schema.type() == null) {
             throw invalid(inputName);
         }
-        if (value == null) {
-            if (schema.nullable()) {
-                return null;
-            }
+        try {
+            schemaValues.validate(schema, value);
+        } catch (IllegalArgumentException failure) {
             throw invalid(inputName);
+        }
+        if (value == null) {
+            return null;
         }
         return switch (schema.type()) {
             case STRING -> normalizeString(schema, requireType(value, String.class, inputName), inputName);

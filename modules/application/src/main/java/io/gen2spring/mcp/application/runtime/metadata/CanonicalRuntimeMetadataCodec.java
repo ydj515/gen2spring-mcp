@@ -41,7 +41,8 @@ public final class CanonicalRuntimeMetadataCodec {
     private static final ObjectMapper MAPPER = objectMapper();
     private static final List<String> SCHEMA_FIELDS = List.of(
             "type", "format", "enum", "minimum", "maximum", "minLength", "maxLength",
-            "pattern", "properties", "required", "items", "minItems", "anyOf", "description");
+            "pattern", "properties", "required", "items", "minItems", "maxItems", "uniqueItems",
+            "oneOf", "anyOf", "description");
 
     public RuntimeMetadataArtifact encode(RuntimeMetadataDocument document) {
         try {
@@ -244,7 +245,7 @@ public final class CanonicalRuntimeMetadataCodec {
                     node.set(field, properties);
                 }
                 case "items" -> node.set(field, schemaNode(requireStringMap(value)));
-                case "anyOf" -> {
+                case "oneOf", "anyOf" -> {
                     ArrayNode alternatives = MAPPER.createArrayNode();
                     requireList(value).forEach(item -> alternatives.add(schemaNode(requireStringMap(item))));
                     node.set(field, alternatives);
@@ -260,11 +261,17 @@ public final class CanonicalRuntimeMetadataCodec {
                     }
                     node.set(field, scalarNode(value));
                 }
-                case "minLength", "maxLength", "minItems" -> {
+                case "minLength", "maxLength", "minItems", "maxItems" -> {
                     if (!(value instanceof Integer)) {
                         throw new IllegalArgumentException("Runtime JSON schema integer is invalid");
                     }
                     node.set(field, scalarNode(value));
+                }
+                case "uniqueItems" -> {
+                    if (!(value instanceof Boolean bool)) {
+                        throw new IllegalArgumentException("Runtime JSON schema boolean is invalid");
+                    }
+                    node.put(field, bool);
                 }
                 case "type", "format", "pattern", "description" ->
                     node.put(field, requireStringValue(value));
@@ -279,8 +286,10 @@ public final class CanonicalRuntimeMetadataCodec {
             return;
         }
         Object typeValue = schema.get("type");
-        Object alternativesValue = schema.get("anyOf");
-        if ((typeValue == null) == (alternativesValue == null)) {
+        Object oneOfValue = schema.get("oneOf");
+        Object anyOfValue = schema.get("anyOf");
+        int shapeCount = (typeValue == null ? 0 : 1) + (oneOfValue == null ? 0 : 1) + (anyOfValue == null ? 0 : 1);
+        if (shapeCount != 1) {
             throw new IllegalArgumentException("Runtime JSON schema type is invalid");
         }
         String type = null;
@@ -291,26 +300,40 @@ public final class CanonicalRuntimeMetadataCodec {
                 throw new IllegalArgumentException("Runtime JSON schema type is invalid");
             }
         }
+        Object alternativesValue = oneOfValue != null ? oneOfValue : anyOfValue;
         if (alternativesValue != null) {
             List<?> alternatives = requireList(alternativesValue);
-            if (alternatives.size() != 2) {
-                throw new IllegalArgumentException("Runtime nullable schema is invalid");
+            if (alternatives.isEmpty() || alternatives.size() > 8) {
+                throw new IllegalArgumentException("Runtime composed schema is invalid");
             }
             alternatives.forEach(alternative -> validateSchema(requireStringMap(alternative)));
-            Map<String, Object> nullAlternative = requireStringMap(alternatives.get(1));
-            if (!Map.of("type", "null").equals(nullAlternative)) {
-                throw new IllegalArgumentException("Runtime nullable schema is invalid");
+            Set<String> allowed = oneOfValue == null
+                    ? Set.of("anyOf", "description") : Set.of("oneOf", "description");
+            if (!allowed.containsAll(schema.keySet())) {
+                throw new IllegalArgumentException("Runtime composed schema is invalid");
             }
+            return;
         }
         validateLength(schema, "minLength");
         validateLength(schema, "maxLength");
         validateLength(schema, "minItems");
+        validateLength(schema, "maxItems");
         Integer minLength = (Integer) schema.get("minLength");
         Integer maxLength = (Integer) schema.get("maxLength");
         if (minLength != null && maxLength != null && minLength > maxLength) {
             throw new IllegalArgumentException("Runtime JSON schema length is invalid");
         }
-        if (schema.containsKey("minItems") && !"array".equals(type)
+        Integer minItems = (Integer) schema.get("minItems");
+        Integer maxItems = (Integer) schema.get("maxItems");
+        if (minItems != null && maxItems != null && minItems > maxItems) {
+            throw new IllegalArgumentException("Runtime array schema is invalid");
+        }
+        Object uniqueValue = schema.get("uniqueItems");
+        if (uniqueValue != null && !(uniqueValue instanceof Boolean)
+                || schema.containsKey("minItems") && !"array".equals(type)
+                || schema.containsKey("maxItems") && !"array".equals(type)
+                || schema.containsKey("uniqueItems") && !"array".equals(type)
+                || Boolean.TRUE.equals(uniqueValue) && (maxItems == null || maxItems > 256)
                 || "array".equals(type) != schema.containsKey("items")) {
             throw new IllegalArgumentException("Runtime array schema is invalid");
         }
@@ -326,8 +349,15 @@ public final class CanonicalRuntimeMetadataCodec {
         if (schema.containsKey("enum") && !"string".equals(type)) {
             throw new IllegalArgumentException("Runtime enum schema is invalid");
         }
+        if ((schema.containsKey("minLength") || schema.containsKey("maxLength") || schema.containsKey("pattern"))
+                && !"string".equals(type)) {
+            throw new IllegalArgumentException("Runtime string schema is invalid");
+        }
         BigDecimal minimum = decimalConstraint(schema, "minimum");
         BigDecimal maximum = decimalConstraint(schema, "maximum");
+        if ((minimum != null || maximum != null) && !"integer".equals(type) && !"number".equals(type)) {
+            throw new IllegalArgumentException("Runtime numeric schema is invalid");
+        }
         if (minimum != null && maximum != null && minimum.compareTo(maximum) > 0) {
             throw new IllegalArgumentException("Runtime numeric schema is invalid");
         }
@@ -469,9 +499,9 @@ public final class CanonicalRuntimeMetadataCodec {
                     schema.put(field, parsed);
                 }
                 case "items" -> schema.put(field, schemaMap(object(value, "items")));
-                case "anyOf" -> {
+                case "oneOf", "anyOf" -> {
                     List<Object> alternatives = new ArrayList<>();
-                    array(value, "anyOf").forEach(item ->
+                    array(value, field).forEach(item ->
                             alternatives.add(schemaMap(object(item, "alternative"))));
                     schema.put(field, alternatives);
                 }
@@ -481,7 +511,13 @@ public final class CanonicalRuntimeMetadataCodec {
                     strings.sort(String::compareTo);
                     schema.put(field, strings);
                 }
-                case "minLength", "maxLength", "minItems" -> schema.put(field, exactInt(value));
+                case "minLength", "maxLength", "minItems", "maxItems" -> schema.put(field, exactInt(value));
+                case "uniqueItems" -> {
+                    if (!value.isBoolean()) {
+                        throw new IllegalArgumentException("Runtime JSON schema boolean is invalid");
+                    }
+                    schema.put(field, value.booleanValue());
+                }
                 case "minimum", "maximum" -> {
                     if (!value.isNumber()) {
                         throw new IllegalArgumentException("Runtime JSON schema number is invalid");

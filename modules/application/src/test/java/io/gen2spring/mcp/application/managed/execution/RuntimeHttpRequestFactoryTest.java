@@ -232,7 +232,14 @@ class RuntimeHttpRequestFactoryTest {
             List<RuntimeCredential> credentials) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
-        schema.put("properties", Map.of());
+        Map<String, Object> properties = new LinkedHashMap<>();
+        bindings.forEach(binding -> properties.put(binding.sourceName(), switch (binding.sourceName()) {
+            case "tags" -> Map.of("type", "array", "items", Map.of("type", "string"));
+            case "score" -> Map.of("type", "number");
+            default -> Map.of("type", "string");
+        }));
+        schema.put("properties", properties);
+        schema.put("required", List.of());
         schema.putAll(schemaExtras);
         return new RuntimeTool(
                 "operation", "managed_tool", "Managed Tool", schema,
