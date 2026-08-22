@@ -383,10 +383,10 @@ class HostedWebMvcContractTest {
                                 .content(source))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.openApiVersion").value(version))
-                .andExpect(jsonPath("$.counts.total").value(26))
-                .andExpect(jsonPath("$.counts.supported").value(26))
+                .andExpect(jsonPath("$.counts.total").value(38))
+                .andExpect(jsonPath("$.counts.supported").value(34))
                 .andExpect(jsonPath("$.counts.supportedWithWarning").value(0))
-                .andExpect(jsonPath("$.counts.unsupported").value(0))
+                .andExpect(jsonPath("$.counts.unsupported").value(4))
                 .andExpect(jsonPath("$.file.name").value(fileName))
                 .andExpect(jsonPath("$.file.byteSize").value(source.length))
                 .andReturn().getResponse().getContentAsByteArray());
@@ -395,7 +395,30 @@ class HostedWebMvcContractTest {
                 .findFirst().orElseThrow();
         assertEquals("SUPPORTED", customers.path("status").asText());
         assertTrue(customers.path("issues").isEmpty());
+        assertOperationDecision(response, "listSchemaFixtures", "SUPPORTED", null);
+        assertOperationDecision(response, "getNullablePathFixture", "UNSUPPORTED",
+                "PARAMETER_NULLABLE_PATH_UNSUPPORTED");
+        assertOperationDecision(response, "submitConflictingAllOf", "UNSUPPORTED",
+                "SCHEMA_CONSTRAINT_UNSUPPORTED");
+        assertOperationDecision(response, "submitCompositionBudgetOverflow", "UNSUPPORTED",
+                "SCHEMA_COMPOSITION_UNSUPPORTED");
         return response;
+    }
+
+    private void assertOperationDecision(
+            com.fasterxml.jackson.databind.JsonNode analysis,
+            String operationId,
+            String status,
+            String issueCode) {
+        var operation = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
+                .filter(candidate -> candidate.path("operationId").asText().equals(operationId))
+                .findFirst().orElseThrow();
+        assertEquals(status, operation.path("status").asText());
+        if (issueCode == null) {
+            assertTrue(operation.path("issues").isEmpty());
+        } else {
+            assertEquals(issueCode, operation.path("issues").get(0).path("code").asText());
+        }
     }
 
     private Path repositoryRoot() {

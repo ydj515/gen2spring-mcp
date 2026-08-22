@@ -35,6 +35,7 @@ testing {
                 implementation(project())
                 implementation(project(":modules:domain"))
                 implementation(project(":modules:application"))
+                implementation(project(":modules:adapters:openapi"))
                 implementation(project(":modules:adapters:mcp-java-sdk"))
                 implementation(project(":modules:adapters:persistence-postgres"))
                 implementation(platform(libs.spring.boot.bom))

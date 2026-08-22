@@ -278,13 +278,13 @@ change.
 - Modify: `apps/web/src/test/java/io/gen2spring/mcp/app/web/hosted/HostedWebMvcContractTest.java`
 - Modify: `apps/runtime/src/integrationTest/java/io/gen2spring/mcp/app/runtime/ManagedRuntimeJourneyIntegrationTest.java`
 
-- [ ] **Step 1: Add paired fixture operations and RED parity assertions**
+- [x] **Step 1: Add paired fixture operations and RED parity assertions**
 
   Add stable operation IDs for optional nullable query/header, required and optional nullable root body,
   min/max/unique arrays, compatible/conflicting `allOf`, `oneOf`, `anyOf`, 3.1 `$ref` sibling with 3.0 equivalent,
   nullable path, and budget overflow. Do not remove or weaken existing 26 operations.
 
-- [ ] **Step 2: Run paired analysis and confirm RED**
+- [x] **Step 2: Run paired analysis and confirm RED**
 
   Run:
 
@@ -294,22 +294,22 @@ change.
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 3: Complete analyzer, preview, and presenter parity**
+- [x] **Step 3: Complete analyzer, preview, and presenter parity**
 
   Require exact operation IDs, support state, primary/context issue codes, and canonical Tool schemas across both
   dialects. Supported and unsupported examples must remain visible in CLI, local Web, and hosted Web.
 
-- [ ] **Step 4: Add generated and Managed Runtime wire journeys**
+- [x] **Step 4: Add generated and Managed Runtime wire journeys**
 
   For each new supported family, prove one valid and one invalid call, exact upstream request count, exact URI/header
   omission, exact JSON null body, structural duplicate rejection, and composition branch selection. Use both root
   fixtures and synthetic secrets only.
 
-- [ ] **Step 5: Run fixture and end-to-end tests to GREEN**
+- [x] **Step 5: Run fixture and end-to-end tests to GREEN**
 
   Run the Step 2 command plus the focused CLI and Managed Runtime integration tests.
 
-- [ ] **Step 6: Commit executable fixtures**
+- [x] **Step 6: Commit executable fixtures**
 
   Commit title: `test(openapi): cover bounded schema contracts`
 

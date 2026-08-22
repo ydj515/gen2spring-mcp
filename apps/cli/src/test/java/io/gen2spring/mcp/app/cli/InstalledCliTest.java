@@ -466,15 +466,42 @@ class InstalledCliTest {
     }
 
     private void assertExactPairedFixtureCounts(com.fasterxml.jackson.databind.JsonNode analysis) {
-        assertEquals(26, analysis.path("counts").path("total").asInt());
-        assertEquals(26, analysis.path("counts").path("supported").asInt());
+        assertEquals(38, analysis.path("counts").path("total").asInt());
+        assertEquals(34, analysis.path("counts").path("supported").asInt());
         assertEquals(0, analysis.path("counts").path("supportedWithWarning").asInt());
-        assertEquals(0, analysis.path("counts").path("unsupported").asInt());
+        assertEquals(4, analysis.path("counts").path("unsupported").asInt());
         var customers = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
                 .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
                 .findFirst().orElseThrow();
         assertEquals("SUPPORTED", customers.path("status").asText());
         assertTrue(customers.path("issues").isEmpty());
+        assertOperationDecision(analysis, "listSchemaFixtures", "SUPPORTED", null);
+        assertOperationDecision(analysis, "submitRequiredNullablePayload", "SUPPORTED", null);
+        assertOperationDecision(analysis, "submitBoundedUniqueItems", "SUPPORTED", null);
+        assertOperationDecision(analysis, "getNullablePathFixture", "UNSUPPORTED",
+                "PARAMETER_NULLABLE_PATH_UNSUPPORTED");
+        assertOperationDecision(analysis, "inspectRequiredNullableFilter", "UNSUPPORTED",
+                "PARAMETER_REQUIRED_NULLABLE_UNSUPPORTED");
+        assertOperationDecision(analysis, "submitConflictingAllOf", "UNSUPPORTED",
+                "SCHEMA_CONSTRAINT_UNSUPPORTED");
+        assertOperationDecision(analysis, "submitCompositionBudgetOverflow", "UNSUPPORTED",
+                "SCHEMA_COMPOSITION_UNSUPPORTED");
+    }
+
+    private void assertOperationDecision(
+            com.fasterxml.jackson.databind.JsonNode analysis,
+            String operationId,
+            String status,
+            String issueCode) {
+        var operation = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
+                .filter(candidate -> candidate.path("operationId").asText().equals(operationId))
+                .findFirst().orElseThrow();
+        assertEquals(status, operation.path("status").asText());
+        if (issueCode == null) {
+            assertTrue(operation.path("issues").isEmpty());
+        } else {
+            assertEquals(issueCode, operation.path("issues").get(0).path("code").asText());
+        }
     }
 
     private Path repositoryRoot() {
