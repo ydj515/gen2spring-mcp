@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
@@ -96,6 +97,10 @@ class CanonicalRuntimeMetadataCodecTest {
         List<Map<String, Object>> invalidSchemas = List.of(
                 Map.of("type", true),
                 Map.of("type", "array", "items", Map.of("type", "string"), "minItems", -1),
+                Map.of("type", "array", "items", Map.of("type", "string"), "uniqueItems", true),
+                Map.of("oneOf", List.of()),
+                Map.of("type", "string", "oneOf", List.of(Map.of("type", "string"))),
+                Map.of("type", "string", "unknown", true),
                 Map.of(
                         "type", "object",
                         "properties", Map.of("city", Map.of("type", "string")),
@@ -113,6 +118,37 @@ class CanonicalRuntimeMetadataCodecTest {
             assertEquals(GeneratorErrorCode.RUNTIME_METADATA_INVALID, failure.code());
             assertEquals("Runtime metadata could not be generated", failure.safeMessage());
         }
+    }
+
+    @Test
+    void roundTripsBoundedArrayAndCompositionKeywordsCanonically() {
+        RuntimeTool source = document().tools().getFirst();
+        Map<String, Object> inputSchema = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "values", Map.of(
+                                "type", "array",
+                                "items", Map.of("oneOf", List.of(
+                                        Map.of("type", "integer"),
+                                        Map.of("type", "string"))),
+                                "minItems", 1,
+                                "maxItems", 4,
+                                "uniqueItems", true)),
+                "required", List.of("values"));
+        RuntimeTool expanded = new RuntimeTool(
+                source.operationId(), source.name(), source.description(), inputSchema,
+                source.outputKind(), source.outputSchema(), source.http(), source.responseNormalization(),
+                source.retry(), source.pagination(), source.credentials());
+        RuntimeMetadataDocument document = new RuntimeMetadataDocument(
+                RuntimeMetadataDocument.VERSION, SPECIFICATION_CHECKSUM, List.of(expanded));
+
+        RuntimeMetadataArtifact encoded = codec.encode(document);
+        RuntimeMetadataArtifact decoded = codec.decode(encoded.content());
+
+        assertEquals(inputSchema, decoded.document().tools().getFirst().inputSchema());
+        String json = new String(encoded.content(), UTF_8);
+        assertTrue(json.contains("\"oneOf\""));
+        assertTrue(json.contains("\"maxItems\":4,\"uniqueItems\":true"));
     }
 
     private RuntimeMetadataDocument document() {

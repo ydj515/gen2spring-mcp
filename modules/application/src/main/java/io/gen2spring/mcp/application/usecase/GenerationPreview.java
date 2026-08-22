@@ -193,6 +193,7 @@ public record GenerationPreview(
             case BOOLEAN -> "boolean";
             case ARRAY -> "array";
             case OBJECT -> "object";
+            case COMPOSED -> "composed";
         });
         if (schema.nullable()) {
             result.put("nullable", true);
@@ -219,6 +220,12 @@ public record GenerationPreview(
         if (schema.minItems() != null) {
             result.put("minItems", schema.minItems());
         }
+        if (schema.maxItems() != null) {
+            result.put("maxItems", schema.maxItems());
+        }
+        if (schema.uniqueItems()) {
+            result.put("uniqueItems", true);
+        }
         if (schema.pattern() != null) {
             result.put("pattern", schema.pattern());
         }
@@ -242,6 +249,15 @@ public record GenerationPreview(
             }
             result.put("properties", properties);
             result.put("required", required);
+        }
+        if (schema.type() == io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.COMPOSED) {
+            if (schema.composition() == null) {
+                throw new IllegalArgumentException("Generation preview output schema is invalid");
+            }
+            result.put("composition", Map.of(
+                    "kind", schema.composition().kind().name(),
+                    "branches", schema.composition().branches().stream()
+                            .map(GenerationPreview::canonicalSchema).toList()));
         }
         return new LinkedHashMap<>(result);
     }

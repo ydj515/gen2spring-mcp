@@ -88,6 +88,9 @@ class PostgresToolCatalogStoreTest {
         assertEquals(lease.jobId(), summary.generationId());
         assertEquals(2, summary.toolCount());
         assertEquals(publication.metadata().checksum(), summary.metadataChecksum());
+        assertEquals(summary.catalogId(), summary.version().familyId());
+        assertEquals(1, summary.version().revision());
+        assertTrue(summary.version().predecessorCatalogId().isEmpty());
         assertTrue(catalogs.list(
                 owner, 2, Optional.of(new CatalogCursor(summary.createdAt(), summary.catalogId()))).isEmpty());
         assertTrue(catalogs.list(other, 2, Optional.empty()).isEmpty());

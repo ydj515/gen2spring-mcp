@@ -38,7 +38,7 @@ public final class ManagedToolExecutor implements AutoCloseable {
         this(client, limits, Clock.systemUTC(), null, UUID::randomUUID);
     }
 
-    ManagedToolExecutor(ProviderCallClient client, ManagedExecutionLimits limits, Clock clock) {
+    public ManagedToolExecutor(ProviderCallClient client, ManagedExecutionLimits limits, Clock clock) {
         this(client, limits, clock, null, UUID::randomUUID);
     }
 

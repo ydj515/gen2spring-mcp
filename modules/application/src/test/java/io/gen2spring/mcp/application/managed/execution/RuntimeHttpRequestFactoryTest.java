@@ -103,6 +103,80 @@ class RuntimeHttpRequestFactoryTest {
     }
 
     @Test
+    void omitsExplicitNullOptionalQueryAndHeaderArguments() {
+        Map<String, Object> nullableString = Map.of(
+                "anyOf", List.of(Map.of("type", "string"), Map.of("type", "null")));
+        RuntimeTool tool = toolWithSchema(
+                List.of(
+                        new ParameterBinding("query", QUERY, "q"),
+                        new ParameterBinding("header", HEADER, "X-Optional")),
+                false,
+                false,
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of("query", nullableString, "header", nullableString),
+                        "required", List.of()));
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("query", null);
+        arguments.put("header", null);
+
+        ProviderCallRequest request = factory.create(tool, Optional.empty(), arguments);
+
+        assertEquals("https://api.example/items", request.uri().toASCIIString());
+        assertEquals(Map.of(), request.headers());
+        assertArrayEquals(new byte[0], request.body());
+    }
+
+    @Test
+    void injectsCredentialsAfterOmittingNullableUserHeaders() {
+        Map<String, Object> nullableString = Map.of(
+                "anyOf", List.of(Map.of("type", "string"), Map.of("type", "null")));
+        RuntimeTool source = toolWithSchema(
+                List.of(new ParameterBinding("optional", HEADER, "X-Optional")), false, false,
+                Map.of("type", "object", "properties", Map.of("optional", nullableString), "required", List.of()));
+        RuntimeTool tool = new RuntimeTool(
+                source.operationId(), source.name(), source.description(), source.inputSchema(), source.outputKind(),
+                source.outputSchema(), source.http(), source.responseNormalization(), source.retry(), source.pagination(),
+                List.of(new RuntimeCredential("authorization", HEADER, "Authorization", true)));
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("optional", null);
+
+        try (ResolvedCredentials credentials = ResolvedCredentials.of(List.of(
+                new WireCredential("authorization", HEADER, "Authorization",
+                        "Bearer credential".getBytes(StandardCharsets.UTF_8))))) {
+            ProviderCallRequest request = factory.create(tool, Optional.empty(), arguments, credentials);
+
+            assertEquals(Map.of("Authorization", List.of("Bearer credential")), request.headers());
+        }
+    }
+
+    @Test
+    void distinguishesAbsentAndExplicitNullNullableRootBodies() {
+        Map<String, Object> object = Map.of(
+                "type", "object",
+                "properties", Map.of("name", Map.of("type", "string")),
+                "required", List.of("name"));
+        Map<String, Object> nullableBody = Map.of(
+                "anyOf", List.of(object, Map.of("type", "null")));
+        RuntimeTool optional = toolWithSchema(
+                List.of(new ParameterBinding("body", BODY, "body")), false, false,
+                Map.of("type", "object", "properties", Map.of("body", nullableBody), "required", List.of()));
+        RuntimeTool required = toolWithSchema(
+                List.of(new ParameterBinding("body", BODY, "body")), false, true,
+                Map.of("type", "object", "properties", Map.of("body", nullableBody),
+                        "required", List.of("body")));
+        Map<String, Object> explicitNull = new LinkedHashMap<>();
+        explicitNull.put("body", null);
+
+        assertArrayEquals(new byte[0], factory.create(optional, Optional.empty(), Map.of()).body());
+        assertArrayEquals("null".getBytes(StandardCharsets.UTF_8),
+                factory.create(optional, Optional.empty(), explicitNull).body());
+        assertInvalid(() -> factory.create(required, Optional.empty(), Map.of()));
+        assertArrayEquals("null".getBytes(StandardCharsets.UTF_8),
+                factory.create(required, Optional.empty(), explicitNull).body());
+    }
+
+    @Test
     void rejectsReservedOrDuplicateTargetsAndUnboundArgumentsWithOneSafeFailure() {
         for (RuntimeTool invalid : List.of(
                 tool("https://api.example", "/items", List.of(
@@ -232,12 +306,31 @@ class RuntimeHttpRequestFactoryTest {
             List<RuntimeCredential> credentials) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
-        schema.put("properties", Map.of());
+        Map<String, Object> properties = new LinkedHashMap<>();
+        bindings.forEach(binding -> properties.put(binding.sourceName(), switch (binding.sourceName()) {
+            case "tags" -> Map.of("type", "array", "items", Map.of("type", "string"));
+            case "score" -> Map.of("type", "number");
+            default -> Map.of("type", "string");
+        }));
+        schema.put("properties", properties);
+        schema.put("required", List.of());
         schema.putAll(schemaExtras);
         return new RuntimeTool(
                 "operation", "managed_tool", "Managed Tool", schema,
                 "GENERIC_JSON", Map.of(),
                 new RuntimeHttp(POST, baseUrl, path, bindings, objectBody, requiredBody),
                 null, null, null, credentials);
+    }
+
+    private RuntimeTool toolWithSchema(
+            List<ParameterBinding> bindings,
+            boolean objectBody,
+            boolean requiredBody,
+            Map<String, Object> inputSchema) {
+        return new RuntimeTool(
+                "operation", "managed_tool", "Managed Tool", inputSchema,
+                "GENERIC_JSON", Map.of(),
+                new RuntimeHttp(POST, "https://api.example", "/items", bindings, objectBody, requiredBody),
+                null, null, null, List.of());
     }
 }

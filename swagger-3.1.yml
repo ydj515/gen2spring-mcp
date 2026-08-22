@@ -878,8 +878,241 @@ paths:
               examples:
                 success:
                   $ref: "#/components/examples/PaymentManualReviewListSuccess"
+  /schema-contracts/filters:
+    get:
+      summary: 선택적 nullable 필터 조회
+      operationId: listSchemaFixtures
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: [string, "null"]
+        - name: X-Schema-Revision
+          in: header
+          required: false
+          schema:
+            type: [string, "null"]
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/required-filter:
+    get:
+      summary: 지원하지 않는 필수 nullable 필터
+      operationId: inspectRequiredNullableFilter
+      parameters:
+        - name: revision
+          in: query
+          required: true
+          schema:
+            type: [string, "null"]
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/required-nullable-body:
+    post:
+      summary: 필수 nullable 루트 본문 제출
+      operationId: submitRequiredNullablePayload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: [object, "null"]
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/optional-nullable-body:
+    post:
+      summary: 선택적 nullable 루트 본문 제출
+      operationId: submitOptionalNullablePayload
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: [object, "null"]
+              properties:
+                note:
+                  type: string
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/bounded-items:
+    post:
+      summary: 제한된 고유 배열 제출
+      operationId: submitBoundedUniqueItems
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              minItems: 1
+              maxItems: 2
+              uniqueItems: true
+              items:
+                $ref: "#/components/schemas/SchemaContractItem"
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/compatible-all-of:
+    post:
+      summary: 호환되는 allOf 본문 제출
+      operationId: submitCompatibleAllOf
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/SchemaContractBase"
+                - type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: string
+                      minLength: 3
+                      maxLength: 32
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/conflicting-all-of:
+    post:
+      summary: 지원하지 않는 충돌 allOf 본문
+      operationId: submitConflictingAllOf
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: string
+                - type: integer
+                  format: int32
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/one-of:
+    post:
+      summary: oneOf 본문 제출
+      operationId: submitOneOfValue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: string
+                  minLength: 1
+                - type: integer
+                  format: int32
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/any-of:
+    post:
+      summary: anyOf 본문 제출
+      operationId: submitAnyOfValue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - type: integer
+                  format: int32
+                - type: number
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/referenced-constraint:
+    post:
+      summary: 참조된 제약 본문 제출
+      operationId: submitReferencedConstraint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchemaContractToken"
+              minLength: 8
+              maxLength: 16
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/nullable-path/{contractId}:
+    get:
+      summary: 지원하지 않는 nullable 경로
+      operationId: getNullablePathFixture
+      parameters:
+        - name: contractId
+          in: path
+          required: true
+          schema:
+            type: [string, "null"]
+      responses:
+        "204":
+          description: Accepted
+  /schema-contracts/composition-budget:
+    post:
+      summary: 지원하지 않는 composition branch 초과 본문
+      operationId: submitCompositionBudgetOverflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: string
+                  enum: [branch-1]
+                - type: string
+                  enum: [branch-2]
+                - type: string
+                  enum: [branch-3]
+                - type: string
+                  enum: [branch-4]
+                - type: string
+                  enum: [branch-5]
+                - type: string
+                  enum: [branch-6]
+                - type: string
+                  enum: [branch-7]
+                - type: string
+                  enum: [branch-8]
+                - type: string
+                  enum: [branch-9]
+      responses:
+        "204":
+          description: Accepted
 components:
   schemas:
+    SchemaContractItem:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: number
+    SchemaContractBase:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+    SchemaContractToken:
+      type: string
+      minLength: 4
+      maxLength: 32
     UpdateUserRequest:
       type: object
       properties:

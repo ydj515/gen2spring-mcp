@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.adapter.emitter.springai2;
 
 import io.gen2spring.mcp.adapter.emitter.support.JavaStringLiteral;
+import io.gen2spring.mcp.adapter.emitter.support.GeneratedSchemaValueValidatorSource;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,6 +21,8 @@ final class RuntimeSourceRenderer {
         sources.put(runtimePath + "ParameterBinding.java", parameterBinding(packageName));
         sources.put(runtimePath + "SecretBinding.java", secretBinding(packageName));
         sources.put(runtimePath + "ToolArgumentContext.java", toolArgumentContext(packageName));
+        sources.put(runtimePath + "SchemaValueValidator.java",
+                GeneratedSchemaValueValidatorSource.render(packageName));
         sources.put(runtimePath + "OperationDefinition.java", hasPaginationPolicies
                 ? operationDefinitionWithPagination(packageName)
                 : hasRetryPolicies ? operationDefinitionWithRetry(packageName) : operationDefinition(packageName));
@@ -756,20 +759,29 @@ final class RuntimeSourceRenderer {
                         UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromUri(baseUrl).path(operation.path());
                         Map<String, Object> pathVariables = new LinkedHashMap<>();
                         HttpHeaders headers = new HttpHeaders();
-                        Object requestBody = operation.objectRequestBody() && operation.requestBodyRequired()
-                                ? new LinkedHashMap<String, Object>() : null;
+                        RequestBodyValue requestBody = operation.objectRequestBody() && operation.requestBodyRequired()
+                                ? new RequestBodyValue(true, new LinkedHashMap<String, Object>())
+                                : RequestBodyValue.absent();
 
                         for (ParameterBinding binding : operation.parameterBindings()) {
                             if (!arguments.containsKey(binding.sourceName())) {
                                 continue;
                             }
                             Object value = arguments.get(binding.sourceName());
-                            if (value == null && (binding.targetLocation() != ParameterLocation.BODY
-                                    || !operation.objectRequestBody())) {
-                                throw new RequestSerializationException();
+                            if (value == null) {
+                                if (binding.targetLocation() == ParameterLocation.QUERY
+                                        || binding.targetLocation() == ParameterLocation.HEADER) {
+                                    continue;
+                                }
+                                if (binding.targetLocation() == ParameterLocation.PATH) {
+                                    throw new RequestSerializationException();
+                                }
                             }
-                            requestBody = bind(uriBuilder, pathVariables, headers, binding.targetLocation(),
-                                    binding.targetName(), value, requestBody, operation.objectRequestBody());
+                            Object bound = bind(uriBuilder, pathVariables, headers, binding.targetLocation(),
+                                    binding.targetName(), value, requestBody.value(), operation.objectRequestBody());
+                            requestBody = binding.targetLocation() == ParameterLocation.BODY
+                                    ? new RequestBodyValue(true, bound)
+                                    : new RequestBodyValue(requestBody.present(), bound);
                         }
                         for (SecretBinding binding : operation.secretBindings()) {
                             secretNames.add(binding.propertyName());
@@ -782,8 +794,11 @@ final class RuntimeSourceRenderer {
                                 continue;
                             }
                             secretValues.add(value);
-                            requestBody = bind(uriBuilder, pathVariables, headers, binding.targetLocation(),
-                                    binding.targetName(), value, requestBody, operation.objectRequestBody());
+                            Object bound = bind(uriBuilder, pathVariables, headers, binding.targetLocation(),
+                                    binding.targetName(), value, requestBody.value(), operation.objectRequestBody());
+                            requestBody = binding.targetLocation() == ParameterLocation.BODY
+                                    ? new RequestBodyValue(true, bound)
+                                    : new RequestBodyValue(requestBody.present(), bound);
                         }
 
                         removePropagationHeaders(headers);
@@ -800,10 +815,10 @@ final class RuntimeSourceRenderer {
                             target.addAll(headers);
                             target.setAccept(List.of(MediaType.APPLICATION_JSON));
                         });
-                        if (requestBody != null && allowsBody(operation.method())) {
+                        if (requestBody.present() && allowsBody(operation.method())) {
                             try {
                                 request.contentType(MediaType.APPLICATION_JSON);
-                                request.body(jsonMapper.writeValueAsBytes(requestBody));
+                                request.body(jsonMapper.writeValueAsBytes(requestBody.value()));
                             } catch (JacksonException exception) {
                                 throw new RequestSerializationException();
                             }
@@ -1128,6 +1143,12 @@ final class RuntimeSourceRenderer {
                     @PreDestroy
                     void shutdown() {
                         requestExecutor.shutdownNow();
+                    }
+
+                    private record RequestBodyValue(boolean present, Object value) {
+                        private static RequestBodyValue absent() {
+                            return new RequestBodyValue(false, null);
+                        }
                     }
 
                     private record RawResponse(int status, String contentType, byte[] body) {}

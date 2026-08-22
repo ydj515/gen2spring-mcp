@@ -19,6 +19,7 @@ final class ToolCallbackConfigurationRenderer {
         Set<String> imports = new TreeSet<>(Set.of(
                 packageName + ".runtime.ProviderErrorException",
                 packageName + ".runtime.RuntimeTelemetry",
+                packageName + ".runtime.SchemaValueValidator",
                 packageName + ".runtime.ToolArgumentContext",
                 "io.modelcontextprotocol.server.McpServerFeatures",
                 "io.modelcontextprotocol.spec.McpSchema",
@@ -40,6 +41,9 @@ final class ToolCallbackConfigurationRenderer {
                 String type = JavaSourceRenderer.javaType(
                         input.schema(), JavaSourceRenderer.upperCamel(tool.operationId())
                                 + JavaSourceRenderer.upperCamel(input.name()));
+                if (type.endsWith(".JsonNode")) {
+                    continue;
+                }
                 if (type.startsWith("java.util.List<")) {
                     imports.add("java.util.List");
                 }
@@ -91,7 +95,8 @@ final class ToolCallbackConfigurationRenderer {
             source.append("))\n")
                     .append("                        .toolObject(tools)\n")
                     .append("                        .build(), objectMapper, runtimeTelemetry, ")
-                    .append(JavaStringLiteral.quote(tool.operationId())).append(")")
+                    .append(JavaStringLiteral.quote(tool.operationId())).append(", ")
+                    .append(JavaStringLiteral.quote(schema)).append(")")
                     .append(index + 1 == tools.size() ? "\n" : ",\n");
         }
         return source.append("        );\n")
@@ -100,8 +105,11 @@ final class ToolCallbackConfigurationRenderer {
                 .append("            MethodToolCallback callback,\n")
                 .append("            ObjectMapper objectMapper,\n")
                 .append("            RuntimeTelemetry runtimeTelemetry,\n")
-                .append("            String operationId) {\n")
+                .append("            String operationId,\n")
+                .append("            String inputSchema) {\n")
                 .append("        McpSchema.Tool tool = McpToolUtils.toSyncToolSpecification(callback).tool();\n")
+                .append("        Map<String, Object> parsedInputSchema = inputSchema(objectMapper, inputSchema);\n")
+                .append("        SchemaValueValidator schemaValues = new SchemaValueValidator();\n")
                 .append("        return McpServerFeatures.SyncToolSpecification.builder()\n")
                 .append("                .tool(tool)\n")
                 .append("                .callHandler((exchange, request) -> {\n")
@@ -111,6 +119,7 @@ final class ToolCallbackConfigurationRenderer {
                 .append("                    try {\n")
                 .append("                        Map<String, Object> rawArguments =\n")
                 .append("                                request.arguments() == null ? Map.of() : request.arguments();\n")
+                .append("                        schemaValues.validate(parsedInputSchema, rawArguments);\n")
                 .append("                        String input = objectMapper.writeValueAsString(rawArguments);\n")
                 .append("                        String output;\n")
                 .append("                        try (var argumentContext = ToolArgumentContext.open(rawArguments)) {\n")
@@ -161,6 +170,13 @@ final class ToolCallbackConfigurationRenderer {
                 .append("                                RuntimeTelemetry.HttpStatusClass.NONE);\n")
                 .append("                        logSafeFailure(tool.name(), failure);\n")
                 .append("                        throw new IllegalStateException(\"Generated Tool execution failed\");\n")
+                .append("                    } catch (SchemaValueValidator.SchemaValueInvalid failure) {\n")
+                .append("                        telemetryCall.complete(\n")
+                .append("                                RuntimeTelemetry.Outcome.INTERNAL_ERROR,\n")
+                .append("                                RuntimeTelemetry.ErrorCategory.ARGUMENT_CONVERSION,\n")
+                .append("                                RuntimeTelemetry.HttpStatusClass.NONE);\n")
+                .append("                        logSafeFailure(tool.name(), failure);\n")
+                .append("                        throw new IllegalStateException(\"Generated Tool execution failed\");\n")
                 .append("                    } catch (JsonProcessingException failure) {\n")
                 .append("                        telemetryCall.complete(\n")
                 .append("                                RuntimeTelemetry.Outcome.INTERNAL_ERROR,\n")
@@ -185,6 +201,14 @@ final class ToolCallbackConfigurationRenderer {
                 .append("                    }\n")
                 .append("                })\n")
                 .append("                .build();\n")
+                .append("    }\n\n")
+                .append("    @SuppressWarnings(\"unchecked\")\n")
+                .append("    private static Map<String, Object> inputSchema(ObjectMapper objectMapper, String schema) {\n")
+                .append("        try {\n")
+                .append("            return objectMapper.readValue(schema, Map.class);\n")
+                .append("        } catch (JsonProcessingException failure) {\n")
+                .append("            throw new IllegalStateException(\"Generated Tool schema is invalid\");\n")
+                .append("        }\n")
                 .append("    }\n\n")
                 .append("    private static void logSafeFailure(String toolName, Throwable failure) {\n")
                 .append("        Throwable cause = failure.getCause();\n")

@@ -9,7 +9,8 @@ import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_LOCATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_SERIALIZATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED;
-import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_NULLABLE_PATH_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_REQUIRED_NULLABLE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SECURITY_REQUIREMENT_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_INFERRED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_UNSUPPORTED;
@@ -202,9 +203,6 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 pathParameters, operation.getParameters(), componentSchemas, openApi.getOpenapi(), issues);
         ApiSchema requestBody = normalizeRequestBody(
                 operation.getRequestBody(), componentSchemas, openApi.getOpenapi(), issues);
-        if (requestBody != null && requestBody.nullable()) {
-            issues.add(SCHEMA_NULLABILITY_UNSUPPORTED);
-        }
         if (method == HttpMethod.GET && operation.getRequestBody() != null) {
             issues.add(GET_REQUEST_BODY_UNSUPPORTED);
         }
@@ -338,6 +336,9 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         if (schema.items() != null) {
             addSchemaIssues(operationIssues, schema.items());
         }
+        if (schema.composition() != null) {
+            schema.composition().branches().forEach(branch -> addSchemaIssues(operationIssues, branch));
+        }
     }
 
     private IssueCode schemaIssue(String warning) {
@@ -363,12 +364,19 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
                 issues.add(PARAMETER_LOCATION_UNSUPPORTED);
                 return;
             }
-            ApiSchema schema = schemaNormalizer.normalize(
+            ApiSchema schema = schemaNormalizer.normalizeParameter(
                     parameter.getSchema(), componentSchemas, openApiVersion);
+            boolean required = Boolean.TRUE.equals(parameter.getRequired());
+            if (schema.nullable() && location == ParameterLocation.PATH) {
+                issues.add(PARAMETER_NULLABLE_PATH_UNSUPPORTED);
+            } else if (schema.nullable() && required
+                    && (location == ParameterLocation.QUERY || location == ParameterLocation.HEADER)) {
+                issues.add(PARAMETER_REQUIRED_NULLABLE_UNSUPPORTED);
+            }
             if (!supportsParameterSerialization(parameter, location, schema)) {
                 issues.add(PARAMETER_SERIALIZATION_UNSUPPORTED);
             }
-            normalized.add(new ApiParameter(parameter.getName(), location, Boolean.TRUE.equals(parameter.getRequired()),
+            normalized.add(new ApiParameter(parameter.getName(), location, required,
                     parameter.getDescription(), schema));
         });
         return List.copyOf(normalized);
@@ -384,7 +392,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         return switch (schema.type()) {
             case STRING, INTEGER, NUMBER, BOOLEAN -> hasDefaultScalarStyle(parameter, location);
             case ARRAY -> supportsQueryArray(parameter, location, schema.items());
-            case OBJECT -> false;
+            case OBJECT, COMPOSED -> false;
         };
     }
 
@@ -412,7 +420,7 @@ public final class SwaggerOpenApiAnalyzer implements SpecificationAnalyzer {
         }
         return switch (items.type()) {
             case STRING, INTEGER, NUMBER, BOOLEAN -> true;
-            case ARRAY, OBJECT -> false;
+            case ARRAY, OBJECT, COMPOSED -> false;
         };
     }
 

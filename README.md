@@ -137,6 +137,7 @@ immutable Tool Catalog가 같은 PostgreSQL transaction에서 게시된다. Cata
 GET /api/tool-catalogs
 GET /api/tool-catalogs/{catalogId}
 GET /api/tool-catalogs/{catalogId}/tools/{toolName}
+GET /api/tool-catalogs/{catalogId}/diff?targetCatalogId={targetCatalogId}
 ```
 
 Catalog metadata에는 Tool schema와 HTTP·policy·credential 요구사항만 포함하며 secret 값, 환경변수 이름,
@@ -147,6 +148,9 @@ Hosted mode의 Managed Runtime은 단일 immutable Tool Catalog를 bearer token�
 OPAQUE·Bearer·Basic credential을 Catalog slot에 연결하고, Tool visibility와 분당 요청 수가 제한된 grant를
 발급하며, 안전한 실행 audit을 조회할 수 있다. PostgreSQL이 replica 간 rate·audit 정합성을 제공하고 provider
 HTTP는 mTLS `provider-egress`만 통과한다. 이 기능은 생성 ZIP의 서버나 여러 Catalog를 중개하는 공개 Gateway가 아니다.
+명시적 predecessor로 게시한 같은 family의 Catalog revision은 deterministic diff로 비교할 수 있다. compatible
+revision은 기존 runtime ID·bearer·credential binding·grant·rate·audit을 유지한 채 CAS migration/rollback하며,
+breaking 변경이나 target에 없는 Tool을 사용하는 active grant가 있으면 전환하지 않는다.
 
 ## 저장소 구조
 
@@ -188,7 +192,7 @@ Gradle Wrapper JVM은 host의 Java 21로 시작될 수 있다. generated compile
 ## 지원 범위 요약
 
 로컬 OpenAPI 3.0.x·3.1.x 파일, 주요 HTTP method, path/query/header parameter, JSON body,
-primitive·enum·array·object와 non-recursive local `$ref`를 지원한다. OpenAPI 3.1은 기본 dialect와
-단일 non-null type + `null` union만 bounded하게 정규화한다. remote `$ref`, custom dialect,
-composed/recursive schema, Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
+primitive·enum·array·object, non-recursive local `$ref`, bounded `allOf`·`oneOf`·`anyOf`와 multi-type union을
+지원한다. nullable parameter/body, 배열·조합 schema와 OpenAPI 3.1 `$ref` sibling에는 명시적인 안전 경계를
+적용한다. remote `$ref`, custom dialect, recursive/discriminator schema, Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
 정확한 serialization 및 validation 경계는 [사용자 가이드](docs/user-guide.md#지원-범위와-제한)를 참고한다.

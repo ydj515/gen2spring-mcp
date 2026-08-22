@@ -258,7 +258,7 @@ final class InputRecordRenderer {
                 imports.add("jakarta.validation.constraints.DecimalMax");
             }
             if (!isEnumSchema(schema) && (schema.minLength() != null || schema.maxLength() != null
-                    || schema.minItems() != null)) {
+                    || schema.minItems() != null || schema.maxItems() != null)) {
                 imports.add("jakarta.validation.constraints.Size");
             }
             if (!isEnumSchema(schema) && schema.pattern() != null) {
@@ -307,10 +307,12 @@ final class InputRecordRenderer {
         if (schema.maximum() != null) {
             annotations.add("@DecimalMax(" + JavaStringLiteral.quote(schema.maximum().toPlainString()) + ")");
         }
-        if (schema.minLength() != null || schema.maxLength() != null || schema.minItems() != null) {
+        if (schema.minLength() != null || schema.maxLength() != null
+                || schema.minItems() != null || schema.maxItems() != null) {
             int minimum = schema.minItems() != null
                     ? schema.minItems() : schema.minLength() == null ? 0 : schema.minLength();
-            int maximum = schema.maxLength() == null ? Integer.MAX_VALUE : schema.maxLength();
+            int maximum = schema.maxItems() != null
+                    ? schema.maxItems() : schema.maxLength() == null ? Integer.MAX_VALUE : schema.maxLength();
             annotations.add("@Size(min = " + minimum + ", max = " + maximum + ")");
         }
         if (schema.pattern() != null) {

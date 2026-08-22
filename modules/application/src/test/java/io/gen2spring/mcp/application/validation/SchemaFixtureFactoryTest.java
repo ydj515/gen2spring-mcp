@@ -5,7 +5,6 @@ import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.OBJECT;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.STRING;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import java.math.BigDecimal;
@@ -31,16 +30,16 @@ class SchemaFixtureFactoryTest {
     }
 
     @Test
-    void reusesSingletonEnumsAndRejectsUnsupportedPatternFixtures() {
+    void reusesSingletonEnumsAndSupportsBudgetedPatternFixtures() {
         ApiSchema single = new ApiSchema(
                 STRING, null, false, List.of("only"), null, null, null, null, null,
                 null, Map.of(), List.of(), null, true, List.of());
-        ApiSchema unsupportedPattern = new ApiSchema(
+        ApiSchema budgetedPattern = new ApiSchema(
                 STRING, null, false, List.of(), null, null, 1, 10, "(a+)+$",
                 null, Map.of(), List.of(), null, true, List.of());
 
         assertEquals("only", factory.create(single, 1));
-        assertThrows(IllegalArgumentException.class, () -> factory.create(unsupportedPattern, 0));
+        assertEquals("a", factory.create(budgetedPattern, 0));
     }
 
     private ApiSchema schema(

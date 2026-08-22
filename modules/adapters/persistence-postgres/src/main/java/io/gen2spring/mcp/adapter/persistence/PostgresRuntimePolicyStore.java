@@ -23,6 +23,8 @@ import java.util.TreeSet;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 public final class PostgresRuntimePolicyStore implements RuntimePolicyStore {
     private static final String GRANT_COLUMNS = """
@@ -40,17 +42,56 @@ public final class PostgresRuntimePolicyStore implements RuntimePolicyStore {
             """;
 
     private final JdbcTemplate jdbc;
+    private final TransactionTemplate transactions;
 
     public PostgresRuntimePolicyStore(DataSource dataSource) {
-        jdbc = new JdbcTemplate(Objects.requireNonNull(dataSource, "dataSource"));
+        DataSource checked = Objects.requireNonNull(dataSource, "dataSource");
+        jdbc = new JdbcTemplate(checked);
+        transactions = new TransactionTemplate(new DataSourceTransactionManager(checked));
     }
 
     @Override
-    public void createGrant(ManagedRuntimeGrant grant, RuntimeTokenDigest digest) {
-        if (grant == null || digest == null) throw invalid();
+    public boolean createGrant(
+            ManagedRuntimeGrant grant,
+            RuntimeTokenDigest digest,
+            UUID expectedCatalogId,
+            String expectedCatalogChecksum,
+            Instant observedAt) {
+        if (grant == null || digest == null || expectedCatalogId == null
+                || expectedCatalogChecksum == null || observedAt == null) throw invalid();
         byte[] digestBytes = digest.value();
         try {
-            jdbc.update(connection -> {
+            Boolean created = transactions.execute(status -> createGrantLocked(
+                    grant, digestBytes, expectedCatalogId, expectedCatalogChecksum, observedAt));
+            return Boolean.TRUE.equals(created);
+        } catch (Error fatal) {
+            throw fatal;
+        } catch (RuntimeException failure) {
+            throw writeFailed();
+        } finally {
+            Arrays.fill(digestBytes, (byte) 0);
+        }
+    }
+
+    private boolean createGrantLocked(
+            ManagedRuntimeGrant grant,
+            byte[] digestBytes,
+            UUID expectedCatalogId,
+            String expectedCatalogChecksum,
+            Instant observedAt) {
+        boolean current = !jdbc.queryForList("""
+                select id
+                  from managed_runtime_instance
+                 where id = ? and owner_account_id = ?
+                   and catalog_id = ? and catalog_checksum = ?
+                   and revoked_at is null and expires_at > ?
+                 for update
+                """, UUID.class, grant.runtimeId().value(), grant.owner().value(),
+                expectedCatalogId, expectedCatalogChecksum, Timestamp.from(observedAt)).isEmpty();
+        if (!current) {
+            return false;
+        }
+        return jdbc.update(connection -> {
                 var statement = connection.prepareStatement("""
                         insert into managed_runtime_grant(
                             id, runtime_id, owner_account_id, principal, allowed_tools,
@@ -68,14 +109,7 @@ public final class PostgresRuntimePolicyStore implements RuntimePolicyStore {
                 statement.setTimestamp(9, Timestamp.from(grant.expiresAt()));
                 statement.setTimestamp(10, grant.revokedAt().map(Timestamp::from).orElse(null));
                 return statement;
-            });
-        } catch (Error fatal) {
-            throw fatal;
-        } catch (RuntimeException failure) {
-            throw writeFailed();
-        } finally {
-            Arrays.fill(digestBytes, (byte) 0);
-        }
+            }) == 1;
     }
 
     @Override

@@ -8,11 +8,13 @@ import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_DUPLICATED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.OPERATION_ID_MISSING;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.REQUEST_BODY_MEDIA_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_NULLABLE_PATH_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_REQUIRED_NULLABLE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_COMPOSITION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_CONSTRAINT_UNSUPPORTED;
-import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_NULLABILITY_UNSUPPORTED;
-import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_MULTI_TYPE_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.PARAMETER_SERIALIZATION_UNSUPPORTED;
+import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SCHEMA_TYPE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_INFERRED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_MEDIA_TYPE_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
@@ -119,7 +121,7 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
-    void normalizesOpenApi31SingleNullUnionsAndRejectsOtherTypeSets() throws Exception {
+    void normalizesOpenApi31NullAndMultiTypeUnionsWithinSerializationBoundaries() throws Exception {
         var supported = analyzer.analyze(
                 resource("openapi/openapi-31-supported.yaml"), 10 * 1024 * 1024).document();
         var nullable = supported.operations().getFirst().successResponse().properties().get("label");
@@ -131,10 +133,12 @@ class SwaggerOpenApiAnalyzerTest {
         assertEquals(SchemaType.STRING, nullable.type());
         assertTrue(nullable.nullable());
         assertTrue(supported.operations().getFirst().supported());
+        assertEquals(SchemaType.COMPOSED,
+                unsupported.get("multiTypeInput").parameters().getFirst().schema().type());
         assertTrue(unsupported.get("multiTypeInput").support().issueCodes()
-                .contains(SCHEMA_MULTI_TYPE_UNSUPPORTED));
+                .contains(PARAMETER_SERIALIZATION_UNSUPPORTED));
         assertTrue(unsupported.get("nullOnlyInput").support().issueCodes()
-                .contains(SCHEMA_MULTI_TYPE_UNSUPPORTED));
+                .contains(SCHEMA_TYPE_UNSUPPORTED));
         assertTrue(unsupported.get("conditionalResult").support().issueCodes()
                 .contains(SCHEMA_CONSTRAINT_UNSUPPORTED),
                 unsupported.get("conditionalResult").support().issueCodes().toString());
@@ -144,7 +148,7 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
-    void keepsInputNullabilityFailClosedForOpenApi31() throws Exception {
+    void supportsOptionalNullableOpenApi31QueryParameters() throws Exception {
         Path specification = Files.createTempFile("nullable-openapi31-input", ".yaml");
         Files.writeString(specification, """
                 openapi: 3.1.2
@@ -163,7 +167,7 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertTrue(operation.parameters().getFirst().schema().nullable());
-        assertEquals(java.util.List.of(SCHEMA_NULLABILITY_UNSUPPORTED), operation.support().issueCodes());
+        assertTrue(operation.supported(), operation.support().issueCodes().toString());
     }
 
     @ParameterizedTest
@@ -205,7 +209,7 @@ class SwaggerOpenApiAnalyzerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"3.0.4", "3.1.2"})
-    void keepsNullableRootRequestBodiesFailClosed(String version) throws Exception {
+    void supportsNullableRootRequestBodies(String version) throws Exception {
         String nullable = version.startsWith("3.0")
                 ? "type: string, nullable: true"
                 : "type: [string, 'null']";
@@ -227,8 +231,8 @@ class SwaggerOpenApiAnalyzerTest {
 
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
-        assertFalse(operation.supported());
-        assertEquals(java.util.List.of(SCHEMA_NULLABILITY_UNSUPPORTED), operation.support().issueCodes());
+        assertTrue(operation.supported(), operation.support().issueCodes().toString());
+        assertTrue(operation.requestBody().nullable());
     }
 
     @Test
@@ -445,12 +449,14 @@ class SwaggerOpenApiAnalyzerTest {
         assertNull(operations.get("bodyless").successResponse());
         assertTrue(operations.get("range").supported(), operations.get("range").warnings().toString());
         assertEquals(SchemaType.STRING, operations.get("range").successResponse().type());
-        for (String operationId : java.util.List.of("conflicting", "missingSchema", "composed")) {
+        for (String operationId : java.util.List.of("conflicting", "missingSchema")) {
             assertFalse(operations.get(operationId).supported(), operationId);
             assertNull(operations.get(operationId).successResponse(), operationId);
             assertTrue(operations.get(operationId).support().issueCodes().contains(SUCCESS_SCHEMA_UNSUPPORTED),
                     operationId);
         }
+        assertTrue(operations.get("composed").supported(), operations.get("composed").warnings().toString());
+        assertEquals(SchemaType.COMPOSED, operations.get("composed").successResponse().type());
     }
 
     @Test
@@ -573,12 +579,11 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
-    void marksOperationsWithComposedSchemasAsUnsupported() throws Exception {
+    void supportsCompatibleCompositionWhileKeepingRecursiveSchemasUnsupported() throws Exception {
         var document = analyzer.analyze(resource("openapi/unsupported-schema.yaml"), 10 * 1024 * 1024).document();
 
         var operation = document.operations().getFirst();
         assertFalse(operation.supported());
-        assertTrue(operation.support().issueCodes().contains(SCHEMA_COMPOSITION_UNSUPPORTED));
         assertTrue(operation.support().issueCodes().contains(
                 io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.RECURSIVE_SCHEMA_UNSUPPORTED));
     }
@@ -610,7 +615,7 @@ class SwaggerOpenApiAnalyzerTest {
     }
 
     @Test
-    void rejectsNullableSchemasUntilGeneratedContractsCanPreserveExplicitNulls() throws Exception {
+    void rejectsRequiredNullableQueryParametersWithTheLocationSpecificReason() throws Exception {
         Path specification = Files.createTempFile("nullable-parameter", ".yaml");
         Files.writeString(specification, """
                 openapi: 3.0.3
@@ -630,7 +635,42 @@ class SwaggerOpenApiAnalyzerTest {
         var operation = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().getFirst();
 
         assertFalse(operation.supported());
-        assertTrue(operation.support().issueCodes().contains(SCHEMA_NULLABILITY_UNSUPPORTED));
+        assertEquals(java.util.List.of(PARAMETER_REQUIRED_NULLABLE_UNSUPPORTED),
+                operation.support().issueCodes());
+    }
+
+    @Test
+    void supportsOptionalNullableHeadersAndRejectsNullablePaths() throws Exception {
+        Path specification = Files.createTempFile("nullable-parameter-locations", ".yaml");
+        Files.writeString(specification, """
+                openapi: 3.1.2
+                info: { title: Nullable Parameter API, version: '1.0' }
+                paths:
+                  /widgets:
+                    get:
+                      operationId: listWidgets
+                      parameters:
+                        - name: X-Revision
+                          in: header
+                          schema: { type: [string, 'null'] }
+                      responses: { '204': { description: Accepted } }
+                  /widgets/{widgetId}:
+                    get:
+                      operationId: getWidget
+                      parameters:
+                        - name: widgetId
+                          in: path
+                          required: true
+                          schema: { type: [string, 'null'] }
+                      responses: { '204': { description: Accepted } }
+                """);
+
+        var operations = analyzer.analyze(specification, 10 * 1024 * 1024).document().operations().stream()
+                .collect(java.util.stream.Collectors.toMap(operation -> operation.operationId(), operation -> operation));
+
+        assertTrue(operations.get("listWidgets").supported(), operations.get("listWidgets").warnings().toString());
+        assertEquals(java.util.List.of(PARAMETER_NULLABLE_PATH_UNSUPPORTED),
+                operations.get("getWidget").support().issueCodes());
     }
 
     @Test

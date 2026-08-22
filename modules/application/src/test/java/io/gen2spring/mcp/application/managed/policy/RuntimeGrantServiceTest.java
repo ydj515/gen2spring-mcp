@@ -71,6 +71,16 @@ class RuntimeGrantServiceTest {
     }
 
     @Test
+    void rejectsGrantWhenTheRuntimeCatalogChangesBeforePersistence() {
+        Fixture fixture = fixture();
+        fixture.store.createResult = false;
+
+        assertInvalid(() -> fixture.service.create(
+                OWNER, RUNTIME, "client", Set.of("weather"), 10, Duration.ofMinutes(5)));
+        assertEquals(0, fixture.store.created.size());
+    }
+
+    @Test
     void revokesAnOwnedGrantIdempotentlyAndHidesForeignGrants() {
         Fixture fixture = fixture();
         IssuedRuntimeGrant issued = fixture.service.create(
@@ -119,7 +129,13 @@ class RuntimeGrantServiceTest {
     private static final class PolicyStore implements RuntimePolicyStore {
         private final List<ManagedRuntimeGrant> created = new ArrayList<>();
         private int revokeCount;
-        @Override public void createGrant(ManagedRuntimeGrant grant, RuntimeTokenDigest digest) { created.add(grant); }
+        private boolean createResult = true;
+        @Override public boolean createGrant(
+                ManagedRuntimeGrant grant, RuntimeTokenDigest digest, UUID expectedCatalogId,
+                String expectedCatalogChecksum, Instant observedAt) {
+            if (createResult) created.add(grant);
+            return createResult;
+        }
         @Override public Optional<StoredGrant> authenticateGrant(RuntimeInstanceId runtimeId, RuntimeTokenDigest digest) { return Optional.empty(); }
         @Override public List<ManagedRuntimeGrant> listGrants(AccountId owner, RuntimeInstanceId runtimeId) {
             return created.stream().filter(grant -> grant.owner().equals(owner) && grant.runtimeId().equals(runtimeId)).toList();

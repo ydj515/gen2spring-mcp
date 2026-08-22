@@ -18,6 +18,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.CatalogEndpoint;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.ChangeKind;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.Compatibility;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.ToolChange;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogDetails;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogPage;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogSummary;
@@ -89,6 +95,7 @@ class HostedWebMvcContractTest {
     @MockitoBean HostedResourceStore resources;
     @MockitoBean ObjectStorage storage;
     @MockitoBean ToolCatalogService catalogs;
+    @MockitoBean CatalogDiffService catalogDiffs;
 
     @BeforeEach
     void account() {
@@ -176,6 +183,47 @@ class HostedWebMvcContractTest {
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(content().string(not(containsString(missing.toString()))))
                 .andExpect(content().string(not(containsString(OWNER.value().toString()))));
+    }
+
+    @Test
+    void exposesOwnerScopedCatalogDiffsWithFixedFailureBoundaries() throws Exception {
+        UUID source = UUID.fromString("6d65bd83-547b-4965-82f0-eb31af0dcd21");
+        UUID target = UUID.fromString("8f5a48fd-f34b-4ba5-b749-eb79008370d5");
+        when(catalogDiffs.compare(OWNER, source, target)).thenReturn(new CatalogDiff(
+                new CatalogEndpoint(source, 1, "a".repeat(64), "b".repeat(64)),
+                new CatalogEndpoint(target, 2, "c".repeat(64), "d".repeat(64)),
+                Compatibility.COMPATIBLE,
+                List.of(new ToolChange("forecast", ChangeKind.TOOL_ADDED, "tool")),
+                "e".repeat(64)));
+
+        mvc.perform(get("/api/tool-catalogs/{catalogId}/diff", source)
+                        .queryParam("targetCatalogId", target.toString()))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(get("/api/tool-catalogs/{catalogId}/diff", source)
+                        .with(user()).queryParam("targetCatalogId", target.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source.revision").value(1))
+                .andExpect(jsonPath("$.target.revision").value(2))
+                .andExpect(jsonPath("$.compatibility").value("COMPATIBLE"))
+                .andExpect(jsonPath("$.changes[0].kind").value("TOOL_ADDED"))
+                .andExpect(jsonPath("$.checksum").value("e".repeat(64)));
+
+        when(catalogDiffs.compare(OWNER, source, target))
+                .thenThrow(new CatalogDiffService.CatalogDiffNotFound());
+        mvc.perform(get("/api/tool-catalogs/{catalogId}/diff", source)
+                        .with(user()).queryParam("targetCatalogId", target.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
+        org.mockito.Mockito.doThrow(new CatalogDiffService.CatalogDiffUnavailable())
+                .when(catalogDiffs).compare(OWNER, source, target);
+        mvc.perform(get("/api/tool-catalogs/{catalogId}/diff", source)
+                        .with(user()).queryParam("targetCatalogId", target.toString()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value("CATALOG_DIFF_UNAVAILABLE"));
+        mvc.perform(get("/api/tool-catalogs/{catalogId}/diff", "invalid")
+                        .with(user()).queryParam("targetCatalogId", target.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("CATALOG_DIFF_QUERY_INVALID"));
     }
 
     @Test
@@ -274,10 +322,13 @@ class HostedWebMvcContractTest {
     @Test
     void startsOneIdempotentHostedGenerationFromTheGuidedEditor() throws Exception {
         SpecificationId specificationId = new SpecificationId(UUID.randomUUID());
+        UUID predecessorCatalogId = UUID.fromString("2c7fab42-1acd-4f90-bd3f-f7de5ec81edb");
         JobView job = new JobView(
                 new JobId(UUID.randomUUID()), OWNER, JobKind.GENERATION, JobStatus.QUEUED,
-                Optional.of(specificationId), 0, false);
-        when(submissions.generate(eq(OWNER), eq(specificationId), eq("editor-request-1"), any()))
+                Optional.of(specificationId), Optional.of(predecessorCatalogId), 0, false);
+        when(submissions.generate(
+                eq(OWNER), eq(specificationId), eq(Optional.of(predecessorCatalogId)),
+                eq("editor-request-1"), any()))
                 .thenReturn(new CreateJobResult(job, false));
 
         mvc.perform(post("/api/jobs")
@@ -285,12 +336,16 @@ class HostedWebMvcContractTest {
                         .header("Idempotency-Key", "editor-request-1")
                         .contentType("application/json")
                         .content("""
-                                {"specificationId":"%s","configuration":{"operations":[]}}
-                                """.formatted(specificationId.value())))
+                                {"specificationId":"%s","predecessorCatalogId":"%s",
+                                 "configuration":{"operations":[]}}
+                                """.formatted(specificationId.value(), predecessorCatalogId)))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(job.id().value().toString()))
                 .andExpect(jsonPath("$.status").value("QUEUED"))
                 .andExpect(jsonPath("$.replayed").value(false));
+        verify(submissions).generate(
+                eq(OWNER), eq(specificationId), eq(Optional.of(predecessorCatalogId)),
+                eq("editor-request-1"), any());
     }
 
     @Test
@@ -328,10 +383,10 @@ class HostedWebMvcContractTest {
                                 .content(source))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.openApiVersion").value(version))
-                .andExpect(jsonPath("$.counts.total").value(26))
-                .andExpect(jsonPath("$.counts.supported").value(26))
+                .andExpect(jsonPath("$.counts.total").value(38))
+                .andExpect(jsonPath("$.counts.supported").value(34))
                 .andExpect(jsonPath("$.counts.supportedWithWarning").value(0))
-                .andExpect(jsonPath("$.counts.unsupported").value(0))
+                .andExpect(jsonPath("$.counts.unsupported").value(4))
                 .andExpect(jsonPath("$.file.name").value(fileName))
                 .andExpect(jsonPath("$.file.byteSize").value(source.length))
                 .andReturn().getResponse().getContentAsByteArray());
@@ -340,7 +395,30 @@ class HostedWebMvcContractTest {
                 .findFirst().orElseThrow();
         assertEquals("SUPPORTED", customers.path("status").asText());
         assertTrue(customers.path("issues").isEmpty());
+        assertOperationDecision(response, "listSchemaFixtures", "SUPPORTED", null);
+        assertOperationDecision(response, "getNullablePathFixture", "UNSUPPORTED",
+                "PARAMETER_NULLABLE_PATH_UNSUPPORTED");
+        assertOperationDecision(response, "submitConflictingAllOf", "UNSUPPORTED",
+                "SCHEMA_CONSTRAINT_UNSUPPORTED");
+        assertOperationDecision(response, "submitCompositionBudgetOverflow", "UNSUPPORTED",
+                "SCHEMA_COMPOSITION_UNSUPPORTED");
         return response;
+    }
+
+    private void assertOperationDecision(
+            com.fasterxml.jackson.databind.JsonNode analysis,
+            String operationId,
+            String status,
+            String issueCode) {
+        var operation = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
+                .filter(candidate -> candidate.path("operationId").asText().equals(operationId))
+                .findFirst().orElseThrow();
+        assertEquals(status, operation.path("status").asText());
+        if (issueCode == null) {
+            assertTrue(operation.path("issues").isEmpty());
+        } else {
+            assertEquals(issueCode, operation.path("issues").get(0).path("code").asText());
+        }
     }
 
     private Path repositoryRoot() {

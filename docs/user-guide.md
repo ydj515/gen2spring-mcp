@@ -115,6 +115,10 @@ POST /api/runtimes/{runtimeId}/grants
 GET  /api/runtimes/{runtimeId}/grants
 POST /api/runtimes/{runtimeId}/grants/{grantId}/revocation
 GET  /api/runtimes/{runtimeId}/audit
+GET  /api/tool-catalogs/{catalogId}/diff?targetCatalogId={targetCatalogId}
+POST /api/runtimes/{runtimeId}/migrations
+GET  /api/runtimes/{runtimeId}/migrations?limit=50&before={sequence}
+POST /api/runtimes/{runtimeId}/rollback
 ```
 
 활성화 또는 grant 응답의 endpoint에 `Authorization: Bearer <one-time-token>`을 보내 MCP Streamable HTTP
@@ -133,9 +137,29 @@ hop-by-hop header, 1 MiB 초과 body는 fail-closed로 거부한다.
 runtime handle 용량이 가득 차면 활성 handle을 evict하지 않고 새 runtime 요청을 고정 503으로 거부한다.
 typed output schema가 있는 Tool의 성공 응답은 text content와 동일한 normalized `structuredContent`를 함께 반환한다.
 
-현재 완료 범위는 단일 Catalog activation, exact credential slot binding, owner/scoped grant, PostgreSQL rate·audit,
-stateless multi-replica transport다. 여러 Catalog를 묶는 공개 Gateway, OAuth2 credential acquisition, billing,
-Catalog migration은 제공하지 않으며 생성 ZIP의 독립 MCP 서버 내용도 변경하지 않는다.
+새 generation에 `predecessorCatalogId`를 지정하면 같은 owner의 현재 family head에서만 다음 immutable revision을
+게시한다. 두 revision의 diff는 Tool 이름 기준으로 정렬되며 Tool 추가·description 변경·optional output property
+추가만 compatible이다. active runtime migration은 현재 Catalog ID와 target checksum을 CAS 전제조건으로 받는다.
+
+```json
+{
+  "expectedCurrentCatalogId": "<current-catalog-uuid>",
+  "targetCatalogId": "<target-catalog-uuid>",
+  "targetChecksum": "<target-runtime-metadata-sha256>"
+}
+```
+
+전환은 runtime ID, bearer token, credential binding/version, provider override, expiry, 기존 grant, rate window와
+audit을 보존하고 append-only history를 남긴다. 추가 Tool은 기존 scoped grant에 자동 부여되지 않는다. rollback은
+가장 최근의 아직 되돌리지 않은 forward migration만 복원하며, active grant가 source에 없는 Tool을 허용하면
+`CATALOG_MIGRATION_BLOCKED`로 거부한다. 해당 grant를 revoke한 뒤 같은 현재 Catalog ID로 재시도해야 한다.
+rollback body는 `{"expectedCurrentCatalogId":"<current-catalog-uuid>"}`만 받으며 activation token을 다시
+발급하거나 응답에 노출하지 않는다.
+
+현재 완료 범위는 단일 Catalog activation, linear Catalog revision/diff/migration/rollback, exact credential slot
+binding, owner/scoped grant, PostgreSQL rate·audit, stateless multi-replica transport다. 여러 Catalog를 한 runtime에
+결합하는 공개 Gateway, OAuth2 credential acquisition, billing은 제공하지 않으며 생성 ZIP의 독립 MCP 서버 내용도
+변경하지 않는다.
 
 ## CLI 사용법
 
@@ -281,8 +305,8 @@ active OpenTelemetry span의 trace ID를 사용하고, span이 없을 때만 32�
 예상된 provider·HTTP·timeout·availability·protocol·capacity 오류는 JSON-RPC transport 오류가 아니라
 `isError=true`인 MCP Tool result로 반환한다.
 
-`output.mode: TYPED`는 supported JSON object response에서 typed output DTO를 생성한다. ambiguous schema,
-composed/recursive schema와 unsupported media type은 source 생성 전에 거부한다.
+`output.mode: TYPED`는 supported JSON object response에서 typed output DTO를 생성한다. ambiguous success
+response schema, composed/recursive success response schema와 unsupported media type은 source 생성 전에 거부한다.
 
 GET operation에 bounded retry를 실행할 수 있다. `maxRetries` 1..3, initial backoff 5000ms 이하,
 max backoff 10000ms 이하이며 total timeout 안에서만 적용한다. GET operation에 bounded pagination을 실행할
@@ -360,6 +384,10 @@ src/main/java/{packageName}/
 - `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
 - path, query, header parameter와 JSON request body
 - primitive, enum, array, object, non-recursive local `$ref`
+- optional nullable query/header와 required 또는 optional nullable root request body
+- `maxItems` 256 이하의 array와 bounded structural `uniqueItems`
+- compatible object `allOf`, branch 8개 이하의 `oneOf`·`anyOf`·multi-type union
+- compatible constraint를 결합하는 OpenAPI 3.1 `$ref` sibling
 - Jakarta Validation, API key query/header의 `SERVER_SECRET` injection
 - Java 17·21, Spring MVC Sync, Streamable HTTP, generic/typed JSON output
 
@@ -368,9 +396,12 @@ src/main/java/{packageName}/
 - path/header는 기본 `simple` scalar, query는 기본 `form` scalar와 scalar-item
   `form` + `explode=true` array만 지원한다.
 - OpenAPI 3.1은 dialect 생략 또는 `https://spec.openapis.org/oas/3.1/dialect/base`만 허용하고,
-  정확히 하나의 지원 non-null type과 `null` 조합만 기존 nullable schema로 정규화한다.
-- remote `$ref`, custom JSON Schema dialect, multi-type, `oneOf`, `anyOf`, `allOf`, discriminator와
-  recursive schema는 거부하거나 해당 endpoint를 이유와 함께 지원 불가로 표시한다.
+  지원 type union의 단일 `null` member는 canonical nullable로, 나머지 bounded multi-type은 `anyOf`로 정규화한다.
+- `uniqueItems`는 명시적인 지원 범위의 `maxItems`가 있어야 하며, composition은 branch 8개, 깊이 16,
+  전체 branch 64를 넘지 않아야 한다.
+- nullable path와 required nullable query/header, conflicting 또는 empty `allOf`, budget을 넘는 composition,
+  remote `$ref`, custom JSON Schema dialect, discriminator와 recursive schema는 해당 endpoint를 이유와 함께
+  지원 불가로 표시한다.
 - Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
 - local UI는 URL import를 제공하지 않는다. hosted URL import도 문서 내부 remote `$ref`는 거부한다.
 

@@ -124,6 +124,7 @@
       <a href="#architecture">Architecture</a>
       <a href="#data">Data &amp; State</a>
       <a href="#import">URL Import</a>
+      <a href="#schema-contract">Schema Contract</a>
       <a href="#sandbox">Sandbox</a>
       <a href="#web">Hosted Web</a>
       <a href="#deployment">Deployment</a>
@@ -226,6 +227,23 @@
           <tr><td>Retry</td><td>DNS/connect/5xx only, bounded</td><td>No retry for policy/4xx/invalid document</td></tr>
         </tbody>
       </table>
+    </section>
+
+    <section class="section" id="schema-contract">
+      <div class="section-head">
+        <h2>3A. Bounded schema normalization contract</h2>
+        <p>OpenAPI 3.0.x와 3.1.x를 같은 canonical Tool schema로 정규화하고, 모호하거나 무제한인 계약은 endpoint별 이유와 함께 차단한다.</p>
+      </div>
+      <table>
+        <thead><tr><th>Schema family</th><th>Supported boundary</th><th>Fail-closed boundary</th></tr></thead>
+        <tbody>
+          <tr><td>Nullable inputs</td><td>Optional query/header null은 wire에서 생략. Nullable root body는 absent와 JSON <code>null</code>을 구분.</td><td>Nullable path와 Required nullable query/header</td></tr>
+          <tr><td>Array constraints</td><td><code>maxItems &lt;= 256</code>. <code>uniqueItems</code>는 bounded structural equality로 검증.</td><td>명시적 bounded <code>maxItems</code>가 없는 uniqueness</td></tr>
+          <tr><td>Composition</td><td>Compatible object <code>allOf</code>, branch 8 이하 <code>oneOf</code>·<code>anyOf</code>·multi-type.</td><td>Conflict, empty composition, depth 16 또는 total branch 64 초과</td></tr>
+          <tr><td>References</td><td>Non-recursive local reference와 semantic OpenAPI 3.1 <code>$ref</code> sibling.</td><td>Remote/recursive reference, discriminator, custom dialect</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><strong>공통 실행 경계:</strong> CLI representative call, 생성된 Spring AI 서버, Runtime Metadata, Managed Runtime은 같은 schema 의미를 검증하며 실패한 입력은 provider 요청 전에 차단한다.</div>
     </section>
 
     <section class="section" id="sandbox">

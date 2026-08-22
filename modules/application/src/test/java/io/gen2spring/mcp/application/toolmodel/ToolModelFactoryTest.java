@@ -616,6 +616,33 @@ class ToolModelFactoryTest {
     }
 
     @Test
+    void preservesNullableRootObjectsAsOnePresenceAwareBodyInput() {
+        ApiSchema source = objectSchema(Map.of("name", textSchema()), List.of("name"));
+        ApiSchema nullableBody = new ApiSchema(
+                source.type(), source.format(), true, source.enumValues(), source.minimum(), source.maximum(),
+                source.minLength(), source.maxLength(), source.pattern(), source.defaultValue(), source.properties(),
+                source.requiredProperties(), source.items(), source.minItems(), source.maxItems(), source.uniqueItems(),
+                source.composition(), source.supported(), source.warnings());
+        ApiOperation optional = new ApiOperation(
+                "optionalBody", HttpMethod.POST, "/optional", "Optional body", null,
+                List.of(), nullableBody, false, List.of(), operationSupport(true));
+        ApiOperation required = new ApiOperation(
+                "requiredBody", HttpMethod.POST, "/required", "Required body", null,
+                List.of(), nullableBody, true, List.of(), operationSupport(true));
+
+        var tools = factory.create(document(List.of(optional, required)), request(List.of(
+                selection("optionalBody", null, Map.of()), selection("requiredBody", null, Map.of()))));
+
+        assertEquals(List.of("body"), tools.getFirst().inputs().stream().map(ToolInput::name).toList());
+        assertFalse(tools.getFirst().inputs().getFirst().required());
+        assertFalse(tools.getFirst().execution().objectRequestBody());
+        assertEquals("body", tools.getFirst().execution().bindings().getFirst().targetName());
+        assertEquals(List.of("body"), tools.get(1).inputs().stream().map(ToolInput::name).toList());
+        assertTrue(tools.get(1).inputs().getFirst().required());
+        assertFalse(tools.get(1).execution().objectRequestBody());
+    }
+
+    @Test
     void rejectsApprovedSecretCandidateNamesAnywhereInRequestBodySchemas() {
         ApiSchema topLevel = objectSchema(Map.of("api_key", textSchema()), List.of());
         ApiSchema nested = objectSchema(

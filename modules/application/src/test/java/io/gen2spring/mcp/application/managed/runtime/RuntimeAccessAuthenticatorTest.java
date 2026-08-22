@@ -191,7 +191,9 @@ class RuntimeAccessAuthenticatorTest {
     private static final class GrantPolicy implements RuntimePolicyStore {
         private final ManagedRuntimeGrant grant;
         private GrantPolicy(ManagedRuntimeGrant grant) { this.grant = grant; }
-        @Override public void createGrant(ManagedRuntimeGrant value, RuntimeTokenDigest digest) {}
+        @Override public boolean createGrant(
+                ManagedRuntimeGrant value, RuntimeTokenDigest digest, UUID expectedCatalogId,
+                String expectedCatalogChecksum, Instant observedAt) { return true; }
         @Override public Optional<StoredGrant> authenticateGrant(RuntimeInstanceId runtimeId, RuntimeTokenDigest digest) {
             return Optional.of(new StoredGrant(grant, digest));
         }
@@ -209,7 +211,9 @@ class RuntimeAccessAuthenticatorTest {
     }
 
     private static final class EmptyPolicy implements RuntimePolicyStore {
-        @Override public void createGrant(ManagedRuntimeGrant value, RuntimeTokenDigest digest) {}
+        @Override public boolean createGrant(
+                ManagedRuntimeGrant value, RuntimeTokenDigest digest, UUID expectedCatalogId,
+                String expectedCatalogChecksum, Instant observedAt) { return true; }
         @Override public Optional<StoredGrant> authenticateGrant(
                 RuntimeInstanceId runtimeId, RuntimeTokenDigest digest) { return Optional.empty(); }
         @Override public List<ManagedRuntimeGrant> listGrants(AccountId owner, RuntimeInstanceId runtimeId) {

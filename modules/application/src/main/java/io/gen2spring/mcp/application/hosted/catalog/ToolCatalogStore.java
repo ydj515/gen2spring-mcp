@@ -22,23 +22,51 @@ public interface ToolCatalogStore {
 
     record CatalogCursor(Instant createdAt, UUID id) {}
 
+    record CatalogVersion(
+            UUID familyId,
+            long revision,
+            Optional<UUID> predecessorCatalogId) {
+        public CatalogVersion {
+            Objects.requireNonNull(familyId, "familyId");
+            predecessorCatalogId = Objects.requireNonNull(predecessorCatalogId, "predecessorCatalogId");
+            if (revision < 1 || (revision == 1) == predecessorCatalogId.isPresent()) {
+                throw new IllegalArgumentException("Tool Catalog version is invalid");
+            }
+        }
+    }
+
     record CatalogSummary(
             UUID catalogId,
             JobId generationId,
             String metadataVersion,
             String metadataChecksum,
             int toolCount,
-            Instant createdAt) {
+            Instant createdAt,
+            CatalogVersion version) {
         public CatalogSummary {
             Objects.requireNonNull(catalogId, "catalogId");
             Objects.requireNonNull(generationId, "generationId");
             Objects.requireNonNull(createdAt, "createdAt");
+            Objects.requireNonNull(version, "version");
             if (!RuntimeMetadataDocument.VERSION.equals(metadataVersion)
                     || metadataChecksum == null
                     || !SHA_256.matcher(metadataChecksum).matches()
-                    || toolCount < 1 || toolCount > 1_000) {
+                    || toolCount < 1 || toolCount > 1_000
+                    || (version.revision() == 1 && !catalogId.equals(version.familyId()))
+                    || (version.revision() > 1 && catalogId.equals(version.familyId()))) {
                 throw new IllegalArgumentException("Tool Catalog summary is invalid");
             }
+        }
+
+        public CatalogSummary(
+                UUID catalogId,
+                JobId generationId,
+                String metadataVersion,
+                String metadataChecksum,
+                int toolCount,
+                Instant createdAt) {
+            this(catalogId, generationId, metadataVersion, metadataChecksum, toolCount, createdAt,
+                    new CatalogVersion(catalogId, 1, Optional.empty()));
         }
     }
 

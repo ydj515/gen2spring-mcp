@@ -89,6 +89,16 @@ class HostedComposeContractTest {
         assertTrue(deployment.contains("Never overwrite a key file in place or reuse a key ID"));
     }
 
+    @Test
+    void documentsV7BackupRestoreAndReplicaCutoverWithoutAffinity() throws Exception {
+        String deployment = Files.readString(ROOT.resolve("deploy/hosted/README.md"));
+        assertTrue(deployment.contains("V7 Catalog version rollout"));
+        assertTrue(deployment.contains("managed_runtime_catalog_transition"));
+        assertTrue(deployment.contains("Do not down-migrate V7"));
+        assertTrue(deployment.contains("PostgreSQL and MinIO from the same pre-V7"));
+        assertTrue(deployment.contains("sticky routing is neither required nor supported"));
+    }
+
     private String runtimeBlock(String compose) {
         return compose.substring(compose.indexOf("  runtime:"), compose.indexOf("  proxy:"));
     }

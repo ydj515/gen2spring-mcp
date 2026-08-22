@@ -9,11 +9,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
+import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
 import io.gen2spring.mcp.application.managed.execution.ManagedExecutionLimits;
 import io.gen2spring.mcp.application.managed.execution.ManagedRuntimeBinding;
 import io.gen2spring.mcp.application.managed.execution.ManagedToolExecutor;
+import io.gen2spring.mcp.application.managed.execution.ProviderCallClient;
+import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
@@ -25,10 +30,13 @@ import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditCurs
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditPage;
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.StoredGrant;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataDocumentFactory;
+import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
+import io.gen2spring.mcp.domain.platform.runtime.ProviderTarget;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit;
@@ -43,10 +51,14 @@ import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,25 +118,187 @@ class ManagedRuntimeJourneyIntegrationTest {
         }
     }
 
+    @Test
+    void executesThePairedRootSchemaContractsWithExactManagedWireSemantics() throws Exception {
+        RuntimeMetadataDocument openApi30 = rootSchemaDocument("swagger-3.0.yml");
+        RuntimeMetadataDocument openApi31 = rootSchemaDocument("swagger-3.1.yml");
+        assertEquals(openApi30.tools(), openApi31.tools());
+
+        List<ProviderCallRequest> requests = Collections.synchronizedList(new ArrayList<>());
+        ProviderCallClient provider = (request, timeout) -> {
+            requests.add(request);
+            return new ProviderCallResponse(200, Map.of("Content-Type", List.of("application/json")),
+                    "{}".getBytes(StandardCharsets.UTF_8));
+        };
+        RuntimeFixture fixture = fixture(
+                2, "token-two", openApi31,
+                Optional.of(ProviderTarget.parse("https://fixture.example.test")), provider);
+        try {
+            String endpoint = "/mcp/" + fixture.instance.id().value();
+            assertEquals(200, send(fixture.mvc, endpoint, "token-two", null, """
+                    {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"schema-test","version":"1"}}}
+                    """).status());
+            assertEquals(202, send(fixture.mvc, endpoint, "token-two", null,
+                    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}").status());
+
+            assertManagedSuccess(callTool(fixture, endpoint, 2, "schema_list_filters", Map.of()));
+            Map<String, Object> nullableFilters = new LinkedHashMap<>();
+            nullableFilters.put("cursor", null);
+            nullableFilters.put("xSchemaRevision", null);
+            assertManagedSuccess(callTool(fixture, endpoint, 3, "schema_list_filters", nullableFilters));
+
+            Map<String, Object> explicitNullBody = new LinkedHashMap<>();
+            explicitNullBody.put("body", null);
+            assertManagedSuccess(callTool(
+                    fixture, endpoint, 4, "schema_submit_required_nullable", explicitNullBody));
+            assertManagedSuccess(callTool(
+                    fixture, endpoint, 5, "schema_submit_optional_nullable", Map.of()));
+            assertManagedSuccess(callTool(
+                    fixture, endpoint, 6, "schema_submit_optional_nullable", explicitNullBody));
+            assertManagedSuccess(callTool(fixture, endpoint, 7, "schema_submit_bounded_items",
+                    Map.of("body", List.of(Map.of("amount", 1)))));
+            assertManagedSuccess(callTool(fixture, endpoint, 8, "schema_submit_compatible",
+                    Map.of("id", "abc")));
+            assertManagedSuccess(callTool(fixture, endpoint, 9, "schema_submit_one_of",
+                    Map.of("body", "branch")));
+            assertManagedSuccess(callTool(fixture, endpoint, 10, "schema_submit_any_of",
+                    Map.of("body", 1.5)));
+            assertManagedSuccess(callTool(fixture, endpoint, 11, "schema_submit_reference",
+                    Map.of("body", "abcdefgh")));
+
+            assertEquals(10, requests.size());
+            assertEquals("https://fixture.example.test/schema-contracts/filters",
+                    requests.get(0).uri().toASCIIString());
+            assertTrue(requests.get(0).headers().isEmpty());
+            assertEquals(0, requests.get(0).body().length);
+            assertEquals(requests.get(0).uri(), requests.get(1).uri());
+            assertTrue(requests.get(1).headers().isEmpty());
+            assertEquals(0, requests.get(1).body().length);
+            assertEquals("null", new String(requests.get(2).body(), StandardCharsets.UTF_8));
+            assertEquals(0, requests.get(3).body().length);
+            assertEquals("null", new String(requests.get(4).body(), StandardCharsets.UTF_8));
+            assertEquals(json.readTree("[{\"amount\":1}]"), json.readTree(requests.get(5).body()));
+            assertEquals(json.readTree("{\"id\":\"abc\"}"), json.readTree(requests.get(6).body()));
+            assertEquals(json.readTree("\"branch\""), json.readTree(requests.get(7).body()));
+            assertEquals(json.readTree("1.5"), json.readTree(requests.get(8).body()));
+            assertEquals(json.readTree("\"abcdefgh\""), json.readTree(requests.get(9).body()));
+
+            int validCalls = requests.size();
+            assertManagedRejected(callTool(
+                    fixture, endpoint, 12, "schema_submit_required_nullable", Map.of()), null);
+            assertManagedRejected(callTool(fixture, endpoint, 13, "schema_submit_bounded_items",
+                    Map.of("body", List.of(Map.of("amount", 1), Map.of("amount", 1.0)))), null);
+            assertManagedRejected(callTool(fixture, endpoint, 14, "schema_submit_bounded_items",
+                    Map.of("body", List.of(
+                            Map.of("amount", 1), Map.of("amount", 2), Map.of("amount", 3)))), null);
+            assertManagedRejected(callTool(fixture, endpoint, 15, "schema_submit_one_of",
+                    Map.of("body", Map.of("secret", "one-of-private-value"))), "one-of-private-value");
+            assertManagedRejected(callTool(fixture, endpoint, 16, "schema_submit_any_of",
+                    Map.of("body", "any-of-private-value")), "any-of-private-value");
+            assertManagedRejected(callTool(fixture, endpoint, 17, "schema_submit_reference",
+                    Map.of("body", "short")), "short");
+            assertEquals(validCalls, requests.size());
+        } finally {
+            fixture.close();
+        }
+    }
+
+    private RuntimeMetadataDocument rootSchemaDocument(String fileName) {
+        Path root = repositoryRoot();
+        var document = new SwaggerOpenApiAnalyzer()
+                .analyze(root.resolve(fileName), 10L * 1024L * 1024L).document();
+        List<OperationSelection> selections = List.of(
+                selection("listSchemaFixtures", "schema_list_filters"),
+                selection("submitRequiredNullablePayload", "schema_submit_required_nullable"),
+                selection("submitOptionalNullablePayload", "schema_submit_optional_nullable"),
+                selection("submitBoundedUniqueItems", "schema_submit_bounded_items"),
+                selection("submitCompatibleAllOf", "schema_submit_compatible"),
+                selection("submitOneOfValue", "schema_submit_one_of"),
+                selection("submitAnyOfValue", "schema_submit_any_of"),
+                selection("submitReferencedConstraint", "schema_submit_reference"));
+        var command = new GenerationCommand(
+                new GenerationCommand.ProjectCoordinates(
+                        "io.gen2spring.fixture", "schema-contracts", "io.gen2spring.fixture.schema"),
+                "fixture", "schema", "spring-ai-2.0-java21-mvc-streamable",
+                GenerationCommand.ValidationLevel.MCP_PROTOCOL,
+                new GenerationCommand.ValidationConfiguration(
+                        new GenerationCommand.ToolCallValidation("listSchemaFixtures", Map.of())),
+                selections);
+        var tools = new ToolModelFactory().create(document, command);
+        return new RuntimeMetadataDocumentFactory().create(document.checksum(), tools);
+    }
+
+    private OperationSelection selection(String operationId, String toolName) {
+        return new OperationSelection(operationId, true, toolName, operationId, Map.of());
+    }
+
+    private JsonNode callTool(
+            RuntimeFixture fixture,
+            String endpoint,
+            int id,
+            String toolName,
+            Map<String, Object> arguments) throws Exception {
+        Map<String, Object> request = Map.of(
+                "jsonrpc", "2.0",
+                "id", id,
+                "method", "tools/call",
+                "params", Map.of("name", toolName, "arguments", arguments));
+        return responseJson(send(
+                fixture.mvc, endpoint, "token-two", null, json.writeValueAsString(request)).body());
+    }
+
+    private void assertManagedSuccess(JsonNode response) {
+        assertFalse(response.hasNonNull("error"), response.toPrettyString());
+        assertFalse(response.path("result").path("isError").asBoolean(true), response.toPrettyString());
+    }
+
+    private void assertManagedRejected(JsonNode response, String sensitiveValue) {
+        assertTrue(response.hasNonNull("error"), response.toPrettyString());
+        if (sensitiveValue != null) {
+            assertFalse(response.toString().contains(sensitiveValue), response.toPrettyString());
+        }
+    }
+
+    private Path repositoryRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle.kts"))) {
+            current = current.getParent();
+        }
+        if (current == null) throw new IllegalStateException("Unable to locate the repository root");
+        return current;
+    }
+
     private RuntimeFixture fixture(int suffix, String token) {
         RuntimeTool tool = runtimeTool();
         RuntimeMetadataDocument document = new RuntimeMetadataDocument(
                 RuntimeMetadataDocument.VERSION, "a".repeat(64), List.of(tool));
+        ProviderCallClient provider = (request, timeout) -> {
+            assertEquals("https://api.example.com/weather?q=Seoul", request.uri().toASCIIString());
+            return new ProviderCallResponse(200, Map.of("Content-Type", List.of("application/json")),
+                    "{\"response\":{\"body\":{\"temperature\":12.50},\"raw\":\"excluded\"}}"
+                            .getBytes(StandardCharsets.UTF_8));
+        };
+        return fixture(suffix, token, document, Optional.empty(), provider);
+    }
+
+    private RuntimeFixture fixture(
+            int suffix,
+            String token,
+            RuntimeMetadataDocument document,
+            Optional<ProviderTarget> providerTarget,
+            ProviderCallClient provider) {
         var metadata = new CanonicalRuntimeMetadataCodec().encode(document);
         ManagedRuntimeInstance instance = new ManagedRuntimeInstance(
                 new RuntimeInstanceId(UUID.fromString("10000000-0000-0000-0000-00000000000" + suffix)),
                 new AccountId(UUID.fromString("20000000-0000-0000-0000-00000000000" + suffix)),
                 UUID.fromString("30000000-0000-0000-0000-00000000000" + suffix), metadata.checksum(),
-                Optional.empty(), NOW.minusSeconds(1), NOW.plusSeconds(86_400), Optional.empty());
+                providerTarget, NOW.minusSeconds(1), NOW.plusSeconds(86_400), Optional.empty());
         AtomicReference<ManagedRuntimeInstance> stored = new AtomicReference<>(instance);
         AtomicInteger calls = new AtomicInteger();
         ManagedToolExecutor executor = new ManagedToolExecutor((request, timeout) -> {
             calls.incrementAndGet();
-            assertEquals("https://api.example.com/weather?q=Seoul", request.uri().toASCIIString());
-            return new ProviderCallResponse(200, Map.of("Content-Type", List.of("application/json")),
-                    "{\"response\":{\"body\":{\"temperature\":12.50},\"raw\":\"excluded\"}}"
-                            .getBytes(StandardCharsets.UTF_8));
-        }, new ManagedExecutionLimits(Duration.ofSeconds(2), 2, 4));
+            return provider.execute(request, timeout);
+        }, new ManagedExecutionLimits(Duration.ofSeconds(2), 2, 4), Clock.fixed(NOW, ZoneOffset.UTC));
         ManagedRuntimeBinding binding = new ManagedRuntimeBinding(instance, metadata);
         RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access -> {
             JacksonMcpJsonMapper mapper = new JacksonMcpJsonMapper(json);
@@ -132,7 +306,7 @@ class ManagedRuntimeJourneyIntegrationTest {
                     .jsonMapper(mapper).messageEndpoint("/mcp/" + access.instance().id().value()).build();
             var server = McpServer.sync(transport).jsonMapper(mapper)
                     .serverInfo("managed-test", "1")
-                    .tools(new McpJavaSdkEmitter().emitStateless(List.of(tool),
+                    .tools(new McpJavaSdkEmitter().emitStateless(document.tools(),
                             (name, arguments) -> executor.call(binding, name, arguments)))
                     .build();
             return RuntimeServerHandle.stateless(access.instance(), transport, server);
@@ -161,7 +335,7 @@ class ManagedRuntimeJourneyIntegrationTest {
         };
         var summary = new ToolCatalogStore.CatalogSummary(
                 instance.catalogId(), new JobId(UUID.fromString("40000000-0000-0000-0000-000000000001")),
-                RuntimeMetadataDocument.VERSION, metadata.checksum(), 1, NOW.minusSeconds(1));
+                RuntimeMetadataDocument.VERSION, metadata.checksum(), document.tools().size(), NOW.minusSeconds(1));
         var details = new ToolCatalogStore.CatalogDetails(summary, document.specificationChecksum(), metadata);
         ToolCatalogService catalogs = new ToolCatalogService(new ToolCatalogStore() {
             @Override public List<CatalogSummary> list(AccountId owner, int limit, Optional<CatalogCursor> cursor) {
@@ -195,7 +369,9 @@ class ManagedRuntimeJourneyIntegrationTest {
     }
 
     private static final class EmptyPolicy implements RuntimePolicyStore {
-        @Override public void createGrant(ManagedRuntimeGrant grant, RuntimeTokenDigest digest) {}
+        @Override public boolean createGrant(
+                ManagedRuntimeGrant grant, RuntimeTokenDigest digest, UUID expectedCatalogId,
+                String expectedCatalogChecksum, Instant observedAt) { return true; }
         @Override public Optional<StoredGrant> authenticateGrant(
                 RuntimeInstanceId runtimeId, RuntimeTokenDigest digest) { return Optional.empty(); }
         @Override public List<ManagedRuntimeGrant> listGrants(AccountId owner, RuntimeInstanceId runtimeId) {

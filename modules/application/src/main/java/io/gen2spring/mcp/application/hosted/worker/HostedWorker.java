@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -225,6 +226,12 @@ public final class HostedWorker {
         } catch (Error fatal) {
             deleteAll(published);
             throw fatal;
+        } catch (JobQueue.CatalogLineageConflict conflict) {
+            deleteAll(published);
+            return completeFailure(
+                    lease,
+                    "CATALOG_LINEAGE_CONFLICT",
+                    "The Tool Catalog lineage changed before publication");
         } catch (RuntimeException failure) {
             deleteAll(published);
             return PollResult.STALE;
@@ -319,7 +326,10 @@ public final class HostedWorker {
         void cancel();
     }
 
-    private record GenerationRequest(String specificationObjectKey, JsonNode configuration) {}
+    private record GenerationRequest(
+            String specificationObjectKey,
+            UUID predecessorCatalogId,
+            JsonNode configuration) {}
 
     private final class LeaseMonitor implements AutoCloseable {
         private final JobLease lease;

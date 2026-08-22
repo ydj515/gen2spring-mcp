@@ -15,7 +15,18 @@ public record OpenApiDocument(
         List<AnalysisWarning> warnings) {
     public enum HttpMethod { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, TRACE }
     public enum ParameterLocation { PATH, QUERY, HEADER, BODY }
-    public enum SchemaType { STRING, INTEGER, NUMBER, BOOLEAN, ARRAY, OBJECT }
+    public enum SchemaType { STRING, INTEGER, NUMBER, BOOLEAN, ARRAY, OBJECT, COMPOSED }
+    public enum CompositionKind { ONE_OF, ANY_OF }
+
+    public record SchemaComposition(CompositionKind kind, List<ApiSchema> branches) {
+        public SchemaComposition {
+            branches = branches == null ? List.of() : List.copyOf(branches);
+            if (kind == null || branches.isEmpty() || branches.size() > 8
+                    || branches.stream().anyMatch(java.util.Objects::isNull)) {
+                throw new IllegalArgumentException("Schema composition is invalid");
+            }
+        }
+    }
 
     public record ApiOperation(
             String operationId,
@@ -75,8 +86,33 @@ public record OpenApiDocument(
             List<String> requiredProperties,
             ApiSchema items,
             Integer minItems,
+            Integer maxItems,
+            boolean uniqueItems,
+            SchemaComposition composition,
             boolean supported,
             List<String> warnings) {
+        public ApiSchema(
+                SchemaType type,
+                String format,
+                boolean nullable,
+                List<String> enumValues,
+                BigDecimal minimum,
+                BigDecimal maximum,
+                Integer minLength,
+                Integer maxLength,
+                String pattern,
+                Object defaultValue,
+                Map<String, ApiSchema> properties,
+                List<String> requiredProperties,
+                ApiSchema items,
+                Integer minItems,
+                boolean supported,
+                List<String> warnings) {
+            this(type, format, nullable, enumValues, minimum, maximum, minLength, maxLength,
+                    pattern, defaultValue, properties, requiredProperties, items, minItems,
+                    null, false, null, supported, warnings);
+        }
+
         public ApiSchema(
                 SchemaType type,
                 String format,
@@ -94,7 +130,8 @@ public record OpenApiDocument(
                 boolean supported,
                 List<String> warnings) {
             this(type, format, nullable, enumValues, minimum, maximum, minLength, maxLength,
-                    pattern, defaultValue, properties, requiredProperties, items, null, supported, warnings);
+                    pattern, defaultValue, properties, requiredProperties, items, null,
+                    null, false, null, supported, warnings);
         }
     }
 

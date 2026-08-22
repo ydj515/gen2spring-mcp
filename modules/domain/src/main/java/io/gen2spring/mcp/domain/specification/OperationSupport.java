@@ -65,6 +65,10 @@ public record OperationSupport(Status status, List<Issue> issues) {
         SCHEMA_MISSING(Severity.ERROR, "The schema is missing"),
         SCHEMA_TYPE_UNSUPPORTED(Severity.ERROR, "The schema type is not supported"),
         SCHEMA_NULLABILITY_UNSUPPORTED(Severity.ERROR, "The schema nullability is not supported"),
+        PARAMETER_NULLABLE_PATH_UNSUPPORTED(
+                Severity.ERROR, "Nullable path parameters are not supported"),
+        PARAMETER_REQUIRED_NULLABLE_UNSUPPORTED(
+                Severity.ERROR, "Required nullable query or header parameters are not supported"),
         SCHEMA_COMPOSITION_UNSUPPORTED(Severity.ERROR, "Composed schemas are not supported"),
         SCHEMA_MULTI_TYPE_UNSUPPORTED(Severity.ERROR, "Multiple non-null schema types are not supported"),
         SCHEMA_ADDITIONAL_PROPERTIES_UNSUPPORTED(

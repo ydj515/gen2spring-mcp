@@ -7,6 +7,7 @@ import io.gen2spring.mcp.adapter.persistence.PostgresAccountStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresHostedResourceStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
 import io.gen2spring.mcp.adapter.persistence.PostgresManagedRuntimeStore;
+import io.gen2spring.mcp.adapter.persistence.PostgresRuntimeCatalogTransitionStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresManagedCredentialStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresRuntimePolicyStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresToolCatalogStore;
@@ -14,6 +15,7 @@ import io.gen2spring.mcp.adapter.persistence.PostgresSpecificationCatalog;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
 import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
@@ -24,7 +26,9 @@ import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.worker.WorkerHeartbeatStore;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
+import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
 import io.gen2spring.mcp.application.managed.credential.CredentialProtector;
 import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
@@ -145,8 +149,27 @@ public class HostedWebConfiguration {
     }
 
     @Bean
+    CatalogDiffService hostedCatalogDiffService(ToolCatalogStore store) {
+        return new CatalogDiffService(store);
+    }
+
+    @Bean
     ManagedRuntimeStore hostedManagedRuntimeStore(DataSource dataSource) {
         return new PostgresManagedRuntimeStore(dataSource);
+    }
+
+    @Bean
+    RuntimeCatalogTransitionStore hostedRuntimeCatalogTransitionStore(DataSource dataSource) {
+        return new PostgresRuntimeCatalogTransitionStore(dataSource);
+    }
+
+    @Bean
+    ManagedRuntimeMigrationService hostedManagedRuntimeMigrationService(
+            ToolCatalogStore catalogs,
+            ManagedRuntimeStore runtimes,
+            RuntimeCatalogTransitionStore transitions,
+            Clock hostedClock) {
+        return new ManagedRuntimeMigrationService(catalogs, runtimes, transitions, hostedClock);
     }
 
     @Bean

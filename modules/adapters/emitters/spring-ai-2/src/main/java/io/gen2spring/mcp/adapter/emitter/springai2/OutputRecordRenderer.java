@@ -192,6 +192,7 @@ final class OutputRecordRenderer {
             case BOOLEAN -> "Boolean";
             case ARRAY -> "java.util.List<" + type(schema.items(), suggestedName + "Item") + ">";
             case OBJECT -> JavaSourceRenderer.upperCamel(suggestedName);
+            case COMPOSED -> "tools.jackson.databind.JsonNode";
         };
     }
 

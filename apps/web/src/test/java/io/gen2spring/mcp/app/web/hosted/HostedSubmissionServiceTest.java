@@ -239,6 +239,34 @@ class HostedSubmissionServiceTest {
                 queue.commands.get(0).requestSnapshot(), queue.commands.get(1).requestSnapshot());
     }
 
+    @Test
+    void includesTheExplicitPredecessorInTheCanonicalGenerationRequest(@TempDir Path workRoot) throws Exception {
+        SpecificationId specificationId = new SpecificationId(UUID.randomUUID());
+        UUID predecessorCatalogId = UUID.fromString("2c7fab42-1acd-4f90-bd3f-f7de5ec81edb");
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        byte[] source = specification();
+        var view = specificationView(
+                specificationId, objectKey(specificationId, source), source, "weather.yml");
+        when(resources.specification(OWNER, specificationId)).thenReturn(Optional.of(view));
+        CapturingQueue queue = new CapturingQueue();
+        HostedJobService jobs = new HostedJobService(queue, (owner, specification) -> true);
+        HostedSubmissionService service = new HostedSubmissionService(
+                GeneratorRuntime.defaults(), mock(ObjectStorage.class), mock(SpecificationCatalog.class),
+                resources, jobs, mock(ImportTargetProtector.class), workRoot, Clock.systemUTC());
+
+        service.generate(
+                OWNER, specificationId, Optional.empty(), "root-key", configuration());
+        service.generate(
+                OWNER, specificationId, Optional.of(predecessorCatalogId), "child-key", configuration());
+
+        assertEquals(Optional.empty(), queue.commands.get(0).predecessorCatalogId());
+        assertEquals(Optional.of(predecessorCatalogId), queue.commands.get(1).predecessorCatalogId());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                queue.commands.get(0).requestHash(), queue.commands.get(1).requestHash());
+        assertFalse(queue.commands.get(0).requestSnapshot().contains("predecessorCatalogId"));
+        assertTrue(queue.commands.get(1).requestSnapshot().contains(predecessorCatalogId.toString()));
+    }
+
     private HostedSubmissionService service(
             GeneratorRuntime generator,
             ObjectStorage storage,
@@ -387,7 +415,8 @@ class HostedSubmissionServiceTest {
             commands.add(command);
             return new CreateJobResult(new JobView(
                     new io.gen2spring.mcp.domain.platform.job.JobId(UUID.randomUUID()), command.owner(), command.kind(),
-                    io.gen2spring.mcp.domain.platform.job.JobStatus.QUEUED, command.specificationId(), 0, false), false);
+                    io.gen2spring.mcp.domain.platform.job.JobStatus.QUEUED, command.specificationId(),
+                    command.predecessorCatalogId(), 0, false), false);
         }
 
         @Override public Optional<JobView> find(AccountId owner, io.gen2spring.mcp.domain.platform.job.JobId jobId) { return Optional.empty(); }

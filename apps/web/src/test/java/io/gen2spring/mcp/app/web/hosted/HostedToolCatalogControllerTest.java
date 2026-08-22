@@ -9,6 +9,12 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.CatalogEndpoint;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.ChangeKind;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.Compatibility;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.ToolChange;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogCursor;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogDetails;
@@ -42,6 +48,7 @@ class HostedToolCatalogControllerTest {
     void presentsBoundedCatalogPagesAndCanonicalDetailDocuments() {
         HostedAccountResolver accounts = mock(HostedAccountResolver.class);
         ToolCatalogService service = mock(ToolCatalogService.class);
+        CatalogDiffService diffs = mock(CatalogDiffService.class);
         Authentication authentication = mock(Authentication.class);
         when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
         RuntimeMetadataArtifact metadata = metadata();
@@ -53,19 +60,33 @@ class HostedToolCatalogControllerTest {
                 summary, metadata.document().specificationChecksum(), metadata));
         when(service.requireTool(OWNER, CATALOG, "weather"))
                 .thenReturn(new ToolDetails(summary, metadata.document().tools().getFirst()));
+        UUID targetCatalog = UUID.fromString("8f5a48fd-f34b-4ba5-b749-eb79008370d5");
+        when(diffs.compare(OWNER, CATALOG, targetCatalog)).thenReturn(new CatalogDiff(
+                new CatalogEndpoint(CATALOG, 1, metadata.checksum(), "a".repeat(64)),
+                new CatalogEndpoint(targetCatalog, 2, "b".repeat(64), "c".repeat(64)),
+                Compatibility.COMPATIBLE,
+                List.of(new ToolChange("forecast", ChangeKind.TOOL_ADDED, "tool")),
+                "d".repeat(64)));
         HostedToolCatalogController controller = new HostedToolCatalogController(
-                accounts, service, new ObjectMapper());
+                accounts, service, diffs, new ObjectMapper());
 
         JsonNode page = controller.catalogs(authentication, "50", null);
         JsonNode details = controller.catalog(authentication, CATALOG.toString());
         JsonNode tool = controller.tool(authentication, CATALOG.toString(), "weather");
+        JsonNode diff = controller.diff(authentication, CATALOG.toString(), targetCatalog.toString());
 
         assertEquals(CATALOG.toString(), page.path("items").get(0).path("catalogId").asText());
         assertTrue(page.path("nextCursor").isTextual());
         assertEquals("1.0", details.path("metadata").path("metadataVersion").asText());
         assertEquals(metadata.checksum(), details.path("metadata").path("checksum").asText());
         assertEquals("weather", tool.path("tool").path("name").asText());
-        String all = page + details.toString() + tool;
+        assertEquals(CATALOG.toString(), details.path("familyId").asText());
+        assertEquals(1, details.path("revision").asInt());
+        assertTrue(details.path("predecessorCatalogId").isNull());
+        assertEquals("COMPATIBLE", diff.path("compatibility").asText());
+        assertEquals("TOOL_ADDED", diff.path("changes").get(0).path("kind").asText());
+        assertEquals(2, diff.path("target").path("revision").asInt());
+        String all = page + details.toString() + tool + diff;
         for (String forbidden : List.of(
                 "KMA_SERVICE_KEY", "synthetic-secret", "objectKey", "/private/work", "worker-01")) {
             assertFalse(all.contains(forbidden), forbidden);

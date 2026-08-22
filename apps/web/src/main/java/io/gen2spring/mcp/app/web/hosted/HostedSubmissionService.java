@@ -31,6 +31,7 @@ import java.time.Clock;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -178,19 +179,22 @@ public final class HostedSubmissionService {
     public CreateJobResult generate(
             AccountId owner,
             SpecificationId specificationId,
+            Optional<UUID> predecessorCatalogId,
             String idempotencyKey,
             byte[] configurationBytes) {
         try {
+            Objects.requireNonNull(predecessorCatalogId, "predecessorCatalogId");
             var specification = resources.specification(owner, specificationId).orElseThrow(HostedSubmissionFailure::new);
             generator.configurationParser().parseJson(configurationBytes);
             JsonNode configuration = JSON.readTree(configurationBytes);
             if (configuration == null || !configuration.isObject()) throw failure();
             var root = JSON.createObjectNode();
             root.put("specificationObjectKey", specification.objectKey().value());
+            predecessorCatalogId.ifPresent(value -> root.put("predecessorCatalogId", value.toString()));
             root.set("configuration", configuration);
             String snapshot = JSON.writeValueAsString(root);
             return jobs.submitGeneration(
-                    owner, specificationId, idempotencyKey,
+                    owner, specificationId, predecessorCatalogId, idempotencyKey,
                     sha256(snapshot.getBytes(java.nio.charset.StandardCharsets.UTF_8)), snapshot);
         } catch (Error fatal) {
             throw fatal;
@@ -199,6 +203,14 @@ public final class HostedSubmissionService {
         } catch (Exception failure) {
             throw failure();
         }
+    }
+
+    public CreateJobResult generate(
+            AccountId owner,
+            SpecificationId specificationId,
+            String idempotencyKey,
+            byte[] configurationBytes) {
+        return generate(owner, specificationId, Optional.empty(), idempotencyKey, configurationBytes);
     }
 
     private byte[] read(InputStream input, int maximum) throws Exception {

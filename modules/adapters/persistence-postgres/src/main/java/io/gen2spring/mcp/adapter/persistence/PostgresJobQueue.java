@@ -37,7 +37,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 public final class PostgresJobQueue implements JobQueue {
     private static final int MAX_RUNNING_PER_OWNER = 2;
     private static final String JOB_COLUMNS = """
-            id, owner_account_id, kind, status, specification_id, attempt, cancel_requested
+            id, owner_account_id, kind, status, specification_id, predecessor_catalog_id,
+            attempt, cancel_requested
             """;
     private static final RowMapper<JobView> JOB_VIEW = PostgresJobQueue::mapJobView;
 
@@ -197,6 +198,17 @@ public final class PostgresJobQueue implements JobQueue {
             return new CreateJobResult(replay.job(), true);
         }
 
+        if (command.predecessorCatalogId().isPresent()) {
+            Integer ownedCatalogs = jdbc.queryForObject(
+                    "select count(*) from tool_catalog where owner_account_id = ? and id = ?",
+                    Integer.class,
+                    command.owner().value(),
+                    command.predecessorCatalogId().orElseThrow());
+            if (ownedCatalogs == null || ownedCatalogs != 1) {
+                throw new CreateRejected(CreateRejection.CATALOG_NOT_FOUND);
+            }
+        }
+
         Integer queued = jdbc.queryForObject(
                 "select count(*) from generation_job where owner_account_id = ? and status = 'QUEUED'",
                 Integer.class,
@@ -210,14 +222,15 @@ public final class PostgresJobQueue implements JobQueue {
         jdbc.update(
                 """
                 insert into generation_job(
-                    id, owner_account_id, specification_id, kind, operation,
+                    id, owner_account_id, specification_id, predecessor_catalog_id, kind, operation,
                     idempotency_key, request_hash, request_snapshot, status,
                     created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'QUEUED', ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'QUEUED', ?, ?)
                 """,
                 id.value(),
                 command.owner().value(),
                 command.specificationId().map(SpecificationId::value).orElse(null),
+                command.predecessorCatalogId().orElse(null),
                 command.kind().name(),
                 command.operation(),
                 command.idempotencyKey(),
@@ -232,6 +245,7 @@ public final class PostgresJobQueue implements JobQueue {
                 command.kind(),
                 JobStatus.QUEUED,
                 command.specificationId(),
+                command.predecessorCatalogId(),
                 0,
                 false), false);
     }
@@ -363,7 +377,7 @@ public final class PostgresJobQueue implements JobQueue {
         Instant now = clock.instant();
         Optional<CompletionTarget> candidate = jdbc.query(
                         """
-                        select owner_account_id, kind, cancel_requested
+                        select owner_account_id, kind, predecessor_catalog_id, cancel_requested
                           from generation_job
                          where id = ? and status = 'RUNNING'
                            and lease_owner = ? and fencing_token = ? and lease_until >= ?
@@ -372,6 +386,7 @@ public final class PostgresJobQueue implements JobQueue {
                         (resultSet, row) -> new CompletionTarget(
                                 new AccountId(resultSet.getObject("owner_account_id", UUID.class)),
                                 JobKind.valueOf(resultSet.getString("kind")),
+                                Optional.ofNullable(resultSet.getObject("predecessor_catalog_id", UUID.class)),
                                 resultSet.getBoolean("cancel_requested")),
                         lease.jobId().value(),
                         lease.worker().value(),
@@ -415,7 +430,8 @@ public final class PostgresJobQueue implements JobQueue {
         if (target.kind() == JobKind.SPEC_IMPORT && completion.status() == JobStatus.SUCCEEDED) {
             publishImportedSpecification(lease, target.owner(), artifacts, now);
         }
-        catalog.ifPresent(publication -> publishToolCatalog(lease, target.owner(), publication, now));
+        catalog.ifPresent(publication -> publishToolCatalog(
+                lease, target.owner(), target.predecessorCatalogId(), publication, now));
         int updated = jdbc.update(
                 """
                 update generation_job
@@ -459,21 +475,67 @@ public final class PostgresJobQueue implements JobQueue {
     private void publishToolCatalog(
             JobLease lease,
             AccountId owner,
+            Optional<UUID> predecessorCatalogId,
             ToolCatalogPublication publication,
             Instant now) {
         UUID catalogId = UUID.randomUUID();
         var metadata = publication.metadata();
+        CatalogLineage lineage;
+        if (predecessorCatalogId.isEmpty()) {
+            int familyInserted = jdbc.update(
+                    """
+                    insert into tool_catalog_family(
+                        id, owner_account_id, head_catalog_id, created_at, updated_at)
+                    values (?, ?, null, ?, ?)
+                    """,
+                    catalogId,
+                    owner.value(),
+                    timestamp(now),
+                    timestamp(now));
+            if (familyInserted != 1) {
+                throw new IllegalStateException("Hosted Tool Catalog publication failed");
+            }
+            lineage = new CatalogLineage(catalogId, 1, null);
+        } else {
+            UUID predecessor = predecessorCatalogId.orElseThrow();
+            lineage = jdbc.query(
+                            """
+                            select catalog.family_id, catalog.revision, family.head_catalog_id
+                              from tool_catalog catalog
+                              join tool_catalog_family family
+                                on family.id = catalog.family_id
+                               and family.owner_account_id = catalog.owner_account_id
+                             where catalog.owner_account_id = ? and catalog.id = ?
+                             for update of family
+                            """,
+                            (resultSet, row) -> new CatalogLineage(
+                                    resultSet.getObject("family_id", UUID.class),
+                                    Math.addExact(resultSet.getLong("revision"), 1),
+                                    resultSet.getObject("head_catalog_id", UUID.class)),
+                            owner.value(),
+                            predecessor)
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(CatalogLineageConflict::new);
+            if (!predecessor.equals(lineage.headCatalogId())) {
+                throw new CatalogLineageConflict();
+            }
+        }
         int inserted = jdbc.update(
                 """
                 insert into tool_catalog(
-                    id, owner_account_id, generation_job_id, metadata_version,
+                    id, owner_account_id, generation_job_id, family_id, revision,
+                    predecessor_catalog_id, metadata_version,
                     specification_checksum, metadata_checksum, metadata_document,
                     tool_count, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 catalogId,
                 owner.value(),
                 lease.jobId().value(),
+                lineage.familyId(),
+                lineage.revision(),
+                predecessorCatalogId.orElse(null),
                 metadata.document().metadataVersion(),
                 metadata.document().specificationChecksum(),
                 metadata.checksum(),
@@ -482,6 +544,22 @@ public final class PostgresJobQueue implements JobQueue {
                 timestamp(now));
         if (inserted != 1) {
             throw new IllegalStateException("Hosted Tool Catalog publication failed");
+        }
+        if (predecessorCatalogId.isPresent()) {
+            int advanced = jdbc.update(
+                    """
+                    update tool_catalog_family
+                       set head_catalog_id = ?, updated_at = ?
+                     where id = ? and owner_account_id = ? and head_catalog_id = ?
+                    """,
+                    catalogId,
+                    timestamp(now),
+                    lineage.familyId(),
+                    owner.value(),
+                    predecessorCatalogId.orElseThrow());
+            if (advanced != 1) {
+                throw new CatalogLineageConflict();
+            }
         }
         for (ToolCatalogPublication.ToolEntry entry : publication.entries()) {
             int toolInserted = jdbc.update(
@@ -609,12 +687,14 @@ public final class PostgresJobQueue implements JobQueue {
 
     private static JobView mapJobView(ResultSet resultSet, int row) throws SQLException {
         UUID specification = resultSet.getObject("specification_id", UUID.class);
+        UUID predecessorCatalogId = resultSet.getObject("predecessor_catalog_id", UUID.class);
         return new JobView(
                 new JobId(resultSet.getObject("id", UUID.class)),
                 new AccountId(resultSet.getObject("owner_account_id", UUID.class)),
                 JobKind.valueOf(resultSet.getString("kind")),
                 JobStatus.valueOf(resultSet.getString("status")),
                 Optional.ofNullable(specification).map(SpecificationId::new),
+                Optional.ofNullable(predecessorCatalogId),
                 resultSet.getInt("attempt"),
                 resultSet.getBoolean("cancel_requested"));
     }
@@ -629,7 +709,13 @@ public final class PostgresJobQueue implements JobQueue {
 
     private record ExistingJob(String requestHash, JobView job) {}
 
-    private record CompletionTarget(AccountId owner, JobKind kind, boolean cancellationRequested) {}
+    private record CompletionTarget(
+            AccountId owner,
+            JobKind kind,
+            Optional<UUID> predecessorCatalogId,
+            boolean cancellationRequested) {}
+
+    private record CatalogLineage(UUID familyId, long revision, UUID headCatalogId) {}
 
     private record ClaimCandidate(JobId id, AccountId owner, JobKind kind, String requestSnapshot) {}
 

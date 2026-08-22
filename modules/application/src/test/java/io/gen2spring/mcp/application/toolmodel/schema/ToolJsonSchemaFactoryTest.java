@@ -4,9 +4,12 @@ import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.INTEGER;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.OBJECT;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.STRING;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.COMPOSED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.CompositionKind;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaComposition;
 import io.gen2spring.mcp.domain.tool.OutputKind;
 import io.gen2spring.mcp.domain.tool.ToolInput;
 import io.gen2spring.mcp.domain.tool.ToolOutput;
@@ -104,6 +107,32 @@ class ToolJsonSchemaFactoryTest {
                 factory.outputSchema(new ToolOutput(OutputKind.TYPED_DTO, result, result)));
         assertEquals(Map.of(),
                 factory.outputSchema(new ToolOutput(OutputKind.GENERIC_JSON, result, null)));
+    }
+
+    @Test
+    void projectsBoundedUniqueArraysAndCompositionsExactly() {
+        ApiSchema string = schema(STRING, null, false, List.of(), null, null,
+                null, null, null, Map.of(), List.of(), null, null);
+        ApiSchema integer = schema(INTEGER, null, false, List.of(), null, null,
+                null, null, null, Map.of(), List.of(), null, null);
+        ApiSchema composed = new ApiSchema(
+                COMPOSED, null, true, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, null, null, false,
+                new SchemaComposition(CompositionKind.ONE_OF, List.of(string, integer)), true, List.of());
+        ApiSchema array = new ApiSchema(
+                ARRAY, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), composed, 1, 4, true, null, true, List.of());
+
+        assertEquals(Map.of(
+                "type", "array",
+                "items", Map.of("anyOf", List.of(
+                        Map.of("oneOf", List.of(
+                                Map.of("type", "string"),
+                                Map.of("type", "integer", "format", "int32"))),
+                        Map.of("type", "null"))),
+                "minItems", 1,
+                "maxItems", 4,
+                "uniqueItems", true), factory.schema(array));
     }
 
     private ApiSchema schema(

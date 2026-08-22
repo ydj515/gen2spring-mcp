@@ -22,6 +22,8 @@ import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.CompositionKind;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaComposition;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
@@ -90,6 +92,35 @@ class ExpectedToolCallFactoryTest {
         empty.put("lines", List.of());
         assertInvalid("lines", "empty-array",
                 new ValidationConfiguration(new ToolCallValidation("cancelOrderItems", empty)), tool);
+    }
+
+    @Test
+    void enforcesComposedItemsAndStructuralUniquenessBeforeRepresentativeCalls() {
+        ApiSchema string = new ApiSchema(
+                STRING, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, true, List.of());
+        ApiSchema integer = new ApiSchema(
+                INTEGER, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, true, List.of());
+        ApiSchema composed = new ApiSchema(
+                io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.COMPOSED,
+                null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, null, null, false,
+                new SchemaComposition(CompositionKind.ONE_OF, List.of(string, integer)), true, List.of());
+        ApiSchema values = new ApiSchema(
+                ARRAY, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), composed, 1, 4, true, null, true, List.of());
+        ToolDefinition tool = new ToolDefinition(
+                "replaceValues", "sample_replace_values", "Replace values.",
+                List.of(new ToolInput("values", "values", "Values", true, values)),
+                null, List.of(), OutputKind.GENERIC_JSON);
+
+        ExpectedToolCall valid = factory.create(List.of(tool), new ValidationConfiguration(
+                new ToolCallValidation("replaceValues", Map.of("values", List.of("one", 2)))));
+
+        assertEquals(List.of("one", 2), valid.arguments().get("values"));
+        assertInvalid("values", "duplicate", new ValidationConfiguration(new ToolCallValidation(
+                "replaceValues", Map.of("values", List.of(1, new BigDecimal("1.0"))))), tool);
     }
 
     @Test
@@ -357,15 +388,11 @@ class ExpectedToolCallFactoryTest {
     }
 
     @Test
-    void rejectsNestedQuantifierPatternsBeforeEvaluatingRepresentativeValues() {
-        GeneratorException exception = assertThrows(GeneratorException.class,
-                () -> factory.create(
+    void acceptsNestedQuantifierPatternsWithinTheCharacterAccessBudget() {
+        assertEquals("aaa", factory.create(
                         List.of(weatherTool("(a+)+$")),
-                        validation("getForecast", arguments("stationId", "aaa"))));
-
-        assertEquals(VALIDATION_ARGUMENT_INVALID, exception.code());
-        assertEquals("TOOL_MODEL_VALIDATE", exception.stage());
-        assertEquals("Validation argument does not match Tool input: stationId", exception.safeMessage());
+                        validation("getForecast", arguments("stationId", "aaa")))
+                .arguments().get("stationId"));
     }
 
     @Test

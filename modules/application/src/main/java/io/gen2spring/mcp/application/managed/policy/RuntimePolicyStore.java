@@ -13,7 +13,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface RuntimePolicyStore {
-    void createGrant(ManagedRuntimeGrant grant, RuntimeTokenDigest digest);
+    boolean createGrant(
+            ManagedRuntimeGrant grant,
+            RuntimeTokenDigest digest,
+            UUID expectedCatalogId,
+            String expectedCatalogChecksum,
+            Instant observedAt);
 
     Optional<StoredGrant> authenticateGrant(RuntimeInstanceId runtimeId, RuntimeTokenDigest digest);
 

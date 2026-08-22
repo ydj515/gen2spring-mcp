@@ -76,7 +76,10 @@ public final class RuntimeGrantService {
             ManagedRuntimeGrant grant = new ManagedRuntimeGrant(
                     new RuntimeGrantId(Objects.requireNonNull(identifiers.get())), runtimeId, owner,
                     principal, allowedTools, requestsPerMinute, now, now.plus(lifetime), Optional.empty());
-            policies.createGrant(grant, issued.digest());
+            if (!policies.createGrant(
+                    grant, issued.digest(), runtime.catalogId(), runtime.catalogChecksum(), now)) {
+                throw invalid();
+            }
             return new IssuedRuntimeGrant(grant, issued.plaintext());
         } catch (Error fatal) {
             throw fatal;

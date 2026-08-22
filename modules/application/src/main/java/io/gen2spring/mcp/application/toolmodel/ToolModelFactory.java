@@ -12,6 +12,7 @@ import io.gen2spring.mcp.application.toolmodel.description.ToolDescriptionPolicy
 import io.gen2spring.mcp.application.toolmodel.naming.ToolNamingPolicy;
 import io.gen2spring.mcp.application.toolmodel.output.OutputSchemaResolver;
 import io.gen2spring.mcp.application.toolmodel.security.SecretParameterPolicy;
+import io.gen2spring.mcp.application.toolmodel.schema.SchemaPatternMatcher;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
@@ -195,8 +196,11 @@ public final class ToolModelFactory {
                     apiKeySecret.targetName(), apiKeySecret.location(), apiKeySecret.targetName(), true);
         }
 
+        boolean flattenedObjectBody = operation.requestBody() != null
+                && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT
+                && !operation.requestBody().nullable();
         if (operation.requestBody() != null) {
-            if (operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT) {
+            if (flattenedObjectBody) {
                 Map<String, OpenApiDocument.ApiSchema> properties = operation.requestBody().properties() == null
                         ? Map.of() : operation.requestBody().properties();
                 Set<String> requiredProperties = new HashSet<>(operation.requestBody().requiredProperties() == null
@@ -222,8 +226,7 @@ public final class ToolModelFactory {
                 List.copyOf(inputs),
                 new HttpExecution(
                         operation.method(), document.baseUrl(), operation.path(), List.copyOf(bindings),
-                        operation.requestBody() != null
-                                && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT,
+                        flattenedObjectBody,
                         operation.requestBodyRequired(),
                         normalization,
                         retryPolicy,
@@ -289,12 +292,7 @@ public final class ToolModelFactory {
                     || schema.maxLength() != null && string.length() > schema.maxLength()) {
                 return false;
             }
-            try {
-                return schema.pattern() == null
-                        || java.util.regex.Pattern.compile(schema.pattern()).matcher(string).matches();
-            } catch (java.util.regex.PatternSyntaxException failure) {
-                return false;
-            }
+            return schema.pattern() == null || SchemaPatternMatcher.matches(schema.pattern(), string);
         }
         if (schema.type() == OpenApiDocument.SchemaType.INTEGER && value instanceof java.math.BigInteger integer) {
             java.math.BigDecimal decimal = new java.math.BigDecimal(integer);
@@ -467,6 +465,7 @@ public final class ToolModelFactory {
                     "Request body secret candidates cannot be exposed as P0 Tool inputs");
         }
         if (requestBody.type() == OpenApiDocument.SchemaType.OBJECT
+                && !requestBody.nullable()
                 && !operation.requestBodyRequired()
                 && requestBody.requiredProperties() != null
                 && !requestBody.requiredProperties().isEmpty()) {
@@ -488,7 +487,11 @@ public final class ToolModelFactory {
                 }
             }
         }
-        return containsApprovedSecretCandidate(schema.items(), visited);
+        if (containsApprovedSecretCandidate(schema.items(), visited)) {
+            return true;
+        }
+        return schema.composition() != null && schema.composition().branches().stream()
+                .anyMatch(branch -> containsApprovedSecretCandidate(branch, visited));
     }
 
     private void rejectRuntimeOwnedOrRestrictedHeader(OpenApiDocument.ParameterLocation location, String name) {

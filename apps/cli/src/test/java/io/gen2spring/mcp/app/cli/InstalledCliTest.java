@@ -112,6 +112,8 @@ class InstalledCliTest {
         String readme = Files.readString(repositoryRoot().resolve("README.md"));
         String userGuide = Files.readString(repositoryRoot().resolve("docs/user-guide.md"));
         String prd = Files.readString(repositoryRoot().resolve("docs/prd.md"));
+        String architecture = Files.readString(
+                repositoryRoot().resolve("docs/architecture/hosted-generation-platform.html"));
 
         assertTrue(readme.lines().count() <= 200, "Root README should remain a concise landing page");
         assertTrue(readme.contains("[사용자 가이드](docs/user-guide.md)"));
@@ -174,7 +176,19 @@ class InstalledCliTest {
         assertTrue(userGuide.contains("API endpoint 선택, 생성 설정의 세 단계"));
         assertTrue(userGuide.contains("지원 불가 항목은 이유와 함께 비활성화"));
         assertTrue(userGuide.contains("https://spec.openapis.org/oas/3.1/dialect/base"));
-        assertFalse(userGuide.contains("OpenAPI 3.1, `oneOf`"));
+        assertTrue(readme.contains("bounded `allOf`·`oneOf`·`anyOf`"));
+        assertTrue(userGuide.contains("optional nullable query/header"));
+        assertTrue(userGuide.contains("nullable root request body"));
+        assertTrue(userGuide.contains("`maxItems` 256"));
+        assertTrue(userGuide.contains("branch 8개, 깊이 16"));
+        assertTrue(userGuide.contains("전체 branch 64"));
+        assertTrue(userGuide.contains("OpenAPI 3.1 `$ref` sibling"));
+        assertTrue(userGuide.contains("nullable path와 required nullable query/header"));
+        assertTrue(prd.contains("bounded schema 구현 상태: 완료"));
+        assertTrue(prd.contains("GitHub issue #12 처리 기준"));
+        assertTrue(architecture.contains("id=\"schema-contract\""));
+        assertTrue(architecture.contains("Bounded schema normalization contract"));
+        assertTrue(architecture.contains("Required nullable query/header"));
         assertFalse(userGuide.contains("typed output DTO, retry 실행, pagination 실행은 후속 P1 범위다"));
         assertFalse(userGuide.contains("Windows validation host remains follow-up P1"));
         assertFalse(userGuide.contains(
@@ -466,15 +480,42 @@ class InstalledCliTest {
     }
 
     private void assertExactPairedFixtureCounts(com.fasterxml.jackson.databind.JsonNode analysis) {
-        assertEquals(26, analysis.path("counts").path("total").asInt());
-        assertEquals(26, analysis.path("counts").path("supported").asInt());
+        assertEquals(38, analysis.path("counts").path("total").asInt());
+        assertEquals(34, analysis.path("counts").path("supported").asInt());
         assertEquals(0, analysis.path("counts").path("supportedWithWarning").asInt());
-        assertEquals(0, analysis.path("counts").path("unsupported").asInt());
+        assertEquals(4, analysis.path("counts").path("unsupported").asInt());
         var customers = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
                 .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
                 .findFirst().orElseThrow();
         assertEquals("SUPPORTED", customers.path("status").asText());
         assertTrue(customers.path("issues").isEmpty());
+        assertOperationDecision(analysis, "listSchemaFixtures", "SUPPORTED", null);
+        assertOperationDecision(analysis, "submitRequiredNullablePayload", "SUPPORTED", null);
+        assertOperationDecision(analysis, "submitBoundedUniqueItems", "SUPPORTED", null);
+        assertOperationDecision(analysis, "getNullablePathFixture", "UNSUPPORTED",
+                "PARAMETER_NULLABLE_PATH_UNSUPPORTED");
+        assertOperationDecision(analysis, "inspectRequiredNullableFilter", "UNSUPPORTED",
+                "PARAMETER_REQUIRED_NULLABLE_UNSUPPORTED");
+        assertOperationDecision(analysis, "submitConflictingAllOf", "UNSUPPORTED",
+                "SCHEMA_CONSTRAINT_UNSUPPORTED");
+        assertOperationDecision(analysis, "submitCompositionBudgetOverflow", "UNSUPPORTED",
+                "SCHEMA_COMPOSITION_UNSUPPORTED");
+    }
+
+    private void assertOperationDecision(
+            com.fasterxml.jackson.databind.JsonNode analysis,
+            String operationId,
+            String status,
+            String issueCode) {
+        var operation = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
+                .filter(candidate -> candidate.path("operationId").asText().equals(operationId))
+                .findFirst().orElseThrow();
+        assertEquals(status, operation.path("status").asText());
+        if (issueCode == null) {
+            assertTrue(operation.path("issues").isEmpty());
+        } else {
+            assertEquals(issueCode, operation.path("issues").get(0).path("code").asText());
+        }
     }
 
     private Path repositoryRoot() {

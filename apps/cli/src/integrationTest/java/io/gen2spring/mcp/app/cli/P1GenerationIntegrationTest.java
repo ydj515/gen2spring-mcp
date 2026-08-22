@@ -143,6 +143,7 @@ class P1GenerationIntegrationTest {
             "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
             "src/main/java/com/example/weather/runtime/RetryPolicy.java",
             "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
+            "src/main/java/com/example/weather/runtime/SchemaValueValidator.java",
             "src/main/java/com/example/weather/runtime/SecretBinding.java",
             "src/main/java/com/example/weather/runtime/ToolArgumentContext.java",
             "src/main/resources/application.yml",
@@ -278,6 +279,90 @@ class P1GenerationIntegrationTest {
         Path invalidConfiguration = Files.writeString(
                 tempDir.resolve("paired-empty-lines-generation.yaml"), invalidConfigurationSource, UTF_8);
         Path invalidOutput = tempDir.resolve("nullable-empty-lines");
+        InstalledCliResult invalid = runInstalledCli(
+                repositoryRoot().resolve("swagger-3.1.yml"), invalidConfiguration, invalidOutput);
+
+        assertEquals(3, invalid.exitCode(), invalid.stderr() + invalid.stdout());
+        assertFalse(Files.exists(invalidOutput));
+        assertFalse(Files.exists(invalidOutput.resolveSibling(invalidOutput.getFileName() + ".zip")));
+    }
+
+    @Test
+    void suppliedOpenApiVersionPairGeneratesTheBoundedSchemaContractSlice() throws Exception {
+        Path configuration = Files.writeString(tempDir.resolve("paired-schema-contracts-generation.yaml"), """
+                project:
+                  groupId: com.example
+                  artifactId: schema-contracts-mcp-server
+                  packageName: com.example.schemas
+                provider: sample
+                domain: schemas
+                targetProfileId: spring-ai-2.0-java21-mvc-streamable
+                validationLevel: MCP_PROTOCOL
+                validation:
+                  toolCall:
+                    operationId: submitBoundedUniqueItems
+                    arguments:
+                      body:
+                        - amount: 1
+                operations:
+                  - operationId: listSchemaFixtures
+                    enabled: true
+                    toolName: sample_schema_list_filters
+                    toolDescription: List schema fixtures.
+                  - operationId: submitRequiredNullablePayload
+                    enabled: true
+                    toolName: sample_schema_submit_required_nullable
+                    toolDescription: Submit a required nullable body.
+                  - operationId: submitOptionalNullablePayload
+                    enabled: true
+                    toolName: sample_schema_submit_optional_nullable
+                    toolDescription: Submit an optional nullable body.
+                  - operationId: submitBoundedUniqueItems
+                    enabled: true
+                    toolName: sample_schema_submit_bounded_items
+                    toolDescription: Submit bounded unique items.
+                  - operationId: submitCompatibleAllOf
+                    enabled: true
+                    toolName: sample_schema_submit_compatible
+                    toolDescription: Submit a compatible intersection.
+                  - operationId: submitOneOfValue
+                    enabled: true
+                    toolName: sample_schema_submit_one_of
+                    toolDescription: Submit an exclusive value.
+                  - operationId: submitAnyOfValue
+                    enabled: true
+                    toolName: sample_schema_submit_any_of
+                    toolDescription: Submit a compatible value.
+                  - operationId: submitReferencedConstraint
+                    enabled: true
+                    toolName: sample_schema_submit_reference
+                    toolDescription: Submit a referenced constrained value.
+                """, UTF_8);
+
+        GenerationResult openApi30 = generate(
+                repositoryRoot().resolve("swagger-3.0.yml"), configuration,
+                tempDir.resolve("schema-contract-openapi-30"));
+        GenerationResult openApi31 = generate(
+                repositoryRoot().resolve("swagger-3.1.yml"), configuration,
+                tempDir.resolve("schema-contract-openapi-31"));
+
+        assertEquals(openApi30.manifest().path("operationMappings"),
+                openApi31.manifest().path("operationMappings"));
+        assertEquals(mainSourceFiles(openApi30.projectRoot()), mainSourceFiles(openApi31.projectRoot()));
+        JsonNode metadata30 = readJson(openApi30.projectRoot().resolve("RUNTIME_METADATA.json"));
+        JsonNode metadata31 = readJson(openApi31.projectRoot().resolve("RUNTIME_METADATA.json"));
+        assertEquals(metadata30.path("version"), metadata31.path("version"));
+        assertEquals(metadata30.path("tools"), metadata31.path("tools"));
+        assertEquals(8, metadata30.path("tools").size());
+
+        String invalidSource = Files.readString(configuration, UTF_8).replace(
+                "      body:\n        - amount: 1",
+                "      body:\n        - amount: 1\n        - amount: 1.0");
+        assertFalse(invalidSource.equals(Files.readString(configuration, UTF_8)));
+        Path invalidConfiguration = Files.writeString(
+                tempDir.resolve("paired-schema-contracts-duplicate.yaml"), invalidSource, UTF_8);
+        Path invalidOutput = tempDir.resolve("schema-contract-duplicate");
+
         InstalledCliResult invalid = runInstalledCli(
                 repositoryRoot().resolve("swagger-3.1.yml"), invalidConfiguration, invalidOutput);
 
