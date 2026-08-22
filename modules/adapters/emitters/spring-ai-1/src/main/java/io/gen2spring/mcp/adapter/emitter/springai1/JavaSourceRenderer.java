@@ -238,6 +238,7 @@ public final class JavaSourceRenderer {
             case BOOLEAN -> "Boolean";
             case ARRAY -> "java.util.List<" + javaType(schema.items(), suggestedName + "Item") + ">";
             case OBJECT -> upperCamel(suggestedName);
+            case COMPOSED -> "com.fasterxml.jackson.databind.JsonNode";
         };
     }
 

@@ -171,13 +171,13 @@ object becomes one `body` binding with `objectRequestBody == false`; request bui
 `RequestBodyValue(boolean present, Object value)` so absence and a present null do not require a metadata version
 change.
 
-- [ ] **Step 1: Write Tool-model and Managed Runtime RED tests**
+- [x] **Step 1: Write Tool-model and Managed Runtime RED tests**
 
   Require nullable root object to produce one `body` input, absent optional root to send no content type/body,
   explicit null to send JSON `null`, required nullable absence to fail, optional nullable query/header null to omit,
   and credential injection to remain authoritative after omission.
 
-- [ ] **Step 2: Run focused tests and confirm RED**
+- [x] **Step 2: Run focused tests and confirm RED**
 
   Run:
 
@@ -188,16 +188,16 @@ change.
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 3: Implement explicit root-body mode**
+- [x] **Step 3: Implement explicit root-body mode**
 
   Preserve existing flattened bodies, model nullable roots as one input, use argument-key presence before value
   conversion, omit null query/header bindings, and serialize a present null root as exactly four UTF-8 bytes `null`.
 
-- [ ] **Step 4: Run application and emitter source tests to GREEN**
+- [x] **Step 4: Run application and emitter source tests to GREEN**
 
   Run the Step 2 command plus both emitter `JavaSourceRendererTest` suites.
 
-- [ ] **Step 5: Commit wire semantics**
+- [x] **Step 5: Commit wire semantics**
 
   Commit title: `feat(runtime): preserve nullable HTTP argument semantics`
 

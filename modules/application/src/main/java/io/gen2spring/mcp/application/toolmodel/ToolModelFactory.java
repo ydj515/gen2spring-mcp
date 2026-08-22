@@ -195,8 +195,11 @@ public final class ToolModelFactory {
                     apiKeySecret.targetName(), apiKeySecret.location(), apiKeySecret.targetName(), true);
         }
 
+        boolean flattenedObjectBody = operation.requestBody() != null
+                && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT
+                && !operation.requestBody().nullable();
         if (operation.requestBody() != null) {
-            if (operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT) {
+            if (flattenedObjectBody) {
                 Map<String, OpenApiDocument.ApiSchema> properties = operation.requestBody().properties() == null
                         ? Map.of() : operation.requestBody().properties();
                 Set<String> requiredProperties = new HashSet<>(operation.requestBody().requiredProperties() == null
@@ -222,8 +225,7 @@ public final class ToolModelFactory {
                 List.copyOf(inputs),
                 new HttpExecution(
                         operation.method(), document.baseUrl(), operation.path(), List.copyOf(bindings),
-                        operation.requestBody() != null
-                                && operation.requestBody().type() == OpenApiDocument.SchemaType.OBJECT,
+                        flattenedObjectBody,
                         operation.requestBodyRequired(),
                         normalization,
                         retryPolicy,
@@ -467,6 +469,7 @@ public final class ToolModelFactory {
                     "Request body secret candidates cannot be exposed as P0 Tool inputs");
         }
         if (requestBody.type() == OpenApiDocument.SchemaType.OBJECT
+                && !requestBody.nullable()
                 && !operation.requestBodyRequired()
                 && requestBody.requiredProperties() != null
                 && !requestBody.requiredProperties().isEmpty()) {
@@ -488,7 +491,11 @@ public final class ToolModelFactory {
                 }
             }
         }
-        return containsApprovedSecretCandidate(schema.items(), visited);
+        if (containsApprovedSecretCandidate(schema.items(), visited)) {
+            return true;
+        }
+        return schema.composition() != null && schema.composition().branches().stream()
+                .anyMatch(branch -> containsApprovedSecretCandidate(branch, visited));
     }
 
     private void rejectRuntimeOwnedOrRestrictedHeader(OpenApiDocument.ParameterLocation location, String name) {
