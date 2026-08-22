@@ -45,6 +45,15 @@ public final class ToolJsonSchemaFactory {
 
     public Map<String, Object> schema(ApiSchema schema) {
         requireSupported(schema);
+        if (schema.type() == SchemaType.COMPOSED) {
+            Map<String, Object> composed = new LinkedHashMap<>();
+            String keyword = switch (schema.composition().kind()) {
+                case ONE_OF -> "oneOf";
+                case ANY_OF -> "anyOf";
+            };
+            composed.put(keyword, schema.composition().branches().stream().map(this::schema).toList());
+            return nullable(schema, Collections.unmodifiableMap(composed));
+        }
         Map<String, Object> expected = new LinkedHashMap<>();
         expected.put("type", schemaType(schema.type()));
         switch (schema.type()) {
@@ -64,13 +73,22 @@ public final class ToolJsonSchemaFactory {
                 if (schema.minItems() != null) {
                     expected.put("minItems", schema.minItems());
                 }
+                if (schema.maxItems() != null) {
+                    expected.put("maxItems", schema.maxItems());
+                }
+                if (schema.uniqueItems()) {
+                    expected.put("uniqueItems", true);
+                }
             }
             case OBJECT -> expected.putAll(objectSchema(schema));
             case BOOLEAN -> {
                 // Boolean schemas have no additional supported constraints.
             }
         }
-        Map<String, Object> nonNullSchema = Collections.unmodifiableMap(expected);
+        return nullable(schema, Collections.unmodifiableMap(expected));
+    }
+
+    private Map<String, Object> nullable(ApiSchema schema, Map<String, Object> nonNullSchema) {
         if (!schema.nullable()) {
             return nonNullSchema;
         }
@@ -145,6 +163,17 @@ public final class ToolJsonSchemaFactory {
         if (schema.minItems() != null && (schema.type() != SchemaType.ARRAY || schema.minItems() < 0)) {
             throw new IllegalArgumentException("Generated array schema metadata is invalid");
         }
+        if (schema.maxItems() != null && (schema.type() != SchemaType.ARRAY || schema.maxItems() < 0)
+                || schema.minItems() != null && schema.maxItems() != null
+                        && schema.minItems() > schema.maxItems()
+                || schema.uniqueItems() && (schema.type() != SchemaType.ARRAY
+                        || schema.maxItems() == null || schema.maxItems() > 256)) {
+            throw new IllegalArgumentException("Generated array schema metadata is invalid");
+        }
+        if (schema.type() == SchemaType.COMPOSED
+                && (schema.composition() == null || schema.composition().branches().isEmpty())) {
+            throw new IllegalArgumentException("Generated composed schema metadata is invalid");
+        }
     }
 
     private String description(String description, String fallback) {
@@ -159,6 +188,7 @@ public final class ToolJsonSchemaFactory {
             case BOOLEAN -> "boolean";
             case ARRAY -> "array";
             case OBJECT -> "object";
+            case COMPOSED -> throw new IllegalArgumentException("Composed schemas do not have one JSON type");
         };
     }
 }

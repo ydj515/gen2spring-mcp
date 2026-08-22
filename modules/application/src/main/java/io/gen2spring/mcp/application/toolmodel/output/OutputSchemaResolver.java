@@ -166,14 +166,14 @@ public final class OutputSchemaResolver {
             case INTEGER -> values.stream().allMatch(value -> value instanceof BigInteger
                     || value instanceof BigDecimal decimal && decimal.stripTrailingZeros().scale() <= 0);
             case NUMBER -> values.stream().allMatch(value -> value instanceof BigInteger || value instanceof BigDecimal);
-            case ARRAY, OBJECT -> false;
+            case ARRAY, OBJECT, COMPOSED -> false;
         };
     }
 
     private boolean isScalar(ApiSchema schema) {
         return switch (schema.type()) {
             case STRING, INTEGER, NUMBER, BOOLEAN -> true;
-            case ARRAY, OBJECT -> false;
+            case ARRAY, OBJECT, COMPOSED -> false;
         };
     }
 

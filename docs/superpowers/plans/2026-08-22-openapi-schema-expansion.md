@@ -47,13 +47,13 @@ record SchemaComposition(CompositionKind kind, List<ApiSchema> branches) {}
 `ApiSchema` gains `Integer maxItems`, `boolean uniqueItems`, and optional `SchemaComposition composition`; retain one
 compatibility constructor while migrating call sites, then use the canonical full constructor in production paths.
 
-- [ ] **Step 1: Write normalizer RED tests**
+- [x] **Step 1: Write normalizer RED tests**
 
   Cover 3.0/3.1 optional nullable query/header, required/path rejection, nullable root object, valid/invalid max and
   unique bounds, compatible/conflicting `allOf`, bounded `oneOf`/`anyOf`, multi-type union, semantic 3.1 `$ref`
   siblings, 3.0 equivalent `allOf`, recursion, discriminator, branch count, total branch budget, and depth.
 
-- [ ] **Step 2: Run domain and OpenAPI tests and confirm RED**
+- [x] **Step 2: Run domain and OpenAPI tests and confirm RED**
 
   Run:
 
@@ -63,23 +63,23 @@ compatibility constructor while migrating call sites, then use the canonical ful
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 3: Implement bounded normalization and intersection**
+- [x] **Step 3: Implement bounded normalization and intersection**
 
   Separate reference resolution, composition-budget tracking, and schema intersection into focused package-private
   collaborators instead of enlarging `SwaggerSchemaNormalizer` with every responsibility. Normalize `allOf` and 3.1
   `$ref` siblings through one intersection engine; normalize multi-type declarations into `ANY_OF` branches; retain
   precise child and contextual issue codes.
 
-- [ ] **Step 4: Enforce location-specific nullability in the analyzer**
+- [x] **Step 4: Enforce location-specific nullability in the analyzer**
 
   Allow nullable optional query/header and request body roots, reject nullable path and required query/header with
   fixed codes, and preserve every unsupported operation in analysis results.
 
-- [ ] **Step 5: Run focused tests to GREEN**
+- [x] **Step 5: Run focused tests to GREEN**
 
   Run the Step 2 command and all `:modules:adapters:openapi:test` tests.
 
-- [ ] **Step 6: Commit canonical schema support**
+- [x] **Step 6: Commit canonical schema support**
 
   Commit title: `feat(openapi): normalize bounded schema composition`
 

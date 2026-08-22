@@ -135,6 +135,7 @@ public final class ExpectedToolCallFactory {
             case BOOLEAN -> requireType(value, Boolean.class, inputName);
             case ARRAY -> normalizeArray(schema, requireList(value, inputName), inputName);
             case OBJECT -> normalizeObject(schema, requireMap(value, inputName), inputName);
+            case COMPOSED -> value;
         };
     }
 

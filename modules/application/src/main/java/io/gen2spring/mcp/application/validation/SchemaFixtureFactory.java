@@ -44,7 +44,16 @@ public final class SchemaFixtureFactory {
             case BOOLEAN -> variant == 0 ? Boolean.FALSE : Boolean.TRUE;
             case ARRAY -> List.of(value(requireItems(schema), variant, depth + 1));
             case OBJECT -> object(schema, variant, depth + 1);
+            case COMPOSED -> composed(schema, variant, depth + 1);
         };
+    }
+
+    private Object composed(ApiSchema schema, int variant, int depth) {
+        if (schema.composition() == null || schema.composition().branches().isEmpty()) {
+            throw invalid();
+        }
+        List<ApiSchema> branches = schema.composition().branches();
+        return value(branches.get(Math.min(variant, branches.size() - 1)), variant, depth);
     }
 
     private String string(ApiSchema schema, int variant) {
