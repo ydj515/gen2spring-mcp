@@ -388,15 +388,11 @@ class ExpectedToolCallFactoryTest {
     }
 
     @Test
-    void rejectsNestedQuantifierPatternsBeforeEvaluatingRepresentativeValues() {
-        GeneratorException exception = assertThrows(GeneratorException.class,
-                () -> factory.create(
+    void acceptsNestedQuantifierPatternsWithinTheCharacterAccessBudget() {
+        assertEquals("aaa", factory.create(
                         List.of(weatherTool("(a+)+$")),
-                        validation("getForecast", arguments("stationId", "aaa"))));
-
-        assertEquals(VALIDATION_ARGUMENT_INVALID, exception.code());
-        assertEquals("TOOL_MODEL_VALIDATE", exception.stage());
-        assertEquals("Validation argument does not match Tool input: stationId", exception.safeMessage());
+                        validation("getForecast", arguments("stationId", "aaa")))
+                .arguments().get("stationId"));
     }
 
     @Test

@@ -107,7 +107,9 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
                 GRANT_ID, RUNTIME_ID, OWNER, "client-a", Set.of(tool.name()), 1,
                 NOW.minusSeconds(60), NOW.plusSeconds(3600), Optional.empty());
         RuntimePolicyStore policies = new PostgresRuntimePolicyStore(dataSource);
-        policies.createGrant(grant, new RuntimeTokenDigest(new byte[32]));
+        assertTrue(policies.createGrant(
+                grant, new RuntimeTokenDigest(new byte[32]),
+                instance.catalogId(), instance.catalogChecksum(), NOW));
         RuntimeAccess access = new RuntimeAccess(
                 instance, Optional.of(GRANT_ID), "client-a", Set.of(tool.name()), 1, false,
                 "b".repeat(64), grant.expiresAt());
@@ -166,7 +168,9 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
         ManagedRuntimeGrant existingGrant = new ManagedRuntimeGrant(
                 GRANT_ID, RUNTIME_ID, OWNER, "client-a", Set.of("alpha"), 60,
                 NOW.minusSeconds(30), NOW.plusSeconds(1800), Optional.empty());
-        policies.createGrant(existingGrant, new RuntimeTokenDigest(bytes(32, 0x21)));
+        assertTrue(policies.createGrant(
+                existingGrant, new RuntimeTokenDigest(bytes(32, 0x21)),
+                fixture.sourceCatalog(), sourceMetadata.checksum(), NOW));
         RuntimeTokenCodec tokens = tokens();
         ToolCatalogService catalogs = new ToolCatalogService(new PostgresToolCatalogStore(dataSource));
         AtomicInteger providerCalls = new AtomicInteger();
@@ -196,7 +200,9 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
             ManagedRuntimeGrant betaGrant = new ManagedRuntimeGrant(
                     betaGrantId, RUNTIME_ID, OWNER, "client-b", Set.of("beta"), 60,
                     NOW.minusSeconds(10), NOW.plusSeconds(1800), Optional.empty());
-            policies.createGrant(betaGrant, new RuntimeTokenDigest(bytes(32, 0x22)));
+            assertTrue(policies.createGrant(
+                    betaGrant, new RuntimeTokenDigest(bytes(32, 0x22)),
+                    fixture.targetCatalog(), targetMetadata.checksum(), NOW));
             org.junit.jupiter.api.Assertions.assertThrows(
                     ManagedRuntimeMigrationService.CatalogMigrationBlocked.class,
                     () -> migrations.rollback(OWNER, RUNTIME_ID, fixture.targetCatalog()));

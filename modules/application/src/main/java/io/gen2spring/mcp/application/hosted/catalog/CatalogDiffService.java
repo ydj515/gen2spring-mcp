@@ -20,6 +20,7 @@ import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeCredential;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -142,11 +143,11 @@ public final class CatalogDiffService {
         if (!before.description().equals(after.description())) {
             changes.add(change(name, DESCRIPTION_CHANGED));
         }
-        if (!before.inputSchema().equals(after.inputSchema())) {
+        if (!schemaEquals(before.inputSchema(), after.inputSchema())) {
             changes.add(change(name, INPUT_CHANGED));
         }
         if (!before.outputKind().equals(after.outputKind())
-                || !before.outputSchema().equals(after.outputSchema())) {
+                || !schemaEquals(before.outputSchema(), after.outputSchema())) {
             ChangeKind output = before.outputKind().equals(after.outputKind())
                             && outputChange(before.outputSchema(), after.outputSchema()) == OutputChange.OPTIONAL_ADDITION
                     ? OUTPUT_OPTIONAL_PROPERTY_ADDED
@@ -183,20 +184,20 @@ public final class CatalogDiffService {
     }
 
     private OutputChange outputChange(Map<String, Object> before, Map<String, Object> after) {
-        if (before.equals(after)) {
+        if (schemaEquals(before, after)) {
             return OutputChange.IDENTICAL;
         }
         if ("object".equals(before.get("type")) && "object".equals(after.get("type"))) {
             return objectOutputChange(before, after);
         }
         if ("array".equals(before.get("type")) && "array".equals(after.get("type"))) {
-            if (!without(before, "items").equals(without(after, "items"))) {
+            if (!schemaEquals(without(before, "items"), without(after, "items"))) {
                 return OutputChange.BREAKING;
             }
             return outputChange(map(before.get("items")), map(after.get("items")));
         }
         if (before.containsKey("anyOf") && after.containsKey("anyOf")) {
-            if (!without(before, "anyOf").equals(without(after, "anyOf"))) {
+            if (!schemaEquals(without(before, "anyOf"), without(after, "anyOf"))) {
                 return OutputChange.BREAKING;
             }
             List<?> left = list(before.get("anyOf"));
@@ -218,7 +219,7 @@ public final class CatalogDiffService {
     }
 
     private OutputChange objectOutputChange(Map<String, Object> before, Map<String, Object> after) {
-        if (!without(before, "properties").equals(without(after, "properties"))) {
+        if (!schemaEquals(without(before, "properties"), without(after, "properties"))) {
             return OutputChange.BREAKING;
         }
         Map<String, Object> left = map(before.get("properties"));
@@ -249,6 +250,67 @@ public final class CatalogDiffService {
         TreeMap<String, Object> result = new TreeMap<>(source);
         result.remove(key);
         return result;
+    }
+
+    private boolean schemaEquals(Object left, Object right) {
+        return schemaEquals(left, right, null);
+    }
+
+    private boolean schemaEquals(Object left, Object right, String field) {
+        if (left == right) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
+            try {
+                return new BigDecimal(leftNumber.toString()).compareTo(new BigDecimal(rightNumber.toString())) == 0;
+            } catch (NumberFormatException invalidNumber) {
+                return false;
+            }
+        }
+        if (left instanceof Map<?, ?> leftMap && right instanceof Map<?, ?> rightMap) {
+            if (!leftMap.keySet().equals(rightMap.keySet())) {
+                return false;
+            }
+            for (Map.Entry<?, ?> entry : leftMap.entrySet()) {
+                if (!(entry.getKey() instanceof String key)
+                        || !schemaEquals(entry.getValue(), rightMap.get(key), key)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (left instanceof List<?> leftList && right instanceof List<?> rightList) {
+            if (leftList.size() != rightList.size()) {
+                return false;
+            }
+            if (Set.of("oneOf", "anyOf", "required", "enum").contains(field)) {
+                boolean[] matched = new boolean[rightList.size()];
+                for (Object leftValue : leftList) {
+                    boolean found = false;
+                    for (int index = 0; index < rightList.size(); index++) {
+                        if (!matched[index] && schemaEquals(leftValue, rightList.get(index), null)) {
+                            matched[index] = true;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            for (int index = 0; index < leftList.size(); index++) {
+                if (!schemaEquals(leftList.get(index), rightList.get(index), null)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return left.equals(right);
     }
 
     @SuppressWarnings("unchecked")

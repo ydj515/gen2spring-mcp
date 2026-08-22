@@ -10,8 +10,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 public final class SchemaValueValidator {
     private static final String SAFE_MESSAGE = "Schema value is invalid";
@@ -271,16 +269,7 @@ public final class SchemaValueValidator {
     }
 
     private boolean matches(String expression, String value) {
-        if (expression.length() > 128 || value.length() > 8_192
-                || expression.contains("++") || expression.contains("**")
-                || expression.contains(")+") || expression.contains(")*") || expression.contains("){")) {
-            return false;
-        }
-        try {
-            return Pattern.compile(expression).matcher(value).matches();
-        } catch (PatternSyntaxException | StackOverflowError failure) {
-            return false;
-        }
+        return SchemaPatternMatcher.matches(expression, value);
     }
 
     private void reserve(int depth, Budget budget) {

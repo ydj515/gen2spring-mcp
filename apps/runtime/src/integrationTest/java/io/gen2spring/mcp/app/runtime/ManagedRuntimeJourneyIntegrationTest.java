@@ -369,7 +369,9 @@ class ManagedRuntimeJourneyIntegrationTest {
     }
 
     private static final class EmptyPolicy implements RuntimePolicyStore {
-        @Override public void createGrant(ManagedRuntimeGrant grant, RuntimeTokenDigest digest) {}
+        @Override public boolean createGrant(
+                ManagedRuntimeGrant grant, RuntimeTokenDigest digest, UUID expectedCatalogId,
+                String expectedCatalogChecksum, Instant observedAt) { return true; }
         @Override public Optional<StoredGrant> authenticateGrant(
                 RuntimeInstanceId runtimeId, RuntimeTokenDigest digest) { return Optional.empty(); }
         @Override public List<ManagedRuntimeGrant> listGrants(AccountId owner, RuntimeInstanceId runtimeId) {

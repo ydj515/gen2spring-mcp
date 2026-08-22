@@ -11,11 +11,13 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaComposition;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +87,25 @@ class SchemaValueValidatorTest {
         assertDoesNotThrow(() -> validator.validate(schema, List.of("one", 2)));
         assertInvalid(() -> validator.validate(schema, List.of(1, new BigDecimal("1.0"))));
         assertInvalid(() -> validator.validate(schema, List.of()));
+    }
+
+    @Test
+    void preservesSafeGroupedQuantifiersAndBoundsPathologicalBacktracking() {
+        ApiSchema grouped = new ApiSchema(
+                STRING, null, false, List.of(), null, null, null, null, "^(ab){2}$", null,
+                Map.of(), List.of(), null, null, null, false, null, true, List.of());
+        Map<String, Object> projected = Map.of("type", "string", "pattern", "^(ab){2}$");
+
+        assertDoesNotThrow(() -> validator.validate(grouped, "abab"));
+        assertDoesNotThrow(() -> validator.validate(projected, "abab"));
+        assertDoesNotThrow(() -> validator.validate(
+                Map.of("type", "string", "pattern", "^(ab|cd)+$"), "abcdab"));
+        assertInvalid(() -> validator.validate(grouped, "ab"));
+
+        String pathological = "a|b|" + "a*".repeat(32) + "c";
+        assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> assertInvalid(() -> validator.validate(
+                        Map.of("type", "string", "pattern", pathological), "a".repeat(30))));
     }
 
     private void assertInvalid(Runnable action) {

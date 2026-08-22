@@ -6,11 +6,15 @@ import static io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransi
 import static io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionOutcome.BLOCKED;
 import static io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionOutcome.CONFLICT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.MigrationCommand;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionOutcome;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
+import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
+import io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -137,6 +141,50 @@ class PostgresRuntimeCatalogTransitionStoreTest {
 
         assertEquals(1, transitionCount(fixture));
         assertTrue(Set.of(fixture.target(), fixture.secondTarget()).contains(currentCatalog(fixture)));
+    }
+
+    @Test
+    void serializesGrantCreationWithATransitionThatRemovesTheGrantedTool() throws Exception {
+        Fixture fixture = fixture();
+        PostgresRuntimePolicyStore policies = new PostgresRuntimePolicyStore(dataSource);
+        ManagedRuntimeGrant grant = new ManagedRuntimeGrant(
+                new RuntimeGrantId(UUID.randomUUID()), fixture.runtimeId(), fixture.owner(), "client-beta",
+                Set.of("beta"), 60, NOW.minusSeconds(10), NOW.plusSeconds(1800), Optional.empty());
+        MigrationCommand migration = command(
+                fixture, fixture.source(), SOURCE_CHECKSUM, fixture.target(), TARGET_CHECKSUM, Set.of("alpha"));
+        CountDownLatch start = new CountDownLatch(1);
+
+        boolean created;
+        TransitionOutcome outcome;
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<Boolean> grantResult = executor.submit(() -> {
+                start.await();
+                return policies.createGrant(
+                        grant, new RuntimeTokenDigest(bytes(32, 0x31)),
+                        fixture.source(), SOURCE_CHECKSUM, NOW);
+            });
+            Future<TransitionOutcome> migrationResult = executor.submit(() -> {
+                start.await();
+                return store.apply(migration, MIGRATION).outcome();
+            });
+            start.countDown();
+            created = grantResult.get();
+            outcome = migrationResult.get();
+        }
+
+        if (created) {
+            assertEquals(BLOCKED, outcome);
+            assertEquals(fixture.source(), currentCatalog(fixture));
+            assertEquals(1, jdbc.queryForObject(
+                    "select count(*) from managed_runtime_grant where runtime_id = ?",
+                    Integer.class, fixture.runtimeId().value()));
+        } else {
+            assertEquals(APPLIED, outcome);
+            assertEquals(fixture.target(), currentCatalog(fixture));
+            assertFalse(jdbc.queryForObject(
+                    "select exists(select 1 from managed_runtime_grant where runtime_id = ?)",
+                    Boolean.class, fixture.runtimeId().value()));
+        }
     }
 
     private Fixture fixture() {

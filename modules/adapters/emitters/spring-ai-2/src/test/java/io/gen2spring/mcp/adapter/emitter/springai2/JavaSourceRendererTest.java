@@ -424,6 +424,10 @@ class JavaSourceRendererTest {
         assertTrue(callbacks.contains("tools.jackson.databind.JsonNode.class"), callbacks);
         assertTrue(validator.contains("matches != 1"), validator);
         assertTrue(validator.contains("CanonicalValue"), validator);
+        assertTrue(validator.contains("BudgetedCharSequence"), validator);
+        assertTrue(validator.contains("MAX_PATTERN_CHARACTER_ACCESSES"), validator);
+        assertFalse(validator.contains("expression.contains(\"){\")"), validator);
+        assertFalse(validator.contains("hasSafePatternShape"), validator);
     }
 
     @Test

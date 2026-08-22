@@ -172,6 +172,27 @@ class CatalogDiffServiceTest {
     }
 
     @Test
+    void ignoresOneOfAndAnyOfBranchOrderForInputAndOutputSchemas() {
+        List<Map<String, Object>> branches = List.of(
+                Map.of("type", "string", "minLength", 1),
+                Map.of("type", "integer", "minimum", java.math.BigDecimal.ZERO));
+        List<Map<String, Object>> reversed = List.of(branches.get(1), branches.get(0));
+        RuntimeTool source = copy(
+                tool("alpha"), "Description",
+                objectSchema(Map.of("value", Map.of("oneOf", branches)), List.of("value")),
+                "TYPED_DTO", Map.of("anyOf", branches), tool("alpha").http(), null, List.of());
+        RuntimeTool target = copy(
+                tool("alpha"), "Description",
+                objectSchema(Map.of("value", Map.of("oneOf", reversed)), List.of("value")),
+                "TYPED_DTO", Map.of("anyOf", reversed), tool("alpha").http(), null, List.of());
+
+        CatalogDiff diff = compare(List.of(source), List.of(target));
+
+        assertEquals(COMPATIBLE, diff.compatibility());
+        assertTrue(diff.changes().isEmpty());
+    }
+
+    @Test
     void failsClosedForInvalidMetadataAndMasksCrossFamilyOrOwnerLookups() {
         StubStore store = store(List.of(tool("alpha")), List.of(tool("alpha")));
         CatalogDetails valid = store.catalogs.get(TARGET);

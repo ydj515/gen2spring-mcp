@@ -62,7 +62,7 @@ class PostgresRuntimePolicyStoreTest {
         ManagedRuntimeGrant grant = grant(owner, runtimeId);
         RuntimeTokenDigest digest = digest((byte) 4);
 
-        store.createGrant(grant, digest);
+        assertTrue(store.createGrant(grant, digest, currentCatalog(), CHECKSUM, NOW));
 
         StoredGrant stored = store.authenticateGrant(runtimeId, digest).orElseThrow();
         assertEquals(grant, stored.grant());
@@ -73,6 +73,15 @@ class PostgresRuntimePolicyStoreTest {
         assertTrue(store.revokeGrant(owner, runtimeId, grant.id(), NOW.plusSeconds(40)));
         assertEquals(Optional.of(NOW.plusSeconds(30)),
                 store.listGrants(owner, runtimeId).getFirst().revokedAt());
+    }
+
+    @Test
+    void rejectsGrantCreationWhenTheExpectedRuntimeCatalogIsStale() {
+        ManagedRuntimeGrant grant = grant(owner, runtimeId);
+
+        assertFalse(store.createGrant(
+                grant, digest((byte) 5), UUID.randomUUID(), "b".repeat(64), NOW));
+        assertTrue(store.listGrants(owner, runtimeId).isEmpty());
     }
 
     @Test
@@ -108,10 +117,15 @@ class PostgresRuntimePolicyStoreTest {
                 "select date_trunc('minute', clock_timestamp())", Timestamp.class).toInstant();
     }
 
+    private UUID currentCatalog() {
+        return jdbc.queryForObject(
+                "select catalog_id from managed_runtime_instance where id = ?", UUID.class, runtimeId.value());
+    }
+
     @Test
     void completesAuditExactlyOnceAndListsByOwnerWithCursor() {
         ManagedRuntimeGrant grant = grant(owner, runtimeId);
-        store.createGrant(grant, digest((byte) 3));
+        assertTrue(store.createGrant(grant, digest((byte) 3), currentCatalog(), CHECKSUM, NOW));
         RuntimeGrantId grantId = grant.id();
         ToolExecutionAudit first = ToolExecutionAudit.start(
                 UUID.randomUUID(), owner, runtimeId, Optional.of(grantId), "client-a",

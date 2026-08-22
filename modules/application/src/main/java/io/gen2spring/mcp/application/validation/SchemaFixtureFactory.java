@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.application.validation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.application.toolmodel.schema.SchemaPatternMatcher;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import java.math.BigDecimal;
@@ -10,8 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 public final class SchemaFixtureFactory {
     private static final String SAFE_MESSAGE = "Schema fixture cannot be derived";
@@ -89,17 +88,7 @@ public final class SchemaFixtureFactory {
         if (schema.pattern() == null) {
             return true;
         }
-        if (schema.pattern().length() > 128
-                || schema.pattern().contains("++") || schema.pattern().contains("**")
-                || schema.pattern().contains(")+") || schema.pattern().contains(")*")
-                || schema.pattern().contains("){")) {
-            return false;
-        }
-        try {
-            return Pattern.compile(schema.pattern()).matcher(value).matches();
-        } catch (PatternSyntaxException | StackOverflowError failure) {
-            return false;
-        }
+        return SchemaPatternMatcher.matches(schema.pattern(), value);
     }
 
     private BigInteger integer(ApiSchema schema, int variant) {
