@@ -8,6 +8,7 @@ import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 public final class HostedJobService {
@@ -27,11 +28,14 @@ public final class HostedJobService {
     public CreateJobResult submitGeneration(
             AccountId owner,
             SpecificationId specificationId,
+            Optional<UUID> predecessorCatalogId,
             String idempotencyKey,
             String requestHash,
             String requestSnapshot) {
         requireRequest(owner, idempotencyKey, requestHash, requestSnapshot);
-        if (specificationId == null || !specifications.belongsTo(owner, specificationId)) {
+        if (predecessorCatalogId == null
+                || specificationId == null
+                || !specifications.belongsTo(owner, specificationId)) {
             throw failure(HostedJobFailure.Code.NOT_FOUND, "The hosted resource was not found");
         }
         return create(new CreateJob(
@@ -42,7 +46,18 @@ public final class HostedJobService {
                 requestHash,
                 requestSnapshot,
                 Optional.of(specificationId),
+                predecessorCatalogId,
                 DEFAULT_QUOTA));
+    }
+
+    public CreateJobResult submitGeneration(
+            AccountId owner,
+            SpecificationId specificationId,
+            String idempotencyKey,
+            String requestHash,
+            String requestSnapshot) {
+        return submitGeneration(
+                owner, specificationId, Optional.empty(), idempotencyKey, requestHash, requestSnapshot);
     }
 
     public CreateJobResult submitImport(
@@ -58,6 +73,7 @@ public final class HostedJobService {
                 idempotencyKey,
                 requestHash,
                 requestSnapshot,
+                Optional.empty(),
                 Optional.empty(),
                 DEFAULT_QUOTA));
     }
@@ -82,6 +98,9 @@ public final class HostedJobService {
                 throw failure(
                         HostedJobFailure.Code.IDEMPOTENCY_CONFLICT,
                         "The idempotency key is already used for another request");
+            }
+            if (rejection.rejection() == JobQueue.CreateRejection.CATALOG_NOT_FOUND) {
+                throw failure(HostedJobFailure.Code.NOT_FOUND, "The hosted resource was not found");
             }
             throw failure(HostedJobFailure.Code.CAPACITY_EXCEEDED, "The hosted job capacity is exhausted");
         }

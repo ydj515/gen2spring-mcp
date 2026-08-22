@@ -39,7 +39,7 @@ alter table tool_catalog
         unique (family_id, revision),
     add constraint tool_catalog_family_owner_fk
         foreign key (family_id, owner_account_id)
-        references tool_catalog_family(id, owner_account_id),
+        references tool_catalog_family(id, owner_account_id) on delete cascade,
     add constraint tool_catalog_predecessor_family_fk
         foreign key (predecessor_catalog_id, owner_account_id, family_id)
         references tool_catalog(id, owner_account_id, family_id),
@@ -51,7 +51,7 @@ alter table tool_catalog
 alter table tool_catalog_family
     add constraint tool_catalog_family_head_fk
         foreign key (head_catalog_id, owner_account_id, id)
-        references tool_catalog(id, owner_account_id, family_id);
+        references tool_catalog(id, owner_account_id, family_id) on delete cascade;
 
 alter table generation_job
     add constraint generation_job_predecessor_owner_fk

@@ -35,6 +35,9 @@ import java.util.Optional;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -234,6 +237,103 @@ class PostgresJobQueueTest {
         assertEquals(0, jdbc.queryForObject("select count(*) from tool_catalog", Integer.class));
     }
 
+    @Test
+    void storesOwnedPredecessorsAndMasksForeignCatalogsAtCreation() {
+        AccountId owner = account("https://issuer.example", "subject-1");
+        SpecificationId specification = insertSpecification(owner);
+        UUID rootCatalog = publishRootCatalog(owner, specification, "root-key", "worker-root");
+
+        var child = jobs.create(generation(
+                owner, specification, Optional.of(rootCatalog),
+                "child-key", HASH_B, new JobQuota(2, 2)));
+        assertEquals(Optional.of(rootCatalog), child.job().predecessorCatalogId());
+        assertEquals(rootCatalog, jdbc.queryForObject(
+                "select predecessor_catalog_id from generation_job where id = ?",
+                UUID.class,
+                child.job().id().value()));
+
+        AccountId other = account("https://issuer.example", "subject-2");
+        SpecificationId otherSpecification = insertSpecification(other);
+        JobQueue.CreateRejected missing = assertThrows(
+                JobQueue.CreateRejected.class,
+                () -> jobs.create(generation(
+                        other, otherSpecification, Optional.of(rootCatalog),
+                        "foreign-key", HASH_A, new JobQuota(2, 2))));
+        assertEquals(JobQueue.CreateRejection.CATALOG_NOT_FOUND, missing.rejection());
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from generation_job where owner_account_id = ?",
+                Integer.class,
+                other.value()));
+    }
+
+    @Test
+    void rejectsAStaleFamilyHeadWithoutPublishingRows() {
+        AccountId owner = account("https://issuer.example", "subject-1");
+        SpecificationId specification = insertSpecification(owner);
+        UUID rootCatalog = publishRootCatalog(owner, specification, "root-key", "worker-root");
+        jobs.create(generation(
+                owner, specification, Optional.of(rootCatalog),
+                "child-a", HASH_A, new JobQuota(2, 2)));
+        jobs.create(generation(
+                owner, specification, Optional.of(rootCatalog),
+                "child-b", HASH_B, new JobQuota(2, 2)));
+        JobLease first = jobs.claim(
+                new WorkerId("worker-a"), NOW, Duration.ofSeconds(30)).orElseThrow();
+        JobLease stale = jobs.claim(
+                new WorkerId("worker-b"), NOW, Duration.ofSeconds(30)).orElseThrow();
+
+        assertTrue(jobs.complete(
+                first, JobCompletion.success(), artifacts(first), Optional.of(publication(List.of(
+                        tool("alpha", "alphaOperation"))))));
+        assertThrows(JobQueue.CatalogLineageConflict.class, () -> jobs.complete(
+                stale, JobCompletion.success(), artifacts(stale), Optional.of(publication(List.of(
+                        tool("beta", "betaOperation"))))));
+
+        assertEquals(List.of(1L, 2L), jdbc.queryForList(
+                "select revision from tool_catalog order by revision", Long.class));
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from artifact where job_id = ?",
+                Integer.class,
+                stale.jobId().value()));
+        assertEquals(JobStatus.RUNNING, jobs.find(owner, stale.jobId()).orElseThrow().status());
+    }
+
+    @Test
+    void serializesTwoCompletionsFromTheSamePredecessor() throws Exception {
+        AccountId owner = account("https://issuer.example", "subject-1");
+        SpecificationId specification = insertSpecification(owner);
+        UUID rootCatalog = publishRootCatalog(owner, specification, "root-key", "worker-root");
+        jobs.create(generation(
+                owner, specification, Optional.of(rootCatalog),
+                "child-a", HASH_A, new JobQuota(2, 2)));
+        jobs.create(generation(
+                owner, specification, Optional.of(rootCatalog),
+                "child-b", HASH_B, new JobQuota(2, 2)));
+        PostgresJobQueue otherQueue = new PostgresJobQueue(dataSource, Clock.fixed(NOW, ZoneOffset.UTC));
+        JobLease first = jobs.claim(
+                new WorkerId("worker-a"), NOW, Duration.ofSeconds(30)).orElseThrow();
+        JobLease second = otherQueue.claim(
+                new WorkerId("worker-b"), NOW, Duration.ofSeconds(30)).orElseThrow();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<String> firstResult = executor.submit(() -> completeAfterStart(jobs, first, ready, start));
+            Future<String> secondResult = executor.submit(() -> completeAfterStart(otherQueue, second, ready, start));
+            ready.await();
+            start.countDown();
+
+            assertEquals(List.of("CONFLICT", "SUCCEEDED"), List.of(firstResult.get(), secondResult.get())
+                    .stream().sorted().toList());
+        }
+        assertEquals(List.of(1L, 2L), jdbc.queryForList(
+                "select revision from tool_catalog order by revision", Long.class));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tool_catalog where predecessor_catalog_id = ?",
+                Integer.class,
+                rootCatalog));
+    }
+
     private AccountId account(String issuer, String subject) {
         return accounts.findOrCreate(issuer, subject, NOW);
     }
@@ -261,6 +361,16 @@ class PostgresJobQueueTest {
             String idempotencyKey,
             String hash,
             JobQuota quota) {
+        return generation(owner, specification, Optional.empty(), idempotencyKey, hash, quota);
+    }
+
+    private CreateJob generation(
+            AccountId owner,
+            SpecificationId specification,
+            Optional<UUID> predecessorCatalogId,
+            String idempotencyKey,
+            String hash,
+            JobQuota quota) {
         return new CreateJob(
                 owner,
                 JobKind.GENERATION,
@@ -269,7 +379,44 @@ class PostgresJobQueueTest {
                 hash,
                 "{\"profile\":\"java21\"}",
                 Optional.of(specification),
+                predecessorCatalogId,
                 quota);
+    }
+
+    private UUID publishRootCatalog(
+            AccountId owner,
+            SpecificationId specification,
+            String idempotencyKey,
+            String workerId) {
+        var root = jobs.create(generation(
+                owner, specification, Optional.empty(), idempotencyKey, HASH_A, new JobQuota(2, 2)));
+        JobLease lease = jobs.claim(
+                new WorkerId(workerId), NOW, Duration.ofSeconds(30)).orElseThrow();
+        assertTrue(jobs.complete(
+                lease, JobCompletion.success(), artifacts(lease), Optional.of(publication(List.of(
+                        tool("root", "rootOperation"))))));
+        return jdbc.queryForObject(
+                "select id from tool_catalog where generation_job_id = ?",
+                UUID.class,
+                root.job().id().value());
+    }
+
+    private String completeAfterStart(
+            PostgresJobQueue queue,
+            JobLease lease,
+            CountDownLatch ready,
+            CountDownLatch start) throws InterruptedException {
+        ready.countDown();
+        start.await();
+        try {
+            return queue.complete(
+                    lease, JobCompletion.success(), artifacts(lease), Optional.of(publication(List.of(
+                            tool("child", "childOperation")))))
+                    ? "SUCCEEDED"
+                    : "STALE";
+        } catch (JobQueue.CatalogLineageConflict conflict) {
+            return "CONFLICT";
+        }
     }
 
     private CreateJob importJob(

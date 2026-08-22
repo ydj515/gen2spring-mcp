@@ -90,6 +90,23 @@ class HostedWorkerTest {
     }
 
     @Test
+    void acceptsTheStoredPredecessorWithoutUsingItAsPublicationAuthority() throws Exception {
+        StubQueue queue = generationQueue();
+        queue.lease = new JobLease(
+                JOB, WORKER, 11, NOW.plusSeconds(30), JobKind.GENERATION,
+                queue.lease.requestSnapshot().replace(
+                        "\"configuration\":",
+                        "\"predecessorCatalogId\":\"2c7fab42-1acd-4f90-bd3f-f7de5ec81edb\",\"configuration\":"));
+        StubSandbox sandbox = new StubSandbox();
+        sandbox.result = generationResult();
+
+        assertEquals(HostedWorker.PollResult.COMPLETED,
+                worker(queue, sandbox, (lease, target, limits) -> { throw new AssertionError(); }, new StubStorage())
+                        .pollOnce());
+        assertEquals(JobStatus.SUCCEEDED, queue.completion.status());
+    }
+
+    @Test
     void dispatchesEncryptedImportsWithoutExposingThePayload() throws Exception {
         StubQueue queue = importQueue();
         AtomicInteger imports = new AtomicInteger();
@@ -144,6 +161,25 @@ class HostedWorkerTest {
 
         assertEquals(storage.keys, storage.deleted);
         assertTrue(queue.catalog.isEmpty());
+    }
+
+    @Test
+    void convertsCatalogLineageConflictsToSafeFailedCompletion() throws Exception {
+        StubQueue queue = generationQueue();
+        queue.lineageConflict = true;
+        StubSandbox sandbox = new StubSandbox();
+        sandbox.result = generationResult();
+        StubStorage storage = new StubStorage();
+
+        assertEquals(HostedWorker.PollResult.FAILED,
+                worker(queue, sandbox, (lease, target, limits) -> { throw new AssertionError(); }, storage)
+                        .pollOnce());
+
+        assertEquals(storage.keys, storage.deleted);
+        assertEquals("CATALOG_LINEAGE_CONFLICT", queue.completion.safeCode());
+        assertTrue(queue.artifacts.isEmpty());
+        assertTrue(queue.catalog.isEmpty());
+        assertEquals(2, queue.completions);
     }
 
     @Test
@@ -372,6 +408,7 @@ class HostedWorkerTest {
         private List<JobArtifact> artifacts = List.of();
         private Optional<ToolCatalogPublication> catalog = Optional.empty();
         private boolean failCompletion;
+        private boolean lineageConflict;
         private int completions;
         private final AtomicInteger heartbeats = new AtomicInteger();
 
@@ -410,6 +447,11 @@ class HostedWorkerTest {
                 JobCompletion completion,
                 List<JobArtifact> artifacts,
                 Optional<ToolCatalogPublication> catalog) {
+            if (lineageConflict && completion.status() == JobStatus.SUCCEEDED) {
+                lineageConflict = false;
+                completions++;
+                throw new JobQueue.CatalogLineageConflict();
+            }
             if (failCompletion) {
                 throw new IllegalStateException("private completion marker");
             }

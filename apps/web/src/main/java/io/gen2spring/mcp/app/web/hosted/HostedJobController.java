@@ -10,6 +10,7 @@ import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -54,14 +55,21 @@ public final class HostedJobController {
             Authentication authentication,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @RequestBody JsonNode body) {
-        if (body == null || !body.isObject() || body.size() != 2
-                || !body.path("specificationId").isTextual() || !body.path("configuration").isObject()) {
+        boolean hasPredecessor = body != null && body.has("predecessorCatalogId");
+        if (body == null || !body.isObject() || body.size() != (hasPredecessor ? 3 : 2)
+                || !body.path("specificationId").isTextual()
+                || !body.path("configuration").isObject()
+                || hasPredecessor && !body.path("predecessorCatalogId").isTextual()) {
             throw new HostedSubmissionService.HostedSubmissionFailure();
         }
         try {
+            Optional<UUID> predecessorCatalogId = hasPredecessor
+                    ? Optional.of(UUID.fromString(body.path("predecessorCatalogId").textValue()))
+                    : Optional.empty();
             var result = submissions.generate(
                     accounts.resolve(authentication).accountId(),
                     SpecificationId.parse(body.path("specificationId").textValue()),
+                    predecessorCatalogId,
                     idempotencyKey,
                     json.writeValueAsBytes(body.path("configuration")));
             return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.ACCEPTED)

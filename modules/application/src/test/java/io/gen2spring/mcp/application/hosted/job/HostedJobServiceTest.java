@@ -19,6 +19,7 @@ class HostedJobServiceTest {
     private static final AccountId OWNER = account("41dd3b69-589c-4466-a78e-d448407d17b9");
     private static final AccountId OTHER = account("5d0c27ac-1c18-487d-b922-28653572fc4a");
     private static final SpecificationId SPECIFICATION = specification("80782e7c-337d-4d4d-bd4d-ad478359563c");
+    private static final UUID PREDECESSOR = UUID.fromString("2c7fab42-1acd-4f90-bd3f-f7de5ec81edb");
     private static final String HASH = "a".repeat(64);
 
     @Test
@@ -28,12 +29,16 @@ class HostedJobServiceTest {
         HostedJobService service = new HostedJobService(jobs, specifications);
 
         CreateJobResult generation = service.submitGeneration(
-                OWNER, SPECIFICATION, "generation-key", HASH, "{\"profile\":\"java21\"}");
-        CreateJobResult imported = service.submitImport(
-                OWNER, "import-key", "b".repeat(64), "{\"url\":\"encrypted\"}");
+                OWNER, SPECIFICATION, Optional.of(PREDECESSOR),
+                "generation-key", HASH, "{\"profile\":\"java21\"}");
 
         assertEquals(JobKind.GENERATION, generation.job().kind());
         assertEquals(Optional.of(SPECIFICATION), generation.job().specificationId());
+        assertEquals(Optional.of(PREDECESSOR), generation.job().predecessorCatalogId());
+        assertEquals(Optional.of(PREDECESSOR), jobs.lastCommand.predecessorCatalogId());
+
+        CreateJobResult imported = service.submitImport(
+                OWNER, "import-key", "b".repeat(64), "{\"url\":\"encrypted\"}");
         assertEquals(JobKind.SPEC_IMPORT, imported.job().kind());
         assertEquals(Optional.empty(), imported.job().specificationId());
         assertEquals(new JobQuota(2, 10), jobs.lastCommand.quota());
@@ -66,6 +71,12 @@ class HostedJobServiceTest {
         assertFailure(HostedJobFailure.Code.CAPACITY_EXCEEDED,
                 "The hosted job capacity is exhausted",
                 () -> service.submitGeneration(OWNER, SPECIFICATION, "next-key", HASH, "{}"));
+
+        jobs.rejection = JobQueue.CreateRejection.CATALOG_NOT_FOUND;
+        assertFailure(HostedJobFailure.Code.NOT_FOUND,
+                "The hosted resource was not found",
+                () -> service.submitGeneration(
+                        OWNER, SPECIFICATION, Optional.of(PREDECESSOR), "lineage-key", HASH, "{}"));
     }
 
     @Test
@@ -113,6 +124,7 @@ class HostedJobServiceTest {
                 HASH,
                 "{}",
                 Optional.of(SPECIFICATION),
+                Optional.of(PREDECESSOR),
                 new JobQuota(2, 10)));
     }
 
@@ -150,6 +162,7 @@ class HostedJobServiceTest {
                     command.kind(),
                     JobStatus.QUEUED,
                     command.specificationId(),
+                    command.predecessorCatalogId(),
                     0,
                     false), replay);
         }

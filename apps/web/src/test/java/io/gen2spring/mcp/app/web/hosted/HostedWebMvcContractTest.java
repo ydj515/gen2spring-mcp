@@ -274,10 +274,13 @@ class HostedWebMvcContractTest {
     @Test
     void startsOneIdempotentHostedGenerationFromTheGuidedEditor() throws Exception {
         SpecificationId specificationId = new SpecificationId(UUID.randomUUID());
+        UUID predecessorCatalogId = UUID.fromString("2c7fab42-1acd-4f90-bd3f-f7de5ec81edb");
         JobView job = new JobView(
                 new JobId(UUID.randomUUID()), OWNER, JobKind.GENERATION, JobStatus.QUEUED,
-                Optional.of(specificationId), 0, false);
-        when(submissions.generate(eq(OWNER), eq(specificationId), eq("editor-request-1"), any()))
+                Optional.of(specificationId), Optional.of(predecessorCatalogId), 0, false);
+        when(submissions.generate(
+                eq(OWNER), eq(specificationId), eq(Optional.of(predecessorCatalogId)),
+                eq("editor-request-1"), any()))
                 .thenReturn(new CreateJobResult(job, false));
 
         mvc.perform(post("/api/jobs")
@@ -285,12 +288,16 @@ class HostedWebMvcContractTest {
                         .header("Idempotency-Key", "editor-request-1")
                         .contentType("application/json")
                         .content("""
-                                {"specificationId":"%s","configuration":{"operations":[]}}
-                                """.formatted(specificationId.value())))
+                                {"specificationId":"%s","predecessorCatalogId":"%s",
+                                 "configuration":{"operations":[]}}
+                                """.formatted(specificationId.value(), predecessorCatalogId)))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(job.id().value().toString()))
                 .andExpect(jsonPath("$.status").value("QUEUED"))
                 .andExpect(jsonPath("$.replayed").value(false));
+        verify(submissions).generate(
+                eq(OWNER), eq(specificationId), eq(Optional.of(predecessorCatalogId)),
+                eq("editor-request-1"), any());
     }
 
     @Test

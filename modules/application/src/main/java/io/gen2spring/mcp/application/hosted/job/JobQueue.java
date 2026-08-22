@@ -68,6 +68,7 @@ public interface JobQueue {
 
     enum CreateRejection {
         IDEMPOTENCY_CONFLICT,
+        CATALOG_NOT_FOUND,
         CAPACITY_EXCEEDED
     }
 
@@ -81,6 +82,12 @@ public interface JobQueue {
 
         public CreateRejection rejection() {
             return rejection;
+        }
+    }
+
+    final class CatalogLineageConflict extends RuntimeException {
+        public CatalogLineageConflict() {
+            super("Hosted Tool Catalog lineage changed", null, false, false);
         }
     }
 }

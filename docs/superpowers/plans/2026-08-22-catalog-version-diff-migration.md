@@ -120,13 +120,13 @@ public CreateJobResult submitGeneration(
 `CreateJob` and generation `JobView` carry `Optional<UUID> predecessorCatalogId`; import jobs require it to be empty.
 `PostgresJobQueue` reads this trusted column during completion rather than accepting lineage from the worker artifact.
 
-- [ ] **Step 1: Write submission and publication RED tests**
+- [x] **Step 1: Write submission and publication RED tests**
 
   Cover root-family creation, valid next revision, foreign-owner predecessor masking, predecessor in idempotency hash,
   idempotent replay, stale-head collision, and two completions racing from the same predecessor. Assert a rejected
   success transaction publishes no Catalog or artifacts.
 
-- [ ] **Step 2: Run application, Web, and queue tests and confirm RED**
+- [x] **Step 2: Run application, Web, and queue tests and confirm RED**
 
   Run:
 
@@ -136,23 +136,23 @@ public CreateJobResult submitGeneration(
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 3: Implement predecessor validation and family-head locking**
+- [x] **Step 3: Implement predecessor validation and family-head locking**
 
   Accept exactly the existing job fields plus optional `predecessorCatalogId`. Include the canonical UUID in the
   stored request snapshot/hash, validate same-owner existence, lock the family at publication, allocate head + 1,
   and update the head in the existing job-completion transaction. Add a fixed `CatalogLineageConflict` boundary that
   the worker can convert to safe failed completion without retaining artifacts.
 
-- [ ] **Step 4: Add concurrency GREEN coverage**
+- [x] **Step 4: Add concurrency GREEN coverage**
 
   Use two database connections and latches, not sleeps. Require exactly one published child and one fixed conflict;
   the family must have a single head and no duplicate revision.
 
-- [ ] **Step 5: Run affected suites to GREEN**
+- [x] **Step 5: Run affected suites to GREEN**
 
   Run the command from Step 2 with `:apps:worker:test` added to the Gradle task list.
 
-- [ ] **Step 6: Commit generation lineage**
+- [x] **Step 6: Commit generation lineage**
 
   Commit title: `feat(catalog): publish linear catalog revisions`
 
