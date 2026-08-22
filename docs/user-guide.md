@@ -305,8 +305,8 @@ active OpenTelemetry span의 trace ID를 사용하고, span이 없을 때만 32�
 예상된 provider·HTTP·timeout·availability·protocol·capacity 오류는 JSON-RPC transport 오류가 아니라
 `isError=true`인 MCP Tool result로 반환한다.
 
-`output.mode: TYPED`는 supported JSON object response에서 typed output DTO를 생성한다. ambiguous schema,
-composed/recursive schema와 unsupported media type은 source 생성 전에 거부한다.
+`output.mode: TYPED`는 supported JSON object response에서 typed output DTO를 생성한다. ambiguous success
+response schema, composed/recursive success response schema와 unsupported media type은 source 생성 전에 거부한다.
 
 GET operation에 bounded retry를 실행할 수 있다. `maxRetries` 1..3, initial backoff 5000ms 이하,
 max backoff 10000ms 이하이며 total timeout 안에서만 적용한다. GET operation에 bounded pagination을 실행할
@@ -384,6 +384,10 @@ src/main/java/{packageName}/
 - `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
 - path, query, header parameter와 JSON request body
 - primitive, enum, array, object, non-recursive local `$ref`
+- optional nullable query/header와 required 또는 optional nullable root request body
+- `maxItems` 256 이하의 array와 bounded structural `uniqueItems`
+- compatible object `allOf`, branch 8개 이하의 `oneOf`·`anyOf`·multi-type union
+- compatible constraint를 결합하는 OpenAPI 3.1 `$ref` sibling
 - Jakarta Validation, API key query/header의 `SERVER_SECRET` injection
 - Java 17·21, Spring MVC Sync, Streamable HTTP, generic/typed JSON output
 
@@ -392,9 +396,12 @@ src/main/java/{packageName}/
 - path/header는 기본 `simple` scalar, query는 기본 `form` scalar와 scalar-item
   `form` + `explode=true` array만 지원한다.
 - OpenAPI 3.1은 dialect 생략 또는 `https://spec.openapis.org/oas/3.1/dialect/base`만 허용하고,
-  정확히 하나의 지원 non-null type과 `null` 조합만 기존 nullable schema로 정규화한다.
-- remote `$ref`, custom JSON Schema dialect, multi-type, `oneOf`, `anyOf`, `allOf`, discriminator와
-  recursive schema는 거부하거나 해당 endpoint를 이유와 함께 지원 불가로 표시한다.
+  지원 type union의 단일 `null` member는 canonical nullable로, 나머지 bounded multi-type은 `anyOf`로 정규화한다.
+- `uniqueItems`는 명시적인 지원 범위의 `maxItems`가 있어야 하며, composition은 branch 8개, 깊이 16,
+  전체 branch 64를 넘지 않아야 한다.
+- nullable path와 required nullable query/header, conflicting 또는 empty `allOf`, budget을 넘는 composition,
+  remote `$ref`, custom JSON Schema dialect, discriminator와 recursive schema는 해당 endpoint를 이유와 함께
+  지원 불가로 표시한다.
 - Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
 - local UI는 URL import를 제공하지 않는다. hosted URL import도 문서 내부 remote `$ref`는 거부한다.
 

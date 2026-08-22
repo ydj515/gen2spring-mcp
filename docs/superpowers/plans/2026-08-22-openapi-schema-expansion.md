@@ -324,18 +324,37 @@ change.
 - Modify: `docs/architecture/hosted-generation-platform.html`
 - Review: GitHub issue #12 against the implemented supported and intentionally unsupported checklist.
 
-- [ ] **Step 1: Write documentation-contract RED assertions**
+- [x] **Step 1: Write documentation-contract RED assertions**
 
   Require accurate support for nullable optional query/header, nullable root body, bounded max/unique arrays,
   composition and 3.1 reference siblings. Keep nullable path, required nullable query/header, recursion, discriminator,
   and budget overflow explicit.
 
-- [ ] **Step 2: Update docs and issue disposition notes**
+- [x] **Step 2: Update docs and issue disposition notes**
 
   Mark only verified behavior complete. Prepare the exact GitHub issue #12 comment/checklist update but do not post or
   close it without the later publication/review authorization.
 
-- [ ] **Step 3: Run affected acceptance**
+  Prepared issue #12 checklist disposition:
+
+  - `[ ] Nullable path parameters` — retain as intentionally unsupported.
+  - `[ ] Nullable query parameters` — keep open; optional nullable is complete, required nullable remains unsupported.
+  - `[ ] Nullable header parameters` — keep open; optional nullable is complete, required nullable remains unsupported.
+  - `[x] Nullable root request bodies` — complete for required/optional absence and explicit JSON null semantics.
+  - `[x] Array maxItems` — complete through the supported Tool-input bound of 256.
+  - `[x] Array uniqueItems` — complete when an explicit supported maxItems bounds structural comparison.
+  - `[x] Arbitrary multi-type unions` — complete within the canonical composition budgets.
+  - `[x] User-authored oneOf, anyOf, and allOf` — complete for bounded unions and compatible object intersections.
+  - `[x] OpenAPI 3.1 semantic $ref siblings` — complete through the same compatible intersection engine.
+
+  Prepared publication comment: “The bounded schema expansion is implemented and locally verified across paired
+  OpenAPI 3.0/3.1 fixtures, Tool IR, generated Spring AI 1/2 projects, Runtime Metadata, Catalog diff/migration, and
+  Managed Runtime wire calls. The checklist remains open only for nullable paths and required nullable query/header
+  declarations; those cases still fail closed with stable reasons. Recursive references, discriminator semantics,
+  conflicting/empty composition, unbounded uniqueness, and composition budget overflow remain intentional safety
+  boundaries rather than silently weakened contracts.”
+
+- [x] **Step 3: Run affected acceptance**
 
   Run:
 
@@ -353,7 +372,7 @@ change.
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 4: Run full repository acceptance**
+- [x] **Step 4: Run full repository acceptance**
 
   Run:
 
@@ -365,12 +384,18 @@ change.
   git diff --check
   ```
 
-- [ ] **Step 5: Perform security and determinism readback**
+- [x] **Step 5: Perform security and determinism readback**
 
   Compare paired fixtures, parse every new Runtime Metadata artifact, scan generated files/reports/log captures for
   synthetic secret values, and re-read both approved specs. Report local, Docker, and remote-CI verification as
   separate evidence.
 
-- [ ] **Step 6: Commit schema-expansion acceptance**
+  - Local: affected acceptance passed with 73 executed tasks; clean repository acceptance passed with 145 executed
+    tasks. Direct readback parsed two metadata artifacts with eight Tools each and found exact Tool schema/source
+    parity and zero matches for the five synthetic secret values.
+  - Docker: not run in this task; generated-project JVM and MCP protocol validation ran locally.
+  - Remote CI: not run in this task; no remote publication was authorized.
+
+- [x] **Step 6: Commit schema-expansion acceptance**
 
   Commit title: `feat(openapi): complete bounded schema expansion`

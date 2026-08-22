@@ -192,7 +192,7 @@ Gradle Wrapper JVM은 host의 Java 21로 시작될 수 있다. generated compile
 ## 지원 범위 요약
 
 로컬 OpenAPI 3.0.x·3.1.x 파일, 주요 HTTP method, path/query/header parameter, JSON body,
-primitive·enum·array·object와 non-recursive local `$ref`를 지원한다. OpenAPI 3.1은 기본 dialect와
-단일 non-null type + `null` union만 bounded하게 정규화한다. remote `$ref`, custom dialect,
-composed/recursive schema, Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
+primitive·enum·array·object, non-recursive local `$ref`, bounded `allOf`·`oneOf`·`anyOf`와 multi-type union을
+지원한다. nullable parameter/body, 배열·조합 schema와 OpenAPI 3.1 `$ref` sibling에는 명시적인 안전 경계를
+적용한다. remote `$ref`, custom dialect, recursive/discriminator schema, Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
 정확한 serialization 및 validation 경계는 [사용자 가이드](docs/user-guide.md#지원-범위와-제한)를 참고한다.

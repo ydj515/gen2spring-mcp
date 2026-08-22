@@ -112,6 +112,8 @@ class InstalledCliTest {
         String readme = Files.readString(repositoryRoot().resolve("README.md"));
         String userGuide = Files.readString(repositoryRoot().resolve("docs/user-guide.md"));
         String prd = Files.readString(repositoryRoot().resolve("docs/prd.md"));
+        String architecture = Files.readString(
+                repositoryRoot().resolve("docs/architecture/hosted-generation-platform.html"));
 
         assertTrue(readme.lines().count() <= 200, "Root README should remain a concise landing page");
         assertTrue(readme.contains("[사용자 가이드](docs/user-guide.md)"));
@@ -174,7 +176,19 @@ class InstalledCliTest {
         assertTrue(userGuide.contains("API endpoint 선택, 생성 설정의 세 단계"));
         assertTrue(userGuide.contains("지원 불가 항목은 이유와 함께 비활성화"));
         assertTrue(userGuide.contains("https://spec.openapis.org/oas/3.1/dialect/base"));
-        assertFalse(userGuide.contains("OpenAPI 3.1, `oneOf`"));
+        assertTrue(readme.contains("bounded `allOf`·`oneOf`·`anyOf`"));
+        assertTrue(userGuide.contains("optional nullable query/header"));
+        assertTrue(userGuide.contains("nullable root request body"));
+        assertTrue(userGuide.contains("`maxItems` 256"));
+        assertTrue(userGuide.contains("branch 8개, 깊이 16"));
+        assertTrue(userGuide.contains("전체 branch 64"));
+        assertTrue(userGuide.contains("OpenAPI 3.1 `$ref` sibling"));
+        assertTrue(userGuide.contains("nullable path와 required nullable query/header"));
+        assertTrue(prd.contains("bounded schema 구현 상태: 완료"));
+        assertTrue(prd.contains("GitHub issue #12 처리 기준"));
+        assertTrue(architecture.contains("id=\"schema-contract\""));
+        assertTrue(architecture.contains("Bounded schema normalization contract"));
+        assertTrue(architecture.contains("Required nullable query/header"));
         assertFalse(userGuide.contains("typed output DTO, retry 실행, pagination 실행은 후속 P1 범위다"));
         assertFalse(userGuide.contains("Windows validation host remains follow-up P1"));
         assertFalse(userGuide.contains(

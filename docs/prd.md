@@ -450,19 +450,37 @@ ApiOperation
 - minLength
 - maxLength
 - pattern
+- minItems
+- maxItems
+- uniqueItems
 - default
 - example
 
+bounded schema 구현 상태: 완료. optional nullable query/header, required·optional nullable root body,
+`maxItems <= 256`인 array, bounded structural `uniqueItems`, compatible object `allOf`, branch 8개 이하의
+`oneOf`·`anyOf`·multi-type union, semantic OpenAPI 3.1 `$ref` sibling을 canonical Tool schema로 정규화한다.
+
 ## FR-2.3 미지원 schema 처리
 
-`oneOf`, `anyOf`, `allOf`, discriminator, recursive schema 등 자동 변환이 어려운 항목은 다음 중 하나로 처리해야 한다.
+지원 경계 안의 `allOf`는 compatible object schema로 flatten하고, `oneOf`·`anyOf`·multi-type union은 generic
+JSON value schema로 보존한다. 다음 항목은 의미를 임의로 변경하지 않고 operation을 명시적인 이유와 함께
+지원 불가로 처리한다.
 
-- 지원 가능한 형태로 flatten
-- generic JSON object로 변환
-- 사용자 확인 필요 상태
-- operation 생성 제외
+- nullable path parameter
+- required nullable query/header parameter
+- `maxItems`가 없거나 256을 초과한 `uniqueItems` array
+- conflicting 또는 empty `allOf`
+- branch 8개, 깊이 16, 전체 branch 64의 budget을 초과한 composition
+- remote `$ref`, custom JSON Schema dialect, discriminator, recursive schema
 
 시스템은 임의로 의미를 변경해서는 안 된다.
+
+### GitHub issue #12 처리 기준
+
+nullable parameter/root body, bounded array constraint, bounded composition·multi-type, OpenAPI 3.1 `$ref` sibling은
+완료로 분류한다. nullable path, required nullable query/header, unbounded uniqueness, conflicting·empty·budget
+overflow composition, recursion과 discriminator는 의도적으로 유지한 fail-closed 경계로 분류한다. issue의
+체크리스트와 종료 코멘트는 이 구분을 그대로 사용하며, 미지원 경계를 완료 기능으로 표시하지 않는다.
 
 ---
 
@@ -626,7 +644,8 @@ FR-4.6 구현 상태: 완료 (P1 지원 범위)
 
 현재 구현은 기존 호환 기본값인 `GENERIC_JSON`과 operation별 opt-in `TYPED_DTO`를 지원한다. `TYPED_DTO`는
 하나의 structurally consistent `application/json` object success schema에서 Java record를 생성한다. ambiguous
-success response, composed/recursive schema, unsupported media type은 source 생성 전에 fail-closed로 거부한다.
+success response, composed/recursive success response schema, unsupported media type은 source 생성 전에
+fail-closed로 거부한다.
 response normalization은 두 output mode와 독립적으로 적용된다.
 
 출력 전략은 operation별로 선택할 수 있어야 한다.

@@ -143,6 +143,7 @@ class P1GenerationIntegrationTest {
             "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
             "src/main/java/com/example/weather/runtime/RetryPolicy.java",
             "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
+            "src/main/java/com/example/weather/runtime/SchemaValueValidator.java",
             "src/main/java/com/example/weather/runtime/SecretBinding.java",
             "src/main/java/com/example/weather/runtime/ToolArgumentContext.java",
             "src/main/resources/application.yml",
