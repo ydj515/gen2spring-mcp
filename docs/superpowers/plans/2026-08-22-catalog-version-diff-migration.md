@@ -47,13 +47,13 @@ record CatalogSummary(
         CatalogVersion version) {}
 ```
 
-- [ ] **Step 1: Write migration RED tests**
+- [x] **Step 1: Write migration RED tests**
 
   Assert V1-to-V7 migration, one family per existing Catalog, revision 1 backfill, owner composite keys, unique
   `(family_id, revision)`, legal predecessor shape, and append-only transition constraints. Assert foreign-owner and
   cross-family predecessor inserts fail.
 
-- [ ] **Step 2: Run the focused migration test and confirm RED**
+- [x] **Step 2: Run the focused migration test and confirm RED**
 
   Run:
 
@@ -65,14 +65,14 @@ record CatalogSummary(
 
   Expected: fail because V7 and version columns do not exist.
 
-- [ ] **Step 3: Add V7 and read-side version projection**
+- [x] **Step 3: Add V7 and read-side version projection**
 
   Create `tool_catalog_family`; add trusted generation predecessor, Catalog family/revision/predecessor columns, and
   `managed_runtime_catalog_transition`. Backfill existing Catalog IDs as family IDs. Extend list/detail/tool queries
   to return the exact `CatalogVersion`; retain a compatibility constructor in `CatalogSummary` only while updating
   existing fixtures.
 
-- [ ] **Step 4: Run persistence tests to GREEN**
+- [x] **Step 4: Run persistence tests to GREEN**
 
   Run:
 
@@ -83,7 +83,7 @@ record CatalogSummary(
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 5: Commit the Catalog family foundation**
+- [x] **Step 5: Commit the Catalog family foundation**
 
   Commit title: `feat(catalog): persist immutable catalog revisions`
 
