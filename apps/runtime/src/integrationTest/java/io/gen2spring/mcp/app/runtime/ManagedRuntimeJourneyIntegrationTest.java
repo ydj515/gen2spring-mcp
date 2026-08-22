@@ -124,7 +124,7 @@ class ManagedRuntimeJourneyIntegrationTest {
             return new ProviderCallResponse(200, Map.of("Content-Type", List.of("application/json")),
                     "{\"response\":{\"body\":{\"temperature\":12.50},\"raw\":\"excluded\"}}"
                             .getBytes(StandardCharsets.UTF_8));
-        }, new ManagedExecutionLimits(Duration.ofSeconds(2), 2, 4));
+        }, new ManagedExecutionLimits(Duration.ofSeconds(2), 2, 4), Clock.fixed(NOW, ZoneOffset.UTC));
         ManagedRuntimeBinding binding = new ManagedRuntimeBinding(instance, metadata);
         RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access -> {
             JacksonMcpJsonMapper mapper = new JacksonMcpJsonMapper(json);

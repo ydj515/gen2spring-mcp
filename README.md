@@ -137,6 +137,7 @@ immutable Tool Catalog가 같은 PostgreSQL transaction에서 게시된다. Cata
 GET /api/tool-catalogs
 GET /api/tool-catalogs/{catalogId}
 GET /api/tool-catalogs/{catalogId}/tools/{toolName}
+GET /api/tool-catalogs/{catalogId}/diff?targetCatalogId={targetCatalogId}
 ```
 
 Catalog metadata에는 Tool schema와 HTTP·policy·credential 요구사항만 포함하며 secret 값, 환경변수 이름,
@@ -147,6 +148,9 @@ Hosted mode의 Managed Runtime은 단일 immutable Tool Catalog를 bearer token�
 OPAQUE·Bearer·Basic credential을 Catalog slot에 연결하고, Tool visibility와 분당 요청 수가 제한된 grant를
 발급하며, 안전한 실행 audit을 조회할 수 있다. PostgreSQL이 replica 간 rate·audit 정합성을 제공하고 provider
 HTTP는 mTLS `provider-egress`만 통과한다. 이 기능은 생성 ZIP의 서버나 여러 Catalog를 중개하는 공개 Gateway가 아니다.
+명시적 predecessor로 게시한 같은 family의 Catalog revision은 deterministic diff로 비교할 수 있다. compatible
+revision은 기존 runtime ID·bearer·credential binding·grant·rate·audit을 유지한 채 CAS migration/rollback하며,
+breaking 변경이나 target에 없는 Tool을 사용하는 active grant가 있으면 전환하지 않는다.
 
 ## 저장소 구조
 

@@ -37,16 +37,16 @@
   <header class="hero"><div>
     <div>Gen2Spring MCP · Implemented P2 v1</div>
     <h1>Managed MCP Runtime</h1>
-    <p>Immutable Tool Catalog에 암호화 credential과 scoped grant를 연결하고, stateless MCP 실행을 여러 replica에서 안전하게 제공한다.</p>
-    <span class="pill">Not a public Gateway</span><span class="pill">Stateless MCP</span><span class="pill">PostgreSQL 17.9</span><span class="pill">mTLS egress</span>
+    <p>Immutable Tool Catalog family에 암호화 credential과 scoped grant를 연결하고, compatible revision을 전환하며 stateless MCP 실행을 여러 replica에서 안전하게 제공한다.</p>
+    <span class="pill">Not a public Gateway</span><span class="pill">CAS migration</span><span class="pill">Stateless MCP</span><span class="pill">PostgreSQL 17.9</span><span class="pill">mTLS egress</span>
   </div></header>
   <main>
     <section>
       <h2>1. Control plane to data plane</h2>
       <div class="flow">
-        <div class="node blue"><strong>Owner + Tool Catalog</strong><p>OIDC owner가 Catalog, encrypted credential slot, grant policy를 선택한다.</p></div>
+        <div class="node blue"><strong>Owner + Catalog family</strong><p>OIDC owner가 immutable revision, encrypted credential slot, grant policy를 선택한다.</p></div>
         <div class="arrow">→</div>
-        <div class="node green"><strong>Activation API</strong><p>24h default, 30d max. plaintext token은 응답에 한 번만 제공한다.</p></div>
+        <div class="node green"><strong>Activation + Migration API</strong><p>token은 한 번만 제공하고 compatible revision은 expected current ID로 CAS 전환한다.</p></div>
         <div class="arrow">→</div>
         <div class="node green"><strong>Runtime replicas</strong><p>요청마다 digest 인증 후 Catalog·policy별 stateless SDK handle로 라우팅한다.</p></div>
         <div class="arrow">→</div>
@@ -55,7 +55,18 @@
       <div class="callout"><strong>생성 결과와 분리:</strong> Managed Runtime은 다운로드 ZIP의 generated Spring AI 서버를 수정하거나 그 안에 포함되지 않는다.</div>
     </section>
     <section>
-      <h2>2. Runtime request lifecycle</h2>
+      <h2>2. Catalog revision lifecycle</h2>
+      <div class="grid">
+        <div class="card blue"><strong>1. Publish linearly</strong><p>generation이 explicit predecessor를 가리키며 PostgreSQL family head lock으로 revision을 한 단계 전진시킨다.</p></div>
+        <div class="card green"><strong>2. Diff deterministically</strong><p>canonical Runtime Metadata를 Tool 이름·change kind 순으로 비교하고 stable checksum을 계산한다.</p></div>
+        <div class="card green"><strong>3. Migrate atomically</strong><p>active Runtime과 grant를 lock하고 ID·checksum CAS, Tool subset 검증, transition append를 한 transaction에서 수행한다.</p></div>
+        <div class="card orange"><strong>4. Cut over replicas</strong><p>새 Catalog checksum을 인증 시 읽고 각 replica가 다음 요청에서 stale local handle을 교체한다.</p></div>
+        <div class="card orange"><strong>5. Preserve authority</strong><p>기존 grant는 Tool을 자동 획득하지 않으며 bearer, binding/version, rate, audit과 expiry는 그대로 유지한다.</p></div>
+        <div class="card red"><strong>6. Roll back safely</strong><p>최신 non-reverted migration만 되돌리고 source에 없는 Tool을 가진 active grant가 있으면 차단한다.</p></div>
+      </div>
+    </section>
+    <section>
+      <h2>3. Runtime request lifecycle</h2>
       <div class="grid">
         <div class="card blue"><strong>1. Authenticate</strong><p><code>/mcp/{runtimeId}</code> 경로와 bearer token을 매 요청 검증한다. miss, wrong, expired, revoked는 동일한 401이다.</p></div>
         <div class="card green"><strong>2. Apply policy</strong><p>Catalog·policy checksum별 허용 Tool만 노출하고 PostgreSQL에서 audit 시작과 rate 획득을 수행한다.</p></div>
@@ -66,7 +77,7 @@
       </div>
     </section>
     <section>
-      <h2>3. Trust and network boundaries</h2>
+      <h2>4. Trust and network boundaries</h2>
       <table><thead><tr><th>Process</th><th>Can access</th><th>Cannot access</th></tr></thead><tbody>
         <tr><td>apps/web</td><td>OIDC, PostgreSQL, credential/grant control API, credential key ring</td><td>provider egress, runtime token plaintext after response</td></tr>
         <tr><td>apps/runtime</td><td>PostgreSQL, credential key ring, internal provider-call, proxy ingress</td><td>direct external egress, MinIO, OIDC secret, Docker socket</td></tr>
@@ -75,11 +86,11 @@
       <div class="callout warning"><strong>Provider policy:</strong> loopback, private, link-local, multicast, reserved, metadata, mixed DNS answer, redirects, caller Host, hop-by-hop headers와 1 MiB 초과 body를 거부한다.</div>
     </section>
     <section>
-      <h2>4. Explicit v1 boundary</h2>
+      <h2>5. Explicit v1 boundary</h2>
       <div class="grid">
-        <div class="card green"><strong>Completed</strong><p>credential binding, owner/scoped grants, rate limit, audit, stateless multi-replica tools/list·tools/call.</p></div>
-        <div class="card orange"><strong>Shared correctness</strong><p>replica-local handle은 최적화일 뿐이며 rate, grant, revocation, audit의 기준 상태는 PostgreSQL이다.</p></div>
-        <div class="card red"><strong>Not completed</strong><p>cross-Catalog public Gateway, OAuth2 credential acquisition, billing, Catalog version migration.</p></div>
+        <div class="card green"><strong>Completed</strong><p>linear Catalog revision/diff/migration/rollback, credential binding, scoped grants, rate, audit, multi-replica tools/list·tools/call.</p></div>
+        <div class="card orange"><strong>Shared correctness</strong><p>replica-local handle은 최적화일 뿐이며 Catalog transition, rate, grant, revocation, audit의 기준 상태는 PostgreSQL이다.</p></div>
+        <div class="card red"><strong>Not completed</strong><p>여러 Catalog를 결합하는 public Gateway, tenant sharing, OAuth2 credential acquisition, billing.</p></div>
       </div>
     </section>
   </main>

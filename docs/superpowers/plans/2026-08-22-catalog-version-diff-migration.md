@@ -348,13 +348,13 @@ compare-and-set, and transition insert in one transaction.
 - Modify: `deploy/hosted/README.md`
 - Modify: `docs/architecture/managed-mcp-runtime.html`
 
-- [ ] **Step 1: Add the end-to-end RED journey**
+- [x] **Step 1: Add the end-to-end RED journey**
 
   Publish revisions 1 and 2, authenticate the same Runtime bearer across two replicas, migrate with CAS, require both
   replicas to expose the target Tool list, verify existing scoped grants and credential versions, create a grant for
   a newly added Tool, prove rollback is blocked, revoke that grant, and prove rollback succeeds.
 
-- [ ] **Step 2: Run the Runtime journey and confirm RED**
+- [x] **Step 2: Run the Runtime journey and confirm RED**
 
   Run:
 
@@ -364,12 +364,12 @@ compare-and-set, and transition insert in one transaction.
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 3: Complete wiring and documentation**
+- [x] **Step 3: Complete wiring and documentation**
 
   Update API examples, operational failure handling, V7 backup/restore expectations, PRD P2 status, and the existing
   HTML architecture. Correct the stale PRD phase-status list while keeping Gateway/OAuth2/billing unfinished.
 
-- [ ] **Step 4: Run hosted acceptance**
+- [x] **Step 4: Run hosted acceptance**
 
   Run:
 
@@ -379,7 +379,7 @@ compare-and-set, and transition insert in one transaction.
   mise exec -- mise run hosted:acceptance
   ```
 
-- [ ] **Step 5: Run repository acceptance and readback**
+- [x] **Step 5: Run repository acceptance and readback**
 
   Run:
 
@@ -394,6 +394,6 @@ compare-and-set, and transition insert in one transaction.
   Re-read the spec against the diff, scan API/log/test output for synthetic tokens and credential values, and report
   Docker or JDK prerequisites separately from code failures.
 
-- [ ] **Step 6: Commit Catalog lifecycle acceptance**
+- [x] **Step 6: Commit Catalog lifecycle acceptance**
 
   Commit title: `feat(catalog): complete version migration lifecycle`

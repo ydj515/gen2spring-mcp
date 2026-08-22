@@ -31,7 +31,27 @@ docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d 
 ```
 
 The proxy may send consecutive MCP requests to different replicas. PostgreSQL is the correctness source for runtime
-and grant revocation, rate windows, and audit state; the local SDK handle cache contains no bearer or credential value.
+and grant revocation, Catalog transitions, rate windows, and audit state; the local SDK handle cache contains no bearer
+or credential value. A migrated Catalog checksum causes each replica to replace its stale handle on its next request;
+sticky routing is neither required nor supported.
+
+## V7 Catalog version rollout
+
+Before the first V7-capable deployment, pause generation, Runtime migration, grant mutation, and credential mutation,
+then create one consistent PostgreSQL and MinIO backup as described below. V7 backfills every existing Catalog as an
+independent revision-1 family and creates append-only `managed_runtime_catalog_transition` history. Deploy Web, Worker,
+and Runtime artifacts built from the same commit, allow Flyway to reach V7, and then run `mise run hosted:acceptance`
+before reopening mutations.
+
+Do not down-migrate V7 or manually delete family and transition rows. If rollout verification fails and the previous
+binary must be restored, stop every application process and restore both PostgreSQL and MinIO from the same pre-V7
+recovery label. A PostgreSQL-only rollback can leave generation artifacts and Catalog state inconsistent.
+
+```sql
+select version, success from flyway_schema_history where version = '7';
+select count(*) from tool_catalog where revision = 1 and family_id = id;
+select count(*) from managed_runtime_catalog_transition;
+```
 
 ## Credential key rotation
 

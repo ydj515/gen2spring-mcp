@@ -1345,6 +1345,22 @@ GET /api/tool-catalogs/{catalogId}/tools/{toolName}
 - metadata에는 secret 값, 환경변수 이름, owner/job 식별자, object key, filesystem path를 포함하지 않는다.
 - 기존 generation은 metadata version `1.0`으로 backfill하지 않는다.
 
+## FR-16.8 Catalog revision, diff와 Runtime migration
+
+- generation은 optional `predecessorCatalogId`로 같은 owner의 현재 family head를 명시한다.
+- Catalog family는 branch 없이 revision이 1씩 증가하며 stale-head 동시 게시 중 하나만 성공한다.
+- 같은 family의 immutable Runtime Metadata를 `toolName` 기준으로 비교하고 정렬된 change와 deterministic
+  diff checksum을 반환한다.
+- Tool 추가, description 변경, optional output property 추가만 compatible로 분류하고 알 수 없는 변경은
+  breaking으로 닫는다.
+- active runtime은 expected current Catalog와 target checksum을 CAS 전제조건으로 compatible revision에만
+  migration한다.
+- migration은 runtime ID, bearer, credential version, grant, rate, audit을 보존하고 append-only transition을 남긴다.
+- rollback은 가장 최근의 아직 되돌리지 않은 migration source만 허용하며 active grant의 Tool subset과 동일한
+  credential slot 계약을 다시 검증한다.
+- cross-owner·cross-family lookup은 `404`, stale CAS는 `409 CATALOG_VERSION_CONFLICT`, breaking diff는
+  `409 CATALOG_MIGRATION_BREAKING`, grant/credential incompatibility는 `409 CATALOG_MIGRATION_BLOCKED`다.
+
 ---
 
 ## 9. 비기능 요구사항
@@ -1967,7 +1983,9 @@ owner-only Windows ACL을 요구한다. 관련 구현 경계는
   - owner token과 scoped Tool grant, PostgreSQL distributed rate limit, safe execution audit
   - bearer token digest persistence와 stateless multi-replica Streamable HTTP
   - exact MCP Java SDK `tools/list`·bounded `tools/call`
-  - mTLS provider-egress와 public HTTP/HTTPS 80/443 destination policy
+- mTLS provider-egress와 public HTTP/HTTPS 80/443 destination policy
+- linear Catalog family/revision publication과 deterministic compatible/breaking diff
+- active Runtime CAS migration, append-only history, grant-aware rollback, multi-replica cutover
 
 ### P2 남은 범위
 
@@ -1978,7 +1996,6 @@ owner-only Windows ACL을 요구한다. 관련 구현 경계는
 - Kotlin
 - cross-Catalog public Gateway, sharing, OAuth2 credential acquisition, billing
 - AI description enhancement
-- Catalog version migration
 
 ---
 
@@ -2221,10 +2238,9 @@ Managed Runtime은 여러 Catalog를 공유·중개하는 공개 Gateway가 아�
 - OAuth2 credential acquisition
 - billing and usage settlement
 - execution trace
-- Tool Catalog versioning
 
-현재 단일 Catalog의 scoped Tool visibility, credential routing, rate limit, audit은 완료됐지만 위 공개 Gateway
-기능과 Catalog versioning은 완료되지 않았다.
+linear Tool Catalog family/versioning과 단일 active Runtime의 migration/rollback은 완료됐다. 여러 Catalog를
+결합·공유하는 공개 Gateway, tenant federation, OAuth2 acquisition과 billing은 완료되지 않았다.
 
 ---
 

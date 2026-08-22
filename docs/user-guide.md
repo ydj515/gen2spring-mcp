@@ -115,6 +115,10 @@ POST /api/runtimes/{runtimeId}/grants
 GET  /api/runtimes/{runtimeId}/grants
 POST /api/runtimes/{runtimeId}/grants/{grantId}/revocation
 GET  /api/runtimes/{runtimeId}/audit
+GET  /api/tool-catalogs/{catalogId}/diff?targetCatalogId={targetCatalogId}
+POST /api/runtimes/{runtimeId}/migrations
+GET  /api/runtimes/{runtimeId}/migrations?limit=50&before={sequence}
+POST /api/runtimes/{runtimeId}/rollback
 ```
 
 활성화 또는 grant 응답의 endpoint에 `Authorization: Bearer <one-time-token>`을 보내 MCP Streamable HTTP
@@ -133,9 +137,29 @@ hop-by-hop header, 1 MiB 초과 body는 fail-closed로 거부한다.
 runtime handle 용량이 가득 차면 활성 handle을 evict하지 않고 새 runtime 요청을 고정 503으로 거부한다.
 typed output schema가 있는 Tool의 성공 응답은 text content와 동일한 normalized `structuredContent`를 함께 반환한다.
 
-현재 완료 범위는 단일 Catalog activation, exact credential slot binding, owner/scoped grant, PostgreSQL rate·audit,
-stateless multi-replica transport다. 여러 Catalog를 묶는 공개 Gateway, OAuth2 credential acquisition, billing,
-Catalog migration은 제공하지 않으며 생성 ZIP의 독립 MCP 서버 내용도 변경하지 않는다.
+새 generation에 `predecessorCatalogId`를 지정하면 같은 owner의 현재 family head에서만 다음 immutable revision을
+게시한다. 두 revision의 diff는 Tool 이름 기준으로 정렬되며 Tool 추가·description 변경·optional output property
+추가만 compatible이다. active runtime migration은 현재 Catalog ID와 target checksum을 CAS 전제조건으로 받는다.
+
+```json
+{
+  "expectedCurrentCatalogId": "<current-catalog-uuid>",
+  "targetCatalogId": "<target-catalog-uuid>",
+  "targetChecksum": "<target-runtime-metadata-sha256>"
+}
+```
+
+전환은 runtime ID, bearer token, credential binding/version, provider override, expiry, 기존 grant, rate window와
+audit을 보존하고 append-only history를 남긴다. 추가 Tool은 기존 scoped grant에 자동 부여되지 않는다. rollback은
+가장 최근의 아직 되돌리지 않은 forward migration만 복원하며, active grant가 source에 없는 Tool을 허용하면
+`CATALOG_MIGRATION_BLOCKED`로 거부한다. 해당 grant를 revoke한 뒤 같은 현재 Catalog ID로 재시도해야 한다.
+rollback body는 `{"expectedCurrentCatalogId":"<current-catalog-uuid>"}`만 받으며 activation token을 다시
+발급하거나 응답에 노출하지 않는다.
+
+현재 완료 범위는 단일 Catalog activation, linear Catalog revision/diff/migration/rollback, exact credential slot
+binding, owner/scoped grant, PostgreSQL rate·audit, stateless multi-replica transport다. 여러 Catalog를 한 runtime에
+결합하는 공개 Gateway, OAuth2 credential acquisition, billing은 제공하지 않으며 생성 ZIP의 독립 MCP 서버 내용도
+변경하지 않는다.
 
 ## CLI 사용법
 
