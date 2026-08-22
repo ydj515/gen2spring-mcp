@@ -18,6 +18,8 @@ import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.CompositionKind;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaComposition;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
@@ -200,6 +202,7 @@ class JavaSourceRendererTest {
                 "src/main/java/com/example/weather/runtime/ResponseNormalizationPolicy.java",
                 "src/main/java/com/example/weather/runtime/ResponseNormalizer.java",
                 "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java",
+                "src/main/java/com/example/weather/runtime/SchemaValueValidator.java",
                 "src/main/java/com/example/weather/runtime/SecretBinding.java",
                 "src/main/java/com/example/weather/runtime/ToolArgumentContext.java",
                 "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
@@ -221,7 +224,8 @@ class JavaSourceRendererTest {
         assertTrue(runtime.contains("ProviderErrorCategory.UPSTREAM_UNAVAILABLE"));
         assertTrue(runtime.contains("target.setAccept(List.of(MediaType.APPLICATION_JSON))"));
         assertTrue(runtime.contains("request.contentType(MediaType.APPLICATION_JSON)"));
-        assertTrue(runtime.contains("jsonMapper.writeValueAsBytes(requestBody)"));
+        assertTrue(runtime.contains("jsonMapper.writeValueAsBytes(requestBody.value())"));
+        assertTrue(runtime.contains("RequestBodyValue(boolean present, Object value)"));
         assertTrue(runtime.contains("tools.jackson.databind.JsonNode"));
         assertTrue(runtime.contains("tools.jackson.databind.json.JsonMapper"));
 
@@ -379,9 +383,47 @@ class JavaSourceRendererTest {
         assertTrue(callbacks.contains(
                 "request.arguments() == null ? Map.of() : request.arguments()"), callbacks);
         assertTrue(callbacks.contains("ToolArgumentContext.open(rawArguments)"), callbacks);
+        assertTrue(callbacks.contains("schemaValues.validate(parsedInputSchema, rawArguments)"), callbacks);
+        assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/SchemaValueValidator.java"));
         assertTrue(argumentContext.contains("ThreadLocal<Map<String, Object>>"), argumentContext);
         assertTrue(argumentContext.contains("Collections.unmodifiableMap(new LinkedHashMap<>(arguments))"),
                 argumentContext);
+    }
+
+    @Test
+    void rendersComposedJsonNodesAndBoundedUniqueValidation() {
+        ApiSchema string = textSchema();
+        ApiSchema integer = schema(SchemaType.INTEGER, "int32", null, null, null, null, null, List.of());
+        ApiSchema choice = new ApiSchema(
+                SchemaType.COMPOSED, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, null, null, false,
+                new SchemaComposition(CompositionKind.ONE_OF, List.of(string, integer)), true, List.of());
+        ApiSchema values = new ApiSchema(
+                SchemaType.ARRAY, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), choice, 1, 4, true, null, true, List.of());
+        ToolDefinition tool = weatherTool(
+                List.of(
+                        new ToolInput("choice", "choice", "Choice", true, choice),
+                        new ToolInput("values", "values", "Values", true, values)),
+                List.of(
+                        new ParameterBinding("choice", ParameterLocation.BODY, "choice"),
+                        new ParameterBinding("values", ParameterLocation.BODY, "values")));
+
+        var files = renderer.render(context(List.of(tool)));
+        String input = utf8(files.get(
+                "src/main/java/com/example/weather/generated/model/GetForecastInput.java"));
+        String callbacks = utf8(files.get(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+        String validator = utf8(files.get(
+                "src/main/java/com/example/weather/runtime/SchemaValueValidator.java"));
+
+        assertTrue(input.contains("tools.jackson.databind.JsonNode choice"), input);
+        assertTrue(input.contains("@Size(min = 1, max = 4)"), input);
+        assertTrue(callbacks.contains("\\\"oneOf\\\""), callbacks);
+        assertTrue(callbacks.contains("\\\"maxItems\\\":4,\\\"uniqueItems\\\":true"), callbacks);
+        assertTrue(callbacks.contains("tools.jackson.databind.JsonNode.class"), callbacks);
+        assertTrue(validator.contains("matches != 1"), validator);
+        assertTrue(validator.contains("CanonicalValue"), validator);
     }
 
     @Test

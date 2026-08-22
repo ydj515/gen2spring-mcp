@@ -11,8 +11,10 @@ import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.CompositionKind;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaComposition;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
@@ -350,7 +352,7 @@ class GeneratedProjectSmokeTest {
     @Timeout(value = 5, unit = MINUTES)
     void generatedProjectOmitsAbsentNestedRecordPropertiesWithoutChangingArrayBodiesOrResponses() throws Exception {
         ApiSchema text = new ApiSchema(
-                SchemaType.STRING, null, false, List.of(), null, null,
+                SchemaType.STRING, null, true, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
         ApiSchema nullableText = new ApiSchema(
                 SchemaType.STRING, null, true, List.of(), null, null,
@@ -391,11 +393,34 @@ class GeneratedProjectSmokeTest {
     @Timeout(value = 5, unit = MINUTES)
     void generatedProjectSerializesPrimitiveJsonBodiesBeforeCallingTheUpstream() throws Exception {
         ApiSchema text = new ApiSchema(
-                SchemaType.STRING, null, false, List.of(), null, null,
+                SchemaType.STRING, null, true, List.of(), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
         ApiSchema mode = new ApiSchema(
                 SchemaType.STRING, null, false, List.of("brief", "full-detail"), null, null,
                 null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema plainText = new ApiSchema(
+                SchemaType.STRING, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema integer = new ApiSchema(
+                SchemaType.INTEGER, "int32", false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema number = new ApiSchema(
+                SchemaType.NUMBER, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema oneOf = new ApiSchema(
+                SchemaType.COMPOSED, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, null, null, false,
+                new SchemaComposition(CompositionKind.ONE_OF, List.of(plainText, integer)), true, List.of());
+        ApiSchema anyOf = new ApiSchema(
+                SchemaType.COMPOSED, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), null, null, null, false,
+                new SchemaComposition(CompositionKind.ANY_OF, List.of(integer, number)), true, List.of());
+        ApiSchema item = new ApiSchema(
+                SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null, null,
+                Map.of("amount", number), List.of("amount"), null, null, null, false, null, true, List.of());
+        ApiSchema values = new ApiSchema(
+                SchemaType.ARRAY, null, false, List.of(), null, null, null, null, null, null,
+                Map.of(), List.of(), item, 1, 2, true, null, true, List.of());
         var tool = new ToolDefinition(
                 "submitValue", "kma_weather_submit_value", "Submit a JSON value.",
                 List.of(
@@ -403,10 +428,31 @@ class GeneratedProjectSmokeTest {
                         new ToolInput("mode", "mode", "Mode", false, mode)),
                 new HttpExecution(
                         HttpMethod.POST, URI.create("https://api.example.test"), "/value",
-                        List.of(new ParameterBinding("body", ParameterLocation.BODY, "body"))),
+                        List.of(new ParameterBinding("body", ParameterLocation.BODY, "body")), false, true),
+                List.of(), OutputKind.GENERIC_JSON);
+        var optionalTool = new ToolDefinition(
+                "submitOptionalValue", "kma_weather_submit_optional_value", "Submit an optional JSON value.",
+                List.of(new ToolInput("body", "body", "Value", false, text)),
+                new HttpExecution(
+                        HttpMethod.POST, URI.create("https://api.example.test"), "/value",
+                        List.of(new ParameterBinding("body", ParameterLocation.BODY, "body")), false, false),
+                List.of(), OutputKind.GENERIC_JSON);
+        var boundedTool = new ToolDefinition(
+                "submitBoundedValues", "kma_weather_submit_bounded_values", "Submit bounded schema values.",
+                List.of(
+                        new ToolInput("choice", "choice", "Exclusive choice", true, oneOf),
+                        new ToolInput("fallback", "fallback", "Compatible fallback", true, anyOf),
+                        new ToolInput("values", "values", "Unique values", true, values)),
+                new HttpExecution(
+                        HttpMethod.POST, URI.create("https://api.example.test"), "/bounded",
+                        List.of(
+                                new ParameterBinding("choice", ParameterLocation.BODY, "choice"),
+                                new ParameterBinding("fallback", ParameterLocation.BODY, "fallback"),
+                                new ParameterBinding("values", ParameterLocation.BODY, "values")),
+                        true, true),
                 List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi2ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .generate(JavaSourceRendererTest.context(List.of(tool, optionalTool, boundedTool)))
                 .files();
         java.util.Map<String, byte[]> filesWithBodyTest = new java.util.LinkedHashMap<>(files);
         filesWithBodyTest.put(
@@ -3108,12 +3154,18 @@ class GeneratedProjectSmokeTest {
                 package com.example.weather.application;
 
                 import static org.junit.jupiter.api.Assertions.assertEquals;
+                import static org.junit.jupiter.api.Assertions.assertFalse;
+                import static org.junit.jupiter.api.Assertions.assertNull;
+                import static org.junit.jupiter.api.Assertions.assertThrows;
 
+                import com.example.weather.runtime.ToolArgumentContext;
                 import com.sun.net.httpserver.HttpServer;
                 import java.net.InetSocketAddress;
                 import java.nio.charset.StandardCharsets;
+                import java.util.LinkedHashMap;
                 import java.util.List;
                 import java.util.Map;
+                import java.util.concurrent.atomic.AtomicInteger;
                 import java.util.concurrent.atomic.AtomicReference;
                 import io.modelcontextprotocol.server.McpServerFeatures;
                 import io.modelcontextprotocol.spec.McpSchema;
@@ -3135,6 +3187,8 @@ class GeneratedProjectSmokeTest {
                     private static HttpServer server;
                     private static final AtomicReference<String> body = new AtomicReference<>();
                     private static final AtomicReference<String> contentType = new AtomicReference<>();
+                    private static final AtomicInteger calls = new AtomicInteger();
+                    private static final AtomicInteger boundedCalls = new AtomicInteger();
 
                     @Autowired
                     @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
@@ -3147,8 +3201,17 @@ class GeneratedProjectSmokeTest {
                         try {
                             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
                             server.createContext("/value", exchange -> {
+                                calls.incrementAndGet();
                                 body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
                                 contentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+                                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                                exchange.sendResponseHeaders(200, 2);
+                                exchange.getResponseBody().write("{}".getBytes(StandardCharsets.UTF_8));
+                                exchange.close();
+                            });
+                            server.createContext("/bounded", exchange -> {
+                                boundedCalls.incrementAndGet();
+                                exchange.getRequestBody().readAllBytes();
                                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                                 exchange.sendResponseHeaders(200, 2);
                                 exchange.getResponseBody().write("{}".getBytes(StandardCharsets.UTF_8));
@@ -3162,19 +3225,88 @@ class GeneratedProjectSmokeTest {
                     }
 
                     @Test
-                    void serializesAStringBodyAsQuotedJsonWithTheJsonContentType() {
-                        var specification = specifications.stream()
-                                .filter(candidate -> candidate.tool().name().equals("kma_weather_submit_value"))
-                                .findFirst()
-                                .orElseThrow();
-                        specification.callHandler().apply(
-                                null,
-                                new McpSchema.CallToolRequest(
-                                        "kma_weather_submit_value",
-                                        jsonMapper.readValue("{\\\"body\\\":\\\"hello\\\"}", Map.class)));
+                    void preservesAbsentAndExplicitNullPrimitiveBodies() {
+                        var required = specification("kma_weather_submit_value");
+                        var optional = specification("kma_weather_submit_optional_value");
+
+                        call(required, Map.of("body", "hello"));
 
                         assertEquals("\\\"hello\\\"", body.get());
                         assertEquals("application/json", contentType.get());
+
+                        Map<String, Object> explicitNull = new LinkedHashMap<>();
+                        explicitNull.put("body", null);
+                        call(required, explicitNull);
+                        assertEquals("null", body.get());
+                        assertEquals("application/json", contentType.get());
+
+                        int callsBeforeMissingRequired = calls.get();
+                        assertThrows(RuntimeException.class, () -> call(required, Map.of()));
+                        assertEquals(callsBeforeMissingRequired, calls.get());
+
+                        body.set(null);
+                        contentType.set("unchanged");
+                        call(optional, Map.of());
+                        assertEquals("", body.get());
+                        assertNull(contentType.get());
+
+                        call(optional, explicitNull);
+                        assertEquals("null", body.get());
+                        assertEquals("application/json", contentType.get());
+                    }
+
+                    @Test
+                    void enforcesCompositionAndBoundedStructuralUniquenessBeforeTheProvider() {
+                        var specification = specification("kma_weather_submit_bounded_values");
+
+                        call(specification, boundedArguments(
+                                "ready", 1.5, List.of(Map.of("amount", 1))));
+                        assertEquals(1, boundedCalls.get());
+
+                        assertRejected(specification, boundedArguments(
+                                false, 1.5, List.of(Map.of("amount", 1))));
+                        assertRejected(specification, boundedArguments(
+                                "ready", "secret-marker", List.of(Map.of("amount", 1))));
+                        assertRejected(specification, boundedArguments(
+                                "ready", 1.5, List.of(
+                                        Map.of("amount", 1),
+                                        Map.of("amount", 2),
+                                        Map.of("amount", 3))));
+                        assertRejected(specification, boundedArguments(
+                                "ready", 1.5, List.of(
+                                        Map.of("amount", 1),
+                                        Map.of("amount", 1.0))));
+                    }
+
+                    private Map<String, Object> boundedArguments(
+                            Object choice, Object fallback, List<Map<String, Object>> values) {
+                        return Map.of("choice", choice, "fallback", fallback, "values", values);
+                    }
+
+                    private void assertRejected(
+                            McpServerFeatures.SyncToolSpecification specification,
+                            Map<String, Object> arguments) {
+                        int before = boundedCalls.get();
+                        IllegalStateException failure = assertThrows(
+                                IllegalStateException.class, () -> call(specification, arguments));
+                        assertEquals("Generated Tool execution failed", failure.getMessage());
+                        assertFalse(failure.getMessage().contains("secret-marker"));
+                        assertEquals(before, boundedCalls.get());
+                        assertFalse(ToolArgumentContext.active());
+                    }
+
+                    private McpServerFeatures.SyncToolSpecification specification(String name) {
+                        return specifications.stream()
+                                .filter(candidate -> candidate.tool().name().equals(name))
+                                .findFirst()
+                                .orElseThrow();
+                    }
+
+                    private void call(
+                            McpServerFeatures.SyncToolSpecification specification,
+                            Map<String, Object> arguments) {
+                        specification.callHandler().apply(
+                                null, new McpSchema.CallToolRequest(specification.tool().name(), arguments));
                     }
 
                     @AfterAll

@@ -230,13 +230,13 @@ change.
 - Generated `SchemaValueValidator` exposes one bounded `validate(schema, rawValue)` entry point.
 - Generated callback handlers validate the original presence map before typed callback invocation.
 
-- [ ] **Step 1: Add emitter and generated-runtime RED tests**
+- [x] **Step 1: Add emitter and generated-runtime RED tests**
 
   Assert profile-correct `JsonNode` imports, exact MCP schemas, nullable body presence, query/header omission,
   max/unique validation, `oneOf`/`anyOf` validation, value-free errors, scope cleanup, and zero upstream calls for
   invalid values.
 
-- [ ] **Step 2: Run both emitter suites and confirm RED**
+- [x] **Step 2: Run both emitter suites and confirm RED**
 
   Run:
 
@@ -249,18 +249,18 @@ change.
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 3: Render the minimal equivalent validators and bindings**
+- [x] **Step 3: Render the minimal equivalent validators and bindings**
 
   Keep version-specific imports inside their emitter. Share generator-side decisions through Tool IR and canonical
   schemas; do not copy Spring AI version conditionals into domain/application modules. Preserve the existing callback,
   telemetry, provider-error, retry, pagination, and fatal boundaries.
 
-- [ ] **Step 4: Run both generated-project suites to GREEN**
+- [x] **Step 4: Run both generated-project suites to GREEN**
 
   Run the Step 2 command and record generated compile, context, `tools/list`, and `tools/call` evidence for Java 17
   and 21 where each profile supports them.
 
-- [ ] **Step 5: Commit emitter parity**
+- [x] **Step 5: Commit emitter parity**
 
   Commit title: `feat(emitters): generate bounded composed schemas`
 

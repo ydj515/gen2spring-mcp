@@ -122,7 +122,8 @@ final class ToolClassRenderer {
         if (schema.maximum() != null) {
             imports.add("jakarta.validation.constraints.DecimalMax");
         }
-        if (schema.minLength() != null || schema.maxLength() != null || schema.minItems() != null) {
+        if (schema.minLength() != null || schema.maxLength() != null
+                || schema.minItems() != null || schema.maxItems() != null) {
             imports.add("jakarta.validation.constraints.Size");
         }
         if (schema.pattern() != null) {
@@ -131,6 +132,9 @@ final class ToolClassRenderer {
     }
 
     private void addTypeImports(Set<String> imports, String packageName, String type) {
+        if (type.endsWith(".JsonNode")) {
+            return;
+        }
         if (type.contains("java.math.BigDecimal")) {
             imports.add("java.math.BigDecimal");
         }
