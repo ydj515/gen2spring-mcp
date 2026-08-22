@@ -3,6 +3,9 @@ package io.gen2spring.mcp.app.web.hosted;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.CatalogEndpoint;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogCursor;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogSummary;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 final class HostedToolCatalogController {
     private final HostedAccountResolver accounts;
     private final ToolCatalogService catalogs;
+    private final CatalogDiffService diffs;
     private final ObjectMapper json;
     private final HostedCursorCodec cursors = new HostedCursorCodec();
     private final CanonicalRuntimeMetadataCodec metadata = new CanonicalRuntimeMetadataCodec();
@@ -30,9 +34,11 @@ final class HostedToolCatalogController {
     HostedToolCatalogController(
             HostedAccountResolver accounts,
             ToolCatalogService catalogs,
+            CatalogDiffService diffs,
             ObjectMapper json) {
         this.accounts = Objects.requireNonNull(accounts, "accounts");
         this.catalogs = Objects.requireNonNull(catalogs, "catalogs");
+        this.diffs = Objects.requireNonNull(diffs, "diffs");
         this.json = Objects.requireNonNull(json, "json");
     }
 
@@ -91,14 +97,56 @@ final class HostedToolCatalogController {
         return response;
     }
 
+    @GetMapping("/api/tool-catalogs/{catalogId}/diff")
+    JsonNode diff(
+            Authentication authentication,
+            @PathVariable String catalogId,
+            @RequestParam String targetCatalogId) {
+        CatalogDiff diff;
+        try {
+            diff = diffs.compare(
+                    accounts.resolve(authentication).accountId(),
+                    UUID.fromString(catalogId),
+                    UUID.fromString(targetCatalogId));
+        } catch (IllegalArgumentException failure) {
+            throw new CatalogDiffService.CatalogDiffQueryInvalid();
+        }
+        ObjectNode response = json.createObjectNode();
+        response.set("source", endpoint(diff.source()));
+        response.set("target", endpoint(diff.target()));
+        response.put("compatibility", diff.compatibility().name());
+        var changes = response.putArray("changes");
+        diff.changes().forEach(change -> changes.addObject()
+                .put("toolName", change.toolName())
+                .put("kind", change.kind().name())
+                .put("field", change.field())
+                .put("compatibility", change.compatibility().name()));
+        response.put("checksum", diff.checksum());
+        return response;
+    }
+
     private ObjectNode summary(CatalogSummary summary) {
-        return json.createObjectNode()
+        ObjectNode result = json.createObjectNode()
                 .put("catalogId", summary.catalogId().toString())
                 .put("generationId", summary.generationId().value().toString())
                 .put("metadataVersion", summary.metadataVersion())
                 .put("metadataChecksum", summary.metadataChecksum())
                 .put("toolCount", summary.toolCount())
-                .put("createdAt", summary.createdAt().toString());
+                .put("createdAt", summary.createdAt().toString())
+                .put("familyId", summary.version().familyId().toString())
+                .put("revision", summary.version().revision());
+        summary.version().predecessorCatalogId().ifPresentOrElse(
+                value -> result.put("predecessorCatalogId", value.toString()),
+                () -> result.putNull("predecessorCatalogId"));
+        return result;
+    }
+
+    private ObjectNode endpoint(CatalogEndpoint endpoint) {
+        return json.createObjectNode()
+                .put("catalogId", endpoint.catalogId().toString())
+                .put("revision", endpoint.revision())
+                .put("metadataChecksum", endpoint.metadataChecksum())
+                .put("specificationChecksum", endpoint.specificationChecksum());
     }
 
     private UUID catalogId(String value) {

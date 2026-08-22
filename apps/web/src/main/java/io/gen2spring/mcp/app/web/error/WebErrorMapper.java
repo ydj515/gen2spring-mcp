@@ -5,6 +5,7 @@ import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.app.web.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.job.JobWorkspace;
 import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
 import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
@@ -36,6 +37,18 @@ public final class WebErrorMapper {
         if (failure instanceof ToolCatalogService.ToolCatalogQueryInvalid) {
             return new WebFailure(400, "CATALOG_QUERY_INVALID", "CATALOG_LOOKUP",
                     "The Tool Catalog query is invalid");
+        }
+        if (failure instanceof CatalogDiffService.CatalogDiffQueryInvalid) {
+            return new WebFailure(400, "CATALOG_DIFF_QUERY_INVALID", "CATALOG_DIFF",
+                    "The Catalog diff query is invalid");
+        }
+        if (failure instanceof CatalogDiffService.CatalogDiffNotFound) {
+            return new WebFailure(404, "RESOURCE_NOT_FOUND", "CATALOG_DIFF",
+                    "The hosted resource was not found");
+        }
+        if (failure instanceof CatalogDiffService.CatalogDiffUnavailable) {
+            return new WebFailure(503, "CATALOG_DIFF_UNAVAILABLE", "CATALOG_DIFF",
+                    "The Catalog diff is unavailable");
         }
         if (failure instanceof ManagedRuntimeService.ManagedRuntimeRequestInvalid) {
             return new WebFailure(400, "RUNTIME_REQUEST_INVALID", "RUNTIME_CONTROL",

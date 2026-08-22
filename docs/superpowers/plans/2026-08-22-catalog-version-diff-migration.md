@@ -188,13 +188,13 @@ public record CatalogDiff(
 public CatalogDiff compare(AccountId owner, UUID sourceCatalogId, UUID targetCatalogId);
 ```
 
-- [ ] **Step 1: Write compatibility-matrix RED tests**
+- [x] **Step 1: Write compatibility-matrix RED tests**
 
   Add one test for each rule in spec section 6, including order-only equality, added optional output, schema keyword
   change, credential target case rules, invalid metadata, cross-family, and cross-owner lookup. Assert sorted changes
   and a stable SHA-256 diff checksum.
 
-- [ ] **Step 2: Run the focused application test and confirm RED**
+- [x] **Step 2: Run the focused application test and confirm RED**
 
   Run:
 
@@ -204,22 +204,22 @@ public CatalogDiff compare(AccountId owner, UUID sourceCatalogId, UUID targetCat
     --no-daemon --non-interactive --rerun-tasks
   ```
 
-- [ ] **Step 3: Implement canonical comparison**
+- [x] **Step 3: Implement canonical comparison**
 
   Index immutable Runtime Tools by `toolName`, compare explicit metadata fields without `toString()`, classify unknown
   values as breaking, and hash a fixed canonical representation. Do not persist diff results.
 
-- [ ] **Step 4: Expose the owner-scoped diff endpoint**
+- [x] **Step 4: Expose the owner-scoped diff endpoint**
 
   Add `GET /api/tool-catalogs/{catalogId}/diff?targetCatalogId=...`. Return family/revision/checksums,
   compatibility, sorted changes, and diff checksum. Add fixed 400/404/503 mappings and preserve OIDC ownership and
   CSRF behavior.
 
-- [ ] **Step 5: Run application and Web tests to GREEN**
+- [x] **Step 5: Run application and Web tests to GREEN**
 
   Run the Step 2 command and the complete `:apps:web:test` task.
 
-- [ ] **Step 6: Commit deterministic diff**
+- [x] **Step 6: Commit deterministic diff**
 
   Commit title: `feat(catalog): expose deterministic API change diff`
 

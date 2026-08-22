@@ -14,6 +14,7 @@ import io.gen2spring.mcp.adapter.persistence.PostgresSpecificationCatalog;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
+import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
 import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
@@ -142,6 +143,11 @@ public class HostedWebConfiguration {
     @Bean
     ToolCatalogService hostedToolCatalogService(ToolCatalogStore store) {
         return new ToolCatalogService(store);
+    }
+
+    @Bean
+    CatalogDiffService hostedCatalogDiffService(ToolCatalogStore store) {
+        return new CatalogDiffService(store);
     }
 
     @Bean
