@@ -44,7 +44,7 @@ for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%
 call gradlew.bat :apps:cli:integrationTest --tests "*P1GenerationIntegrationTest.windowsRepresentativeProfilesValidateAcrossTargetAxes" --no-daemon --non-interactive --rerun-tasks
 '''
 
-[tasks.ui]
+[tasks.dev]
 description = "Run the local Spring Boot operation editor"
 run = '''
 export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
