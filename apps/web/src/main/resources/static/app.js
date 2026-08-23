@@ -110,11 +110,11 @@ async function runPreview() {
   try {
     const configuration = buildConfiguration();
     ui['preview-button'].disabled = true;
-    ui['preview-status'].textContent = 'Building the canonical preview.';
+    ui['preview-status'].textContent = '미리보기를 생성하고 있습니다.';
     const preview = await api.preview(getState().specificationId, configuration);
     updateState({preview});
     renderPreview(preview);
-    ui['preview-status'].textContent = `${preview.tools.length} Tools are ready for generation.`;
+    ui['preview-status'].textContent = `${preview.tools.length}개 Tool을 생성할 준비가 됐습니다.`;
     ui['generate-button'].disabled = false;
   } catch (failure) {
     invalidatePreview();
@@ -127,7 +127,7 @@ async function runPreview() {
 async function startGeneration() {
   clearFailure();
   if (!getState().preview) {
-    showFailure({message: 'Run a successful preview before generation.'});
+    showFailure({message: '프로젝트 생성 전에 미리보기를 완료해 주세요.'});
     return;
   }
   try {
@@ -241,7 +241,7 @@ function describeProfile() {
   const profile = getState().profiles.find(candidate => candidate.id === ui['target-profile'].value);
   ui['profile-description'].textContent = profile
     ? `${formatProfileLabel(profile)} · Spring Boot ${profile.springBootVersion}`
-    : 'Select one compatibility profile.';
+    : '생성 프로필을 선택해 주세요.';
   renderGenerationSummary();
 }
 
@@ -361,7 +361,7 @@ function updatePreviewGate() {
 function renderPreview(preview) {
   ui['preview-output'].replaceChildren(...preview.tools.map(tool => {
     const card = document.createElement('article');
-    card.className = 'tool-card';
+    card.className = 'tool-card surface-subtle';
     const heading = document.createElement('h3');
     heading.textContent = tool.name;
     const description = document.createElement('p');
@@ -388,14 +388,21 @@ function renderJob(snapshot) {
   renderProgress(snapshot);
   ui['downloads'].replaceChildren(...snapshot.downloads.map(artifact => {
     const name = typeof artifact === 'string' ? artifact : artifact.name;
+    const item = document.createElement('li');
     const button = document.createElement('button');
     button.type = 'button';
     // Collecting a result is not the primary action on this step, so these stay
     // at secondary weight rather than competing with 프로젝트 생성.
     button.className = 'secondary';
-    button.textContent = artifactLabel(name);
+    const icon = document.createElement('i');
+    icon.className = 'bi bi-download';
+    icon.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.textContent = artifactLabel(name);
+    button.append(icon, label);
     button.addEventListener('click', () => downloadArtifact(snapshot.id, artifact));
-    return button;
+    item.append(button);
+    return item;
   }));
 }
 

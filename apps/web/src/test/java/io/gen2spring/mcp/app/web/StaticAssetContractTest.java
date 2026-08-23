@@ -96,6 +96,36 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void composesEveryEditorStepAroundOneClearPrimaryTask() throws Exception {
+        String index = resource("/templates/editor.html");
+        String app = resource("/static/app.js");
+        String progress = resource("/static/progress.js");
+        String editorStyles = resource("/static/editor.css");
+
+        assertTrue(index.contains("class=\"uploaded-file file-state-card\""));
+        assertTrue(index.contains("class=\"field-grid project-settings-grid\""));
+        assertTrue(index.contains("class=\"preview-workspace\""));
+        assertTrue(index.contains("class=\"preview-input surface-subtle\""));
+        assertTrue(index.contains("class=\"preview-result surface-subtle\""));
+        assertTrue(index.contains("class=\"job-progress-hero\""));
+        assertTrue(index.contains("id=\"job-progress-percent\""));
+        assertTrue(index.contains("class=\"pipeline-panel\""));
+        assertTrue(index.contains("<ul id=\"downloads\" class=\"downloads artifact-list\""));
+        assertTrue(index.contains("class=\"bi bi-question-circle\""));
+        assertFalse(index.contains(">?</button>"));
+        assertFalse(index.contains("<svg"));
+        assertTrue(app.contains("document.createElement('li')"));
+        assertTrue(app.contains("미리보기를 생성하고 있습니다."));
+        assertTrue(progress.contains("#job-progress-percent"));
+        assertTrue(progress.contains("document.createElement('i')"));
+        assertTrue(editorStyles.contains(".project-settings-grid"));
+        assertTrue(editorStyles.contains(".preview-workspace"));
+        assertTrue(editorStyles.contains(".job-progress-hero"));
+        assertFalse(app.contains("innerHTML"));
+        assertFalse(progress.contains("innerHTML"));
+    }
+
+    @Test
     void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
         String index = resource("/templates/editor.html") + resource("/templates/fragments/ui.html");
         String styles = applicationStyles();

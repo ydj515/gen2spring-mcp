@@ -49,10 +49,12 @@
         <input id="specification-file" class="visually-hidden" type="file" accept=".yaml,.yml,.json">
         <div id="upload-dropzone" class="upload-dropzone" role="button" tabindex="0"
              aria-controls="specification-file" aria-describedby="upload-help">
+          <i class="bi bi-file-earmark-arrow-up upload-dropzone__icon" aria-hidden="true"></i>
           <strong>파일을 선택하거나 끌어놓기</strong>
-          <span id="upload-help">OpenAPI 문서를 이 영역에 놓으면 바로 분석합니다.</span>
+          <span id="upload-help">YAML, YML, JSON · 최대 10MB</span>
         </div>
-        <div id="uploaded-file" class="uploaded-file" hidden>
+        <div id="uploaded-file" class="uploaded-file file-state-card" hidden>
+          <i class="bi bi-file-earmark-check file-state-card__icon" aria-hidden="true"></i>
           <div>
             <strong id="uploaded-file-name"></strong>
             <span id="uploaded-file-details"></span>
@@ -115,18 +117,18 @@
 
       <div class="generation-layout">
         <div class="generation-main">
-          <div class="field-grid">
+          <div class="field-grid project-settings-grid">
             <div class="field"><label for="group-id">Group ID</label><input id="group-id" value="com.example" required></div>
             <div class="field"><label for="artifact-id">Artifact ID</label><input id="artifact-id" value="openapi-mcp-server" required></div>
-            <div class="field"><label for="package-name">Package name</label><input id="package-name" value="com.example.mcp" required></div>
-            <div class="field"><label for="provider-name">Provider</label><input id="provider-name" value="provider" required></div>
-            <div class="field"><label for="domain-name">Domain</label><input id="domain-name" value="api" required></div>
+            <div class="field"><label for="package-name">패키지 이름</label><input id="package-name" value="com.example.mcp" required></div>
+            <div class="field"><label for="provider-name">Provider 이름</label><input id="provider-name" value="provider" required></div>
+            <div class="field"><label for="domain-name">도메인 이름</label><input id="domain-name" value="api" required></div>
             <div class="field profile-field">
               <div class="field-label-row">
-                <label for="target-profile">Compatibility profile</label>
+                <label for="target-profile">생성 프로필</label>
                 <button id="profile-help-button" class="profile-help-button" type="button"
                         aria-label="Compatibility profile 도움말"
-                        aria-expanded="false" aria-controls="profile-help">?</button>
+                        aria-expanded="false" aria-controls="profile-help"><i class="bi bi-question-circle" aria-hidden="true"></i></button>
               </div>
               <select id="target-profile" required></select>
               <div id="profile-help" class="profile-help" role="region"
@@ -209,18 +211,26 @@
         <p>대표 호출로 설정을 검증한 뒤 프로젝트를 생성합니다.</p>
       </div>
 
-      <div class="preview-section">
-        <h3>대표 호출과 미리보기</h3>
-        <div class="field-grid">
-          <div class="field"><label for="validation-operation">Representative operation</label><select id="validation-operation"></select></div>
-          <div class="field"><label for="validation-arguments">Representative arguments JSON object</label><textarea id="validation-arguments" rows="4">{}</textarea></div>
+      <div class="preview-workspace">
+        <div class="preview-input surface-subtle">
+          <div class="subsection-heading"><p class="section-kicker">REPRESENTATIVE CALL</p><h3>대표 Tool 호출</h3><p>선택한 endpoint와 입력값으로 MCP 호출 구성을 확인합니다.</p></div>
+          <div class="field-grid">
+            <div class="field"><label for="validation-operation">대표 operation</label><select id="validation-operation"></select></div>
+            <div class="field"><label for="validation-arguments">호출 인자 JSON object</label><textarea id="validation-arguments" rows="8">{}</textarea></div>
+          </div>
+          <button id="preview-button" type="button" disabled class="secondary"><i class="bi bi-eye" aria-hidden="true"></i> 설정 검증 및 미리보기</button>
+          <p id="preview-status" class="status" aria-live="polite">생성 전 미리보기가 필요합니다.</p>
         </div>
-        <div class="button-row">
-          <button id="preview-button" type="button" disabled>설정 검증 및 미리보기</button>
-          <button id="generate-button" type="button" disabled>프로젝트 생성</button>
+        <div class="preview-result surface-subtle">
+          <div class="subsection-heading"><p class="section-kicker">PREVIEW RESULT</p><h3>생성 미리보기</h3><p>Tool 이름, 설명, 입력 schema와 정책을 확인합니다.</p></div>
+          <div id="preview-output" class="preview-output">
+            <p class="empty-state">대표 호출을 검증하면 미리보기 결과가 표시됩니다.</p>
+          </div>
         </div>
-        <p id="preview-status" class="status" aria-live="polite">생성 전 미리보기가 필요합니다.</p>
-        <div id="preview-output" class="preview-output"></div>
+      </div>
+      <div class="generation-primary-action">
+        <div><strong>설정을 모두 확인했나요?</strong><p>프로젝트 생성과 런타임 검증을 시작합니다.</p></div>
+        <button id="generate-button" type="button" disabled><i class="bi bi-play-fill" aria-hidden="true"></i> 프로젝트 생성</button>
       </div>
       <div class="wizard-nav">
         <button id="step-back-4" class="secondary" type="button">이전</button>
@@ -237,17 +247,20 @@
 
       <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
       <div id="job-progress" class="job-progress" hidden>
-        <div class="progress-head">
-          <p id="job-stage-label" class="progress-stage"></p>
-          <span id="job-progress-value" class="progress-count"></span>
+        <div class="job-progress-hero">
+          <span id="job-progress-percent" class="job-progress-percent">0%</span>
+          <p id="job-stage-label" class="progress-stage">생성 작업을 준비하고 있습니다.</p>
+          <span id="job-progress-value" class="progress-count">0 / 0</span>
+          <div class="progress-track"><div id="job-progress-fill" class="progress-fill"></div></div>
         </div>
-        <div class="progress-track"><div id="job-progress-fill" class="progress-fill"></div></div>
-        <details id="job-progress-details" class="progress-details">
-          <summary>상세 보기</summary>
-          <ol id="progress-list" class="progress-list"></ol>
-        </details>
+        <div class="pipeline-panel">
+          <details id="job-progress-details" class="progress-details">
+            <summary>상세 보기</summary>
+            <ol id="progress-list" class="progress-list"></ol>
+          </details>
+        </div>
       </div>
-      <div id="downloads" class="downloads"></div>
+      <div class="artifact-section"><h3>생성 산출물</h3><ul id="downloads" class="downloads artifact-list" aria-label="생성 산출물"></ul></div>
       <div class="button-row job-actions">
         <button id="delete-job-button" class="secondary" type="button" disabled>작업 삭제</button>
       </div>
