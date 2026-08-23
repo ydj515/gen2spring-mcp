@@ -1856,7 +1856,8 @@ INTERNAL_ERROR
 
 플랫폼 검증 상태: Linux와 Windows 완료
 
-지원 profile별로 대표 프로젝트를 실제 컴파일한다.
+지원 profile별로 대표 프로젝트를 실제 컴파일한다. 빠른 PR CI와 전체 generation acceptance는 서로 다른
+검증 수준으로 관리한다.
 
 ```text
 Spring AI 1.x + Java 17
@@ -1867,13 +1868,17 @@ Spring AI 2.x + Java 21
 
 실제 지원 matrix에 따라 조정한다.
 
-Linux CI는 POSIX `gradlew`와 target `bin/java`, Windows CI는 `gradlew.bat`와 target `bin/java.exe`를 사용해
-네 profile의 compile, generated test, ApplicationContext, MCP initialize/tools/list/tools/call을 실행한다.
-Windows command는 trusted `%SystemRoot%\System32\cmd.exe`의 고정 argument만 사용하고 wrapper/runtime identity를
-기동 직전 재검증한다. native file key를 제공하지 않는 Windows JDK에서는 physical path, file store,
-creation time과 bounded file metadata를 사용하고 hard-link 관계는 별도로 확인한다. CLI private staging은
-owner-only Windows ACL을 요구한다. 관련 구현 경계는
-[issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)와 연결한다.
+Linux와 Windows의 필수 PR CI는 profile registry, 생성 source/scaffold, wrapper checksum, build command,
+artifact 탐색, UI/API 계약을 빠르게 검증한다. 생성 프로젝트 내부에서 다시 Gradle 또는 Maven을 실행하는
+전체 matrix는 필수 PR CI에서 제외한다.
+
+별도 generation acceptance는 Linux에서 지원 profile 전체의 compile, generated test, ApplicationContext,
+MCP initialize/tools/list/tools/call을 실행한다. Windows acceptance는 build tool, web stack, programming model,
+target Java 축을 덮는 대표 profile을 실행한다. Windows command는 trusted
+`%SystemRoot%\System32\cmd.exe`의 고정 argument만 사용하고 wrapper/runtime identity를 기동 직전 재검증한다.
+native file key를 제공하지 않는 Windows JDK에서는 physical path, file store, creation time과 bounded file
+metadata를 사용하고 hard-link 관계는 별도로 확인한다. CLI private staging은 owner-only Windows ACL을
+요구한다. 관련 구현 경계는 [issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)와 연결한다.
 
 ### 17.4 MCP Contract Test
 
@@ -2015,6 +2020,33 @@ owner-only Windows ACL을 요구한다. 관련 구현 경계는
 - Kotlin
 - cross-Catalog public Gateway, sharing, OAuth2 credential acquisition, billing
 - AI description enhancement
+
+### P2 다음 확정 슬라이스: 생성 대상 확장
+
+Maven, WebFlux, Async를 하나의 생성 대상 확장 슬라이스로 구현한다. 구현과 전체 generation acceptance가
+완료되기 전까지 위 세 항목은 `P2 남은 범위`에 유지한다.
+
+공식 지원 대상으로 등록할 조합은 12개다.
+
+| Spring AI | Java | Build tool | Web stack | Programming model | Transport | 상태 |
+|---|---:|---|---|---|---|---|
+| 1.1.8 | 17, 21 | Gradle Kotlin DSL, Maven | MVC | Sync | Streamable HTTP | 지원 |
+| 2.0.0 | 17, 21 | Gradle Kotlin DSL, Maven | MVC | Sync | Streamable HTTP | 지원 |
+| 2.0.0 | 17, 21 | Gradle Kotlin DSL, Maven | WebFlux | Async | Streamable HTTP | 지원 |
+| 1.1.8 | 17, 21 | Gradle Kotlin DSL, Maven | WebFlux | Async | Streamable HTTP | 보류 |
+
+Spring AI 1.1.8의 WebFlux Streamable HTTP transport가 사용하는 MCP SDK 0.18.3에는 null SSE message ID를
+처리하지 못하는 upstream 결함이 남아 있다. 이 조합은 profile로 등록하거나 생성하지 않고, UI의 profile
+도움말과 문서에서 보류 사유를 안내한다. 수정된 Spring AI 1.1.x에서 Java 17·21, Gradle·Maven의 compile,
+ApplicationContext, MCP initialize/tools/list/tools/call이 모두 통과한 뒤에만 지원 대상으로 전환한다.
+
+Profile 선택 UI는 생성 가능한 12개만 선택 항목으로 제공한다. `Compatibility profile` label 옆의 접근
+가능한 도움말 버튼은 MVC+Sync 지원 범위, Spring AI 2.0 WebFlux+Async 지원 범위, Spring AI 1.1
+WebFlux+Async 보류 사유를 간략히 설명한다. 문구는 client에 별도로 하드코딩하지 않고 profile API의
+canonical compatibility notice를 사용한다.
+
+세부 설계는
+[생성 대상 확장 설계](superpowers/specs/2026-08-23-generation-target-expansion-design.md)를 따른다.
 
 ---
 
