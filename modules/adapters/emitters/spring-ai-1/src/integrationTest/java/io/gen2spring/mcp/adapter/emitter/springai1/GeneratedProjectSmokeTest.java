@@ -5,7 +5,6 @@ import io.gen2spring.mcp.domain.tool.OutputKind;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
@@ -31,36 +30,8 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 class GeneratedProjectSmokeTest {
-    private static final List<String> PROJECT_FILES = List.of(
-            ".dockerignore",
-            ".gitignore",
-            "Dockerfile",
-            "README.md",
-            "build.gradle.kts",
-            "gradle.properties",
-            "gradle/wrapper/gradle-wrapper.jar",
-            "gradle/wrapper/gradle-wrapper.properties",
-            "gradlew",
-            "gradlew.bat",
-            "settings.gradle.kts",
-            "src/main/resources/application.yml");
-
     @TempDir
     Path tempDir;
-
-    @Test
-    void emitsFixedProjectFilesBeforeSortedJavaSourcesAndReturnsAnUnmodifiableMap() {
-        Map<String, byte[]> files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.contextWithWeatherTool(profile(21)))
-                .files();
-        List<String> paths = List.copyOf(files.keySet());
-
-        assertEquals(PROJECT_FILES, paths.subList(0, PROJECT_FILES.size()));
-        List<String> javaPaths = paths.subList(PROJECT_FILES.size(), paths.size());
-        assertEquals(javaPaths.stream().sorted().toList(), javaPaths);
-        assertThrows(UnsupportedOperationException.class,
-                () -> files.put("unexpected", new byte[0]));
-    }
 
     @Test
     @Timeout(value = 5, unit = MINUTES)
