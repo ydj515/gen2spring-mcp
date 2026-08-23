@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.CompatibilityNotice;
 import java.util.Objects;
 
 public final class GenerationPreviewPresenter {
@@ -48,6 +49,22 @@ public final class GenerationPreviewPresenter {
             node.put("gradleVersion", profile.gradleVersion());
         }
         node.put("containerImage", profile.containerImage());
+        return node;
+    }
+
+    ObjectNode compatibilityNotice(CompatibilityNotice notice) {
+        Objects.requireNonNull(notice, "notice");
+        ObjectNode node = json.createObjectNode();
+        node.put("code", notice.code());
+        node.put("severity", notice.severity());
+        node.put("summary", notice.summary());
+        node.put("reason", notice.reason());
+        node.put("referenceUrl", notice.referenceUrl());
+        ObjectNode affected = node.putObject("affectedTarget");
+        affected.put("springAiFamily", notice.affectedTarget().springAiFamily());
+        affected.put("webStack", notice.affectedTarget().webStack());
+        affected.put("programmingModel", notice.affectedTarget().programmingModel());
+        affected.put("transport", notice.affectedTarget().transport());
         return node;
     }
 

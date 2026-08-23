@@ -10,6 +10,7 @@ let state = Object.freeze({
   operations: [],
   selectedOperationId: null,
   profiles: [],
+  compatibilityNotices: [],
   preview: null,
   job: null
 });

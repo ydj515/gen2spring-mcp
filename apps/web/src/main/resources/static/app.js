@@ -9,6 +9,7 @@ import {clearProgress, renderProgress, stateLabel} from './progress.js';
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
   'error-summary', 'error-message', 'analysis-summary', 'target-profile', 'profile-description',
+  'profile-help-button', 'profile-help', 'profile-notice-list',
   'preview-button', 'preview-status',
   'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'downloads',
   'summary-version', 'summary-selected', 'summary-excluded', 'summary-warnings',
@@ -44,6 +45,7 @@ const upload = initializeUpload({
 ui['preview-button'].addEventListener('click', runPreview);
 ui['generate-button'].addEventListener('click', startGeneration);
 ui['delete-job-button'].addEventListener('click', removeJob);
+initializeProfileHelp();
 if (api.hostedMode) ui['delete-job-button'].textContent = '작업 취소';
 for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name',
   'target-profile', 'validation-operation', 'validation-arguments']) {
@@ -57,13 +59,17 @@ renderGenerationSummary();
 async function loadProfiles() {
   try {
     const payload = await api.profiles();
-    updateState({profiles: payload.profiles});
+    updateState({
+      profiles: payload.profiles,
+      compatibilityNotices: payload.compatibilityNotices ?? []
+    });
     ui['target-profile'].replaceChildren(...payload.profiles.map(profile => {
       const option = document.createElement('option');
       option.value = profile.id;
-      option.textContent = `${profile.id} — Java ${profile.javaVersion}`;
+      option.textContent = formatProfileLabel(profile);
       return option;
     }));
+    renderCompatibilityNotices(payload.compatibilityNotices ?? []);
     const preferred = payload.profiles.find(profile => profile.id === 'spring-ai-2.0-java21-mvc-streamable');
     if (preferred) ui['target-profile'].value = preferred.id;
     describeProfile();
@@ -234,9 +240,68 @@ function invalidatePreview() {
 function describeProfile() {
   const profile = getState().profiles.find(candidate => candidate.id === ui['target-profile'].value);
   ui['profile-description'].textContent = profile
-    ? `Java ${profile.javaVersion}, Spring Boot ${profile.springBootVersion}, Spring AI ${profile.springAiVersion}.`
+    ? `${formatProfileLabel(profile)} · Spring Boot ${profile.springBootVersion}`
     : 'Select one compatibility profile.';
   renderGenerationSummary();
+}
+
+function formatProfileLabel(profile) {
+  const springAi = String(profile.springAiVersion).split('.').slice(0, 2).join('.');
+  const buildTool = profile.buildTool?.type === 'MAVEN' ? 'Maven' : 'Gradle';
+  const runtime = profile.webStack === 'WEBFLUX'
+    ? `WebFlux ${profile.programmingModel === 'ASYNC' ? 'Async' : profile.programmingModel}`
+    : 'MVC';
+  return `Spring AI ${springAi} · Java ${profile.javaVersion} · ${buildTool} · ${runtime}`;
+}
+
+function initializeProfileHelp() {
+  ui['profile-help-button'].addEventListener('click', () => {
+    const open = ui['profile-help-button'].getAttribute('aria-expanded') !== 'true';
+    setProfileHelpOpen(open);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') setProfileHelpOpen(false);
+  });
+  document.addEventListener('click', event => {
+    if (ui['profile-help-button'].getAttribute('aria-expanded') !== 'true') return;
+    if (ui['profile-help-button'].contains(event.target) || ui['profile-help'].contains(event.target)) return;
+    setProfileHelpOpen(false);
+  });
+}
+
+function setProfileHelpOpen(open) {
+  ui['profile-help-button'].setAttribute('aria-expanded', String(open));
+  ui['profile-help'].hidden = !open;
+}
+
+function renderCompatibilityNotices(notices) {
+  ui['profile-notice-list'].replaceChildren(...notices.map(notice => {
+    const item = document.createElement('li');
+    const summary = document.createElement('strong');
+    summary.textContent = notice.summary;
+    const reason = document.createElement('p');
+    reason.textContent = notice.reason;
+    item.append(summary, reason);
+    const reference = safeReferenceUrl(notice.referenceUrl);
+    if (reference) {
+      const link = document.createElement('a');
+      link.href = reference;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Upstream issue 보기';
+      item.append(link);
+    }
+    return item;
+  }));
+}
+
+function safeReferenceUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function renderAnalysis(analysis) {

@@ -54,6 +54,13 @@ class StaticAssetContractTest {
             assertTrue(index.contains("id=\"" + id + "\""), id);
         }
         assertTrue(index.contains("id=\"target-profile\""));
+        assertTrue(index.contains("id=\"profile-help-button\""));
+        assertTrue(index.contains("aria-expanded=\"false\""));
+        assertTrue(index.contains("aria-controls=\"profile-help\""));
+        assertTrue(index.contains("id=\"profile-help\""));
+        assertTrue(index.contains("id=\"profile-notice-list\""));
+        assertTrue(index.contains("id=\"profile-help\" class=\"profile-help\" role=\"region\"")
+                && index.contains("hidden"));
         assertTrue(index.contains("id=\"preview-button\" type=\"button\" disabled"));
         assertTrue(index.contains("id=\"generate-button\""));
         assertTrue(index.contains("name=\"csrf-token\""));
@@ -89,6 +96,7 @@ class StaticAssetContractTest {
         assertTrue(styles.contains(".generation-layout { grid-template-columns:"));
         assertTrue(styles.contains(".generation-summary { position: static; }"));
         assertTrue(styles.contains(".selected-tool-summary-content { display: grid;"));
+        assertTrue(styles.contains(".profile-help[hidden] { display: none; }"));
 
         // A wizard panel and the summary aside share a grid row, so a margin on
         // only one of them misaligns their tops. Both containers supply a gap.
@@ -132,6 +140,23 @@ class StaticAssetContractTest {
         assertTrue(app.contains("initializeWizard"));
         assertTrue(app.contains("syncGate"));
         assertFalse(wizard.contains("innerHTML"));
+    }
+
+    @Test
+    void rendersProfileLabelsAndCompatibilityNoticesWithoutHtmlInjection() throws Exception {
+        String app = resource("/static/app.js");
+
+        assertTrue(app.contains("formatProfileLabel(profile)"));
+        assertTrue(app.contains("return `Spring AI ${springAi} · Java ${profile.javaVersion}"));
+        assertTrue(app.contains("payload.compatibilityNotices"));
+        assertTrue(app.contains("renderCompatibilityNotices"));
+        assertTrue(app.contains("document.createElement('li')"));
+        assertTrue(app.contains("document.createElement('a')"));
+        assertTrue(app.contains("event.key === 'Escape'"));
+        assertTrue(app.contains("aria-expanded"));
+        assertFalse(app.contains("innerHTML"));
+        assertFalse(app.contains("SPRING_AI_1_WEBFLUX_ASYNC_DEFERRED"));
+        assertFalse(app.contains("spring-projects/spring-ai/issues/6274"));
     }
 
     @Test
