@@ -152,6 +152,22 @@ class BoundedProcessRunnerTest {
         assertEquals(System.getenv("PATH"), readProbeOutput(output).get("PATH"));
     }
 
+    @Test
+    void buildEnvironmentOverlaysJavaHomeAndKeepsTheParentPath() throws Exception {
+        Path output = tempDir.resolve("build-environment.txt");
+
+        BoundedProcessRunner.Result result = runner.runWithEnvironmentOverlay(
+                probeCommand(output, "JAVA_HOME", "PATH"),
+                tempDir,
+                Duration.ofSeconds(3),
+                8_192,
+                Map.of("JAVA_HOME", "/validated/java-home"));
+
+        assertEquals(0, result.exitCode());
+        assertEquals("/validated/java-home", readProbeOutput(output).get("JAVA_HOME"));
+        assertEquals(System.getenv("PATH"), readProbeOutput(output).get("PATH"));
+    }
+
     private List<String> javaCommand(String... args) {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         List<String> command = new ArrayList<>(List.of(

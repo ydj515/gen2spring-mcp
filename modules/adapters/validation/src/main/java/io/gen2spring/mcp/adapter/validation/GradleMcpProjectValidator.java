@@ -238,6 +238,9 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             stages.add(failed("COMPILE", compileStarted, exception.getMessage()));
             return failedReport(stages, List.of());
         }
+        if ("MAVEN".equals(validated.profile().target().buildTool())) {
+            return validateWithBuildToolDriver(validated, stages, compileStarted, progress);
+        }
         VerifiedGradleWrapper gradleWrapper;
         try {
             gradleWrapper = pinGradleWrapper(
@@ -277,6 +280,40 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         try {
             jar = resolveArtifact(validated.root(), validated.artifactId());
         } catch (ArtifactResolutionException exception) {
+            stages.add(failed("APPLICATION_CONTEXT", applicationStarted, exception.getMessage()));
+            return failedReport(stages, List.of());
+        }
+        return validateRunningApplication(validated, jar, stages, applicationStarted, progress);
+    }
+
+    private ValidationReport validateWithBuildToolDriver(
+            ValidatedRequest validated,
+            List<ValidationStageResult> stages,
+            long compileStarted,
+            ValidationProgress progress) {
+        BuildToolDriver driver;
+        try {
+            driver = BuildToolDriverRegistry.defaults().require(
+                    validated.profile().target().buildTool());
+            validated.runtime().requireStable();
+        } catch (IllegalArgumentException exception) {
+            stages.add(failed("COMPILE", compileStarted, "Build tool is unsafe or unavailable"));
+            return failedReport(stages, List.of());
+        }
+        BuildToolDriver.Result build = driver.build(new BuildToolDriver.Request(
+                validated.root(), validated.profile(), validated.runtime().home()));
+        if (build.timedOut() || build.exitCode() != 0 || build.processAlive()) {
+            stages.add(stage("COMPILE", FAILED, compileStarted, 1, build.safeSummary()));
+            return failedReport(stages, List.of());
+        }
+        stages.add(stage("COMPILE", SUCCESS, compileStarted, 0, build.safeSummary()));
+        progress.succeed("COMPILE");
+
+        long applicationStarted = System.nanoTime();
+        Path jar;
+        try {
+            jar = driver.resolveArtifact(validated.root(), validated.artifactId());
+        } catch (IllegalArgumentException exception) {
             stages.add(failed("APPLICATION_CONTEXT", applicationStarted, exception.getMessage()));
             return failedReport(stages, List.of());
         }
@@ -779,6 +816,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private ValidatedRequest validateRequest(ValidationRequest request) {
         if (request == null || request.projectRoot() == null || request.level() != MCP_PROTOCOL
                 || request.expectedTools() == null || request.expectedToolCall() == null || request.artifactId() == null
+                || request.profile() == null || request.profile().target() == null
                 || !ARTIFACT_ID.matcher(request.artifactId()).matches()) {
             throw new IllegalArgumentException("Validation request is incomplete or unsupported");
         }

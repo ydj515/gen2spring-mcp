@@ -40,8 +40,23 @@ public final class BoundedProcessRunner {
 
     public Result run(List<String> command, Path workingRoot, Duration timeout, int maxBytes)
             throws IOException, InterruptedException {
+        return runStarted(start(command, workingRoot, maxBytes), timeout);
+    }
+
+    public Result runWithEnvironmentOverlay(
+            List<String> command,
+            Path workingRoot,
+            Duration timeout,
+            int maxBytes,
+            Map<String, String> environmentOverrides) throws IOException, InterruptedException {
+        ProcessBuilder builder = processBuilder(command, workingRoot);
+        builder.environment().putAll(validatedEnvironment(environmentOverrides));
+        return runStarted(start(builder, maxBytes), timeout);
+    }
+
+    private Result runStarted(RunningProcess process, Duration timeout)
+            throws IOException, InterruptedException {
         requirePositive(timeout, "timeout");
-        RunningProcess process = start(command, workingRoot, maxBytes);
         Throwable primary = null;
         boolean timedOut = false;
         try {

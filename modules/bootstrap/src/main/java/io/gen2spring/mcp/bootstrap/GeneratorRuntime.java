@@ -19,7 +19,7 @@ import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import io.gen2spring.mcp.adapter.emitter.springai1.SpringAi1ProjectGenerator;
 import io.gen2spring.mcp.adapter.emitter.springai2.SpringAi2ProjectGenerator;
-import io.gen2spring.mcp.adapter.validation.GradleMcpProjectValidator;
+import io.gen2spring.mcp.adapter.validation.McpProjectValidator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -56,7 +56,7 @@ public record GeneratorRuntime(
                 new SafeProjectWriter(),
                 new SourceTreeChecksum(),
                 new GenerationManifestWriter(json),
-                new GradleMcpProjectValidator(),
+                new McpProjectValidator(),
                 new ValidationReportWriter(json),
                 new DeterministicZipPackager(),
                 new RuntimeMetadataDocumentFactory(),

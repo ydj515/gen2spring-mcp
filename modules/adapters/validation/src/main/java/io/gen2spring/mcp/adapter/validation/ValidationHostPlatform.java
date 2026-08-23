@@ -40,11 +40,21 @@ sealed interface ValidationHostPlatform permits PosixValidationHost, WindowsVali
 
     String wrapperFileName();
 
+    default String wrapperFileName(String buildTool) {
+        return switch (buildTool) {
+            case "GRADLE_KOTLIN" -> wrapperFileName();
+            case "MAVEN" -> this instanceof WindowsValidationHost ? "mvnw.cmd" : "mvnw";
+            default -> throw failure();
+        };
+    }
+
     Path javaExecutable(Path home);
 
     boolean requiresOwnerExecutable();
 
     List<String> buildCommand(Path wrapperSnapshot, Path javaHome);
+
+    List<String> buildCommand(Path wrapperSnapshot, List<String> arguments);
 
     static void requireSafeWindowsArgument(String value) {
         if (value == null || value.isEmpty()) {
@@ -96,10 +106,20 @@ final class PosixValidationHost implements ValidationHostPlatform {
                 "-Dorg.gradle.java.installations.paths=" + javaHome,
                 "classes", "test", "bootJar", "--no-daemon", "--non-interactive");
     }
+
+    @Override
+    public List<String> buildCommand(Path wrapperSnapshot, List<String> arguments) {
+        Objects.requireNonNull(wrapperSnapshot, "wrapperSnapshot");
+        List<String> command = new java.util.ArrayList<>();
+        command.add(wrapperSnapshot.toString());
+        command.addAll(List.copyOf(arguments));
+        return List.copyOf(command);
+    }
 }
 
 final class WindowsValidationHost implements ValidationHostPlatform {
-    private static final Pattern SNAPSHOT_NAME = Pattern.compile("\\.gradlew-validated-[0-9a-f-]+\\.bat");
+    private static final Pattern SNAPSHOT_NAME = Pattern.compile(
+            "\\.(?:gradlew|mvnw)-validated-[0-9a-f-]+\\.(?:bat|cmd)");
 
     private final Path command;
     private final StablePathIdentity commandIdentity;
@@ -163,6 +183,30 @@ final class WindowsValidationHost implements ValidationHostPlatform {
                 + " -Dorg.gradle.java.installations.paths=\"" + home + "\""
                 + " classes test bootJar --no-daemon --non-interactive";
         return List.of(command.toString(), "/D", "/E:OFF", "/V:OFF", "/S", "/C", commandLine);
+    }
+
+    @Override
+    public List<String> buildCommand(Path wrapperSnapshot, List<String> arguments) {
+        requireStableCommand();
+        if (wrapperSnapshot == null || wrapperSnapshot.getFileName() == null || arguments == null) {
+            throw ValidationHostPlatform.failure();
+        }
+        String snapshotName = wrapperSnapshot.getFileName().toString();
+        ValidationHostPlatform.requireSafeWindowsArgument(snapshotName);
+        if (!SNAPSHOT_NAME.matcher(snapshotName).matches()) {
+            throw ValidationHostPlatform.failure();
+        }
+        StringBuilder commandLine = new StringBuilder("call ").append(snapshotName);
+        for (String argument : List.copyOf(arguments)) {
+            ValidationHostPlatform.requireSafeWindowsArgument(argument);
+            commandLine.append(' ');
+            if (argument.indexOf(' ') >= 0) {
+                commandLine.append('"').append(argument).append('"');
+            } else {
+                commandLine.append(argument);
+            }
+        }
+        return List.of(command.toString(), "/D", "/E:OFF", "/V:OFF", "/S", "/C", commandLine.toString());
     }
 
     private void requireStableCommand() {
