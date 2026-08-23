@@ -42,7 +42,9 @@ public final class BuildProjectScaffoldRegistry {
 
     private static final class Defaults {
         private static final BuildProjectScaffoldRegistry INSTANCE = BuildProjectScaffoldRegistry.of(
-                Map.of("GRADLE_KOTLIN", new GradleKotlinProjectScaffold()));
+                Map.of(
+                        "GRADLE_KOTLIN", new GradleKotlinProjectScaffold(),
+                        "MAVEN", new MavenProjectScaffold()));
 
         private Defaults() {}
     }

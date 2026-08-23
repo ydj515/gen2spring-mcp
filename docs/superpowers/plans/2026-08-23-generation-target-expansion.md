@@ -18,6 +18,9 @@
 - Pin Gradle to 9.6.1, Maven to 3.9.16, and Maven Wrapper to 3.3.4.
 - Use Maven Wrapper `only-script`; do not add `maven-wrapper.jar`.
 - Pin Maven distribution SHA-256 to `5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce`.
+- Pin the official Maven Wrapper 3.3.4 `only-mvnw` scripts to SHA-256
+  `2430eaa983c5b683466567b54a43ff8efe2f52e29cd5704f419b1b2683c2b99b` and
+  `290eb2329eb1e189f2b6aca12ef34dbd055faff30213fac4ba58b8457d40c458`.
 - Do not use a private MCP SDK fork, dependency shadowing, or copied Spring AI transport source.
 - WebFlux Async generated code must not use `RestClient`, `Future.get`, `Thread.sleep`, or `.block()`.
 - Preserve the existing MCP Tool schema, provider error payload, normalization, retry, pagination, secret, and telemetry contracts.
@@ -291,9 +294,9 @@ git commit -m "refactor: separate Gradle project scaffolding"
 ```java
 assertEquals(Set.of("pom.xml", "mvnw", "mvnw.cmd", ".mvn/wrapper/maven-wrapper.properties"),
         scaffoldBuildFiles(files));
-assertEquals("32ea207bd59f3a2f60392b6766b280dfbb17e60ab00663fb31bcd5015220c633",
+assertEquals("2430eaa983c5b683466567b54a43ff8efe2f52e29cd5704f419b1b2683c2b99b",
         sha256(files.get("mvnw")));
-assertEquals("b7a0db794b62ed5067a2c074e19c94d61af65c42eb32cb1408f0d589e192f4bf",
+assertEquals("290eb2329eb1e189f2b6aca12ef34dbd055faff30213fac4ba58b8457d40c458",
         sha256(files.get("mvnw.cmd")));
 assertTrue(properties.contains("distributionSha256Sum=5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce"));
 ```

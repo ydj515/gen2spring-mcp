@@ -46,7 +46,7 @@ class GradleKotlinProjectScaffoldTest {
 
         assertThrows(GeneratorException.class, () -> registry.require(null));
         assertThrows(GeneratorException.class, () -> registry.require(" "));
-        assertThrows(GeneratorException.class, () -> registry.require("MAVEN"));
+        assertThrows(GeneratorException.class, () -> registry.require("UNKNOWN"));
     }
 
     private ProjectScaffoldModel model() {
