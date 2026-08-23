@@ -80,6 +80,12 @@ final class ReactiveExecutorSourceRenderer {
 
                     @Autowired
                     public OpenApiOperationExecutor(
+                            Environment environment,
+                            RuntimeTelemetry runtimeTelemetry) {
+                        this(WebClient.builder(), environment, runtimeTelemetry);
+                    }
+
+                    public OpenApiOperationExecutor(
                             WebClient.Builder builder,
                             Environment environment,
                             RuntimeTelemetry runtimeTelemetry) {

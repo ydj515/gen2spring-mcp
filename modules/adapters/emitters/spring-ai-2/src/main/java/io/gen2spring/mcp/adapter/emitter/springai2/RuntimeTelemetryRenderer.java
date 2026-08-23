@@ -416,6 +416,14 @@ final class RuntimeTelemetryRenderer {
                 source,
                 "case SUCCESS -> category == ErrorCategory.NONE;\n            case EXPECTED_ERROR",
                 "case SUCCESS, CANCELLED -> category == ErrorCategory.NONE;\n            case EXPECTED_ERROR");
+        source = replaceReactive(
+                source,
+                "\"spring-ai-2.0-java21-mvc-streamable\");",
+                "\"spring-ai-2.0-java21-mvc-streamable\",\n"
+                        + "            \"spring-ai-2.0-java17-webflux-async-streamable\",\n"
+                        + "            \"spring-ai-2.0-java21-webflux-async-streamable\",\n"
+                        + "            \"spring-ai-2.0-java17-maven-webflux-async-streamable\",\n"
+                        + "            \"spring-ai-2.0-java21-maven-webflux-async-streamable\");");
         return replaceReactive(
                 source,
                 "if (outcome != Outcome.SUCCESS) {",

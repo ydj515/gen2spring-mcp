@@ -16,10 +16,24 @@ import java.util.Set;
 
 final class InputRecordRenderer {
     Map<String, String> render(String packageName, String packagePath, List<ToolDefinition> tools) {
+        return render(packageName, packagePath, tools, true);
+    }
+
+    Map<String, String> render(
+            String packageName,
+            String packagePath,
+            List<ToolDefinition> tools,
+            boolean includeArgumentMapping) {
         Map<String, String> sources = new LinkedHashMap<>();
         for (ToolDefinition tool : tools) {
             String className = JavaSourceRenderer.upperCamel(tool.operationId()) + "Input";
-            renderInputRecord(sources, packageName, packagePath, className, inputs(tool));
+            renderInputRecord(
+                    sources,
+                    packageName,
+                    packagePath,
+                    className,
+                    inputs(tool),
+                    includeArgumentMapping);
         }
         return sources;
     }
@@ -41,7 +55,8 @@ final class InputRecordRenderer {
             String packageName,
             String packagePath,
             String className,
-            List<ToolInput> inputs) {
+            List<ToolInput> inputs,
+            boolean includeArgumentMapping) {
         String operationClass = className.substring(0, className.length() - "Input".length());
         for (ToolInput input : inputs) {
             renderNestedTypes(sources, packageName, packagePath,
@@ -49,8 +64,8 @@ final class InputRecordRenderer {
                     input.schema(), new HashSet<>());
         }
 
-        Set<String> imports = imports(inputs);
-        if (!inputs.isEmpty()) {
+        Set<String> imports = imports(inputs, includeArgumentMapping);
+        if (includeArgumentMapping && !inputs.isEmpty()) {
             imports.add(packageName + ".runtime.ToolArgumentContext");
         }
         StringBuilder source = new StringBuilder("package ").append(packageName).append(".generated.model;\n\n");
@@ -72,6 +87,13 @@ final class InputRecordRenderer {
         }
         if (inputs.isEmpty()) {
             source.append(") {\n");
+        }
+        if (!includeArgumentMapping) {
+            source.append("}\n");
+            putUnique(sources,
+                    "src/main/java/" + packagePath + "/generated/model/" + className + ".java",
+                    source.toString());
+            return;
         }
         source.append("    public Map<String, Object> toArguments() {\n")
                 .append("        Map<String, Object> arguments = new LinkedHashMap<>();\n");
@@ -242,11 +264,13 @@ final class InputRecordRenderer {
         putUnique(sources, "src/main/java/" + packagePath + "/generated/model/" + className + ".java", source.toString());
     }
 
-    private Set<String> imports(List<ToolInput> inputs) {
+    private Set<String> imports(List<ToolInput> inputs, boolean includeArgumentMapping) {
         Set<String> imports = validationImports(inputs);
-        imports.add("java.util.Collections");
-        imports.add("java.util.LinkedHashMap");
-        imports.add("java.util.Map");
+        if (includeArgumentMapping) {
+            imports.add("java.util.Collections");
+            imports.add("java.util.LinkedHashMap");
+            imports.add("java.util.Map");
+        }
         return imports;
     }
 

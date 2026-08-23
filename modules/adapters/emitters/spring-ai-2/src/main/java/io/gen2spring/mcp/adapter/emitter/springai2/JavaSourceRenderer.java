@@ -50,6 +50,7 @@ public final class JavaSourceRenderer {
         this.responseRuntimeRenderer = new ResponseRuntimeRenderer();
         this.programmingModelRenderer = switch (profile.target().programmingModel()) {
             case "SYNC" -> new SyncProgrammingModelSourceRenderer(profile);
+            case "ASYNC" -> new AsyncProgrammingModelSourceRenderer(profile);
             default -> throw invalid("The Spring AI programming model is unsupported");
         };
         this.expectedToolSchemaFactory = new ExpectedToolSchemaFactory();
@@ -70,7 +71,11 @@ public final class JavaSourceRenderer {
         boolean hasPaginationPolicies = tools.stream()
                 .anyMatch(tool -> tool.execution().paginationPolicy() != null);
         Map<String, String> sources = new LinkedHashMap<>();
-        putAll(sources, inputRenderer.render(packageName, packagePath, tools));
+        putAll(sources, inputRenderer.render(
+                packageName,
+                packagePath,
+                tools,
+                "SYNC".equals(context.profile().target().programmingModel())));
         for (ToolDefinition tool : tools) {
             if (tool.outputKind() == OutputKind.TYPED_DTO) {
                 putAll(sources, outputRenderer.render(

@@ -79,7 +79,7 @@ public final class ProjectFileRenderer {
         Map<String, Object> server = new LinkedHashMap<>();
         server.put("name", coordinates.artifactId());
         server.put("version", profile.runtimeVersion());
-        server.put("type", "SYNC");
+        server.put("type", profile.target().programmingModel());
         server.put("protocol", "STREAMABLE");
         server.put("annotation-scanner", Map.of("enabled", false));
         server.put("streamable-http", Map.of("mcp-endpoint", "/mcp"));
@@ -214,9 +214,16 @@ public final class ProjectFileRenderer {
     }
 
     private List<Dependency> dependencies() {
-        return List.of(
-                implementation("org.springframework.ai", "spring-ai-starter-mcp-server-webmvc"),
-                implementation("org.springframework.boot", "spring-boot-restclient"),
+        boolean reactive = "WEBFLUX".equals(profile.target().webStack());
+        List<Dependency> dependencies = new ArrayList<>(List.of(
+                implementation(
+                        "org.springframework.ai",
+                        reactive
+                                ? "spring-ai-starter-mcp-server-webflux"
+                                : "spring-ai-starter-mcp-server-webmvc"),
+                implementation(
+                        "org.springframework.boot",
+                        reactive ? "spring-boot-starter-webflux" : "spring-boot-restclient"),
                 implementation("org.springframework.boot", "spring-boot-starter-validation"),
                 implementation("org.springframework.boot", "spring-boot-starter-actuator"),
                 implementation("org.springframework.boot", "spring-boot-starter-opentelemetry"),
@@ -225,7 +232,12 @@ public final class ProjectFileRenderer {
                 new Dependency(
                         "org.springframework.boot",
                         "spring-boot-starter-test",
-                        Scope.TEST_IMPLEMENTATION));
+                        Scope.TEST_IMPLEMENTATION)));
+        if (reactive) {
+            dependencies.add(new Dependency(
+                    "io.projectreactor", "reactor-test", Scope.TEST_IMPLEMENTATION));
+        }
+        return List.copyOf(dependencies);
     }
 
     private Dependency implementation(String groupId, String artifactId) {
@@ -250,13 +262,31 @@ public final class ProjectFileRenderer {
                 && (target.javaVersion() == 17 || target.javaVersion() == 21)
                 && "4.1.0".equals(target.springBootVersion())
                 && "2.0.0".equals(target.springAiVersion())
-                && "MVC".equals(target.webStack())
-                && "SYNC".equals(target.programmingModel())
+                && supportsRuntime(target)
                 && "STREAMABLE_HTTP".equals(target.transport())
-                && CompatibilityProfileRegistry.defaults()
-                        .find(candidate.id())
-                        .filter(candidate::equals)
-                        .isPresent();
+                && (CompatibilityProfileRegistry.defaults()
+                                .find(candidate.id())
+                                .filter(candidate::equals)
+                                .isPresent()
+                        || deferredWebFluxProfile(candidate));
+    }
+
+    private boolean supportsRuntime(CompatibilityProfile.TargetPlatform target) {
+        return "MVC".equals(target.webStack()) && "SYNC".equals(target.programmingModel())
+                || "WEBFLUX".equals(target.webStack()) && "ASYNC".equals(target.programmingModel());
+    }
+
+    private boolean deferredWebFluxProfile(CompatibilityProfile candidate) {
+        var target = candidate.target();
+        if (!"WEBFLUX".equals(target.webStack()) || !"ASYNC".equals(target.programmingModel())) {
+            return false;
+        }
+        String expectedId = "spring-ai-2.0-java" + target.javaVersion()
+                + ("MAVEN".equals(target.buildTool()) ? "-maven" : "")
+                + "-webflux-async-streamable";
+        return expectedId.equals(candidate.id())
+                && "spring-ai-2-v3".equals(candidate.templateVersion())
+                && "0.3.0".equals(candidate.runtimeVersion());
     }
 
     private boolean supportsBuildTool(CompatibilityProfile candidate) {
