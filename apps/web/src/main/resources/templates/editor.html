@@ -1,17 +1,10 @@
 <!doctype html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="csrf-token" th:content="${csrfToken}">
-  <meta name="csrf-header" th:content="${csrfHeader}">
-  <meta name="app-mode" th:content="${appMode}">
+<head th:replace="~{fragments/ui :: head-assets('Gen2Spring MCP Endpoint Editor')}">
   <title>Gen2Spring MCP Endpoint Editor</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
-  <header class="site-header">
+<body class="app-shell">
+  <header th:replace="~{fragments/ui :: app-header(${appMode})}" class="app-header">
     <div>
       <p class="eyebrow">OpenAPI to MCP</p>
       <h1>Gen2Spring MCP</h1>
@@ -19,7 +12,7 @@
     </div>
     <a class="header-link" href="/" th:if="${appMode == 'hosted'}">작업 내역</a>
   </header>
-  <nav aria-label="생성 단계">
+  <nav th:replace="~{fragments/ui :: wizard-progress}" aria-label="생성 단계">
     <ol class="wizard-steps" id="wizard-steps">
       <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark">1</span> OpenAPI 파일</button></li>
       <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark">2</span> Endpoint 선택</button></li>
@@ -35,6 +28,16 @@
       <p id="error-message"></p>
     </div>
 
+    <aside id="generation-summary" class="generation-summary summary-strip" aria-labelledby="generation-summary-title" hidden>
+      <h2 id="generation-summary-title" class="visually-hidden">생성 요약</h2>
+      <dl>
+        <div><dt><i class="bi bi-file-earmark-text summary-icon summary-icon--version" aria-hidden="true"></i>OpenAPI 버전</dt><dd id="summary-version">—</dd></div>
+        <div><dt><i class="bi bi-check-circle-fill summary-icon summary-icon--selected" aria-hidden="true"></i>선택된 Tool</dt><dd id="summary-selected">0</dd></div>
+        <div><dt><i class="bi bi-dash-circle-fill summary-icon summary-icon--excluded" aria-hidden="true"></i>제외된 Tool</dt><dd id="summary-excluded">0</dd></div>
+        <div><dt><i class="bi bi-sliders summary-icon summary-icon--profile" aria-hidden="true"></i>현재 프로필</dt><dd id="summary-profile">—</dd></div>
+      </dl>
+    </aside>
+
     <section id="specification-step" class="workflow-step wizard-panel" data-step="1" aria-labelledby="specification-title">
       <div class="section-heading">
         <div><p class="step-kicker">STEP 1</p><h2 id="specification-title" tabindex="-1">1. OpenAPI 파일</h2></div>
@@ -44,10 +47,12 @@
         <input id="specification-file" class="visually-hidden" type="file" accept=".yaml,.yml,.json">
         <div id="upload-dropzone" class="upload-dropzone" role="button" tabindex="0"
              aria-controls="specification-file" aria-describedby="upload-help">
+          <i class="bi bi-file-earmark-arrow-up upload-dropzone__icon" aria-hidden="true"></i>
           <strong>파일을 선택하거나 끌어놓기</strong>
-          <span id="upload-help">OpenAPI 문서를 이 영역에 놓으면 바로 분석합니다.</span>
+          <span id="upload-help">YAML, YML, JSON · 최대 10MB</span>
         </div>
-        <div id="uploaded-file" class="uploaded-file" hidden>
+        <div id="uploaded-file" class="uploaded-file file-state-card" hidden>
+          <i class="bi bi-file-earmark-check file-state-card__icon" aria-hidden="true"></i>
           <div>
             <strong id="uploaded-file-name"></strong>
             <span id="uploaded-file-details"></span>
@@ -69,35 +74,43 @@
     <section id="operations-step" class="workflow-step wizard-panel" data-step="2" aria-labelledby="operations-title" hidden>
       <div class="section-heading endpoint-heading">
         <div><p class="step-kicker">STEP 2</p><h2 id="operations-title" tabindex="-1">2. API endpoint 선택</h2></div>
-        <label class="select-all" for="select-all-operations">
-          <input id="select-all-operations" type="checkbox" disabled> 선택 가능한 항목 전체
-        </label>
+        <p>생성할 MCP Tool에 포함할 endpoint를 선택하세요.</p>
       </div>
       <fieldset id="operation-selection" class="endpoint-selection" disabled>
         <legend class="visually-hidden">MCP Tool로 만들 endpoint</legend>
         <div class="endpoint-toolbar">
-          <div class="field grow">
-            <label for="operation-search">Endpoint 검색</label>
+          <div class="field grow toolbar-search">
+            <label for="operation-search" class="visually-hidden">Endpoint 검색</label>
+            <i class="bi bi-search toolbar-search__icon" aria-hidden="true"></i>
             <input id="operation-search" type="search" placeholder="method, path, operationId, 설명 검색" autocomplete="off">
           </div>
-          <div class="field compact">
-            <label for="operation-filter">지원 상태</label>
+          <div class="field compact toolbar-filter">
+            <label for="operation-filter" class="visually-hidden">지원 상태</label>
             <select id="operation-filter">
-              <option value="all">전체</option>
-              <option value="supported">선택 가능</option>
-              <option value="warning">경고 있음</option>
-              <option value="unsupported">지원하지 않음</option>
+              <option value="all">지원 상태: 전체</option>
+              <option value="supported">지원 상태: 선택 가능</option>
+              <option value="warning">지원 상태: 경고 있음</option>
+              <option value="unsupported">지원 상태: 지원하지 않음</option>
             </select>
           </div>
+          <label class="select-all" for="select-all-operations">
+            <input id="select-all-operations" type="checkbox" disabled> 선택 가능한 항목 전체
+          </label>
+          <p id="operation-counts" class="endpoint-counts" aria-live="polite">파일 분석 후 endpoint를 선택할 수 있습니다.</p>
+          <button id="operation-refresh" type="button" class="toolbar-refresh" aria-label="새로고침">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+          </button>
         </div>
-        <p id="operation-counts" class="endpoint-counts" aria-live="polite">파일 분석 후 endpoint를 선택할 수 있습니다.</p>
+        <div class="endpoint-column-head" aria-hidden="true">
+          <span>선택</span><span>ENDPOINT</span><span></span><span>지원 상태</span><span></span>
+        </div>
         <ul id="operation-list" class="operation-list"></ul>
         <p id="operation-empty" class="empty-state" hidden>검색 조건에 맞는 endpoint가 없습니다.</p>
       </fieldset>
       <div class="wizard-nav">
-        <button id="step-back-2" class="secondary" type="button">이전</button>
+        <button id="step-back-2" class="secondary" type="button">이전: OpenAPI 파일</button>
         <p id="step-hint-2" class="wizard-hint" role="status" aria-live="polite"></p>
-        <button id="step-next-2" type="button" disabled>다음: 생성 설정</button>
+        <button id="step-next-2" type="button" disabled>다음: 생성 설정 &rarr;</button>
       </div>
     </section>
 
@@ -109,35 +122,53 @@
 
       <div class="generation-layout">
         <div class="generation-main">
-          <div class="field-grid">
-            <div class="field"><label for="group-id">Group ID</label><input id="group-id" value="com.example" required></div>
-            <div class="field"><label for="artifact-id">Artifact ID</label><input id="artifact-id" value="openapi-mcp-server" required></div>
-            <div class="field"><label for="package-name">Package name</label><input id="package-name" value="com.example.mcp" required></div>
-            <div class="field"><label for="provider-name">Provider</label><input id="provider-name" value="provider" required></div>
-            <div class="field"><label for="domain-name">Domain</label><input id="domain-name" value="api" required></div>
-            <div class="field profile-field">
-              <div class="field-label-row">
-                <label for="target-profile">Compatibility profile</label>
-                <button id="profile-help-button" class="profile-help-button" type="button"
-                        aria-label="Compatibility profile 도움말"
-                        aria-expanded="false" aria-controls="profile-help">?</button>
-              </div>
-              <select id="target-profile" required></select>
-              <div id="profile-help" class="profile-help" role="region"
-                   aria-label="Compatibility profile 안내" hidden>
-                <p class="profile-help-intro">생성 대상별 지원 범위와 알려진 제약입니다.</p>
-                <ul id="profile-notice-list" class="profile-notice-list"></ul>
+          <div class="step3-section">
+            <div class="step3-section-heading">
+              <i class="bi bi-gear step3-section-icon" aria-hidden="true"></i>
+              <h3>프로젝트 설정</h3>
+            </div>
+            <div class="field-grid project-settings-grid">
+              <div class="field"><label for="group-id">Group ID</label><input id="group-id" value="com.example" required></div>
+              <div class="field"><label for="artifact-id">Artifact ID</label><input id="artifact-id" value="openapi-mcp-server" required></div>
+              <div class="field"><label for="package-name">패키지 이름</label><input id="package-name" value="com.example.mcp" required></div>
+              <div class="field"><label for="provider-name">Provider 이름</label><input id="provider-name" value="provider" required></div>
+              <div class="field"><label for="domain-name">도메인 이름</label><input id="domain-name" value="api" required></div>
+              <div class="field profile-field">
+                <div class="field-label-row">
+                  <label for="target-profile">생성 프로필</label>
+                  <button id="profile-help-button" class="profile-help-button" type="button"
+                          aria-label="Compatibility profile 도움말"
+                          aria-expanded="false" aria-controls="profile-help"><i class="bi bi-question-circle" aria-hidden="true"></i></button>
+                </div>
+                <select id="target-profile" required></select>
+                <div id="profile-help" class="profile-help" role="region"
+                     aria-label="Compatibility profile 안내" hidden>
+                  <p class="profile-help-intro">생성 대상별 지원 범위와 알려진 제약입니다.</p>
+                  <ul id="profile-notice-list" class="profile-notice-list"></ul>
+                </div>
               </div>
             </div>
+            <p id="profile-description" class="status" aria-live="polite">호환 프로필을 불러오는 중입니다.</p>
           </div>
-          <p id="profile-description" class="status" aria-live="polite">호환 프로필을 불러오는 중입니다.</p>
 
-          <div class="selected-tools-section">
-            <div class="selected-tools-heading">
-              <h3>선택한 MCP Tool</h3>
-              <p>행을 펼쳐 기본 이름과 고급 정책을 조정할 수 있습니다.</p>
+          <div class="step3-section selected-tools-section">
+            <div class="step3-section-heading">
+              <i class="bi bi-tools step3-section-icon" aria-hidden="true"></i>
+              <div>
+                <h3>선택한 MCP Tool</h3>
+                <p class="step3-section-desc">행을 펼쳐 기본 이름과 고급 정책을 조정할 수 있습니다.</p>
+              </div>
             </div>
-            <div id="selected-tool-list" class="selected-tool-list" aria-live="polite"></div>
+            <div id="selected-tool-list-container" class="selected-tool-list-container">
+              <div class="selected-tool-list-header" aria-hidden="true">
+                <span></span>
+                <span>Endpoint</span>
+                <span>Operation ID</span>
+                <span>Tool Name</span>
+                <span style="text-align: right;">상태</span>
+              </div>
+              <div id="selected-tool-list" class="selected-tool-list" aria-live="polite"></div>
+            </div>
             <p id="selected-tool-empty" class="empty-state">Step 2에서 endpoint를 하나 이상 선택해 주세요.</p>
           </div>
 
@@ -191,9 +222,9 @@
         </div>
       </div>
       <div class="wizard-nav">
-        <button id="step-back-3" class="secondary" type="button">이전</button>
+        <button id="step-back-3" class="secondary" type="button">이전: Endpoint 선택</button>
         <p id="step-hint-3" class="wizard-hint" role="status" aria-live="polite"></p>
-        <button id="step-next-3" type="button" disabled>다음: 생성 및 결과</button>
+        <button id="step-next-3" type="button" disabled>다음: 미리보기와 생성 &rarr;</button>
       </div>
     </section>
 
@@ -203,18 +234,26 @@
         <p>대표 호출로 설정을 검증한 뒤 프로젝트를 생성합니다.</p>
       </div>
 
-      <div class="preview-section">
-        <h3>대표 호출과 미리보기</h3>
-        <div class="field-grid">
-          <div class="field"><label for="validation-operation">Representative operation</label><select id="validation-operation"></select></div>
-          <div class="field"><label for="validation-arguments">Representative arguments JSON object</label><textarea id="validation-arguments" rows="4">{}</textarea></div>
+      <div class="preview-workspace">
+        <div class="preview-input surface-subtle">
+          <div class="subsection-heading"><p class="section-kicker">REPRESENTATIVE CALL</p><h3>대표 Tool 호출</h3><p>선택한 endpoint와 입력값으로 MCP 호출 구성을 확인합니다.</p></div>
+          <div class="field-grid">
+            <div class="field"><label for="validation-operation">대표 operation</label><select id="validation-operation"></select></div>
+            <div class="field"><label for="validation-arguments">호출 인자 JSON object</label><textarea id="validation-arguments" rows="8">{}</textarea></div>
+          </div>
+          <button id="preview-button" type="button" disabled class="secondary"><i class="bi bi-eye" aria-hidden="true"></i> 설정 검증 및 미리보기</button>
+          <p id="preview-status" class="status" aria-live="polite">생성 전 미리보기가 필요합니다.</p>
         </div>
-        <div class="button-row">
-          <button id="preview-button" type="button" disabled>설정 검증 및 미리보기</button>
-          <button id="generate-button" type="button" disabled>프로젝트 생성</button>
+        <div class="preview-result surface-subtle">
+          <div class="subsection-heading"><p class="section-kicker">PREVIEW RESULT</p><h3>생성 미리보기</h3><p>Tool 이름, 설명, 입력 schema와 정책을 확인합니다.</p></div>
+          <div id="preview-output" class="preview-output">
+            <p class="empty-state">대표 호출을 검증하면 미리보기 결과가 표시됩니다.</p>
+          </div>
         </div>
-        <p id="preview-status" class="status" aria-live="polite">생성 전 미리보기가 필요합니다.</p>
-        <div id="preview-output" class="preview-output"></div>
+      </div>
+      <div class="generation-primary-action">
+        <div><strong>설정을 모두 확인했나요?</strong><p>프로젝트 생성과 런타임 검증을 시작합니다.</p></div>
+        <button id="generate-button" type="button" disabled><i class="bi bi-play-fill" aria-hidden="true"></i> 프로젝트 생성</button>
       </div>
       <div class="wizard-nav">
         <button id="step-back-4" class="secondary" type="button">이전</button>
@@ -231,17 +270,20 @@
 
       <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
       <div id="job-progress" class="job-progress" hidden>
-        <div class="progress-head">
-          <p id="job-stage-label" class="progress-stage"></p>
-          <span id="job-progress-value" class="progress-count"></span>
+        <div class="job-progress-hero">
+          <span id="job-progress-percent" class="job-progress-percent">0%</span>
+          <p id="job-stage-label" class="progress-stage">생성 작업을 준비하고 있습니다.</p>
+          <span id="job-progress-value" class="progress-count">0 / 0</span>
+          <div class="progress-track"><div id="job-progress-fill" class="progress-fill"></div></div>
         </div>
-        <div class="progress-track"><div id="job-progress-fill" class="progress-fill"></div></div>
-        <details id="job-progress-details" class="progress-details">
-          <summary>상세 보기</summary>
-          <ol id="progress-list" class="progress-list"></ol>
-        </details>
+        <div class="pipeline-panel">
+          <div id="job-progress-details" class="progress-details">
+            <h3 class="progress-details-title">상세 보기</h3>
+            <ol id="progress-list" class="progress-list"></ol>
+          </div>
+        </div>
       </div>
-      <div id="downloads" class="downloads"></div>
+      <div class="artifact-section"><h3>생성 산출물</h3><ul id="downloads" class="downloads artifact-list" aria-label="생성 산출물"></ul></div>
       <div class="button-row job-actions">
         <button id="delete-job-button" class="secondary" type="button" disabled>작업 삭제</button>
       </div>
@@ -250,17 +292,6 @@
       </div>
     </section>
 
-    <aside id="generation-summary" class="generation-summary" aria-labelledby="generation-summary-title" hidden>
-      <h3 id="generation-summary-title">생성 요약</h3>
-      <dl>
-        <div><dt>OpenAPI</dt><dd id="summary-version">—</dd></div>
-        <div><dt>선택 Tool</dt><dd id="summary-selected">0</dd></div>
-        <div><dt>제외 endpoint</dt><dd id="summary-excluded">0</dd></div>
-        <div><dt>경고</dt><dd id="summary-warnings">0</dd></div>
-        <div><dt>프로필</dt><dd id="summary-profile">—</dd></div>
-        <div><dt>대표 검증</dt><dd id="summary-validation">미선택</dd></div>
-      </dl>
-    </aside>
   </main>
   <script type="module" src="/app.js"></script>
 </body>

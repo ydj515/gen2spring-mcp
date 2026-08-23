@@ -1,120 +1,78 @@
-# Stepwise Editor Design QA
+# UI redesign design QA
 
-Date: 2026-08-16
+## Evidence
 
-## Scope
+- Source visual truth: the approved full-width mock recorded by `docs/superpowers/specs/2026-08-24-ui-ux-redesign-design.md`; the original task attachment is intentionally not committed.
+- Desktop implementation capture: `gen2spring-ui-step2-1440-final-v2.png` (current-task QA artifact, not committed)
+- Tablet implementation capture: `gen2spring-ui-step2-768.png` (current-task QA artifact, not committed)
+- Mobile implementation capture: `gen2spring-ui-step2-400-final.png` (current-task QA artifact, not committed)
+- Step 2 interaction refinement capture: `gen2spring-ui-step2-settings-final.png` (current-task QA artifact, not committed)
+- Step 5 always-visible detail capture: `gen2spring-ui-step5-details-final.png` (current-task QA artifact, not committed)
+- Post-refinement Step 2 capture: `gen2spring-ui-step2-compact-final.png` (current-task QA artifact, not committed)
+- Source pixels: `1487 x 1058`
+- Desktop implementation pixels: `1404 x 1024`, captured from a `1440 x 1024` in-app browser viewport
+- Tablet viewport: `768 x 900`; mobile viewport and pixels: `400 x 900`
+- Device pixel ratio: `1`
+- Normalization: the source and desktop implementation were compared together as full-page desktop captures. The source uses fixture rows while the implementation uses the repository's real 38-endpoint OpenAPI fixture, so fidelity was judged by hierarchy, density, tokens, and interaction structure rather than identical row positions.
+- State: wizard step 2 after analysis, with supported and unsupported endpoint states populated.
 
-- Compared the implemented five-step wizard with the approved design in `docs/superpowers/specs/2026-08-16-stepwise-editor-redesign-design.md`, plus the follow-up split of step 4 into preview/start and a dedicated generation-progress step.
-- Exercised the editor against a dedicated instance started on a fixed port, because the Thymeleaf template cache in an already-running instance keeps serving the previous markup.
-- Walked all four steps with synthetic OpenAPI 3.0 documents of 1, 4, and 26 operations, the last mixing selectable and unsupported endpoints.
-- Verified the gate rules: analysis completes before step 2, at least one endpoint selected before step 3, six project fields filled before step 4.
-- Verified a blocked step names the offending fields. Clearing `artifact-id` and `domain-name` produced `Artifact ID, Domain 항목을 채워 주세요.` and marked exactly those two inputs `aria-invalid`.
-- Verified the clamp: breaking the step 3 gate while sitting on step 4 returns the user to step 3 and disables chip 4. Restoring the fields reopens the gate without dragging the user forward.
-- Verified values survive navigation. A value typed on step 3 and a value typed on step 4 both persisted across a step 4 to step 3 to step 4 round trip.
-- Verified the browser back button moves one step back and stays on `/editor`.
-- Verified focus moves to the newly activated panel heading on every transition, and that the initial page load does not steal focus.
-- Ran one real generation to completion and observed the progress bar advance through all eight stages to `VALIDATED` with three downloads offered.
-- Verified the failure presentation by rendering a snapshot whose `COMPILE` stage failed.
-- Verified 400 px, 720 px, and 1280 px viewports on every step.
-- Verified the generation-progress step: step 5 stays locked with the hint `프로젝트 생성을 시작하면 진행 상황을 볼 수 있습니다.` until a job exists, starting generation carries the user there and moves focus to its heading, navigating back to step 4 preserves the configuration, and returning to step 5 shows the finished result without regenerating. Deleting the job closes the gate and clamps back to step 4.
-- Verified the job state line is Korean in both vocabularies. `RUNNING` renders `생성 중입니다.` while the bar separately reads `Gradle 컴파일 진행 중입니다.`, and `VALIDATED` renders `검증까지 완료했습니다.`
-- Verified the paired root documents are covered server-side rather than re-checking them by hand: `OpenApiVersionPairAcceptanceTest` and `WebMvcContractTest` assert the 3.0 and 3.1 analysis equivalence, and both run in `:apps:web:test`.
+## Full-view comparison
 
-## Measurements
+The approved no-sidebar direction is preserved: a slim product header, connected five-step progress, horizontal summary, grouped endpoint table, and persistent previous/next dock. Typography uses a restrained system stack with a clear heading/body hierarchy. Spacing, one-pixel borders, low-elevation shadows, neutral surfaces, primary blue, and semantic success/error colors follow the supplied product references without decorative gradients or unrelated imagery.
 
-Page height with 26 operations, measured by isolating each panel and then revealing all four at once:
+The implementation intentionally omits the mock's work-list and account controls because those routes and account interactions are not part of the current local editor. The real fixture keeps four essential summary facts and uses its actual endpoint descriptions while preserving the same scan order and density.
 
-| View | Height |
-| --- | --- |
-| Single page equivalent, all five panels visible | 9425 px |
-| Step 1, OpenAPI 파일 | 900 px |
-| Step 2, Endpoint 선택 | 5331 px |
-| Step 3, 생성 설정 | 1780 px |
-| Step 4, 미리보기와 생성 | 900 px |
-| Step 5, 생성 진행 | 900 px |
+## Focused-region comparison
 
-Measured in a 900 px viewport, so 900 px means the step fits entirely on screen with nothing to scroll — true of steps 1, 4, and 5. Step 5 was measured before a job started; with a finished job and three download buttons it grows by roughly 120 px and still fits.
+Focused review covered the connected stepper, summary strip, endpoint search/filter controls, grouped rows, status badges, unsupported-reason panel, and fixed action dock. This was necessary because those controls and dense table states are the primary fidelity surfaces. Bootstrap Icons supply the visible icons; no handmade SVG, CSS drawing, emoji, or placeholder imagery is used.
 
-The tallest single step is 43 percent shorter than the single page, and every step other than the endpoint list fits on one screen. Step 2 remains long because a 26 item endpoint list is inherently long; splitting steps does not address list length.
+## Required fidelity surfaces
 
-Contrast measured in the browser against `--surface`, matching the design's section 8.2 table within 0.05:
+- Fonts and typography: heading, body, label, code-path, and badge weights remain distinct at desktop and 400 px. Long paths wrap without horizontal overflow.
+- Spacing and layout rhythm: desktop, 768 px, and 400 px captures keep section hierarchy and persistent actions visible. Mobile summary changes to two columns and form controls stack vertically.
+- Colors and visual tokens: primary, muted, surface, border, success, warning, and danger roles come from shared tokens. The previously mismatched success treatment is replaced by a quieter semantic green.
+- Image quality and asset fidelity: the flow does not require raster imagery. All visible interface icons use the packaged Bootstrap Icons font and render locally.
+- Copy and content: step labels, calls to action, support states, and unsupported reasons are explicit. Dynamic OpenAPI descriptions remain source-derived.
+- Accessibility and interaction: semantic labels, disabled states, live regions, reduced-motion handling, and focus behavior are present. Programmatically focused headings no longer retain a decorative outline; interactive controls retain the shared focus treatment.
 
-| Token | Measured | Use |
-| --- | --- | --- |
-| `--text` `#0f172a` | 17.85:1 | Body text |
-| `--muted` `#475569` | 7.58:1 | Secondary text |
-| `--soft` `#64748b` | 4.76:1 | Tertiary text |
-| `--primary` `#4f46e5` | 6.29:1 | Links, active step |
-| `--success-text` `#047857` | 5.48:1 | Success glyphs |
-| `--warning-text` `#92400e` | 7.09:1 | Warning glyphs |
-| `--danger-text` `#b91c1c` | 6.47:1 | Danger glyphs |
-| White on `--primary` | 6.29:1 | Primary buttons |
+## Primary interactions tested
 
-The fill-only tokens measure `--success` 2.54:1, `--warning` 2.15:1, and `--danger` 3.76:1. A sweep of every leaf element under `main` and `nav` found no glyph rendering in any of them.
+- Upload and analyze `swagger-3.1.yml`: OpenAPI `3.1.2`, 38 total, 34 selected, 4 unsupported.
+- Filter unsupported endpoints and inspect the reason for each disabled row.
+- Move through steps 2, 3, and 4 with the persistent action dock.
+- Run representative-call preview for all 34 selected tools.
+- Generate the project and observe all 8 stages reach 100%, including three downloadable artifacts.
+- Confirm the Step 5 stage list is a static region with all 8 stages visible and no disclosure control.
+- Confirm endpoint settings use a 44 px transparent sliders control and only the icon color changes on hover.
+- Confirm inactive wizard-step hover changes only text color while its background and number mark remain unchanged.
+- Upload and analyze `swagger-3.0.yml`: OpenAPI `3.0.4`, 38 total, 34 selected, 4 unsupported.
+- Check 1440 px, 768 px, and 400 px layouts for horizontal overflow and visible persistent actions.
+- Check browser warning and error logs: none.
+- Verify hosted dashboard and job-detail structure, empty states, responsive rules, and rendered MVC contracts through automated tests. Interactive hosted-browser validation remains an environment test gap because the repository has no private `deploy/hosted/.env`, OIDC client, TLS material, or hosted secrets.
 
-## Visual observations
+## Comparison history
 
-- The stepper communicates position rather than merely order. Unreached steps are visibly disabled, so the flow reads as a sequence with a current location instead of a list of anchors.
-- Keeping all four panels in the DOM and toggling only `hidden` makes backward navigation lossless without any serialization code. Form controls hold their own values.
-- The progress bar carries the common case in one line, and the eight stage rows stay behind `상세 보기` until a failure opens them.
-- The summary aside is suppressed on step 1, where it would have nothing to report, and the `main` grid collapses to one column there rather than leaving an empty gutter.
-- At 400 px no step overflows horizontally, the chip row scrolls within itself, the navigation buttons stack, and the summary drops below the active panel.
+1. First comparison found two P2 issues: Bootstrap Icons rendered as missing glyph boxes because cache-busting font URLs were rejected by the local-only query-string policy, and `position: sticky` did not keep the action dock visible at the top of long steps. The implementation now serves a query-free local font URL and uses a centered fixed dock.
+2. Second comparison found two P2 polish issues: resource groups derived from `admin`, `auth`, and `customers` remained English, and programmatic heading focus showed a large outline. The implementation now localizes the groups and suppresses the non-interactive heading outline.
+3. The interaction-detail comparison found that Step 5 still used a disclosure control, endpoint settings looked like a secondary navigation button, and wizard hover inherited a filled button background. The implementation now keeps progress detail visible, uses a transparent sliders control, and limits wizard hover to text color.
+4. A final compact-layout refinement reduced the summary to four essential facts, consolidated the endpoint toolbar, and tightened the persistent action dock. The post-refinement Step 2 comparison preserves the approved hierarchy and exposes Tool settings with the sliders affordance.
+5. The final desktop comparison and responsive captures show no remaining actionable P0, P1, or P2 findings.
 
-## Defects found and fixed during QA
+## Findings
 
-- Gate 1 originally read the persisted `specificationId`. Local mode registers no analysis route, so after a reload `sessionStorage` still named a specification whose operations were never re-fetched, and the wizard placed the user on an empty step 2 with no way forward. Gate 1 now reads the in-memory `state.analysis`, so a local reload returns to step 1, matching the idle upload surface the user actually sees.
-- The progress ratio originally counted every `SUCCESS` and `SKIPPED` stage. A failure marks all later stages `SKIPPED`, so a build that died at `COMPILE` rendered as `7 / 8` and 88 percent. On failure the ratio now counts only the stages before the failed one, showing `2 / 8` and 25 percent, and the fill switches to the danger token.
-- `goToStep` announced the new step and moved focus, then assigned the location hash, which re-entered through `hashchange` and repeated both. The handler now compares against the current step before re-entering.
-- The initial `goToStep` on page load called `focus()`, stealing focus from the document on every load. The load path now passes `{focus: false, announce: false}`.
-- `#job-status` rendered raw internal constants directly above the progress bar, producing a second untranslated line reading `RUNNING — COMPILE`. The stage now belongs to the bar alone, and the status line carries a Korean job state drawn from a map covering both vocabularies: local `VALIDATED` and `UNVERIFIED`, hosted `SUCCEEDED` and `CANCELLED`.
-- `removeJob` wrote `Cancellation requested.` and `Generation job deleted.` into that same status line in English. Both are now Korean.
+- No actionable P0, P1, or P2 findings remain.
+- P3: hosted mode still needs a browser pass in a fully configured private deployment environment; automated MVC and responsive contracts cover it in this repository.
 
-## Control hierarchy and panel alignment
+## Implementation checklist
 
-- A wizard panel and the summary aside share one grid row, but `margin-top: 1rem` applied only to `section`, so the panel sat 1 rem below the aside. Both `main` and `.hosted-shell` are grids with their own gap, making that margin redundant; removing it aligns the two. Measured tops now match at 271 px on steps 2, 3, 4, and 5.
-- Buttons carried one weight: every control was solid indigo at `font-weight: 700`, so three download buttons competed with `프로젝트 생성` for the same attention. They now run three weights — primary solid indigo, secondary white with a `--line-strong` border and `--primary` text, and text with no chrome. Verified per step: `다음: 생성 및 결과` renders `rgb(79, 70, 229)` on white text, `이전` and `파일 교체` render white with indigo text, `제거` renders transparent with `--danger-text`.
-- No button had a hover or active state, which was the largest part of the dated feel. Four hover rules now exist (primary, secondary, text, operation list) plus a 1 px active press, all disabled under `prefers-reduced-motion`.
-- Downloads stacked vertically at ragged widths because the container was a grid and each button was `width: fit-content`. They now form a wrapping row: three buttons share one row at 1280 px, and at 400 px they stack at a uniform 352 px matching the container.
-- Control radius moved from a one-off `.45rem` to a `--radius-control: 8px` token shared by buttons, inputs, and selects, so controls sit in the same family as the 12 px card radius instead of near it.
-- Download labels were English in a Korean interface. They now read `프로젝트 아카이브 내려받기`, `매니페스트 내려받기`, and `검증 리포트 내려받기`, with an unknown artifact keeping its raw name the way stage and job state labels do.
-
-## Semantic colour scope
-
-Green appeared in eleven places, and three of them carried no success meaning: the select-all and per-endpoint checkboxes, the loaded-file card, and the drag-over drop target. Those are selection, current state, and an affordance. Painting them green gave a screen two owners of action colour, with a checkbox in one hue and its primary button in another.
-
-- Checkboxes, the loaded-file card, and the drop target now use `--primary`. Verified as `rgb(79, 70, 229)` on all three.
-- The remaining four usages are genuinely semantic and keep the success token: the SUPPORTED endpoint border, the POST method badge, the SUPPORTED status badge, and SUCCESS rows in the progress detail.
-- `--success` moved from emerald `#10b981` to teal `#0d9488`, and `--success-text` from `#047857` to `#0f766e`. Emerald carries yellow and read as a different family beside slate and indigo; teal sits with them while still reading as success.
-- Contrast holds: `--success-text` measures 5.47:1 on white and passes AA, `--success` measures 3.74:1 and stays fill-only. A sweep of every leaf element under `main` and `nav` found no glyph rendering in a fill-only token.
-- Counted across steps after the change: steps 1, 4, and 5 render no green at all; step 3 renders one badge; step 2 renders five elements, all of them supported-endpoint borders and badges.
-
-## Progress transport
-
-Progress moved from browser polling to a server-sent event stream at `GET /api/jobs/{id}/events`, with the polling loop retained as an automatic fallback. See `docs/superpowers/specs/2026-08-16-job-progress-sse-design.md`.
-
-- One full local generation was observed over the stream. The instrumented page counted **one** `/events` request and **zero** `/api/jobs/{id}` polls, finishing at 8/8 with three downloads.
-- The same generation with the stream forced to close before its first event fell back to polling, issued **ten** polls, and finished at 8/8 with the same three downloads. Both transports drive the same progress bar.
-- Event timing was read directly from the stream: stages arrived as they happened, including three transitions inside 200 ms of each other, which a 500 ms poll would have collapsed.
-- A stream opened against an already terminal job sends its snapshot immediately and then `done`, so a late subscriber is never blank.
-- An unknown but well-formed job id returns a plain JSON 404 rather than opening a stream; a malformed id returns 404.
-- Twelve streams were opened and abandoned against a pool capped at eight; a fresh stream still served immediately afterwards and no `job-event-stream` threads remained, so client disconnects release their thread.
-- The proxy configuration was exercised against a real nginx fronting an upstream that emits one event per second, using the events block extracted verbatim from `deploy/hosted/proxy/nginx.conf`. Events arrived one second apart. With `proxy_buffering` turned back on, all six arrived together at 5.01 s — no error, only broken timing, which is why this needed a running proxy rather than a string assertion.
-- `nginx -t` accepts the deployment file. It rejected the first version: an unquoted `{36}` in the location regex reads as a block opener, giving `unknown directive "36}/events$"`. The contract test had passed on that version because the literal string it asserted was present.
-
-Heartbeats are covered by `JobEventStreamTest.emitsAHeartbeatWhenTheFeedTimesOut` rather than by observation; the interval is 15 seconds and a local generation completes in about 9, so no idle stream arises to watch. They are named events so the browser can reset a 35 second liveness watchdog and fall back to polling if an open connection stops delivering data.
-
-## Review hardening
-
-- A retained local job keeps step 5 independently reachable after reload even though local mode cannot restore the analysis needed for steps 2 through 4.
-- Hosted specification resume restores the saved wizard step after the temporary upload-state reset.
-- A terminal hosted `SUCCEEDED` snapshot settles the complete observed timeline instead of rendering `0 / N`.
-- The editor's two-column grid is scoped to `.editor-main`, leaving hosted dashboard and job-detail pages on their single-column layout.
-- Named heartbeat events reset the browser watchdog after the first snapshot; a stalled stream hands off to the existing polling fallback after 35 seconds.
-
-## Not covered
-
-- Hosted mode was not exercised. `dashboard.html` and `job-detail.html` inherit the new tokens without markup changes, but the hosted resume path, which does re-fetch the analysis, was verified only by reading the code.
-- The hosted event stream was not run end to end. Exercising it needs a docker compose stack with PostgreSQL, MinIO, the worker, and nginx. `HostedControllerContractTest` covers its ownership refusal and its terminal-status handling, and the proxy block was verified against a real nginx as recorded above, but no hosted job has actually streamed its progress through the full deployment. The 400 ms re-read interval in `HostedJobEventFeed` is therefore an untested latency choice.
-- No automated browser test covers the wizard. This repository has no JavaScript test runner and no headless browser; `StaticAssetContractTest` pins structure and the accessibility decisions as source text, and everything above was checked by hand.
+- [x] Shared design tokens and no-sidebar application shell
+- [x] Connected wizard progress and horizontal summary
+- [x] Grouped endpoint table with explicit unsupported reasons
+- [x] Persistent previous/next actions across long steps
+- [x] Editor steps 1 through 5, preview, progress, and result states
+- [x] Always-visible generation stages and lightweight endpoint settings control
+- [x] Hosted dashboard and job-detail redesign contracts
+- [x] Desktop, tablet, and 400 px responsive checks
+- [x] OpenAPI 3.0 and 3.1 regression flows
 
 final result: passed

@@ -33,6 +33,8 @@ dependencies {
     implementation(libs.aws.s3)
     implementation(libs.aws.url.connection.client)
     implementation(libs.spring.boot.starter.validation)
+    implementation(libs.bootstrap)
+    implementation(libs.bootstrap.icons)
     runtimeOnly(libs.flyway.postgresql)
     runtimeOnly(libs.postgresql)
     testImplementation(libs.spring.boot.starter.test)

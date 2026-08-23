@@ -61,6 +61,9 @@ export function initializeWizard() {
     [step, document.querySelector(`.wizard-chip[data-step="${step}"]`)]));
   const live = document.querySelector('#wizard-live');
   const summary = document.querySelector('#generation-summary');
+  const stepper = document.querySelector('#wizard-steps');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let visibleStep;
 
   const highestReachable = () => {
     let reachable = 1;
@@ -79,7 +82,17 @@ export function initializeWizard() {
     return step <= highestReachable();
   };
 
-  const render = () => {
+  const keepActiveStepVisible = (current, force = false) => {
+    if (stepper.scrollWidth <= stepper.clientWidth || (!force && visibleStep === current)) return;
+    chips.get(current).scrollIntoView({
+      behavior: reducedMotion.matches ? 'auto' : 'smooth',
+      block: 'nearest',
+      inline: 'center'
+    });
+    visibleStep = current;
+  };
+
+  const render = (forceStepVisibility = false) => {
     const current = getState().currentStep;
     for (const step of STEPS) {
       panels.get(step).hidden = step !== current;
@@ -93,6 +106,7 @@ export function initializeWizard() {
       if (hint) hint.textContent = step === current ? blockingReason(step, getState()) : '';
     }
     summary.hidden = current === 1;
+    keepActiveStepVisible(current, forceStepVisibility);
     // Name the offending fields so a disabled button is never unexplained.
     // Only mark them on the step the user is actually looking at.
     for (const id of REQUIRED_PROJECT_FIELDS) {
@@ -103,11 +117,16 @@ export function initializeWizard() {
     }
   };
 
-  const goToStep = (step, {focus = true, announce = true, clamp = true} = {}) => {
+  const goToStep = (step, {
+    focus = true,
+    announce = true,
+    clamp = true,
+    forceStepVisibility = false
+  } = {}) => {
     const bounded = Math.min(Math.max(step, 1), LAST_STEP);
     const target = clamp && !isReachable(bounded, getState()) ? highestReachable() : bounded;
     if (target !== getState().currentStep) updateState({currentStep: target});
-    else render();
+    else render(forceStepVisibility);
     // Assigning the hash re-enters through hashchange; skip the write when it
     // already matches so the announcement and focus move do not run twice.
     if (window.location.hash !== `#step-${target}`) window.location.hash = `#step-${target}`;
@@ -134,10 +153,16 @@ export function initializeWizard() {
   panels.get(3).addEventListener('input', render);
   window.addEventListener('hashchange', () => {
     const match = window.location.hash.match(/^#step-([1-5])$/);
-    if (match && Number(match[1]) !== getState().currentStep) goToStep(Number(match[1]));
+    if (!match) return;
+    const target = Number(match[1]);
+    if (target === getState().currentStep) {
+      keepActiveStepVisible(target, true);
+      return;
+    }
+    goToStep(target, {forceStepVisibility: true});
   });
 
-  subscribe(render);
+  subscribe(() => render());
   // The restored step must not steal focus on page load, and must not be clamped
   // before the retained specification finishes loading. app.js calls syncGate()
   // once the resume settles.

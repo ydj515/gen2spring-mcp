@@ -9,6 +9,13 @@ const STAGE_LABELS = {
   PACKAGE: '산출물 패키징'
 };
 const SETTLED = ['SUCCESS', 'SKIPPED'];
+const STAGE_STATUS_LABELS = {
+  PENDING: '대기',
+  RUNNING: '진행 중',
+  SUCCESS: '완료',
+  FAILED: '실패',
+  SKIPPED: '건너뜀'
+};
 // Local mode reports VALIDATED and UNVERIFIED; hosted mode reports SUCCEEDED
 // and CANCELLED. The union is covered so neither leaks a raw constant.
 const JOB_STATE_LABELS = {
@@ -39,7 +46,7 @@ export function clearProgress() {
   const fill = document.querySelector('#job-progress-fill');
   fill.style.width = '0%';
   fill.dataset.state = 'running';
-  document.querySelector('#job-progress-details').open = false;
+  document.querySelector('#job-progress-percent').textContent = '0%';
 }
 
 export function renderProgress(snapshot) {
@@ -63,9 +70,11 @@ export function renderProgress(snapshot) {
   const settled = completed ? stages.length
     : counted.filter(entry => SETTLED.includes(entry.status)).length;
 
+  const percentage = Math.round((settled / stages.length) * 100);
   const fill = document.querySelector('#job-progress-fill');
-  fill.style.width = `${Math.round((settled / stages.length) * 100)}%`;
+  fill.style.width = `${percentage}%`;
   fill.dataset.state = failed ? 'failed' : 'running';
+  document.querySelector('#job-progress-percent').textContent = `${percentage}%`;
   document.querySelector('#job-progress-value').textContent = `${settled} / ${stages.length}`;
   document.querySelector('#job-stage-label').textContent = failed
     ? `${label(failed.stage)} 단계에서 실패했습니다.`
@@ -73,12 +82,27 @@ export function renderProgress(snapshot) {
     : settled === stages.length ? '모든 단계를 완료했습니다.'
     : '생성 작업을 준비하고 있습니다.';
 
-  if (failed) document.querySelector('#job-progress-details').open = true;
-
   document.querySelector('#progress-list').replaceChildren(...stages.map(entry => {
     const item = document.createElement('li');
     item.dataset.status = entry.status;
-    item.textContent = `${label(entry.stage)} — ${entry.status}`;
+    const icon = document.createElement('i');
+    icon.className = stageIcon(entry.status);
+    icon.setAttribute('aria-hidden', 'true');
+    const stage = document.createElement('span');
+    stage.className = 'pipeline-stage';
+    stage.textContent = label(entry.stage);
+    const status = document.createElement('span');
+    status.className = 'pipeline-status';
+    status.textContent = STAGE_STATUS_LABELS[entry.status] ?? entry.status;
+    item.append(icon, stage, status);
     return item;
   }));
+}
+
+function stageIcon(status) {
+  if (status === 'SUCCESS') return 'bi bi-check-circle-fill';
+  if (status === 'FAILED') return 'bi bi-x-circle-fill';
+  if (status === 'RUNNING') return 'bi bi-arrow-repeat';
+  if (status === 'SKIPPED') return 'bi bi-dash-circle';
+  return 'bi bi-circle';
 }

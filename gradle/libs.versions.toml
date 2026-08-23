@@ -6,6 +6,8 @@ slf4j = "2.0.9"
 spring-boot = "3.5.16"
 aws-sdk = "2.49.6"
 mcp-java-sdk = "0.18.3"
+bootstrap = "5.3.8"
+bootstrap-icons = "1.13.1"
 
 [libraries]
 swagger-parser = { module = "io.swagger.parser.v3:swagger-parser", version.ref = "swagger-parser" }
@@ -38,6 +40,8 @@ httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5" }
 mcp-java-sdk = { module = "io.modelcontextprotocol.sdk:mcp", version.ref = "mcp-java-sdk" }
 mcp-java-sdk-jackson2 = { module = "io.modelcontextprotocol.sdk:mcp-json-jackson2", version.ref = "mcp-java-sdk" }
 mcp-java-sdk-webmvc = { module = "io.modelcontextprotocol.sdk:mcp-spring-webmvc", version.ref = "mcp-java-sdk" }
+bootstrap = { module = "org.webjars:bootstrap", version.ref = "bootstrap" }
+bootstrap-icons = { module = "org.webjars.npm:bootstrap-icons", version.ref = "bootstrap-icons" }
 
 [bundles]
 jackson = ["jackson-databind", "jackson-yaml"]

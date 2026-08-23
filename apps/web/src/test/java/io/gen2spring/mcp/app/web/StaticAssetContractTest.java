@@ -3,15 +3,172 @@ package io.gen2spring.mcp.app.web;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.app.web.security.WebSecurityConfiguration;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 class StaticAssetContractTest {
     @Test
-    void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
-        String index = resource("/templates/editor.html");
+    void packagesTheLocalDesignSystemWithoutWeakeningTheCsp() throws Exception {
         String styles = resource("/static/styles.css");
+        String tokens = resource("/static/design-tokens.css");
+        String shell = resource("/static/app-shell.css");
+        String editor = resource("/static/editor.css");
+        String hosted = resource("/static/hosted.css");
+
+        assertTrue(tokens.contains("--app-bg: #f6f8fc"));
+        assertTrue(tokens.contains("--app-primary: #3568f4"));
+        assertTrue(tokens.contains("--app-danger-soft: #fff0f1"));
+        assertTrue(tokens.contains("@font-face"));
+        assertTrue(tokens.contains("/webjars/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2"));
+        assertFalse(tokens.contains("bootstrap-icons.woff2?"));
+        assertTrue(styles.contains("@import url('/design-tokens.css')"));
+        assertTrue(styles.contains("@import url('/app-shell.css')"));
+        assertTrue(styles.contains("@import url('/editor.css')"));
+        assertTrue(styles.contains("@import url('/hosted.css')"));
+        assertTrue(styles.indexOf("design-tokens.css") < styles.indexOf("app-shell.css"));
+        assertTrue(styles.indexOf("app-shell.css") < styles.indexOf("editor.css"));
+        assertTrue(styles.indexOf("editor.css") < styles.indexOf("hosted.css"));
+        assertFalse(shell.isBlank());
+        assertFalse(editor.isBlank());
+        assertFalse(hosted.isBlank());
+        assertTrue(WebSecurityConfiguration.CONTENT_SECURITY_POLICY.contains("font-src 'self'"));
+    }
+
+    @Test
+    void sharesOneNoSidebarApplicationShellAcrossEveryScreen() throws Exception {
+        String fragment = resource("/templates/fragments/ui.html");
+        String editor = resource("/templates/editor.html");
+        String dashboard = resource("/templates/dashboard.html");
+        String jobDetail = resource("/templates/job-detail.html");
+
+        assertTrue(fragment.contains("th:fragment=\"head-assets(title)\""));
+        assertTrue(fragment.contains("/webjars/bootstrap/5.3.8/css/bootstrap.min.css"));
+        assertTrue(fragment.contains("/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css"));
+        assertTrue(fragment.contains("th:fragment=\"app-header(appMode)\""));
+        assertTrue(fragment.contains("th:if=\"${appMode == 'hosted'}\""));
+        assertFalse(fragment.contains("bootstrap.bundle"));
+        for (String template : new String[] {editor, dashboard, jobDetail}) {
+            assertTrue(template.contains("<html lang=\"ko\""));
+            assertTrue(template.contains("th:replace=\"~{fragments/ui :: head-assets"));
+            assertTrue(template.contains("th:replace=\"~{fragments/ui :: app-header"));
+            assertFalse(template.contains("app-sidebar"));
+        }
+        assertTrue(dashboard.contains("href=\"/editor\""));
+        assertTrue(jobDetail.contains("href=\"/\""));
+    }
+
+    @Test
+    void keepsWizardContextAndActionsVisibleWhileLongStepsScroll() throws Exception {
+        String fragment = resource("/templates/fragments/ui.html");
+        String editor = resource("/templates/editor.html");
+        String editorStyles = resource("/static/editor.css");
+        String wizard = resource("/static/wizard.js");
+
+        assertTrue(fragment.contains("class=\"wizard-step-connector\""));
+        assertTrue(editor.contains("class=\"generation-summary summary-strip\""));
+        assertTrue(editor.indexOf("id=\"generation-summary\"")
+                < editor.indexOf("id=\"specification-step\""));
+        assertTrue(editorStyles.contains("--action-dock-clearance"));
+        assertTrue(editorStyles.contains(".wizard-nav {\n  position: fixed;"));
+        assertTrue(editorStyles.contains("scroll-padding-inline"));
+        assertTrue(editorStyles.contains("padding-bottom: var(--action-dock-clearance)"));
+        assertTrue(wizard.contains("scrollIntoView"));
+        assertTrue(wizard.contains("prefers-reduced-motion"));
+        assertTrue(wizard.contains("subscribe(() => render())"));
+        assertFalse(wizard.contains("innerHTML"));
+    }
+
+    @Test
+    void groupsEndpointsByResourceWithoutChangingSelectionIdentity() throws Exception {
+        String operations = resource("/static/operations.js");
+        String editorStyles = resource("/static/editor.css");
+
+        assertTrue(operations.contains("export function groupOperations(operations)"));
+        assertTrue(operations.contains("'schema-contracts': '스키마 계약'"));
+        assertTrue(operations.contains("admin: '관리'"));
+        assertTrue(operations.contains("auth: '인증'"));
+        assertTrue(operations.contains("customers: '고객'"));
+        assertTrue(operations.contains("const groupExpansion = new Map()"));
+        assertTrue(operations.contains("captureGroupExpansion(list, groupExpansion)"));
+        assertTrue(operations.contains("group.open = groupExpansion.get(resourceGroup.key) ?? true"));
+        assertTrue(operations.contains("operation.issues"));
+        assertTrue(operations.contains("group.replaceChildren"));
+        assertTrue(operations.contains("operation.sourceIndex"));
+        assertTrue(operations.contains("counts.replaceChildren("));
+        assertTrue(operations.contains("document.createElement('details')"));
+        assertTrue(operations.contains("document.createElement('summary')"));
+        assertFalse(operations.contains("innerHTML"));
+        assertTrue(editorStyles.contains(".endpoint-group"));
+        assertTrue(editorStyles.contains(".endpoint-row"));
+        assertTrue(editorStyles.contains(".endpoint-issue-row"));
+        assertTrue(editorStyles.contains(".wizard-panel h2:focus-visible { outline: none; }"));
+        assertTrue(operations.contains("edit.className = 'endpoint-edit';"));
+        assertTrue(operations.contains("settingsIcon.className = 'bi bi-sliders';"));
+        assertFalse(operations.contains("endpoint-edit secondary"));
+        assertFalse(operations.contains("chevron.className = 'bi bi-chevron-right';"));
+        assertTrue(editorStyles.contains(".endpoint-row .endpoint-edit:hover:not(:disabled)"));
+        assertTrue(editorStyles.contains(".wizard-progress .wizard-chip:hover:not(:disabled)"));
+    }
+
+    @Test
+    void composesEveryEditorStepAroundOneClearPrimaryTask() throws Exception {
+        String index = resource("/templates/editor.html");
+        String app = resource("/static/app.js");
+        String progress = resource("/static/progress.js");
+        String editorStyles = resource("/static/editor.css");
+
+        assertTrue(index.contains("class=\"uploaded-file file-state-card\""));
+        assertTrue(index.contains("class=\"field-grid project-settings-grid\""));
+        assertTrue(index.contains("class=\"preview-workspace\""));
+        assertTrue(index.contains("class=\"preview-input surface-subtle\""));
+        assertTrue(index.contains("class=\"preview-result surface-subtle\""));
+        assertTrue(index.contains("class=\"job-progress-hero\""));
+        assertTrue(index.contains("id=\"job-progress-percent\""));
+        assertTrue(index.contains("class=\"pipeline-panel\""));
+        assertTrue(index.contains("<ul id=\"downloads\" class=\"downloads artifact-list\""));
+        assertTrue(index.contains("class=\"bi bi-question-circle\""));
+        assertFalse(index.contains(">?</button>"));
+        assertFalse(index.contains("<svg"));
+        assertTrue(app.contains("document.createElement('li')"));
+        assertTrue(app.contains("미리보기를 생성하고 있습니다."));
+        assertTrue(progress.contains("#job-progress-percent"));
+        assertTrue(progress.contains("document.createElement('i')"));
+        assertTrue(editorStyles.contains(".project-settings-grid"));
+        assertTrue(editorStyles.contains(".preview-workspace"));
+        assertTrue(editorStyles.contains(".job-progress-hero"));
+        assertFalse(app.contains("innerHTML"));
+        assertFalse(progress.contains("innerHTML"));
+    }
+
+    @Test
+    void givesHostedResourcesAndJobStateTheSameResponsiveHierarchy() throws Exception {
+        String dashboard = resource("/templates/dashboard.html");
+        String jobDetail = resource("/templates/job-detail.html");
+        String hosted = resource("/static/hosted.js");
+        String hostedStyles = resource("/static/hosted.css");
+
+        assertTrue(dashboard.contains("class=\"hosted-dashboard-grid\""));
+        assertTrue(dashboard.contains("class=\"table-responsive hosted-resource-table\""));
+        assertTrue(dashboard.contains("아직 등록된 OpenAPI 문서가 없습니다."));
+        assertTrue(dashboard.contains("아직 실행한 작업이 없습니다."));
+        assertTrue(jobDetail.contains("class=\"job-detail-grid\""));
+        assertTrue(jobDetail.contains("class=\"job-timeline\""));
+        assertTrue(jobDetail.contains("class=\"artifact-list hosted-artifact-list\""));
+        assertTrue(jobDetail.contains("class=\"job-cancel-form\""));
+        assertTrue(hosted.contains("feedback.dataset.feedbackState"));
+        assertTrue(hosted.contains("가져오기 작업을 등록했습니다."));
+        assertFalse(hosted.contains("innerHTML"));
+        assertTrue(hostedStyles.contains(".hosted-dashboard-grid"));
+        assertTrue(hostedStyles.contains(".hosted-resource-table"));
+        assertTrue(hostedStyles.contains("@media (max-width: 400px)"));
+    }
+
+    @Test
+    void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
+        String index = resource("/templates/editor.html") + resource("/templates/fragments/ui.html");
+        String styles = applicationStyles();
 
         assertTrue(index.contains("<html lang=\"ko\""));
         assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">1. OpenAPI 파일</h2>"));
@@ -48,8 +205,7 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"operation-editor-home\""));
         assertTrue(index.contains("id=\"generation-summary\""));
         for (String id : new String[] {
-                "summary-version", "summary-selected", "summary-excluded",
-                "summary-warnings", "summary-profile", "summary-validation"
+                "summary-version", "summary-selected", "summary-excluded", "summary-profile"
         }) {
             assertTrue(index.contains("id=\"" + id + "\""), id);
         }
@@ -143,6 +299,42 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void keepsWizardAnnouncementsAndProfileHelpStableAcrossFocusTransitions() throws Exception {
+        String wizard = resource("/static/wizard.js");
+        String app = resource("/static/app.js");
+
+        // A programmatic hash write must not focus and announce the same step
+        // again when the resulting hashchange event arrives.
+        assertTrue(wizard.contains("if (target === getState().currentStep)"));
+        assertTrue(wizard.contains("keepActiveStepVisible(target, true)"));
+
+        // Focus may move from the help button into one of the notice links.
+        // Close only after focus leaves the complete profile field.
+        assertTrue(app.contains("container.addEventListener('focusin'"));
+        assertTrue(app.contains("container.addEventListener('focusout'"));
+        assertTrue(app.contains("!container.contains(event.relatedTarget)"));
+        assertFalse(app.contains("profile-help-button'].addEventListener('blur'"));
+    }
+
+    @Test
+    void keepsEditorTablesAndControlsUsableAcrossTheMobileBreakpoint() throws Exception {
+        String editorStyles = resource("/static/editor.css");
+        String legacyStyles = resource("/static/legacy.css");
+        int compactStart = editorStyles.indexOf("@media (max-width: 760px)");
+        int phoneStart = editorStyles.indexOf("@media (max-width: 400px)", compactStart);
+        String compactStyles = editorStyles.substring(compactStart, phoneStart);
+
+        assertTrue(compactStyles.contains(".selected-tool-list-header { display: none; }"));
+        assertTrue(compactStyles.contains(".selected-tool-summary-content {"));
+        assertTrue(compactStyles.contains("grid-template-columns: 1.25rem minmax(0, 1fr) auto;"));
+        assertTrue(compactStyles.contains(".parameter-row { grid-template-columns: 1fr; align-items: stretch; }"));
+        assertFalse(compactStyles.contains(".endpoint-toolbar { position: static;"));
+        assertTrue(editorStyles.contains(".endpoint-toolbar {\n  position: sticky;"));
+        assertTrue(legacyStyles.contains("overflow-x: clip;"));
+        assertFalse(legacyStyles.contains("overflow-x: hidden;"));
+    }
+
+    @Test
     void rendersProfileLabelsAndCompatibilityNoticesWithoutHtmlInjection() throws Exception {
         String app = resource("/static/app.js");
 
@@ -181,7 +373,7 @@ class StaticAssetContractTest {
         String index = resource("/templates/editor.html");
         String progress = resource("/static/progress.js");
         String app = resource("/static/app.js");
-        String styles = resource("/static/styles.css");
+        String styles = applicationStyles();
 
         assertTrue(index.contains("id=\"job-progress\""));
         assertTrue(index.contains("id=\"job-stage-label\""));
@@ -189,7 +381,9 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"job-progress-fill\""));
         assertTrue(index.contains("id=\"job-progress-details\""));
         assertTrue(index.contains("id=\"progress-list\""));
-        assertTrue(index.contains("<summary>상세 보기</summary>"));
+        assertTrue(index.contains("class=\"progress-details-title\">상세 보기</h3>"));
+        assertFalse(index.contains("<details id=\"job-progress-details\""));
+        assertFalse(index.contains("<summary>상세 보기</summary>"));
 
         assertTrue(progress.contains("export function renderProgress(snapshot)"));
         assertTrue(progress.contains("OpenAPI 문서 분석"));
@@ -197,6 +391,7 @@ class StaticAssetContractTest {
         assertTrue(progress.contains("대표 Tool 호출 검증"));
         assertTrue(progress.contains("산출물 패키징"));
         assertTrue(progress.contains("'SKIPPED'"));
+        assertFalse(progress.contains("document.querySelector('#job-progress-details').open"));
         assertTrue(app.contains("renderProgress(snapshot)"));
         // The job state line must be Korean, not the raw RUNNING — COMPILE constants.
         // Both modes' status vocabularies are covered: local emits VALIDATED and
@@ -253,7 +448,7 @@ class StaticAssetContractTest {
     @Test
     void scopesTheEditorGridAwayFromHostedPages() throws Exception {
         String index = resource("/templates/editor.html");
-        String styles = resource("/static/styles.css");
+        String styles = applicationStyles();
 
         assertTrue(index.contains("<main class=\"editor-main\">"));
         assertTrue(styles.contains(".editor-main {\n"));
@@ -362,5 +557,14 @@ class StaticAssetContractTest {
         try (var input = StaticAssetContractTest.class.getResourceAsStream(path)) {
             return input == null ? "" : new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    private String applicationStyles() throws IOException {
+        return resource("/static/styles.css")
+                + resource("/static/design-tokens.css")
+                + resource("/static/legacy.css")
+                + resource("/static/app-shell.css")
+                + resource("/static/editor.css")
+                + resource("/static/hosted.css");
     }
 }
