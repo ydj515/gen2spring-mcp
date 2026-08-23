@@ -1,4 +1,128 @@
+:root { --action-dock-clearance: 7rem; }
+
+.wizard-progress {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  overflow: hidden;
+  border-bottom: 1px solid var(--app-border);
+  background: rgb(255 255 255 / 96%);
+  backdrop-filter: blur(12px);
+}
+
+.wizard-progress .wizard-steps {
+  display: flex;
+  align-items: center;
+  width: min(100%, 90rem);
+  margin: 0 auto;
+  padding: var(--app-space-4) clamp(1rem, 4vw, 3rem);
+  overflow-x: auto;
+  list-style: none;
+  scroll-padding-inline: clamp(1rem, 4vw, 3rem);
+  scrollbar-width: thin;
+}
+.wizard-progress .wizard-steps > li:not(.wizard-step-connector) { flex: 0 0 auto; }
+.wizard-step-connector {
+  flex: 1 1 4rem;
+  min-width: 2rem;
+  height: 1px;
+  background: var(--app-border);
+}
+.wizard-progress .wizard-chip {
+  width: auto;
+  min-height: 2.25rem;
+  padding: 0 var(--app-space-2);
+  border: 0;
+  border-radius: var(--app-radius-control);
+  background: transparent;
+  color: var(--app-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.wizard-progress .wizard-chip-mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-muted);
+}
+.wizard-progress .wizard-chip[aria-current="step"] { background: transparent; color: var(--app-primary); }
+.wizard-progress .wizard-chip[aria-current="step"] .wizard-chip-mark {
+  border-color: var(--app-primary);
+  background: var(--app-primary);
+  color: var(--app-surface);
+}
+.wizard-progress .wizard-chip:disabled { opacity: 1; }
+
+main.editor-main {
+  display: block;
+  width: min(100%, 90rem);
+  margin-inline: auto;
+  padding: var(--app-space-6) clamp(1rem, 4vw, 3rem);
+  padding-bottom: var(--action-dock-clearance);
+}
+main.editor-main > #error-summary { margin-bottom: var(--app-space-4); }
 .editor-main,
-.wizard-panel {
+.wizard-panel { min-width: 0; }
+.workflow-step { margin-top: var(--app-space-4); }
+
+.generation-summary.summary-strip {
+  position: static;
+  padding: 0;
+  border-color: var(--app-border);
+  background: var(--app-surface);
+  box-shadow: none;
+}
+.generation-summary.summary-strip dl {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+}
+.generation-summary.summary-strip dl > div {
+  display: block;
   min-width: 0;
+  padding: var(--app-space-3) var(--app-space-4);
+  border-right: 1px solid var(--app-border);
+}
+.generation-summary.summary-strip dl > div:last-child { border-right: 0; }
+.generation-summary.summary-strip dt { margin-bottom: var(--app-space-1); font-size: 0.75rem; }
+.generation-summary.summary-strip dd { text-align: left; }
+
+.wizard-nav {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin: var(--app-space-6) calc(var(--app-space-6) * -1) calc(var(--app-space-6) * -1);
+  padding: var(--app-space-4) var(--app-space-6);
+  border-top: 1px solid var(--app-border);
+  border-radius: 0 0 var(--app-radius-panel) var(--app-radius-panel);
+  background: rgb(255 255 255 / 97%);
+  box-shadow: 0 -12px 24px rgb(23 35 58 / 5%);
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 760px) {
+  .wizard-progress .wizard-steps { scroll-snap-type: x proximity; }
+  .wizard-progress .wizard-steps > li:not(.wizard-step-connector) { scroll-snap-align: center; }
+  .generation-summary.summary-strip dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .generation-summary.summary-strip dl > div:nth-child(3) { border-right: 0; }
+  .generation-summary.summary-strip dl > div:nth-child(-n + 3) { border-bottom: 1px solid var(--app-border); }
+}
+
+@media (max-width: 400px) {
+  :root { --action-dock-clearance: 8rem; }
+  .wizard-progress .wizard-steps { padding-inline: 1rem; }
+  .wizard-step-connector { min-width: 1.25rem; }
+  main.editor-main { padding: var(--app-space-4) 1rem; padding-bottom: var(--action-dock-clearance); }
+  .generation-summary.summary-strip dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .generation-summary.summary-strip dl > div:nth-child(2n) { border-right: 0; }
+  .generation-summary.summary-strip dl > div:nth-child(3) { border-right: 1px solid var(--app-border); }
+  .generation-summary.summary-strip dl > div:nth-child(-n + 4) { border-bottom: 1px solid var(--app-border); }
+  .wizard-nav {
+    margin-inline: calc(var(--app-space-4) * -1);
+    margin-bottom: calc(var(--app-space-4) * -1);
+    padding: var(--app-space-3) var(--app-space-4);
+  }
+  .wizard-nav button { min-width: 0; }
+  .wizard-hint { order: -1; flex-basis: 100%; text-align: left; }
 }

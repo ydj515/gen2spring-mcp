@@ -31,9 +31,13 @@
   <nav th:fragment="wizard-progress" class="wizard-progress" aria-label="생성 단계">
     <ol class="wizard-steps" id="wizard-steps">
       <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark">1</span> OpenAPI 파일</button></li>
+      <li class="wizard-step-connector" aria-hidden="true"></li>
       <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark">2</span> Endpoint 선택</button></li>
+      <li class="wizard-step-connector" aria-hidden="true"></li>
       <li><button type="button" class="wizard-chip" data-step="3" disabled><span class="wizard-chip-mark">3</span> 생성 설정</button></li>
+      <li class="wizard-step-connector" aria-hidden="true"></li>
       <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark">4</span> 미리보기와 생성</button></li>
+      <li class="wizard-step-connector" aria-hidden="true"></li>
       <li><button type="button" class="wizard-chip" data-step="5" disabled><span class="wizard-chip-mark">5</span> 생성 진행</button></li>
     </ol>
   </nav>

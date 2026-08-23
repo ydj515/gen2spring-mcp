@@ -57,9 +57,30 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void keepsWizardContextAndActionsVisibleWhileLongStepsScroll() throws Exception {
+        String fragment = resource("/templates/fragments/ui.html");
+        String editor = resource("/templates/editor.html");
+        String editorStyles = resource("/static/editor.css");
+        String wizard = resource("/static/wizard.js");
+
+        assertTrue(fragment.contains("class=\"wizard-step-connector\""));
+        assertTrue(editor.contains("class=\"generation-summary summary-strip\""));
+        assertTrue(editor.indexOf("id=\"generation-summary\"")
+                < editor.indexOf("id=\"specification-step\""));
+        assertTrue(editorStyles.contains("--action-dock-clearance"));
+        assertTrue(editorStyles.contains(".wizard-nav {\n  position: sticky;"));
+        assertTrue(editorStyles.contains("scroll-padding-inline"));
+        assertTrue(editorStyles.contains("padding-bottom: var(--action-dock-clearance)"));
+        assertTrue(wizard.contains("scrollIntoView"));
+        assertTrue(wizard.contains("prefers-reduced-motion"));
+        assertTrue(wizard.contains("subscribe(() => render())"));
+        assertFalse(wizard.contains("innerHTML"));
+    }
+
+    @Test
     void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
-        String index = resource("/templates/editor.html");
-        String styles = resource("/static/styles.css");
+        String index = resource("/templates/editor.html") + resource("/templates/fragments/ui.html");
+        String styles = applicationStyles();
 
         assertTrue(index.contains("<html lang=\"ko\""));
         assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">1. OpenAPI 파일</h2>"));
@@ -229,7 +250,7 @@ class StaticAssetContractTest {
         String index = resource("/templates/editor.html");
         String progress = resource("/static/progress.js");
         String app = resource("/static/app.js");
-        String styles = resource("/static/styles.css");
+        String styles = applicationStyles();
 
         assertTrue(index.contains("id=\"job-progress\""));
         assertTrue(index.contains("id=\"job-stage-label\""));
@@ -301,7 +322,7 @@ class StaticAssetContractTest {
     @Test
     void scopesTheEditorGridAwayFromHostedPages() throws Exception {
         String index = resource("/templates/editor.html");
-        String styles = resource("/static/styles.css");
+        String styles = applicationStyles();
 
         assertTrue(index.contains("<main class=\"editor-main\">"));
         assertTrue(styles.contains(".editor-main {\n"));
@@ -410,5 +431,14 @@ class StaticAssetContractTest {
         try (var input = StaticAssetContractTest.class.getResourceAsStream(path)) {
             return input == null ? "" : new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    private String applicationStyles() throws IOException {
+        return resource("/static/styles.css")
+                + resource("/static/design-tokens.css")
+                + resource("/static/legacy.css")
+                + resource("/static/app-shell.css")
+                + resource("/static/editor.css")
+                + resource("/static/hosted.css");
     }
 }

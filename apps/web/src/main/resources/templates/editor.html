@@ -28,6 +28,18 @@
       <p id="error-message"></p>
     </div>
 
+    <aside id="generation-summary" class="generation-summary summary-strip" aria-labelledby="generation-summary-title" hidden>
+      <h2 id="generation-summary-title" class="visually-hidden">생성 요약</h2>
+      <dl>
+        <div><dt>OpenAPI</dt><dd id="summary-version">—</dd></div>
+        <div><dt>선택 Tool</dt><dd id="summary-selected">0</dd></div>
+        <div><dt>제외 endpoint</dt><dd id="summary-excluded">0</dd></div>
+        <div><dt>경고</dt><dd id="summary-warnings">0</dd></div>
+        <div><dt>프로필</dt><dd id="summary-profile">—</dd></div>
+        <div><dt>대표 검증</dt><dd id="summary-validation">미선택</dd></div>
+      </dl>
+    </aside>
+
     <section id="specification-step" class="workflow-step wizard-panel" data-step="1" aria-labelledby="specification-title">
       <div class="section-heading">
         <div><p class="step-kicker">STEP 1</p><h2 id="specification-title" tabindex="-1">1. OpenAPI 파일</h2></div>
@@ -243,17 +255,6 @@
       </div>
     </section>
 
-    <aside id="generation-summary" class="generation-summary" aria-labelledby="generation-summary-title" hidden>
-      <h3 id="generation-summary-title">생성 요약</h3>
-      <dl>
-        <div><dt>OpenAPI</dt><dd id="summary-version">—</dd></div>
-        <div><dt>선택 Tool</dt><dd id="summary-selected">0</dd></div>
-        <div><dt>제외 endpoint</dt><dd id="summary-excluded">0</dd></div>
-        <div><dt>경고</dt><dd id="summary-warnings">0</dd></div>
-        <div><dt>프로필</dt><dd id="summary-profile">—</dd></div>
-        <div><dt>대표 검증</dt><dd id="summary-validation">미선택</dd></div>
-      </dl>
-    </aside>
   </main>
   <script type="module" src="/app.js"></script>
 </body>
