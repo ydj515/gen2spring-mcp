@@ -32,12 +32,9 @@ public final class JavaSourceRenderer {
     private final ProjectFileRenderer projectRenderer;
     private final InputRecordRenderer inputRenderer;
     private final OutputRecordRenderer outputRenderer;
-    private final ToolClassRenderer toolRenderer;
-    private final ToolCallbackConfigurationRenderer toolCallbackConfigurationRenderer;
     private final OperationMetadataRenderer metadataRenderer;
-    private final RuntimeSourceRenderer runtimeRenderer;
     private final ResponseRuntimeRenderer responseRuntimeRenderer;
-    private final RuntimeTelemetryRenderer runtimeTelemetryRenderer;
+    private final ProgrammingModelSourceRenderer programmingModelRenderer;
     private final ExpectedToolSchemaFactory expectedToolSchemaFactory;
     private final ObjectMapper objectMapper;
 
@@ -49,12 +46,12 @@ public final class JavaSourceRenderer {
         this.projectRenderer = new ProjectFileRenderer(profile);
         this.inputRenderer = new InputRecordRenderer();
         this.outputRenderer = new OutputRecordRenderer();
-        this.toolRenderer = new ToolClassRenderer();
-        this.toolCallbackConfigurationRenderer = new ToolCallbackConfigurationRenderer();
         this.metadataRenderer = new OperationMetadataRenderer();
-        this.runtimeRenderer = new RuntimeSourceRenderer();
         this.responseRuntimeRenderer = new ResponseRuntimeRenderer();
-        this.runtimeTelemetryRenderer = new RuntimeTelemetryRenderer(profile);
+        this.programmingModelRenderer = switch (profile.target().programmingModel()) {
+            case "SYNC" -> new SyncProgrammingModelSourceRenderer(profile);
+            default -> throw invalid("The Spring AI programming model is unsupported");
+        };
         this.expectedToolSchemaFactory = new ExpectedToolSchemaFactory();
         this.objectMapper = new ObjectMapper();
     }
@@ -80,18 +77,19 @@ public final class JavaSourceRenderer {
                         packageName, packagePath, upperCamel(tool.operationId()), tool.output().resultSchema()));
             }
         }
-        put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpTools.java",
-                toolRenderer.render(packageName, domainClass, tools));
-        put(sources, "src/main/java/" + packagePath + "/generated/tool/" + domainClass + "McpToolCallbacks.java",
-                toolCallbackConfigurationRenderer.render(packageName, domainClass, tools, toolSchemas(tools)));
         put(sources, "src/main/java/" + packagePath + "/generated/metadata/" + domainClass + "Operations.java",
                 metadataRenderer.render(packageName, domainClass, tools));
-        putAll(sources, runtimeRenderer.render(
-                packageName, packagePath, domainClass, tools.getFirst().operationId(),
-                hasTypedOutputs, hasRetryPolicies || hasPaginationPolicies, hasPaginationPolicies));
+        putAll(sources, programmingModelRenderer.render(new ProgrammingModelRenderRequest(
+                context,
+                packageName,
+                packagePath,
+                domainClass,
+                tools,
+                toolSchemas(tools),
+                hasTypedOutputs,
+                hasRetryPolicies,
+                hasPaginationPolicies)));
         putAll(sources, responseRuntimeRenderer.render(packageName, packagePath));
-        put(sources, "src/main/java/" + packagePath + "/runtime/RuntimeTelemetry.java",
-                runtimeTelemetryRenderer.render(packageName, tools));
         put(sources, "src/test/java/" + packagePath + "/application/GeneratedJavaRuntimeTest.java",
                 runtimeFeatureTest(packageName, context.profile().target().javaVersion()));
 
