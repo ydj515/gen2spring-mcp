@@ -5,9 +5,18 @@ final class ReactiveExecutorSourceRenderer {
             new ReactiveRuntimeConfigurationRenderer();
     private final ReactiveHttpClientSourceRenderer httpClientRenderer = new ReactiveHttpClientSourceRenderer();
     private final ReactiveResponseSourceRenderer responseRenderer = new ReactiveResponseSourceRenderer();
+    private final ReactiveRetrySourceRenderer retryRenderer = new ReactiveRetrySourceRenderer();
+    private final ReactivePaginationSourceRenderer paginationRenderer = new ReactivePaginationSourceRenderer();
 
-    String render(String packageName, boolean hasTypedOutputs) {
+    String render(
+            String packageName,
+            boolean hasTypedOutputs,
+            boolean hasRetryPolicies,
+            boolean hasPaginationPolicies) {
         String typedExecute = hasTypedOutputs ? typedExecute() : "";
+        boolean hasPolicies = hasRetryPolicies || hasPaginationPolicies;
+        String retry = hasPolicies ? retryRenderer.render() : "";
+        String pagination = hasPaginationPolicies ? paginationRenderer.render() : "";
         return """
                 package %s.runtime;
 
@@ -49,6 +58,8 @@ final class ReactiveExecutorSourceRenderer {
                 import tools.jackson.core.JacksonException;
                 import tools.jackson.databind.JsonNode;
                 import tools.jackson.databind.json.JsonMapper;
+                import tools.jackson.databind.node.ArrayNode;
+                import tools.jackson.databind.node.ObjectNode;
 
                 @Component
                 public final class OpenApiOperationExecutor {
@@ -75,33 +86,7 @@ final class ReactiveExecutorSourceRenderer {
                 %s
                     }
 
-                    public Mono<JsonNode> execute(OperationDefinition operation, Map<String, Object> arguments) {
-                        Map<String, Object> safeArguments = immutableArguments(arguments);
-                        return Mono.defer(() -> {
-                            List<String> secretNames = new ArrayList<>();
-                            List<String> secretValues = new ArrayList<>();
-                            RuntimeTelemetry.Call providerCall = runtimeTelemetry.startProviderCall(
-                                    operation.operationId(), operation.method());
-                            Mono<OperationOutcome> outcome;
-                            try (var ignored = providerCall.openScope()) {
-                                outcome = executeOnce(operation, safeArguments, secretNames, secretValues)
-                                        .timeout(Duration.ofMillis(totalTimeoutMillis))
-                                        .map(attempt -> completeProviderCall(providerCall, attempt))
-                                        .onErrorResume(failure -> Mono.just(completeFailure(
-                                                providerCall,
-                                                operation,
-                                                failure,
-                                                secretNames,
-                                                secretValues)));
-                            }
-                            return outcome.flatMap(result -> {
-                                if (result instanceof NormalizedSuccess success) {
-                                    return Mono.just(success.payload());
-                                }
-                                return Mono.error(new ProviderErrorException((ProviderError) result));
-                            });
-                        });
-                    }
+                %s
 
                 %s
                     private Map<String, Object> immutableArguments(Map<String, Object> arguments) {
@@ -110,6 +95,10 @@ final class ReactiveExecutorSourceRenderer {
                         }
                         return Collections.unmodifiableMap(new LinkedHashMap<>(arguments));
                     }
+
+                %s
+
+                %s
 
                 %s
 
@@ -164,7 +153,17 @@ final class ReactiveExecutorSourceRenderer {
                     private record ProviderAttempt(
                             OperationOutcome outcome,
                             Integer httpStatus,
-                            Integer responseBytes) {}
+                            Integer responseBytes,
+                            String retryAfter,
+                            byte[] responseBody,
+                            String contentType) {
+                        private ProviderAttempt(
+                                OperationOutcome outcome,
+                                Integer httpStatus,
+                                Integer responseBytes) {
+                            this(outcome, httpStatus, responseBytes, null, null, null);
+                        }
+                    }
 
                     private static final class ResponseTooLargeException extends RuntimeException {
                         private final int status;
@@ -186,9 +185,97 @@ final class ReactiveExecutorSourceRenderer {
                 """.formatted(
                 packageName,
                 configurationRenderer.render(),
+                executeMethod(hasPolicies, hasPaginationPolicies),
                 typedExecute,
-                httpClientRenderer.render(),
-                responseRenderer.render());
+                httpClientRenderer.render(hasPolicies, hasPaginationPolicies),
+                responseRenderer.render(),
+                retry,
+                pagination);
+    }
+
+    private String executeMethod(boolean hasPolicies, boolean hasPaginationPolicies) {
+        if (hasPolicies) {
+            String operation = hasPaginationPolicies
+                    ? """
+                                Mono<OperationOutcome> outcome = operation.paginationPolicy() == null
+                                        ? executeWithRetry(
+                                                operation,
+                                                safeArguments,
+                                                secretNames,
+                                                secretValues,
+                                                null,
+                                                deadlineNanos,
+                                                0).map(ProviderAttempt::outcome)
+                                        : executePaginated(
+                                                operation,
+                                                safeArguments,
+                                                secretNames,
+                                                secretValues,
+                                                deadlineNanos);
+                    """
+                    : """
+                                Mono<OperationOutcome> outcome = executeWithRetry(
+                                        operation,
+                                        safeArguments,
+                                        secretNames,
+                                        secretValues,
+                                        null,
+                                        deadlineNanos,
+                                        0).map(ProviderAttempt::outcome);
+                    """;
+            return """
+                    public Mono<JsonNode> execute(OperationDefinition operation, Map<String, Object> arguments) {
+                        Map<String, Object> safeArguments = immutableArguments(arguments);
+                        return Mono.defer(() -> {
+                            List<String> secretNames = new ArrayList<>();
+                            List<String> secretValues = new ArrayList<>();
+                            long deadlineNanos = System.nanoTime()
+                                    + Duration.ofMillis(totalTimeoutMillis).toNanos();
+                %s
+                            return outcome.flatMap(result -> {
+                                if (result instanceof NormalizedSuccess success) {
+                                    return Mono.just(success.payload());
+                                }
+                                return Mono.error(new ProviderErrorException((ProviderError) result));
+                            });
+                        });
+                    }
+                    """.formatted(operation);
+        }
+        return """
+                    public Mono<JsonNode> execute(OperationDefinition operation, Map<String, Object> arguments) {
+                        Map<String, Object> safeArguments = immutableArguments(arguments);
+                        return Mono.defer(() -> {
+                            List<String> secretNames = new ArrayList<>();
+                            List<String> secretValues = new ArrayList<>();
+                            RuntimeTelemetry.Call providerCall = runtimeTelemetry.startProviderCall(
+                                    operation.operationId(), operation.method());
+                            Mono<OperationOutcome> outcome;
+                            try (var ignored = providerCall.openScope()) {
+                                outcome = executeOnce(operation, safeArguments, secretNames, secretValues)
+                                        .timeout(Duration.ofMillis(totalTimeoutMillis))
+                                        .map(attempt -> completeProviderCall(providerCall, attempt))
+                                        .onErrorResume(failure -> Mono.just(completeFailure(
+                                                providerCall,
+                                                operation,
+                                                failure,
+                                                secretNames,
+                                                secretValues)));
+                            }
+                            return outcome
+                                    .doOnCancel(() -> providerCall.complete(
+                                            RuntimeTelemetry.Outcome.CANCELLED,
+                                            RuntimeTelemetry.ErrorCategory.NONE,
+                                            RuntimeTelemetry.HttpStatusClass.NONE))
+                                    .flatMap(result -> {
+                                        if (result instanceof NormalizedSuccess success) {
+                                            return Mono.just(success.payload());
+                                        }
+                                        return Mono.error(new ProviderErrorException((ProviderError) result));
+                                    });
+                        });
+                    }
+                """;
     }
 
     private String typedExecute() {

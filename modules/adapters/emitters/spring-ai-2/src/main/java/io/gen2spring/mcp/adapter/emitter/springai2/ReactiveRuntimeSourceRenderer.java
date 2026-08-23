@@ -20,7 +20,11 @@ final class ReactiveRuntimeSourceRenderer {
         String runtimePath = "src/main/java/" + request.packagePath() + "/runtime/";
         sources.remove(runtimePath + "ToolArgumentContext.java");
         sources.put(runtimePath + "OpenApiOperationExecutor.java",
-                executorRenderer.render(request.packageName(), request.hasTypedOutputs()));
+                executorRenderer.render(
+                        request.packageName(),
+                        request.hasTypedOutputs(),
+                        request.hasRetryPolicies(),
+                        request.hasPaginationPolicies()));
         sources.remove("src/test/java/" + request.packagePath() + "/application/"
                 + request.domainClass() + "McpApplicationTest.java");
         return Collections.unmodifiableMap(sources);

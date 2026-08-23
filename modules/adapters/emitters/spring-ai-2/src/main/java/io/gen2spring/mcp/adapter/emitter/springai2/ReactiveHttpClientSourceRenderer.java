@@ -1,13 +1,21 @@
 package io.gen2spring.mcp.adapter.emitter.springai2;
 
 final class ReactiveHttpClientSourceRenderer {
-    String render() {
+    String render(boolean hasPolicies, boolean hasPaginationPolicies) {
+        String pageArgument = hasPolicies ? ",\n                            Object internalPageValue" : "";
+        String pageBinding = hasPaginationPolicies ? """
+                            if (internalPageValue != null) {
+                                uriBuilder.queryParam(
+                                        operation.paginationPolicy().requestParameter(),
+                                        paginationWireValue(internalPageValue));
+                            }
+                """ : "";
         return """
                     private Mono<ProviderAttempt> executeOnce(
                             OperationDefinition operation,
                             Map<String, Object> arguments,
                             List<String> secretNames,
-                            List<String> secretValues) {
+                            List<String> secretValues%s) {
                         return Mono.defer(() -> {
                             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromUri(baseUrl).path(operation.path());
                             Map<String, Object> pathVariables = new LinkedHashMap<>();
@@ -36,6 +44,7 @@ final class ReactiveHttpClientSourceRenderer {
                                         ? new RequestBodyValue(true, bound)
                                         : new RequestBodyValue(requestBody.present(), bound);
                             }
+                %s
                             for (SecretBinding binding : operation.secretBindings()) {
                                 secretNames.add(binding.propertyName());
                                 secretNames.add(binding.targetName());
@@ -88,7 +97,11 @@ final class ReactiveHttpClientSourceRenderer {
                                                         secretNames,
                                                         secretValues),
                                                 status,
-                                                body.length));
+                                                body.length,
+                                                response.headers().asHttpHeaders()
+                                                        .getFirst(HttpHeaders.RETRY_AFTER),
+                                                body,
+                                                contentType));
                             });
                         });
                     }
@@ -173,6 +186,6 @@ final class ReactiveHttpClientSourceRenderer {
                         });
                         namesToRemove.forEach(headers::remove);
                     }
-                """;
+                """.formatted(pageArgument, pageBinding);
     }
 }

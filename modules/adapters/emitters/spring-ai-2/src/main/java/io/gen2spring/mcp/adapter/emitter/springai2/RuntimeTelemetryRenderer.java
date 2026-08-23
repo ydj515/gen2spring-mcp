@@ -406,6 +406,29 @@ final class RuntimeTelemetryRenderer {
                 """.formatted(packageName, operationIds, toolNames, JavaStringLiteral.quote(targetProfileId));
     }
 
+    String renderReactive(String packageName, List<ToolDefinition> tools) {
+        String source = render(packageName, tools);
+        source = replaceReactive(
+                source,
+                "SUCCESS(\"success\"),\n        EXPECTED_ERROR",
+                "SUCCESS(\"success\"),\n        CANCELLED(\"cancelled\"),\n        EXPECTED_ERROR");
+        source = replaceReactive(
+                source,
+                "case SUCCESS -> category == ErrorCategory.NONE;\n            case EXPECTED_ERROR",
+                "case SUCCESS, CANCELLED -> category == ErrorCategory.NONE;\n            case EXPECTED_ERROR");
+        return replaceReactive(
+                source,
+                "if (outcome != Outcome.SUCCESS) {",
+                "if (outcome != Outcome.SUCCESS && outcome != Outcome.CANCELLED) {");
+    }
+
+    private String replaceReactive(String source, String target, String replacement) {
+        if (!source.contains(target)) {
+            throw JavaSourceRenderer.invalid("Reactive telemetry template is inconsistent");
+        }
+        return source.replace(target, replacement);
+    }
+
     private String setLiteral(List<String> values) {
         return values.stream()
                 .map(JavaStringLiteral::quote)
