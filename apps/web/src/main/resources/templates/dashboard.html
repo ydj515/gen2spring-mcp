@@ -1,26 +1,62 @@
 <!doctype html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="csrf-token" th:content="${csrfToken}">
-  <meta name="csrf-header" th:content="${csrfHeader}">
-  <title>Gen2Spring MCP Hosted</title>
-  <link rel="stylesheet" href="/styles.css">
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/ui :: head-assets('Gen2Spring MCP 작업 목록')}">
+  <title>Gen2Spring MCP 작업 목록</title>
 </head>
-<body>
-<main class="shell hosted-shell">
-  <header class="hosted-header"><div><p class="eyebrow">Hosted workspace</p><h1>Gen2Spring MCP</h1></div>
-    <div class="button-row"><a class="primary-link" href="/editor">새 MCP 프로젝트</a><form method="post" action="/logout"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><button class="secondary" type="submit">Sign out</button></form></div>
-  </header>
-  <section class="panel hosted-actions" aria-labelledby="import-title">
-    <h2 id="import-title">Import OpenAPI</h2>
-    <form id="hosted-import-form"><label for="import-url">Public HTTP(S) URL</label><input id="import-url" name="url" type="url" required><button type="submit">Queue import</button></form>
-    <p id="hosted-feedback" role="status" aria-live="polite"></p>
-  </section>
-  <section class="panel"><h2>Specifications</h2><ul class="hosted-list"><li th:each="spec : ${specifications}"><a th:href="@{/editor(specification=${spec.id.value})}"><strong th:text="${spec.label}">Spec</strong></a><span th:text="${spec.sourceType}">UPLOAD</span><code th:text="${spec.id.value}">id</code></li><li th:if="${#lists.isEmpty(specifications)}">No specifications yet.</li></ul></section>
-  <section class="panel"><h2>Jobs</h2><ul class="hosted-list"><li th:each="job : ${jobs}"><a th:href="@{/jobs/{id}(id=${job.id.value})}" th:text="${job.kind + ' · ' + job.status}">Job</a><time th:text="${job.createdAt}">time</time></li><li th:if="${#lists.isEmpty(jobs)}">No jobs yet.</li></ul></section>
-</main>
-<script src="/hosted.js" defer></script>
+<body class="app-shell">
+  <header th:replace="~{fragments/ui :: app-header('hosted')}" class="app-header"></header>
+  <main class="app-main hosted-shell">
+    <header class="page-header">
+      <div>
+        <p class="page-eyebrow">HOSTED WORKSPACE</p>
+        <h1>작업 목록</h1>
+        <p>OpenAPI 문서와 MCP 생성 작업을 한곳에서 관리합니다.</p>
+      </div>
+      <a class="primary-link" href="/editor"><i class="bi bi-plus-lg" aria-hidden="true"></i> 새 MCP 프로젝트</a>
+    </header>
+
+    <section class="surface hosted-actions" aria-labelledby="import-title">
+      <div class="surface-heading">
+        <div><p class="section-kicker">URL IMPORT</p><h2 id="import-title">OpenAPI URL 가져오기</h2></div>
+        <p>외부 공개 HTTP(S) URL을 안전하게 가져와 분석 대기열에 추가합니다.</p>
+      </div>
+      <form id="hosted-import-form">
+        <label for="import-url">공개 OpenAPI URL</label>
+        <input id="import-url" name="url" type="url" placeholder="https://example.com/openapi.yaml" required>
+        <button type="submit">가져오기</button>
+      </form>
+      <p id="hosted-feedback" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="surface" aria-labelledby="specifications-title">
+      <div class="surface-heading">
+        <div><p class="section-kicker">SPECIFICATIONS</p><h2 id="specifications-title">OpenAPI 문서</h2></div>
+        <span class="count-badge" th:text="${#lists.size(specifications)} + '개'">0개</span>
+      </div>
+      <ul class="hosted-list">
+        <li th:each="spec : ${specifications}">
+          <a th:href="@{/editor(specification=${spec.id.value})}"><strong th:text="${spec.label}">OpenAPI 문서</strong></a>
+          <span class="status-badge" th:text="${spec.sourceType}">UPLOAD</span>
+          <code th:text="${spec.id.value}">id</code>
+        </li>
+        <li class="empty-state" th:if="${#lists.isEmpty(specifications)}">아직 등록된 OpenAPI 문서가 없습니다.</li>
+      </ul>
+    </section>
+
+    <section class="surface" aria-labelledby="jobs-title">
+      <div class="surface-heading">
+        <div><p class="section-kicker">JOBS</p><h2 id="jobs-title">작업 내역</h2></div>
+        <span class="count-badge" th:text="${#lists.size(jobs)} + '개'">0개</span>
+      </div>
+      <ul class="hosted-list">
+        <li th:each="job : ${jobs}">
+          <a th:href="@{/jobs/{id}(id=${job.id.value})}" th:text="${job.kind + ' · ' + job.status}">작업</a>
+          <time th:text="${job.createdAt}">시간</time>
+        </li>
+        <li class="empty-state" th:if="${#lists.isEmpty(jobs)}">아직 실행한 작업이 없습니다.</li>
+      </ul>
+    </section>
+  </main>
+  <script src="/hosted.js" defer></script>
 </body>
 </html>

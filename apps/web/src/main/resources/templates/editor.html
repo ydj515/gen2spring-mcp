@@ -1,17 +1,10 @@
 <!doctype html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="csrf-token" th:content="${csrfToken}">
-  <meta name="csrf-header" th:content="${csrfHeader}">
-  <meta name="app-mode" th:content="${appMode}">
+<head th:replace="~{fragments/ui :: head-assets('Gen2Spring MCP Endpoint Editor')}">
   <title>Gen2Spring MCP Endpoint Editor</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
-  <header class="site-header">
+<body class="app-shell">
+  <header th:replace="~{fragments/ui :: app-header(${appMode})}" class="app-header">
     <div>
       <p class="eyebrow">OpenAPI to MCP</p>
       <h1>Gen2Spring MCP</h1>
@@ -19,7 +12,7 @@
     </div>
     <a class="header-link" href="/" th:if="${appMode == 'hosted'}">작업 내역</a>
   </header>
-  <nav aria-label="생성 단계">
+  <nav th:replace="~{fragments/ui :: wizard-progress}" aria-label="생성 단계">
     <ol class="wizard-steps" id="wizard-steps">
       <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark">1</span> OpenAPI 파일</button></li>
       <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark">2</span> Endpoint 선택</button></li>

@@ -71,6 +71,11 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString("name=\"app-mode\" content=\"local\"")))
                 .andExpect(content().string(containsString("name=\"csrf-token\"")))
                 .andExpect(content().string(containsString("name=\"csrf-header\"")))
+                .andExpect(content().string(containsString(
+                        "href=\"/webjars/bootstrap/5.3.8/css/bootstrap.min.css\"")))
+                .andExpect(content().string(containsString(
+                        "href=\"/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css\"")))
+                .andExpect(content().string(containsString("href=\"/styles.css\"")))
                 .andExpect(content().string(not(containsString("__GEN2SPRING_TOKEN__"))))
                 .andExpect(header().string("Cache-Control", containsString("no-store")))
                 .andExpect(header().string("Content-Security-Policy",

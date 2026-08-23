@@ -34,6 +34,29 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void sharesOneNoSidebarApplicationShellAcrossEveryScreen() throws Exception {
+        String fragment = resource("/templates/fragments/ui.html");
+        String editor = resource("/templates/editor.html");
+        String dashboard = resource("/templates/dashboard.html");
+        String jobDetail = resource("/templates/job-detail.html");
+
+        assertTrue(fragment.contains("th:fragment=\"head-assets(title)\""));
+        assertTrue(fragment.contains("/webjars/bootstrap/5.3.8/css/bootstrap.min.css"));
+        assertTrue(fragment.contains("/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css"));
+        assertTrue(fragment.contains("th:fragment=\"app-header(appMode)\""));
+        assertTrue(fragment.contains("th:if=\"${appMode == 'hosted'}\""));
+        assertFalse(fragment.contains("bootstrap.bundle"));
+        for (String template : new String[] {editor, dashboard, jobDetail}) {
+            assertTrue(template.contains("<html lang=\"ko\""));
+            assertTrue(template.contains("th:replace=\"~{fragments/ui :: head-assets"));
+            assertTrue(template.contains("th:replace=\"~{fragments/ui :: app-header"));
+            assertFalse(template.contains("app-sidebar"));
+        }
+        assertTrue(dashboard.contains("href=\"/editor\""));
+        assertTrue(jobDetail.contains("href=\"/\""));
+    }
+
+    @Test
     void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
         String index = resource("/templates/editor.html");
         String styles = resource("/static/styles.css");

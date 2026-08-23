@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head-assets(title)">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" th:content="${csrfToken}">
+  <meta name="csrf-header" th:content="${csrfHeader}">
+  <meta name="app-mode" th:content="${appMode}">
+  <title th:text="${title}">Gen2Spring MCP</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/webjars/bootstrap/5.3.8/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header th:fragment="app-header(appMode)" class="app-header">
+    <a class="app-brand" href="/" aria-label="Gen2Spring MCP 홈">
+      <span class="app-brand__mark" aria-hidden="true"><i class="bi bi-diagram-3-fill"></i></span>
+      <span>Gen2Spring MCP</span>
+    </a>
+    <nav class="app-header__nav" aria-label="주요 메뉴" th:if="${appMode == 'hosted'}">
+      <a class="app-header__link" href="/">작업 목록</a>
+      <a class="app-header__link app-header__link--primary" href="/editor">새 프로젝트</a>
+      <form class="app-header__logout" method="post" action="/logout">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+        <button class="app-header__link" type="submit">로그아웃</button>
+      </form>
+    </nav>
+  </header>
+
+  <nav th:fragment="wizard-progress" class="wizard-progress" aria-label="생성 단계">
+    <ol class="wizard-steps" id="wizard-steps">
+      <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark">1</span> OpenAPI 파일</button></li>
+      <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark">2</span> Endpoint 선택</button></li>
+      <li><button type="button" class="wizard-chip" data-step="3" disabled><span class="wizard-chip-mark">3</span> 생성 설정</button></li>
+      <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark">4</span> 미리보기와 생성</button></li>
+      <li><button type="button" class="wizard-chip" data-step="5" disabled><span class="wizard-chip-mark">5</span> 생성 진행</button></li>
+    </ol>
+  </nav>
+</body>
+</html>
