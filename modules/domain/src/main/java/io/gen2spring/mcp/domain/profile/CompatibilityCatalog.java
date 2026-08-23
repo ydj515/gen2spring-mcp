@@ -27,21 +27,25 @@ public record CompatibilityCatalog(
             String generatorModule,
             String templateVersion,
             int javaVersion,
+            String buildTool,
             String containerImage) {
+        boolean maven = "MAVEN".equals(buildTool);
         return new CompatibilityProfile(
-                family + "-java" + javaVersion + "-mvc-streamable",
+                family + "-java" + javaVersion + (maven ? "-maven" : "") + "-mvc-streamable",
                 new CompatibilityProfile.TargetPlatform(
                         javaVersion,
                         springBootVersion,
                         springAiVersion,
-                        "GRADLE_KOTLIN",
+                        buildTool,
                         "MVC",
                         "SYNC",
                         "STREAMABLE_HTTP"),
                 generatorModule,
                 templateVersion,
                 "0.3.0",
-                new BuildToolchain("9.6.1", "9.6.1"),
+                maven
+                        ? new BuildToolchain("3.9.16", "3.3.4")
+                        : new BuildToolchain("9.6.1", "9.6.1"),
                 containerImage);
     }
 
@@ -60,13 +64,21 @@ public record CompatibilityCatalog(
         private static final CompatibilityCatalog INSTANCE = new CompatibilityCatalog(
                 CompatibilityProfileRegistry.of(List.of(
                         profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1",
-                                "spring-ai-1-v2", 17, JAVA_17_IMAGE),
+                                "spring-ai-1-v2", 17, "GRADLE_KOTLIN", JAVA_17_IMAGE),
                         profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1",
-                                "spring-ai-1-v2", 21, JAVA_21_IMAGE),
+                                "spring-ai-1-v2", 17, "MAVEN", JAVA_17_IMAGE),
+                        profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1",
+                                "spring-ai-1-v2", 21, "GRADLE_KOTLIN", JAVA_21_IMAGE),
+                        profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1",
+                                "spring-ai-1-v2", 21, "MAVEN", JAVA_21_IMAGE),
                         profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2",
-                                "spring-ai-2-v3", 17, JAVA_17_IMAGE),
+                                "spring-ai-2-v3", 17, "GRADLE_KOTLIN", JAVA_17_IMAGE),
                         profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2",
-                                "spring-ai-2-v3", 21, JAVA_21_IMAGE))),
+                                "spring-ai-2-v3", 17, "MAVEN", JAVA_17_IMAGE),
+                        profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2",
+                                "spring-ai-2-v3", 21, "GRADLE_KOTLIN", JAVA_21_IMAGE),
+                        profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2",
+                                "spring-ai-2-v3", 21, "MAVEN", JAVA_21_IMAGE))),
                 List.of(deferredSpringAi1WebFluxAsyncNotice()));
 
         private Defaults() {}

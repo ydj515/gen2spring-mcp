@@ -12,7 +12,17 @@ class CompatibilityCatalogTest {
     void exposesActiveProfilesAndTheCanonicalDeferredTargetNotice() {
         var catalog = CompatibilityCatalog.defaults();
 
-        assertEquals(4, catalog.profiles().profiles().size());
+        assertEquals(8, catalog.profiles().profiles().size());
+        assertEquals(List.of(
+                        "spring-ai-1.1-java17-maven-mvc-streamable",
+                        "spring-ai-1.1-java17-mvc-streamable",
+                        "spring-ai-1.1-java21-maven-mvc-streamable",
+                        "spring-ai-1.1-java21-mvc-streamable",
+                        "spring-ai-2.0-java17-maven-mvc-streamable",
+                        "spring-ai-2.0-java17-mvc-streamable",
+                        "spring-ai-2.0-java21-maven-mvc-streamable",
+                        "spring-ai-2.0-java21-mvc-streamable"),
+                catalog.profiles().profiles().stream().map(CompatibilityProfile::id).toList());
         assertEquals("9.6.1", catalog.profiles()
                 .find("spring-ai-2.0-java21-mvc-streamable")
                 .orElseThrow()

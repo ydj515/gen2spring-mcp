@@ -199,7 +199,7 @@ public final class SafeProjectWriter implements ProjectWorkspace {
             createOwnedParents(treeRoot, destination.getParent(), ownership);
             Files.write(destination, entry.bytes(), CREATE_NEW, WRITE, NOFOLLOW_LINKS);
             ownership.record(destination);
-            if (entry.portablePath().equals("gradlew")) {
+            if (entry.portablePath().equals("gradlew") || entry.portablePath().equals("mvnw")) {
                 makeExecutableOnPosix(destination);
             }
         }
@@ -268,10 +268,10 @@ public final class SafeProjectWriter implements ProjectWorkspace {
         }
     }
 
-    private void makeExecutableOnPosix(Path gradlew) throws IOException {
-        FileStore store = Files.getFileStore(gradlew);
+    private void makeExecutableOnPosix(Path wrapper) throws IOException {
+        FileStore store = Files.getFileStore(wrapper);
         if (store.supportsFileAttributeView("posix")) {
-            Files.setPosixFilePermissions(gradlew, EXECUTABLE_PERMISSIONS);
+            Files.setPosixFilePermissions(wrapper, EXECUTABLE_PERMISSIONS);
         }
     }
 

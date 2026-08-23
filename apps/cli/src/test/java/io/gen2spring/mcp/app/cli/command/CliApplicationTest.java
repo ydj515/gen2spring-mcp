@@ -53,29 +53,61 @@ class CliApplicationTest {
         assertEquals("", result.stderr());
         JsonNode json = JSON.readTree(result.stdout());
         JsonNode profiles = json.path("profiles");
-        assertEquals(4, profiles.size());
+        assertEquals(8, profiles.size());
         assertProfile(
                 profiles.get(0),
-                "spring-ai-1.1-java17-mvc-streamable",
-                17, "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v2",
+                "spring-ai-1.1-java17-maven-mvc-streamable",
+                17, "3.5.16", "1.1.8", "MAVEN", "3.9.16", "3.3.4",
+                "generator-spring-ai-1", "spring-ai-1-v2",
                 "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
                         + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
         assertProfile(
                 profiles.get(1),
-                "spring-ai-1.1-java21-mvc-streamable",
-                21, "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v2",
-                "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
-                        + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
-        assertProfile(
-                profiles.get(2),
-                "spring-ai-2.0-java17-mvc-streamable",
-                17, "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v3",
+                "spring-ai-1.1-java17-mvc-streamable",
+                17, "3.5.16", "1.1.8", "GRADLE_KOTLIN", "9.6.1", "9.6.1",
+                "generator-spring-ai-1", "spring-ai-1-v2",
                 "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
                         + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
         assertProfile(
+                profiles.get(2),
+                "spring-ai-1.1-java21-maven-mvc-streamable",
+                21, "3.5.16", "1.1.8", "MAVEN", "3.9.16", "3.3.4",
+                "generator-spring-ai-1", "spring-ai-1-v2",
+                "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
+                        + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
+        assertProfile(
                 profiles.get(3),
+                "spring-ai-1.1-java21-mvc-streamable",
+                21, "3.5.16", "1.1.8", "GRADLE_KOTLIN", "9.6.1", "9.6.1",
+                "generator-spring-ai-1", "spring-ai-1-v2",
+                "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
+                        + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
+        assertProfile(
+                profiles.get(4),
+                "spring-ai-2.0-java17-maven-mvc-streamable",
+                17, "4.1.0", "2.0.0", "MAVEN", "3.9.16", "3.3.4",
+                "generator-spring-ai-2", "spring-ai-2-v3",
+                "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
+                        + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
+        assertProfile(
+                profiles.get(5),
+                "spring-ai-2.0-java17-mvc-streamable",
+                17, "4.1.0", "2.0.0", "GRADLE_KOTLIN", "9.6.1", "9.6.1",
+                "generator-spring-ai-2", "spring-ai-2-v3",
+                "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
+                        + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
+        assertProfile(
+                profiles.get(6),
+                "spring-ai-2.0-java21-maven-mvc-streamable",
+                21, "4.1.0", "2.0.0", "MAVEN", "3.9.16", "3.3.4",
+                "generator-spring-ai-2", "spring-ai-2-v3",
+                "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
+                        + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
+        assertProfile(
+                profiles.get(7),
                 "spring-ai-2.0-java21-mvc-streamable",
-                21, "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v3",
+                21, "4.1.0", "2.0.0", "GRADLE_KOTLIN", "9.6.1", "9.6.1",
+                "generator-spring-ai-2", "spring-ai-2-v3",
                 "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
                         + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
         assertTrue(result.stdout().endsWith("\n"));
@@ -435,6 +467,9 @@ class CliApplicationTest {
             int javaVersion,
             String springBootVersion,
             String springAiVersion,
+            String buildTool,
+            String distributionVersion,
+            String wrapperVersion,
             String generatorModule,
             String templateVersion,
             String containerImage) {
@@ -442,13 +477,20 @@ class CliApplicationTest {
         assertEquals(generatorModule, profile.path("generatorModule").asText());
         assertEquals(templateVersion, profile.path("templateVersion").asText());
         assertEquals("0.3.0", profile.path("runtimeVersion").asText());
-        assertEquals("9.6.1", profile.path("gradleVersion").asText());
+        assertEquals(buildTool, profile.path("buildTool").path("type").asText());
+        assertEquals(distributionVersion, profile.path("buildTool").path("distributionVersion").asText());
+        assertEquals(wrapperVersion, profile.path("buildTool").path("wrapperVersion").asText());
+        if ("GRADLE_KOTLIN".equals(buildTool)) {
+            assertEquals(distributionVersion, profile.path("gradleVersion").asText());
+        } else {
+            assertFalse(profile.has("gradleVersion"));
+        }
         assertEquals(containerImage, profile.path("containerImage").asText());
         JsonNode target = profile.path("target");
         assertEquals(javaVersion, target.path("javaVersion").asInt());
         assertEquals(springBootVersion, target.path("springBootVersion").asText());
         assertEquals(springAiVersion, target.path("springAiVersion").asText());
-        assertEquals("GRADLE_KOTLIN", target.path("buildTool").asText());
+        assertEquals(buildTool, target.path("buildTool").asText());
         assertEquals("MVC", target.path("webStack").asText());
         assertEquals("SYNC", target.path("programmingModel").asText());
         assertEquals("STREAMABLE_HTTP", target.path("transport").asText());

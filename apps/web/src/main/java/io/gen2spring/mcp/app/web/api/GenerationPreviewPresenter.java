@@ -34,14 +34,19 @@ public final class GenerationPreviewPresenter {
         node.put("javaVersion", profile.target().javaVersion());
         node.put("springBootVersion", profile.target().springBootVersion());
         node.put("springAiVersion", profile.target().springAiVersion());
-        node.put("buildTool", profile.target().buildTool());
+        ObjectNode buildTool = node.putObject("buildTool");
+        buildTool.put("type", profile.target().buildTool());
+        buildTool.put("distributionVersion", profile.buildToolchain().distributionVersion());
+        buildTool.put("wrapperVersion", profile.buildToolchain().wrapperVersion());
         node.put("webStack", profile.target().webStack());
         node.put("programmingModel", profile.target().programmingModel());
         node.put("transport", profile.target().transport());
         node.put("generatorModule", profile.generatorModule());
         node.put("templateVersion", profile.templateVersion());
         node.put("runtimeVersion", profile.runtimeVersion());
-        node.put("gradleVersion", profile.gradleVersion());
+        if (profile.gradleVersion() != null) {
+            node.put("gradleVersion", profile.gradleVersion());
+        }
         node.put("containerImage", profile.containerImage());
         return node;
     }

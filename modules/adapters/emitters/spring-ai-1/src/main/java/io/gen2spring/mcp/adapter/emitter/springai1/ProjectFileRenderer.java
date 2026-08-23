@@ -249,11 +249,10 @@ public final class ProjectFileRenderer {
         }
         var target = candidate.target();
         return "generator-spring-ai-1".equals(candidate.generatorModule())
-                && "9.6.1".equals(candidate.gradleVersion())
+                && supportsBuildTool(candidate)
                 && (target.javaVersion() == 17 || target.javaVersion() == 21)
                 && "3.5.16".equals(target.springBootVersion())
                 && "1.1.8".equals(target.springAiVersion())
-                && "GRADLE_KOTLIN".equals(target.buildTool())
                 && "MVC".equals(target.webStack())
                 && "SYNC".equals(target.programmingModel())
                 && "STREAMABLE_HTTP".equals(target.transport())
@@ -261,6 +260,19 @@ public final class ProjectFileRenderer {
                         .find(candidate.id())
                         .filter(candidate::equals)
                         .isPresent();
+    }
+
+    private boolean supportsBuildTool(CompatibilityProfile candidate) {
+        if (candidate.buildToolchain() == null) {
+            return false;
+        }
+        return switch (candidate.target().buildTool()) {
+            case "GRADLE_KOTLIN" -> "9.6.1".equals(candidate.buildToolchain().distributionVersion())
+                    && "9.6.1".equals(candidate.buildToolchain().wrapperVersion());
+            case "MAVEN" -> "3.9.16".equals(candidate.buildToolchain().distributionVersion())
+                    && "3.3.4".equals(candidate.buildToolchain().wrapperVersion());
+            default -> false;
+        };
     }
 
     private ProjectCoordinates requireCoordinates(ProjectCoordinates coordinates) {

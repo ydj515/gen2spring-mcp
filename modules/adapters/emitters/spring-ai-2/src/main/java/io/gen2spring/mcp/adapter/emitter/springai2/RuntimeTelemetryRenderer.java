@@ -72,9 +72,13 @@ final class RuntimeTelemetryRenderer {
                     private static final Set<String> TOOL_NAMES = %s;
                     private static final String TARGET_PROFILE_ID = %s;
                     private static final Set<String> TARGET_PROFILE_IDS = Set.of(
+                            "spring-ai-1.1-java17-maven-mvc-streamable",
                             "spring-ai-1.1-java17-mvc-streamable",
+                            "spring-ai-1.1-java21-maven-mvc-streamable",
                             "spring-ai-1.1-java21-mvc-streamable",
+                            "spring-ai-2.0-java17-maven-mvc-streamable",
                             "spring-ai-2.0-java17-mvc-streamable",
+                            "spring-ai-2.0-java21-maven-mvc-streamable",
                             "spring-ai-2.0-java21-mvc-streamable");
                     private static final String INVALID_IDENTITY_MESSAGE =
                             "Generated telemetry identity is invalid";

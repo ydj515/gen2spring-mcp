@@ -194,14 +194,15 @@ class SafeProjectWriterTest {
     }
 
     @Test
-    void writesExactBytesAndMakesGradlewExecutableOnPosix() throws IOException {
+    void writesExactBytesAndMakesPosixWrappersExecutable() throws IOException {
         Path safeTemp = tempDir.toRealPath();
         byte[] binary = new byte[] {0, 1, 13, 10, (byte) 0xff};
         Path root = safeTemp.resolve("project");
 
         writer.write(root, new GeneratedProjectFiles(Map.of(
                 "assets/data.bin", binary,
-                "gradlew", "#!/bin/sh\n".getBytes(UTF_8))));
+                "gradlew", "#!/bin/sh\n".getBytes(UTF_8),
+                "mvnw", "#!/bin/sh\n".getBytes(UTF_8))));
 
         assertArrayEquals(binary, Files.readAllBytes(root.resolve("assets/data.bin")));
         FileStore store = Files.getFileStore(root);
@@ -210,6 +211,10 @@ class SafeProjectWriterTest {
         assertTrue(permissions.contains(PosixFilePermission.OWNER_EXECUTE));
         assertTrue(permissions.contains(PosixFilePermission.GROUP_EXECUTE));
         assertTrue(permissions.contains(PosixFilePermission.OTHERS_EXECUTE));
+        Set<PosixFilePermission> mavenPermissions = Files.getPosixFilePermissions(root.resolve("mvnw"));
+        assertTrue(mavenPermissions.contains(PosixFilePermission.OWNER_EXECUTE));
+        assertTrue(mavenPermissions.contains(PosixFilePermission.GROUP_EXECUTE));
+        assertTrue(mavenPermissions.contains(PosixFilePermission.OTHERS_EXECUTE));
     }
 
     private void deleteTestTree(Path root) throws IOException {

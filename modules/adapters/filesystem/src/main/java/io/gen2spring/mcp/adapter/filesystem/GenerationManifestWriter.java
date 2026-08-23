@@ -54,7 +54,13 @@ public final class GenerationManifestWriter implements ManifestWriter {
         manifest.put("springBootVersion", profile.target().springBootVersion());
         manifest.put("springAiVersion", profile.target().springAiVersion());
         manifest.put("javaVersion", profile.target().javaVersion());
-        manifest.put("gradleVersion", profile.gradleVersion());
+        ObjectNode buildTool = manifest.putObject("buildTool");
+        buildTool.put("type", profile.target().buildTool());
+        buildTool.put("distributionVersion", profile.buildToolchain().distributionVersion());
+        buildTool.put("wrapperVersion", profile.buildToolchain().wrapperVersion());
+        if (profile.gradleVersion() != null) {
+            manifest.put("gradleVersion", profile.gradleVersion());
+        }
         manifest.put("containerImage", profile.containerImage());
         manifest.put("originalSpecificationChecksum", document.checksum());
         manifest.put("sourceChecksum", sourceChecksum);

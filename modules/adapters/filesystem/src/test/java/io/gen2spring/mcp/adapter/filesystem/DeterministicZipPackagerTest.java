@@ -40,6 +40,7 @@ class DeterministicZipPackagerTest {
         Files.writeString(projectRoot.resolve("z.txt"), "last", UTF_8);
         Files.writeString(projectRoot.resolve("nested/a.txt"), "first", UTF_8);
         Files.writeString(projectRoot.resolve("gradlew"), "#!/bin/sh\n", UTF_8);
+        Files.writeString(projectRoot.resolve("mvnw"), "#!/bin/sh\n", UTF_8);
         if (Files.getFileStore(projectRoot).supportsFileAttributeView("posix")) {
             Files.setPosixFilePermissions(projectRoot.resolve("gradlew"), Set.of(
                     PosixFilePermission.OWNER_READ,
@@ -49,6 +50,8 @@ class DeterministicZipPackagerTest {
                     PosixFilePermission.GROUP_EXECUTE,
                     PosixFilePermission.OTHERS_READ,
                     PosixFilePermission.OTHERS_EXECUTE));
+            Files.setPosixFilePermissions(projectRoot.resolve("mvnw"),
+                    Files.getPosixFilePermissions(projectRoot.resolve("gradlew")));
         }
     }
 
@@ -64,15 +67,16 @@ class DeterministicZipPackagerTest {
                 entries.add(entry.getName());
                 assertEquals(LocalDateTime.of(1980, 1, 1, 0, 0), entry.getTimeLocal());
             }
-            assertEquals(List.of("gradlew", "nested/a.txt", "z.txt"), entries);
+            assertEquals(List.of("gradlew", "mvnw", "nested/a.txt", "z.txt"), entries);
         }
     }
 
     @Test
-    void recordsGradlewExecutableModeInTheCentralDirectory() {
+    void recordsPosixWrapperExecutableModesInTheCentralDirectory() {
         byte[] archive = packager.packageProject(projectRoot, tempDir.resolve("mode.zip"));
 
         assertEquals(0755, centralDirectoryMode(archive, "gradlew"));
+        assertEquals(0755, centralDirectoryMode(archive, "mvnw"));
         assertEquals(0644, centralDirectoryMode(archive, "z.txt"));
     }
 

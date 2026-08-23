@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 class GeneratorRuntimeTest {
     @Test
-    void createsOneCanonicalFourProfileTwoEmitterApplicationGraph() {
+    void createsOneCanonicalEightProfileTwoEmitterApplicationGraph() {
         GeneratorRuntime application = GeneratorRuntime.defaults();
 
         assertSame(CompatibilityCatalog.defaults(), application.compatibilityCatalog());
@@ -20,9 +20,13 @@ class GeneratorRuntimeTest {
         assertEquals(List.of("SPRING_AI_1_WEBFLUX_ASYNC_DEFERRED"),
                 application.compatibilityCatalog().notices().stream().map(notice -> notice.code()).toList());
         assertEquals(List.of(
+                "spring-ai-1.1-java17-maven-mvc-streamable",
                 "spring-ai-1.1-java17-mvc-streamable",
+                "spring-ai-1.1-java21-maven-mvc-streamable",
                 "spring-ai-1.1-java21-mvc-streamable",
+                "spring-ai-2.0-java17-maven-mvc-streamable",
                 "spring-ai-2.0-java17-mvc-streamable",
+                "spring-ai-2.0-java21-maven-mvc-streamable",
                 "spring-ai-2.0-java21-mvc-streamable"),
                 application.profiles().profiles().stream().map(profile -> profile.id()).toList());
         assertEquals(List.of("generator-spring-ai-1", "generator-spring-ai-2"),

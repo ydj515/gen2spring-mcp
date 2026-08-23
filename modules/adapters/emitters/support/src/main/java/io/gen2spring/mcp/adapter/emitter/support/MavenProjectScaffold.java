@@ -80,7 +80,7 @@ public final class MavenProjectScaffold implements BuildProjectScaffold {
                         <groupId>org.springframework.boot</groupId>
                         <artifactId>spring-boot-maven-plugin</artifactId>
                         <configuration>
-                          <mainClass>%s.%s</mainClass>
+                          <mainClass>%s.application.%s</mainClass>
                         </configuration>
                         <executions>
                           <execution>

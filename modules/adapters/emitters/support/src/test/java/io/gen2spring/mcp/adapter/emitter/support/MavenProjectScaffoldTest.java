@@ -42,6 +42,8 @@ class MavenProjectScaffoldTest {
         assertTrue(text(files, "pom.xml").contains("<maven.compiler.release>21</maven.compiler.release>"));
         assertTrue(text(files, "pom.xml").contains("<version>4.1.0</version>"));
         assertTrue(text(files, "pom.xml").contains("<spring-ai.version>2.0.0</spring-ai.version>"));
+        assertTrue(text(files, "pom.xml").contains(
+                "<mainClass>com.example.weather.application.WeatherMcpApplication</mainClass>"));
         assertTrue(text(files, "pom.xml").contains("<finalName>${project.artifactId}</finalName>"));
         assertTrue(text(files, "README.md").contains("./mvnw spring-boot:run"));
         assertTrue(text(files, "README.md").contains("./mvnw test"));

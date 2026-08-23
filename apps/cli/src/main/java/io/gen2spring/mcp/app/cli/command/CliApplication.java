@@ -172,7 +172,13 @@ public final class CliApplication {
             item.put("generatorModule", profile.generatorModule());
             item.put("templateVersion", profile.templateVersion());
             item.put("runtimeVersion", profile.runtimeVersion());
-            item.put("gradleVersion", profile.gradleVersion());
+            ObjectNode buildTool = item.putObject("buildTool");
+            buildTool.put("type", profile.target().buildTool());
+            buildTool.put("distributionVersion", profile.buildToolchain().distributionVersion());
+            buildTool.put("wrapperVersion", profile.buildToolchain().wrapperVersion());
+            if (profile.gradleVersion() != null) {
+                item.put("gradleVersion", profile.gradleVersion());
+            }
             item.put("containerImage", profile.containerImage());
             ObjectNode target = item.putObject("target");
             target.put("javaVersion", profile.target().javaVersion());
