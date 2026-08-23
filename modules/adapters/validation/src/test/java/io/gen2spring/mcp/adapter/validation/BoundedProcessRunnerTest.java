@@ -13,10 +13,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.stream.Stream;
@@ -78,11 +82,17 @@ class BoundedProcessRunnerTest {
             throw collectorFailure;
         });
 
-        IOException failure = assertThrows(IOException.class,
-                () -> failing.run(javaCommand("pid", pidFile.toString()), tempDir, Duration.ofSeconds(10), 1024));
+        IOException failure = null;
+        try {
+            failing.run(javaCommand("pid", pidFile.toString()), tempDir, Duration.ofSeconds(10), 1024);
+        } catch (IOException exception) {
+            failure = exception;
+        }
 
+        assertTrue(failure != null, "collector failure must be propagated");
         assertSame(collectorFailure, failure.getCause());
         assertEquals(0, failure.getSuppressed().length);
+        assertNoRepeatedThrowableReferences(failure);
         assertTrue(waitUntilDead(waitForPid(pidFile)));
     }
 
@@ -231,6 +241,20 @@ class BoundedProcessRunnerTest {
             return !handle.isAlive();
         } catch (java.util.concurrent.TimeoutException exception) {
             return false;
+        }
+    }
+
+    private void assertNoRepeatedThrowableReferences(Throwable root) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<Throwable> pending = new ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            Throwable current = pending.removeFirst();
+            assertTrue(visited.add(current), "exception graph must not contain repeated throwable references");
+            if (current.getCause() != null) {
+                pending.addLast(current.getCause());
+            }
+            Collections.addAll(pending, current.getSuppressed());
         }
     }
 }

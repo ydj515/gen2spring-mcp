@@ -189,22 +189,25 @@ public final class BoundedProcessRunner {
     }
 
     private static void addSuppressedSafely(Throwable primary, Throwable suppressed) {
-        if (containsThrowable(primary, suppressed) || containsThrowable(suppressed, primary)) {
+        if (exceptionGraphsOverlap(primary, suppressed)) {
             return;
         }
         primary.addSuppressed(suppressed);
     }
 
-    private static boolean containsThrowable(Throwable root, Throwable target) {
-        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+    private static boolean exceptionGraphsOverlap(Throwable primary, Throwable cleanup) {
+        Set<Throwable> primaryGraph = throwableGraph(primary);
+        Set<Throwable> cleanupGraph = throwableGraph(cleanup);
+        return cleanupGraph.stream().anyMatch(primaryGraph::contains);
+    }
+
+    private static Set<Throwable> throwableGraph(Throwable root) {
+        Set<Throwable> graph = Collections.newSetFromMap(new IdentityHashMap<>());
         ArrayDeque<Throwable> pending = new ArrayDeque<>();
         pending.add(root);
         while (!pending.isEmpty()) {
             Throwable current = pending.removeFirst();
-            if (current == target) {
-                return true;
-            }
-            if (!visited.add(current)) {
+            if (!graph.add(current)) {
                 continue;
             }
             if (current.getCause() != null) {
@@ -212,7 +215,7 @@ public final class BoundedProcessRunner {
             }
             Collections.addAll(pending, current.getSuppressed());
         }
-        return false;
+        return graph;
     }
 
     @FunctionalInterface
