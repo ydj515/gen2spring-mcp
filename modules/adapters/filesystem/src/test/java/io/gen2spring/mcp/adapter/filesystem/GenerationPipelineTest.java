@@ -242,6 +242,9 @@ class GenerationPipelineTest {
         assertEquals("4.1.0", manifest.path("springBootVersion").asText());
         assertEquals("2.0.0", manifest.path("springAiVersion").asText());
         assertEquals(21, manifest.path("javaVersion").asInt());
+        assertEquals("GRADLE_KOTLIN", manifest.path("buildTool").path("type").asText());
+        assertEquals("9.6.1", manifest.path("buildTool").path("distributionVersion").asText());
+        assertEquals("9.6.1", manifest.path("buildTool").path("wrapperVersion").asText());
         assertEquals("9.6.1", manifest.path("gradleVersion").asText());
         assertEquals(CompatibilityProfile.p0().containerImage(), manifest.path("containerImage").asText());
         assertEquals(outcome.sourceChecksum(), manifest.path("sourceChecksum").asText());
@@ -707,6 +710,8 @@ class GenerationPipelineTest {
                 request -> new ValidationReport(UNVERIFIED, List.of(), List.of()));
         CompatibilityProfile java17 = profiles.find("spring-ai-2.0-java17-mvc-streamable").orElseThrow();
         CompatibilityProfile java21 = profiles.find("spring-ai-2.0-java21-mvc-streamable").orElseThrow();
+        CompatibilityProfile java21Maven = profiles.find(
+                "spring-ai-2.0-java21-maven-mvc-streamable").orElseThrow();
 
         var firstJava17 = pipeline.generate(
                 specification, requestWithProfile(java17.id()), safeTempDir.resolve("java17-first"));
@@ -714,6 +719,8 @@ class GenerationPipelineTest {
                 specification, requestWithProfile(java17.id()), safeTempDir.resolve("java17-second"));
         var java21Outcome = pipeline.generate(
                 specification, requestWithProfile(java21.id()), safeTempDir.resolve("java21"));
+        var java21MavenOutcome = pipeline.generate(
+                specification, requestWithProfile(java21Maven.id()), safeTempDir.resolve("java21-maven"));
 
         byte[] firstManifest = Files.readAllBytes(
                 firstJava17.projectRoot().resolve(GenerationManifestWriter.MANIFEST_FILE));
@@ -724,6 +731,7 @@ class GenerationPipelineTest {
         assertNotEquals(firstJava17.sourceChecksum(), java21Outcome.sourceChecksum());
         assertManifestProfile(firstJava17.projectRoot(), java17);
         assertManifestProfile(java21Outcome.projectRoot(), java21);
+        assertManifestProfile(java21MavenOutcome.projectRoot(), java21Maven);
     }
 
     @Test
@@ -969,7 +977,16 @@ class GenerationPipelineTest {
                 projectRoot.resolve(GenerationManifestWriter.MANIFEST_FILE).toFile());
         assertEquals(profile.id(), manifest.path("targetProfileId").asText());
         assertEquals(profile.target().javaVersion(), manifest.path("javaVersion").asInt());
-        assertEquals(profile.gradleVersion(), manifest.path("gradleVersion").asText());
+        assertEquals(profile.target().buildTool(), manifest.path("buildTool").path("type").asText());
+        assertEquals(profile.buildToolchain().distributionVersion(),
+                manifest.path("buildTool").path("distributionVersion").asText());
+        assertEquals(profile.buildToolchain().wrapperVersion(),
+                manifest.path("buildTool").path("wrapperVersion").asText());
+        if ("GRADLE_KOTLIN".equals(profile.target().buildTool())) {
+            assertEquals(profile.gradleVersion(), manifest.path("gradleVersion").asText());
+        } else {
+            assertFalse(manifest.has("gradleVersion"));
+        }
         assertEquals(profile.containerImage(), manifest.path("containerImage").asText());
         assertEquals(profile.templateVersion(), manifest.path("templateVersion").asText());
         assertEquals(profile.runtimeVersion(), manifest.path("runtimeVersion").asText());

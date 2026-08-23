@@ -50,9 +50,9 @@ class SpringAi1ToolEmitterTest {
             "src/test/java/com/example/weather/application/GeneratedJavaRuntimeTest.java",
             "src/test/java/com/example/weather/application/WeatherMcpApplicationTest.java");
     private static final String EXPECTED_SOURCE_DIGEST =
-            "53f6accb99e47e3649c9a60b972690d67685864adfc647e876cea35f8e9e2f97";
+            "9bc060739bf91f0e4ec191d1fafe15f527367eb8ec16de2dff385c54936ffd44";
     private static final String EXPECTED_PROJECT_DIGEST =
-            "2eee66b485c514024a8194cb2e54050522d2bfc3c2b9f9314960282348fef61c";
+            "fcfe1bc9ba57c588cae7b59e0a411219ed1cfd5a081cb6da0c3e086a7c2bb550";
 
     @Test
     void emitsTheCharacterizedSpringAi1ToolSources() {

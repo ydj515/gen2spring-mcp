@@ -72,9 +72,13 @@ final class RuntimeTelemetryRenderer {
                     private static final Set<String> TOOL_NAMES = %s;
                     private static final String TARGET_PROFILE_ID = %s;
                     private static final Set<String> TARGET_PROFILE_IDS = Set.of(
+                            "spring-ai-1.1-java17-maven-mvc-streamable",
                             "spring-ai-1.1-java17-mvc-streamable",
+                            "spring-ai-1.1-java21-maven-mvc-streamable",
                             "spring-ai-1.1-java21-mvc-streamable",
+                            "spring-ai-2.0-java17-maven-mvc-streamable",
                             "spring-ai-2.0-java17-mvc-streamable",
+                            "spring-ai-2.0-java21-maven-mvc-streamable",
                             "spring-ai-2.0-java21-mvc-streamable");
                     private static final String INVALID_IDENTITY_MESSAGE =
                             "Generated telemetry identity is invalid";
@@ -400,6 +404,78 @@ final class RuntimeTelemetryRenderer {
                     }
                 }
                 """.formatted(packageName, operationIds, toolNames, JavaStringLiteral.quote(targetProfileId));
+    }
+
+    String renderReactive(String packageName, List<ToolDefinition> tools) {
+        String source = render(packageName, tools);
+        source = replaceReactive(
+                source,
+                "import org.springframework.stereotype.Component;",
+                "import org.springframework.stereotype.Component;\n"
+                        + "import reactor.core.publisher.Mono;\n"
+                        + "import reactor.util.context.ContextView;");
+        source = replaceReactive(
+                source,
+                "private static final String BRIDGE_UNAVAILABLE_MESSAGE =\n"
+                        + "            \"Generated telemetry bridge is unavailable\";",
+                "private static final String BRIDGE_UNAVAILABLE_MESSAGE =\n"
+                        + "            \"Generated telemetry bridge is unavailable\";\n"
+                        + "    private static final String REACTOR_SPAN_CONTEXT_KEY =\n"
+                        + "            RuntimeTelemetry.class.getName() + \".span\";");
+        source = replaceReactive(
+                source,
+                "    public enum Outcome {",
+                "    public <T> Mono<T> propagateCurrentSpan(Mono<T> publisher) {\n"
+                        + "        java.util.Objects.requireNonNull(publisher);\n"
+                        + "        Span span = tracer.currentSpan();\n"
+                        + "        if (span == null) {\n"
+                        + "            return publisher;\n"
+                        + "        }\n"
+                        + "        return publisher.contextWrite(context ->\n"
+                        + "                context.put(REACTOR_SPAN_CONTEXT_KEY, span));\n"
+                        + "    }\n\n"
+                        + "    public ReactiveScope openReactiveScope(ContextView contextView) {\n"
+                        + "        java.util.Objects.requireNonNull(contextView);\n"
+                        + "        Span span = contextView.getOrDefault(REACTOR_SPAN_CONTEXT_KEY, null);\n"
+                        + "        if (span == null) {\n"
+                        + "            return () -> {};\n"
+                        + "        }\n"
+                        + "        Tracer.SpanInScope scope = tracer.withSpan(span);\n"
+                        + "        return scope::close;\n"
+                        + "    }\n\n"
+                        + "    @FunctionalInterface\n"
+                        + "    public interface ReactiveScope extends AutoCloseable {\n"
+                        + "        @Override\n"
+                        + "        void close();\n"
+                        + "    }\n\n"
+                        + "    public enum Outcome {");
+        source = replaceReactive(
+                source,
+                "SUCCESS(\"success\"),\n        EXPECTED_ERROR",
+                "SUCCESS(\"success\"),\n        CANCELLED(\"cancelled\"),\n        EXPECTED_ERROR");
+        source = replaceReactive(
+                source,
+                "case SUCCESS -> category == ErrorCategory.NONE;\n            case EXPECTED_ERROR",
+                "case SUCCESS, CANCELLED -> category == ErrorCategory.NONE;\n            case EXPECTED_ERROR");
+        source = replaceReactive(
+                source,
+                "\"spring-ai-2.0-java21-mvc-streamable\");",
+                "\"spring-ai-2.0-java21-mvc-streamable\",\n"
+                        + "            \"spring-ai-2.0-java17-webflux-async-streamable\",\n"
+                        + "            \"spring-ai-2.0-java21-webflux-async-streamable\",\n"
+                        + "            \"spring-ai-2.0-java17-maven-webflux-async-streamable\",\n"
+                        + "            \"spring-ai-2.0-java21-maven-webflux-async-streamable\");");
+        return replaceReactive(
+                source,
+                "if (outcome != Outcome.SUCCESS) {",
+                "if (outcome != Outcome.SUCCESS && outcome != Outcome.CANCELLED) {");
+    }
+
+    private String replaceReactive(String source, String target, String replacement) {
+        if (!source.contains(target)) {
+            throw JavaSourceRenderer.invalid("Reactive telemetry template is inconsistent");
+        }
+        return source.replace(target, replacement);
     }
 
     private String setLiteral(List<String> values) {

@@ -1,11 +1,13 @@
 package io.gen2spring.mcp.adapter.emitter.springai2;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
+import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 
+import io.gen2spring.mcp.adapter.emitter.support.BuildProjectScaffoldRegistry;
 import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
 import io.gen2spring.mcp.application.usecase.GenerationContext;
 import io.gen2spring.mcp.application.port.outbound.ProjectGenerator;
 import io.gen2spring.mcp.application.port.outbound.ToolEmitter;
+import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -14,38 +16,39 @@ import java.util.Objects;
 
 public final class SpringAi2ProjectGenerator implements ProjectGenerator {
     private final ToolEmitter toolEmitter;
+    private final BuildProjectScaffoldRegistry projectScaffolds;
 
     public SpringAi2ProjectGenerator() {
-        this(new SpringAi2ToolEmitter());
+        this(new SpringAi2ToolEmitter(), BuildProjectScaffoldRegistry.defaults());
     }
 
     SpringAi2ProjectGenerator(ToolEmitter toolEmitter) {
+        this(toolEmitter, BuildProjectScaffoldRegistry.defaults());
+    }
+
+    SpringAi2ProjectGenerator(
+            ToolEmitter toolEmitter,
+            BuildProjectScaffoldRegistry projectScaffolds) {
         this.toolEmitter = Objects.requireNonNull(toolEmitter, "toolEmitter");
+        this.projectScaffolds = Objects.requireNonNull(projectScaffolds, "projectScaffolds");
     }
 
     @Override
     public GeneratedProjectFiles generate(GenerationContext context) {
         CompatibilityProfile profile = context == null ? null : context.profile();
         var renderer = new ProjectFileRenderer(profile);
-        var coordinates = renderer.requireContext(context);
-        Map<String, byte[]> files = new LinkedHashMap<>();
-        files.put(".dockerignore", utf8(renderer.dockerignore(coordinates)));
-        files.put(".gitignore", utf8(renderer.gitignore()));
-        files.put("Dockerfile", utf8(renderer.dockerfile(coordinates)));
-        files.put("README.md", utf8(renderer.readme(context)));
-        files.put("build.gradle.kts", utf8(renderer.buildGradle(coordinates)));
-        files.put("gradle.properties", utf8(renderer.gradleProperties()));
-        files.put("gradle/wrapper/gradle-wrapper.jar", renderer.wrapperAsset("gradle-wrapper.jar"));
-        files.put("gradle/wrapper/gradle-wrapper.properties", renderer.wrapperAsset("gradle-wrapper.properties"));
-        files.put("gradlew", renderer.wrapperAsset("gradlew"));
-        files.put("gradlew.bat", renderer.wrapperAsset("gradlew.bat"));
-        files.put("settings.gradle.kts", utf8(renderer.settingsGradle(coordinates)));
-        files.put("src/main/resources/application.yml", utf8(renderer.applicationYaml(context)));
-        toolEmitter.emit(context).files().forEach(files::put);
+        var scaffoldModel = renderer.scaffoldModel(context);
+        Map<String, byte[]> files = new LinkedHashMap<>(projectScaffolds
+                .require(profile.target().buildTool())
+                .render(scaffoldModel));
+        toolEmitter.emit(context).files().forEach((path, content) -> {
+            if (files.putIfAbsent(path, content) != null) {
+                throw GeneratorException.user(
+                        SOURCE_GENERATION_FAILED,
+                        "spring-ai-2-render",
+                        "Generated project files contain duplicate paths");
+            }
+        });
         return new GeneratedProjectFiles(Collections.unmodifiableMap(files));
-    }
-
-    private byte[] utf8(String value) {
-        return value.getBytes(UTF_8);
     }
 }

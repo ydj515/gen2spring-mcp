@@ -115,7 +115,20 @@
             <div class="field"><label for="package-name">Package name</label><input id="package-name" value="com.example.mcp" required></div>
             <div class="field"><label for="provider-name">Provider</label><input id="provider-name" value="provider" required></div>
             <div class="field"><label for="domain-name">Domain</label><input id="domain-name" value="api" required></div>
-            <div class="field"><label for="target-profile">Compatibility profile</label><select id="target-profile" required></select></div>
+            <div class="field profile-field">
+              <div class="field-label-row">
+                <label for="target-profile">Compatibility profile</label>
+                <button id="profile-help-button" class="profile-help-button" type="button"
+                        aria-label="Compatibility profile 도움말"
+                        aria-expanded="false" aria-controls="profile-help">?</button>
+              </div>
+              <select id="target-profile" required></select>
+              <div id="profile-help" class="profile-help" role="region"
+                   aria-label="Compatibility profile 안내" hidden>
+                <p class="profile-help-intro">생성 대상별 지원 범위와 알려진 제약입니다.</p>
+                <ul id="profile-notice-list" class="profile-notice-list"></ul>
+              </div>
+            </div>
           </div>
           <p id="profile-description" class="status" aria-live="polite">호환 프로필을 불러오는 중입니다.</p>
 

@@ -24,6 +24,9 @@ final class ProfileController {
         var root = json.createObjectNode();
         var profiles = root.putArray("profiles");
         generator.profiles().profiles().forEach(profile -> profiles.add(presenter.profile(profile)));
+        var notices = root.putArray("compatibilityNotices");
+        generator.compatibilityCatalog().notices()
+                .forEach(notice -> notices.add(presenter.compatibilityNotice(notice)));
         return root;
     }
 }

@@ -1,7 +1,50 @@
 [tools]
 java = "21.0.2"
 
-[tasks.ui]
+[tasks."generator:test"]
+description = "Run fast generator contracts without nested generated project builds"
+run = '''
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
+export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
+./gradlew \
+  :modules:domain:test :modules:application:test \
+  :modules:adapters:configuration:test :modules:adapters:emitters:support:test \
+  :modules:adapters:emitters:spring-ai-1:fastTest \
+  :modules:adapters:emitters:spring-ai-2:fastTest \
+  :modules:adapters:validation:fastTest :modules:bootstrap:test :apps:cli:fastTest \
+  --no-daemon --non-interactive --rerun-tasks
+./gradlew :apps:web:test \
+  --tests '*WebMvcContractTest.preservesTheProfilesUploadAndPreviewApi' \
+  --tests '*HostedProfileControllerTest.exposesCanonicalProfilesInHostedMode' \
+  --tests '*StaticAssetContractTest' \
+  --no-daemon --non-interactive --rerun-tasks
+'''
+run_windows = '''
+for /f "delims=" %i in ('mise where java@17') do @set "GEN2SPRING_JAVA_17_HOME=%i"
+for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%i"
+call gradlew.bat :modules:domain:test :modules:application:test :modules:adapters:configuration:test :modules:adapters:emitters:support:test :modules:adapters:emitters:spring-ai-1:fastTest :modules:adapters:emitters:spring-ai-2:fastTest :modules:adapters:validation:fastTest :modules:bootstrap:test :apps:cli:fastTest --no-daemon --non-interactive --rerun-tasks
+if errorlevel 1 exit /b %errorlevel%
+call gradlew.bat :apps:web:test --tests "*WebMvcContractTest.preservesTheProfilesUploadAndPreviewApi" --tests "*HostedProfileControllerTest.exposesCanonicalProfilesInHostedMode" --tests "*StaticAssetContractTest" --no-daemon --non-interactive --rerun-tasks
+'''
+
+[tasks."generator:acceptance"]
+description = "Run full POSIX or representative Windows generated project acceptance"
+run = '''
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
+export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
+./gradlew :apps:cli:integrationTest \
+  --tests '*P1GenerationIntegrationTest.installedCliValidatesTheJavaProfileMatrixDeterministically' \
+  --tests '*P1GenerationIntegrationTest.mavenMvcProfilesValidateAndArchiveDeterministically' \
+  --tests '*P1GenerationIntegrationTest.webfluxAsyncProfilesValidateAndArchiveDeterministically' \
+  --no-daemon --non-interactive --rerun-tasks
+'''
+run_windows = '''
+for /f "delims=" %i in ('mise where java@17') do @set "GEN2SPRING_JAVA_17_HOME=%i"
+for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%i"
+call gradlew.bat :apps:cli:integrationTest --tests "*P1GenerationIntegrationTest.windowsRepresentativeProfilesValidateAcrossTargetAxes" --no-daemon --non-interactive --rerun-tasks
+'''
+
+[tasks.dev]
 description = "Run the local Spring Boot operation editor"
 run = '''
 export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"

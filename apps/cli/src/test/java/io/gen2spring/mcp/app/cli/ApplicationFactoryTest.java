@@ -21,12 +21,12 @@ class ApplicationFactoryTest {
     Path tempDir;
 
     @Test
-    void compositionRootListsFourProfilesAndGeneratesTheSpringAi1ProjectSources() throws Exception {
+    void compositionRootListsTwelveProfilesAndGeneratesTheSpringAi1ProjectSources() throws Exception {
         CliApplication application = ApplicationFactory.create();
         Result profiles = run(application, "profiles");
 
         assertEquals(0, profiles.exitCode());
-        assertEquals(4, JSON.readTree(profiles.stdout()).path("profiles").size());
+        assertEquals(12, JSON.readTree(profiles.stdout()).path("profiles").size());
 
         Path safeTemp = tempDir.toRealPath();
         Path specification = Files.writeString(safeTemp.resolve("weather.yaml"), """

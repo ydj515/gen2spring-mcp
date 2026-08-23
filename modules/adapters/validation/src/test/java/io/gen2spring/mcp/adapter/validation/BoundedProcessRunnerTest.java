@@ -3,6 +3,7 @@ package io.gen2spring.mcp.adapter.validation;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,10 +13,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.stream.Stream;
@@ -31,12 +36,19 @@ class BoundedProcessRunnerTest {
     @Test
     void terminatesAProcessAndItsDescendantAfterTheConfiguredTimeout() throws Exception {
         Path childPid = tempDir.resolve("child.pid");
+        BoundedProcessRunner.RunningProcess process = runner.start(
+                javaCommand("child", childPid.toString()), tempDir, 64 * 1024);
+        long pid;
+        boolean timedOut;
 
-        var result = runner.run(javaCommand("child", childPid.toString()), tempDir, Duration.ofMillis(300), 64 * 1024);
+        try (process) {
+            pid = waitForPid(childPid);
+            timedOut = !process.awaitExit(Duration.ofMillis(300));
+        }
+        var result = process.result(timedOut);
 
         assertTrue(result.timedOut());
         assertFalse(result.processAlive());
-        long pid = waitForPid(childPid);
         assertTrue(waitUntilDead(pid), "descendant must not survive timeout cleanup");
     }
 
@@ -64,14 +76,23 @@ class BoundedProcessRunnerTest {
     @Test
     void collectorFailureTerminatesTheProcess() throws Exception {
         Path pidFile = tempDir.resolve("collector.pid");
+        IOException collectorFailure = new IOException("synthetic collector failure");
         var failing = new BoundedProcessRunner((input, limit) -> {
-            Thread.sleep(300);
-            throw new IOException("synthetic collector failure");
+            waitForPid(pidFile);
+            throw collectorFailure;
         });
 
-        assertThrows(IOException.class,
-                () -> failing.run(javaCommand("pid", pidFile.toString()), tempDir, Duration.ofSeconds(10), 1024));
+        IOException failure = null;
+        try {
+            failing.run(javaCommand("pid", pidFile.toString()), tempDir, Duration.ofSeconds(10), 1024);
+        } catch (IOException exception) {
+            failure = exception;
+        }
 
+        assertTrue(failure != null, "collector failure must be propagated");
+        assertSame(collectorFailure, failure.getCause());
+        assertEquals(0, failure.getSuppressed().length);
+        assertNoRepeatedThrowableReferences(failure);
         assertTrue(waitUntilDead(waitForPid(pidFile)));
     }
 
@@ -152,6 +173,22 @@ class BoundedProcessRunnerTest {
         assertEquals(System.getenv("PATH"), readProbeOutput(output).get("PATH"));
     }
 
+    @Test
+    void buildEnvironmentOverlaysJavaHomeAndKeepsTheParentPath() throws Exception {
+        Path output = tempDir.resolve("build-environment.txt");
+
+        BoundedProcessRunner.Result result = runner.runWithEnvironmentOverlay(
+                probeCommand(output, "JAVA_HOME", "PATH"),
+                tempDir,
+                Duration.ofSeconds(3),
+                8_192,
+                Map.of("JAVA_HOME", "/validated/java-home"));
+
+        assertEquals(0, result.exitCode());
+        assertEquals("/validated/java-home", readProbeOutput(output).get("JAVA_HOME"));
+        assertEquals(System.getenv("PATH"), readProbeOutput(output).get("PATH"));
+    }
+
     private List<String> javaCommand(String... args) {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         List<String> command = new ArrayList<>(List.of(
@@ -204,6 +241,20 @@ class BoundedProcessRunnerTest {
             return !handle.isAlive();
         } catch (java.util.concurrent.TimeoutException exception) {
             return false;
+        }
+    }
+
+    private void assertNoRepeatedThrowableReferences(Throwable root) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<Throwable> pending = new ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            Throwable current = pending.removeFirst();
+            assertTrue(visited.add(current), "exception graph must not contain repeated throwable references");
+            if (current.getCause() != null) {
+                pending.addLast(current.getCause());
+            }
+            Collections.addAll(pending, current.getSuppressed());
         }
     }
 }

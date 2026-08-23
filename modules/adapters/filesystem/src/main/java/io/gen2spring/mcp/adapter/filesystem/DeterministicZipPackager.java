@@ -247,7 +247,9 @@ public final class DeterministicZipPackager implements ArtifactPackager {
                 throw failure("Generated project archive contains an unsupported file entry");
             }
             String relative = portableRelativePath(root.relativize(path));
-            int unixMode = relative.equals("gradlew") ? EXECUTABLE_FILE_MODE : REGULAR_FILE_MODE;
+            int unixMode = relative.equals("gradlew") || relative.equals("mvnw")
+                    ? EXECUTABLE_FILE_MODE
+                    : REGULAR_FILE_MODE;
             return new ProjectEntry(
                     relative, path, attributes.size(), StablePathIdentity.capture(path), unixMode);
         } catch (IOException exception) {

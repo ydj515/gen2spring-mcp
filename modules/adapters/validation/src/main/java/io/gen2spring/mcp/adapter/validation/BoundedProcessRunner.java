@@ -10,11 +10,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,8 +44,23 @@ public final class BoundedProcessRunner {
 
     public Result run(List<String> command, Path workingRoot, Duration timeout, int maxBytes)
             throws IOException, InterruptedException {
+        return runStarted(start(command, workingRoot, maxBytes), timeout);
+    }
+
+    public Result runWithEnvironmentOverlay(
+            List<String> command,
+            Path workingRoot,
+            Duration timeout,
+            int maxBytes,
+            Map<String, String> environmentOverrides) throws IOException, InterruptedException {
+        ProcessBuilder builder = processBuilder(command, workingRoot);
+        builder.environment().putAll(validatedEnvironment(environmentOverrides));
+        return runStarted(start(builder, maxBytes), timeout);
+    }
+
+    private Result runStarted(RunningProcess process, Duration timeout)
+            throws IOException, InterruptedException {
         requirePositive(timeout, "timeout");
-        RunningProcess process = start(command, workingRoot, maxBytes);
         Throwable primary = null;
         boolean timedOut = false;
         try {
@@ -57,7 +76,7 @@ public final class BoundedProcessRunner {
                 process.close();
             } catch (IOException | RuntimeException | Error cleanupFailure) {
                 if (primary != null) {
-                    primary.addSuppressed(cleanupFailure);
+                    addSuppressedSafely(primary, cleanupFailure);
                 } else {
                     throw cleanupFailure;
                 }
@@ -169,6 +188,36 @@ public final class BoundedProcessRunner {
         }
     }
 
+    private static void addSuppressedSafely(Throwable primary, Throwable suppressed) {
+        if (exceptionGraphsOverlap(primary, suppressed)) {
+            return;
+        }
+        primary.addSuppressed(suppressed);
+    }
+
+    private static boolean exceptionGraphsOverlap(Throwable primary, Throwable cleanup) {
+        Set<Throwable> primaryGraph = throwableGraph(primary);
+        Set<Throwable> cleanupGraph = throwableGraph(cleanup);
+        return cleanupGraph.stream().anyMatch(primaryGraph::contains);
+    }
+
+    private static Set<Throwable> throwableGraph(Throwable root) {
+        Set<Throwable> graph = Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<Throwable> pending = new ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            Throwable current = pending.removeFirst();
+            if (!graph.add(current)) {
+                continue;
+            }
+            if (current.getCause() != null) {
+                pending.addLast(current.getCause());
+            }
+            Collections.addAll(pending, current.getSuppressed());
+        }
+        return graph;
+    }
+
     @FunctionalInterface
     interface OutputCollector {
         StreamSummary collect(InputStream input, int maxBytes) throws Exception;
@@ -264,7 +313,7 @@ public final class BoundedProcessRunner {
                     stdoutSummary, stderrSummary);
             if (!failures.isEmpty()) {
                 Throwable first = failures.getFirst();
-                failures.stream().skip(1).forEach(first::addSuppressed);
+                failures.stream().skip(1).forEach(failure -> addSuppressedSafely(first, failure));
                 if (first instanceof IOException exception) {
                     throw exception;
                 }

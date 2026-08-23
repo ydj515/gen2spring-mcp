@@ -1,3 +1,4 @@
 * text=auto eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
+modules/adapters/emitters/support/src/main/resources/wrapper/maven/mvnw.cmd text eol=lf

@@ -68,6 +68,35 @@ class ValidationHostPlatformTest {
     }
 
     @Test
+    void preservesTheValidatedMavenSnapshotDirectoryInWindowsCommands() throws Exception {
+        Path systemRoot = windowsSystemRoot();
+        ValidationHostPlatform windows = ValidationHostPlatform.forHost(
+                "Windows Server 2025", Map.of("SystemRoot", systemRoot.toString()));
+        Path snapshot = tempDir.resolve("private-workspace")
+                .resolve(".mvnw-validated-123")
+                .resolve("mvnw.cmd");
+
+        assertEquals(List.of(
+                systemRoot.resolve("System32/cmd.exe").toString(),
+                "/D", "/E:OFF", "/V:OFF", "/S", "/C",
+                "call .mvnw-validated-123\\mvnw.cmd test package --batch-mode"),
+                windows.buildCommand(snapshot, List.of("test", "package", "--batch-mode")));
+        assertFalse(windows.buildCommand(snapshot, List.of("test")).getLast().contains("private-workspace"));
+    }
+
+    @Test
+    void rejectsUnvalidatedNestedWindowsWrapperPaths() throws Exception {
+        ValidationHostPlatform windows = ValidationHostPlatform.forHost(
+                "Windows 11", Map.of("SystemRoot", windowsSystemRoot().toString()));
+        Path snapshot = tempDir.resolve(".mvnw-unvalidated-123").resolve("mvnw.cmd");
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> windows.buildCommand(snapshot, List.of("test")));
+
+        assertEquals(SAFE_FAILURE, failure.getMessage());
+    }
+
+    @Test
     void exposesExactWrapperAndJavaExecutableContracts() throws Exception {
         ValidationHostPlatform posix = ValidationHostPlatform.forHost("Linux", Map.of());
         ValidationHostPlatform windows = ValidationHostPlatform.forHost(

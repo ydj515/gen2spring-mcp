@@ -14,6 +14,8 @@ class CompatibilityProfileTest {
         assertEquals("spring-ai-2.0-java21-mvc-streamable", profile.id());
         assertEquals("spring-ai-2-v3", profile.templateVersion());
         assertEquals("0.3.0", profile.runtimeVersion());
+        assertEquals("9.6.1", profile.buildToolchain().distributionVersion());
+        assertEquals("9.6.1", profile.buildToolchain().wrapperVersion());
         assertEquals("9.6.1", profile.gradleVersion());
         assertEquals(
                 "eclipse-temurin:21.0.11_10-jre-noble@sha256:"

@@ -68,8 +68,23 @@ class P1GenerationIntegrationTest {
             "3.5.16",
             "1.1.8",
             17,
+            "GRADLE_KOTLIN",
+            "9.6.1",
+            "9.6.1",
             JAVA_17_IMAGE,
             "config/weather-generation-spring-ai1-java17.yaml");
+    private static final ProfileCase SPRING_AI_1_JAVA_17_MAVEN = new ProfileCase(
+            "spring-ai-1.1-java17-maven-mvc-streamable",
+            "generator-spring-ai-1",
+            "spring-ai-1-v2",
+            "3.5.16",
+            "1.1.8",
+            17,
+            "MAVEN",
+            "3.9.16",
+            "3.3.4",
+            JAVA_17_IMAGE,
+            "config/weather-generation-spring-ai1-java17-maven.yaml");
     private static final ProfileCase SPRING_AI_1_JAVA_21 = new ProfileCase(
             "spring-ai-1.1-java21-mvc-streamable",
             "generator-spring-ai-1",
@@ -77,8 +92,23 @@ class P1GenerationIntegrationTest {
             "3.5.16",
             "1.1.8",
             21,
+            "GRADLE_KOTLIN",
+            "9.6.1",
+            "9.6.1",
             JAVA_21_IMAGE,
             "config/weather-generation-spring-ai1-java21.yaml");
+    private static final ProfileCase SPRING_AI_1_JAVA_21_MAVEN = new ProfileCase(
+            "spring-ai-1.1-java21-maven-mvc-streamable",
+            "generator-spring-ai-1",
+            "spring-ai-1-v2",
+            "3.5.16",
+            "1.1.8",
+            21,
+            "MAVEN",
+            "3.9.16",
+            "3.3.4",
+            JAVA_21_IMAGE,
+            "config/weather-generation-spring-ai1-java21-maven.yaml");
     private static final ProfileCase SPRING_AI_2_JAVA_17 = new ProfileCase(
             "spring-ai-2.0-java17-mvc-streamable",
             "generator-spring-ai-2",
@@ -86,8 +116,23 @@ class P1GenerationIntegrationTest {
             "4.1.0",
             "2.0.0",
             17,
+            "GRADLE_KOTLIN",
+            "9.6.1",
+            "9.6.1",
             JAVA_17_IMAGE,
             "config/weather-generation-java17.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_17_MAVEN = new ProfileCase(
+            "spring-ai-2.0-java17-maven-mvc-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            17,
+            "MAVEN",
+            "3.9.16",
+            "3.3.4",
+            JAVA_17_IMAGE,
+            "config/weather-generation-spring-ai2-java17-maven.yaml");
     private static final ProfileCase SPRING_AI_2_JAVA_21 = new ProfileCase(
             "spring-ai-2.0-java21-mvc-streamable",
             "generator-spring-ai-2",
@@ -95,13 +140,102 @@ class P1GenerationIntegrationTest {
             "4.1.0",
             "2.0.0",
             21,
+            "GRADLE_KOTLIN",
+            "9.6.1",
+            "9.6.1",
             JAVA_21_IMAGE,
             "config/weather-generation.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_21_MAVEN = new ProfileCase(
+            "spring-ai-2.0-java21-maven-mvc-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            21,
+            "MAVEN",
+            "3.9.16",
+            "3.3.4",
+            JAVA_21_IMAGE,
+            "config/weather-generation-spring-ai2-java21-maven.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_17_WEBFLUX = new ProfileCase(
+            "spring-ai-2.0-java17-webflux-async-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            17,
+            "GRADLE_KOTLIN",
+            "9.6.1",
+            "9.6.1",
+            JAVA_17_IMAGE,
+            "config/weather-generation-java17.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_17_MAVEN_WEBFLUX = new ProfileCase(
+            "spring-ai-2.0-java17-maven-webflux-async-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            17,
+            "MAVEN",
+            "3.9.16",
+            "3.3.4",
+            JAVA_17_IMAGE,
+            "config/weather-generation-spring-ai2-java17-maven.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_21_WEBFLUX = new ProfileCase(
+            "spring-ai-2.0-java21-webflux-async-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            21,
+            "GRADLE_KOTLIN",
+            "9.6.1",
+            "9.6.1",
+            JAVA_21_IMAGE,
+            "config/weather-generation.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX = new ProfileCase(
+            "spring-ai-2.0-java21-maven-webflux-async-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            21,
+            "MAVEN",
+            "3.9.16",
+            "3.3.4",
+            JAVA_21_IMAGE,
+            "config/weather-generation-spring-ai2-java21-maven.yaml");
     private static final List<ProfileCase> PROFILE_CASES = List.of(
             SPRING_AI_1_JAVA_17,
             SPRING_AI_1_JAVA_21,
             SPRING_AI_2_JAVA_17,
             SPRING_AI_2_JAVA_21);
+    private static final List<ProfileCase> MAVEN_PROFILE_CASES = List.of(
+            SPRING_AI_1_JAVA_17_MAVEN,
+            SPRING_AI_1_JAVA_21_MAVEN,
+            SPRING_AI_2_JAVA_17_MAVEN,
+            SPRING_AI_2_JAVA_21_MAVEN);
+    private static final List<ProfileCase> WEBFLUX_PROFILE_CASES = List.of(
+            SPRING_AI_2_JAVA_17_MAVEN_WEBFLUX,
+            SPRING_AI_2_JAVA_17_WEBFLUX,
+            SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX,
+            SPRING_AI_2_JAVA_21_WEBFLUX);
+    private static final List<ProfileCase> ALL_PROFILE_CASES = List.of(
+            SPRING_AI_1_JAVA_17_MAVEN,
+            SPRING_AI_1_JAVA_17,
+            SPRING_AI_1_JAVA_21_MAVEN,
+            SPRING_AI_1_JAVA_21,
+            SPRING_AI_2_JAVA_17_MAVEN,
+            SPRING_AI_2_JAVA_17_MAVEN_WEBFLUX,
+            SPRING_AI_2_JAVA_17,
+            SPRING_AI_2_JAVA_17_WEBFLUX,
+            SPRING_AI_2_JAVA_21_MAVEN,
+            SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX,
+            SPRING_AI_2_JAVA_21,
+            SPRING_AI_2_JAVA_21_WEBFLUX);
+    private static final List<ProfileCase> WINDOWS_REPRESENTATIVE_PROFILE_CASES = List.of(
+            SPRING_AI_1_JAVA_17,
+            SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX);
     private static final Set<String> REQUIRED_OUTPUTS = Set.of(
             ".dockerignore",
             ".gitignore",
@@ -191,6 +325,70 @@ class P1GenerationIntegrationTest {
                 .count());
         for (ProfileCase profile : PROFILE_CASES) {
             assertIndependentLiveMcpContract(firstByProfile.get(profile.id()), profile, targetJavaHomes);
+        }
+    }
+
+    @Test
+    void mavenMvcProfilesValidateAndArchiveDeterministically() throws Exception {
+        Path specification = resource("openapi/weather-api.yaml");
+        targetJavaHomes();
+        assertInstalledProfileMatrix();
+
+        for (ProfileCase profile : MAVEN_PROFILE_CASES) {
+            Path configuration = resource(profile.configurationResource());
+            String outputName = "maven-weather-mcp-server-" + profile.id();
+            GenerationResult first = generate(specification, configuration, tempDir.resolve(outputName));
+            GenerationResult second = generate(
+                    specification, configuration, tempDir.resolve(outputName + "-second"));
+
+            assertMavenReleaseContract(first, specification, profile);
+            assertMavenReleaseContract(second, specification, profile);
+            assertEquals(first.sourceChecksum(), second.sourceChecksum(), profile.id());
+            assertEquals(first.manifest(), second.manifest(), profile.id());
+            assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
+            assertValidationReportsEqualExceptMeasurements(first.report(), second.report());
+        }
+    }
+
+    @Test
+    void webfluxAsyncProfilesValidateAndArchiveDeterministically() throws Exception {
+        Path specification = resource("openapi/weather-api.yaml");
+        targetJavaHomes();
+        assertInstalledProfileMatrix();
+
+        for (ProfileCase profile : WEBFLUX_PROFILE_CASES) {
+            Path configuration = configurationFor(profile);
+            String outputName = "webflux-weather-mcp-server-" + profile.id();
+            GenerationResult first = generate(specification, configuration, tempDir.resolve(outputName));
+            GenerationResult second = generate(
+                    specification, configuration, tempDir.resolve(outputName + "-second"));
+
+            assertWebFluxReleaseContract(first, profile);
+            assertWebFluxReleaseContract(second, profile);
+            assertEquals(first.sourceChecksum(), second.sourceChecksum(), profile.id());
+            assertEquals(first.manifest(), second.manifest(), profile.id());
+            assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
+            assertValidationReportsEqualExceptMeasurements(first.report(), second.report());
+        }
+    }
+
+    @Test
+    void windowsRepresentativeProfilesValidateAcrossTargetAxes() throws Exception {
+        Path specification = resource("openapi/weather-api.yaml");
+        targetJavaHomes();
+        assertInstalledProfileMatrix();
+
+        for (ProfileCase profile : WINDOWS_REPRESENTATIVE_PROFILE_CASES) {
+            GenerationResult result = generate(
+                    specification,
+                    configurationFor(profile),
+                    tempDir.resolve("windows-representative-" + profile.id()));
+
+            if (profile.webFlux()) {
+                assertWebFluxReleaseContract(result, profile);
+            } else {
+                assertReleaseContract(result, specification, profile);
+            }
         }
     }
 
@@ -455,25 +653,43 @@ class P1GenerationIntegrationTest {
         assertEquals(0, result.exitCode(), result.stderr());
         assertEquals("", result.stderr());
         JsonNode installedProfiles = JSON.readTree(result.stdout()).path("profiles");
-        assertEquals(PROFILE_CASES.size(), installedProfiles.size());
-        for (int index = 0; index < PROFILE_CASES.size(); index++) {
-            ProfileCase expected = PROFILE_CASES.get(index);
+        assertEquals(ALL_PROFILE_CASES.size(), installedProfiles.size());
+        for (int index = 0; index < ALL_PROFILE_CASES.size(); index++) {
+            ProfileCase expected = ALL_PROFILE_CASES.get(index);
             JsonNode actual = installedProfiles.get(index);
             assertEquals(expected.id(), actual.path("id").asText());
             assertEquals(expected.generatorModule(), actual.path("generatorModule").asText());
             assertEquals(expected.templateVersion(), actual.path("templateVersion").asText());
             assertEquals("0.3.0", actual.path("runtimeVersion").asText());
-            assertEquals("9.6.1", actual.path("gradleVersion").asText());
+            assertEquals(expected.buildTool(), actual.path("buildTool").path("type").asText());
+            assertEquals(expected.distributionVersion(),
+                    actual.path("buildTool").path("distributionVersion").asText());
+            assertEquals(expected.wrapperVersion(), actual.path("buildTool").path("wrapperVersion").asText());
+            if ("GRADLE_KOTLIN".equals(expected.buildTool())) {
+                assertEquals(expected.distributionVersion(), actual.path("gradleVersion").asText());
+            } else {
+                assertFalse(actual.has("gradleVersion"));
+            }
             assertEquals(expected.containerImage(), actual.path("containerImage").asText());
             assertEquals(expected.javaFeature(), actual.path("target").path("javaVersion").asInt());
             assertEquals(expected.springBootVersion(),
                     actual.path("target").path("springBootVersion").asText());
             assertEquals(expected.springAiVersion(), actual.path("target").path("springAiVersion").asText());
-            assertEquals("GRADLE_KOTLIN", actual.path("target").path("buildTool").asText());
-            assertEquals("MVC", actual.path("target").path("webStack").asText());
-            assertEquals("SYNC", actual.path("target").path("programmingModel").asText());
+            assertEquals(expected.buildTool(), actual.path("target").path("buildTool").asText());
+            assertEquals(expected.webStack(), actual.path("target").path("webStack").asText());
+            assertEquals(expected.programmingModel(), actual.path("target").path("programmingModel").asText());
             assertEquals("STREAMABLE_HTTP", actual.path("target").path("transport").asText());
         }
+    }
+
+    private Path configurationFor(ProfileCase profile) throws IOException, URISyntaxException {
+        Path source = resource(profile.configurationResource());
+        if (!profile.webFlux()) {
+            return source;
+        }
+        String configuration = Files.readString(source, UTF_8)
+                .replaceFirst("(?m)^targetProfileId: \\S+$", "targetProfileId: " + profile.id());
+        return Files.writeString(tempDir.resolve(profile.id() + ".yaml"), configuration, UTF_8);
     }
 
     private void assertReleaseContract(
@@ -630,6 +846,110 @@ class P1GenerationIntegrationTest {
             assertFalse(path.equals(".gradle") || path.startsWith(".gradle/"));
             assertFalse(path.equals("process-logs") || path.startsWith("process-logs/"));
         });
+    }
+
+    private void assertMavenReleaseContract(
+            GenerationResult result,
+            Path specification,
+            ProfileCase profile) throws Exception {
+        assertTrue(Files.isDirectory(result.projectRoot()));
+        assertTrue(Files.isRegularFile(result.archive()));
+        Path wrapper = result.projectRoot().resolve(isWindows() ? "mvnw.cmd" : "mvnw");
+        assertTrue(Files.isRegularFile(wrapper));
+        if (!isWindows() && Files.getFileStore(result.projectRoot()).supportsFileAttributeView("posix")) {
+            assertTrue(Files.getPosixFilePermissions(result.projectRoot().resolve("mvnw"))
+                    .contains(PosixFilePermission.OWNER_EXECUTE));
+        }
+        assertTransientBuildOutputsAbsent(result.projectRoot());
+
+        Set<String> expectedOutputs = new TreeSet<>(REQUIRED_OUTPUTS);
+        expectedOutputs.removeAll(Set.of(
+                "build.gradle.kts",
+                "gradle.properties",
+                "gradle/wrapper/gradle-wrapper.jar",
+                "gradle/wrapper/gradle-wrapper.properties",
+                "gradlew",
+                "gradlew.bat",
+                "settings.gradle.kts"));
+        expectedOutputs.addAll(Set.of(
+                ".mvn/wrapper/maven-wrapper.properties", "mvnw", "mvnw.cmd", "pom.xml"));
+        Set<String> outputPaths = regularFiles(result.projectRoot());
+        assertEquals(expectedOutputs, outputPaths);
+        assertEquals(outputPaths, result.archiveEntries().keySet());
+        assertEquals(0755, centralDirectoryMode(Files.readAllBytes(result.archive()), "mvnw"));
+        assertArrayEquals(Files.readAllBytes(specification),
+                Files.readAllBytes(result.projectRoot().resolve("openapi/source.yaml")));
+
+        JsonNode manifest = result.manifest();
+        assertEquals(profile.id(), manifest.path("targetProfileId").asText());
+        assertEquals(profile.javaFeature(), manifest.path("javaVersion").asInt());
+        assertEquals("MAVEN", manifest.path("buildTool").path("type").asText());
+        assertEquals("3.9.16", manifest.path("buildTool").path("distributionVersion").asText());
+        assertEquals("3.3.4", manifest.path("buildTool").path("wrapperVersion").asText());
+        assertFalse(manifest.has("gradleVersion"));
+        assertEquals(result.sourceChecksum(), manifest.path("sourceChecksum").asText());
+        assertEquals(independentSourceChecksum(result.projectRoot()), result.sourceChecksum());
+
+        JsonNode report = result.report();
+        assertEquals("VALIDATED", report.path("status").asText());
+        assertEquals(List.of(
+                "COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),
+                stageNames(report));
+        assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"),
+                report.path("stages").findValuesAsText("status"));
+
+        String pom = Files.readString(result.projectRoot().resolve("pom.xml"), UTF_8);
+        assertTrue(pom.contains("<maven.compiler.release>" + profile.javaFeature()
+                + "</maven.compiler.release>"));
+        assertTrue(pom.contains("<spring-ai.version>" + profile.springAiVersion()
+                + "</spring-ai.version>"));
+        assertTrue(Files.readString(result.projectRoot().resolve("README.md"), UTF_8)
+                .contains("- Maven 3.9.16 (Wrapper 3.3.4)"));
+        assertEquals("""
+                FROM %s
+                WORKDIR /app
+                COPY target/weather-mcp-server.jar /app/app.jar
+                USER 10001:10001
+                ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+                """.formatted(profile.containerImage()),
+                Files.readString(result.projectRoot().resolve("Dockerfile"), UTF_8));
+        assertFalse(outputPaths.stream().anyMatch(path -> path.startsWith("gradle")
+                || path.equals("build.gradle.kts") || path.equals("settings.gradle.kts")));
+    }
+
+    private void assertWebFluxReleaseContract(
+            GenerationResult result,
+            ProfileCase profile) throws Exception {
+        assertTrue(Files.isDirectory(result.projectRoot()));
+        assertTrue(Files.isRegularFile(result.archive()));
+        assertEquals(regularFiles(result.projectRoot()), result.archiveEntries().keySet());
+        assertEquals(profile.id(), result.manifest().path("targetProfileId").asText());
+        assertEquals(profile.buildTool(), result.manifest().path("buildTool").path("type").asText());
+        assertEquals("VALIDATED", result.report().path("status").asText());
+        assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"),
+                result.report().path("stages").findValuesAsText("status"));
+        assertEquals(List.of(TOOL_NAME), result.report().path("tools").findValuesAsText("name"));
+
+        Path project = result.projectRoot();
+        assertTrue(Files.isRegularFile(project.resolve(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolSpecifications.java")));
+        assertFalse(Files.exists(project.resolve(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java")));
+        assertFalse(Files.exists(project.resolve(
+                "src/main/java/com/example/weather/runtime/ToolArgumentContext.java")));
+        String applicationYaml = Files.readString(project.resolve("src/main/resources/application.yml"), UTF_8);
+        assertTrue(applicationYaml.contains("type: ASYNC"), applicationYaml);
+        assertTrue(applicationYaml.contains("protocol: STREAMABLE"), applicationYaml);
+        String build = Files.readString(project.resolve(
+                "MAVEN".equals(profile.buildTool()) ? "pom.xml" : "build.gradle.kts"), UTF_8);
+        assertTrue(build.contains("spring-ai-starter-mcp-server-webflux"), build);
+        assertTrue(build.contains("spring-boot-starter-webflux"), build);
+        assertFalse(build.contains("spring-ai-starter-mcp-server-webmvc"), build);
+        for (String source : mainSourceFiles(project).values()) {
+            assertFalse(source.contains("RestClient"), source);
+            assertFalse(source.contains(".block("), source);
+            assertFalse(source.contains("boundedElastic"), source);
+        }
     }
 
     private void assertEquivalentRepresentativeGeneration(GenerationResult result) {
@@ -1652,8 +1972,23 @@ class P1GenerationIntegrationTest {
             String springBootVersion,
             String springAiVersion,
             int javaFeature,
+            String buildTool,
+            String distributionVersion,
+            String wrapperVersion,
             String containerImage,
-            String configurationResource) {}
+            String configurationResource) {
+        boolean webFlux() {
+            return id.contains("-webflux-");
+        }
+
+        String webStack() {
+            return webFlux() ? "WEBFLUX" : "MVC";
+        }
+
+        String programmingModel() {
+            return webFlux() ? "ASYNC" : "SYNC";
+        }
+    }
 
     private record TargetJavaHomes(Path java17Home, Path java21Home) {}
 }

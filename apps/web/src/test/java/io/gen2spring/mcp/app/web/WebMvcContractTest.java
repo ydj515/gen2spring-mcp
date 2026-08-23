@@ -83,9 +83,18 @@ class WebMvcContractTest {
         mockMvc.perform(get("/api/profiles").with(localRequest()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType("application/json;charset=UTF-8"))
-                .andExpect(jsonPath("$.profiles.length()").value(4))
+                .andExpect(jsonPath("$.profiles.length()").value(12))
+                .andExpect(jsonPath("$.compatibilityNotices.length()").value(1))
+                .andExpect(jsonPath("$.compatibilityNotices[0].code")
+                        .value("SPRING_AI_1_WEBFLUX_ASYNC_DEFERRED"))
+                .andExpect(jsonPath("$.compatibilityNotices[0].affectedTarget.webStack")
+                        .value("WEBFLUX"))
                 .andExpect(jsonPath("$.profiles[0].id")
-                        .value("spring-ai-1.1-java17-mvc-streamable"));
+                        .value("spring-ai-1.1-java17-maven-mvc-streamable"))
+                .andExpect(jsonPath("$.profiles[0].buildTool.type").value("MAVEN"))
+                .andExpect(jsonPath("$.profiles[0].buildTool.distributionVersion").value("3.9.16"))
+                .andExpect(jsonPath("$.profiles[0].buildTool.wrapperVersion").value("3.3.4"))
+                .andExpect(jsonPath("$.profiles[0].gradleVersion").doesNotExist());
 
         JsonNode uploaded = json.readTree(mockMvc.perform(post("/api/specifications")
                         .with(localRequest())
@@ -118,6 +127,9 @@ class WebMvcContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.profile.id")
                         .value("spring-ai-2.0-java21-mvc-streamable"))
+                .andExpect(jsonPath("$.profile.buildTool.type").value("GRADLE_KOTLIN"))
+                .andExpect(jsonPath("$.profile.buildTool.distributionVersion").value("9.6.1"))
+                .andExpect(jsonPath("$.profile.gradleVersion").value("9.6.1"))
                 .andExpect(jsonPath("$.tools[0].name").value("weather_get_forecast"))
                 .andExpect(content().string(not(containsString("representative-private-value"))));
     }

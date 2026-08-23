@@ -42,6 +42,19 @@ class LocalOperationEditorIntegrationTest {
     private static final List<String> STAGES = List.of(
             "ANALYZE", "GENERATE", "COMPILE", "APPLICATION_CONTEXT",
             "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL", "PACKAGE");
+    private static final List<String> PROFILE_IDS = List.of(
+            "spring-ai-1.1-java17-maven-mvc-streamable",
+            "spring-ai-1.1-java17-mvc-streamable",
+            "spring-ai-1.1-java21-maven-mvc-streamable",
+            "spring-ai-1.1-java21-mvc-streamable",
+            "spring-ai-2.0-java17-maven-mvc-streamable",
+            "spring-ai-2.0-java17-maven-webflux-async-streamable",
+            "spring-ai-2.0-java17-mvc-streamable",
+            "spring-ai-2.0-java17-webflux-async-streamable",
+            "spring-ai-2.0-java21-maven-mvc-streamable",
+            "spring-ai-2.0-java21-maven-webflux-async-streamable",
+            "spring-ai-2.0-java21-mvc-streamable",
+            "spring-ai-2.0-java21-webflux-async-streamable");
     private static final Duration START_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration JOB_TIMEOUT = Duration.ofMinutes(3);
     private static final Duration POLL_INTERVAL = Duration.ofMillis(100);
@@ -52,6 +65,25 @@ class LocalOperationEditorIntegrationTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void profilesExposeAllTargetsAndTheCanonicalCompatibilityNotice() throws Exception {
+        Path bootJar = Path.of(System.getProperty("gen2springWeb.bootJar"));
+        String java17Home = requiredEnvironment("GEN2SPRING_JAVA_17_HOME");
+        String java21Home = requiredEnvironment("GEN2SPRING_JAVA_21_HOME");
+
+        try (InstalledServer server = InstalledServer.start(
+                bootJar, tempDir.toRealPath(), java17Home, java21Home)) {
+            URI base = server.awaitReady();
+            HttpResponse<byte[]> response = request(base, "/api/profiles", "GET", null, null, null);
+
+            assertEquals(200, response.statusCode());
+            JsonNode payload = JSON.readTree(response.body());
+            assertEquals(PROFILE_IDS, strings(payload.path("profiles"), "id"));
+            assertEquals(List.of("SPRING_AI_1_WEBFLUX_ASYNC_DEFERRED"),
+                    strings(payload.path("compatibilityNotices"), "code"));
+        }
+    }
 
     @Test
     void installedEditorGeneratesValidatesDownloadsAndDeletesAProject() throws Exception {
@@ -120,12 +152,13 @@ class LocalOperationEditorIntegrationTest {
 
             HttpResponse<byte[]> profiles = request(base, "/api/profiles", "GET", null, browser, null);
             assertEquals(200, profiles.statusCode());
-            assertEquals(List.of(
-                            "spring-ai-1.1-java17-mvc-streamable",
-                            "spring-ai-1.1-java21-mvc-streamable",
-                            "spring-ai-2.0-java17-mvc-streamable",
-                            "spring-ai-2.0-java21-mvc-streamable"),
-                    strings(JSON.readTree(profiles.body()).path("profiles"), "id"));
+            JsonNode profilePayload = JSON.readTree(profiles.body());
+            assertEquals(PROFILE_IDS,
+                    strings(profilePayload.path("profiles"), "id"));
+            assertEquals(List.of("SPRING_AI_1_WEBFLUX_ASYNC_DEFERRED"),
+                    strings(profilePayload.path("compatibilityNotices"), "code"));
+            assertEquals("https://github.com/spring-projects/spring-ai/issues/6274",
+                    profilePayload.path("compatibilityNotices").get(0).path("referenceUrl").textValue());
 
             HttpResponse<byte[]> upload = request(
                     base, "/api/specifications", "POST", specification, browser, "weather.yaml");

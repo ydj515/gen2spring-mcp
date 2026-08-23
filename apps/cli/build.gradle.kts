@@ -37,6 +37,37 @@ tasks.named<Test>("test") {
     )
 }
 
+val fastUnitTestSources = fileTree("src/test/java") {
+    include("**/*.java")
+    exclude("**/InstalledCliTest.java")
+}
+
+val verifyFastTestBoundary = tasks.register("verifyFastTestBoundary") {
+    group = "verification"
+    description = "Verify CLI fast tests cannot launch generated project builds"
+    inputs.files(fastUnitTestSources)
+    doLast {
+        val forbiddenTokens = listOf("ProcessBuilder", "Runtime.getRuntime().exec(", "runGeneratedTests(")
+        val offenders = fastUnitTestSources.files
+            .filter { source -> forbiddenTokens.any(source.readText()::contains) }
+            .map { projectDir.toPath().relativize(it.toPath()).toString() }
+            .sorted()
+        check(offenders.isEmpty()) {
+            "CLI fast test sources must not launch generated builds: ${offenders.joinToString()}"
+        }
+    }
+}
+
+tasks.register<Test>("fastTest") {
+    group = "verification"
+    description = "Run CLI unit tests without installed or generated project subprocesses"
+    dependsOn(verifyFastTestBoundary)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    exclude("**/InstalledCliTest.class")
+}
+
 testing {
     suites {
         register<JvmTestSuite>("integrationTest") {

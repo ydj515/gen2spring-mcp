@@ -6,7 +6,8 @@ OpenAPI 3.0.x와 3.1.x operation을 실행 가능한 Spring AI Streamable HTTP M
 
 ## 주요 기능
 
-- Spring AI 1.1 / 2.0과 Java 17 / 21 조합 지원
+- Spring AI 1.1 / 2.0, Java 17 / 21, Gradle / Maven 조합 지원
+- MVC Sync와 Spring AI 2.0 WebFlux Async Streamable HTTP 생성
 - Spring Boot + Thymeleaf 기반 로컬 operation editor와 CLI 제공
 - Tool schema, request binding, response normalization, retry·pagination 생성
 - 최종 Tool IR 기반의 결정적 `RUNTIME_METADATA.json` 생성
@@ -71,17 +72,17 @@ CLI 설정, 검증 단계, 종료 코드, 생성 산출물과 runtime 계약은
 
 ## 지원 profile
 
-`profiles`는 아래 네 항목을 ID 순서대로 항상 같은 JSON으로 출력한다.
+`profiles`는 아래 조합을 펼친 12개 항목을 ID 순서대로 출력한다.
 
-| Profile ID | Java | Spring Boot | Spring AI |
-| --- | ---: | ---: | ---: |
-| `spring-ai-1.1-java17-mvc-streamable` | 17 | 3.5.16 | 1.1.8 |
-| `spring-ai-1.1-java21-mvc-streamable` | 21 | 3.5.16 | 1.1.8 |
-| `spring-ai-2.0-java17-mvc-streamable` | 17 | 4.1.0 | 2.0.0 |
-| `spring-ai-2.0-java21-mvc-streamable` | 21 | 4.1.0 | 2.0.0 |
+| Spring AI | Java | Build tool | Web stack | Model | 개수 |
+| --- | --- | --- | --- | --- | ---: |
+| 1.1.8 | 17, 21 | Gradle Kotlin DSL, Maven | MVC | Sync | 4 |
+| 2.0.0 | 17, 21 | Gradle Kotlin DSL, Maven | MVC | Sync | 4 |
+| 2.0.0 | 17, 21 | Gradle Kotlin DSL, Maven | WebFlux | Async | 4 |
 
-Java 21 기본 profile은 `spring-ai-2.0-java21-mvc-streamable`이다. 모든 profile은
-Gradle 9.6.1, Spring MVC Sync, Streamable HTTP `/mcp`를 사용한다.
+모두 Streamable HTTP `/mcp`를 사용한다. Java 21 기본 profile은
+`spring-ai-2.0-java21-mvc-streamable`이다. Spring AI 1.1 WebFlux Async는 upstream transport 결함 때문에
+보류하며, 사유와 전환 조건은 [제품 요구사항](docs/prd.md#p2-생성-대상-확장-완료)에 정리한다.
 
 ## 생성 프로젝트 소스 구조
 
@@ -97,12 +98,13 @@ src/main/java/{packageName}/
 │   │   └── {Domain}Operations.java
 │   └── tool/                             # MCP 도구 진입점 및 ToolSpecification 빈 등록
 │       ├── {Domain}McpTools.java
-│       └── {Domain}McpToolCallbacks.java
+│       └── {Domain}McpToolCallbacks.java  # MVC Sync
+│           또는 {Domain}McpToolSpecifications.java  # WebFlux Async
 └── runtime/                              # 프로덕션 안정성 보장 엔진
-    ├── OpenApiOperationExecutor.java    # RestClient 호출, 타임아웃, 큐/동시성, 1MB 크기 제한
+    ├── OpenApiOperationExecutor.java    # MVC RestClient 또는 WebFlux WebClient 실행 경계
     ├── ResponseNormalizer.java           # 응답 정규화 및 에러 포맷팅
     ├── RuntimeTelemetry.java             # Micrometer 메트릭 및 W3C 분산 추적
-    ├── ToolArgumentContext.java          # 파라미터 컨텍스트 전달
+    ├── ToolArgumentContext.java          # MVC Sync 파라미터 컨텍스트 전달
     └── RetryPolicy / PaginationPolicy    # 재시도 및 페이징 제어 (선택적 생성)
 ```
 
@@ -166,17 +168,15 @@ docs/                         사용자·제품·아키텍처 문서
 
 ## 개발과 검증
 
-전체 단위·통합 검증과 배포 산출물을 만들려면 다음 명령을 사용한다.
+빠른 생성기 계약 검증과 실제 생성 프로젝트 전체 검증은 분리한다.
 
 ```bash
-GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
-  mise exec -- ./gradlew clean test integrationTest \
-  :apps:cli:installDist :apps:web:bootJar \
-  --no-daemon --non-interactive
+mise run generator:test
+mise run generator:acceptance
 ```
 
-Gradle Wrapper JVM은 host의 Java 21로 시작될 수 있다. generated compile/test toolchain
-탐색만 verified target JDK로 제한하며, 애플리케이션은 target home의 Java로 기동한다.
+`generator:test`는 생성 프로젝트 내부 wrapper를 실행하지 않는다. `generator:acceptance`는 POSIX에서 12개
+프로필 전체를, Windows에서 Java 17 Gradle MVC와 Java 21 Maven WebFlux Async 대표 프로필을 검증한다.
 세부 JDK 경계와 Windows 동작은 사용자 가이드에 정리되어 있다.
 
 ## 문서
@@ -194,5 +194,5 @@ Gradle Wrapper JVM은 host의 Java 21로 시작될 수 있다. generated compile
 로컬 OpenAPI 3.0.x·3.1.x 파일, 주요 HTTP method, path/query/header parameter, JSON body,
 primitive·enum·array·object, non-recursive local `$ref`, bounded `allOf`·`oneOf`·`anyOf`와 multi-type union을
 지원한다. nullable parameter/body, 배열·조합 schema와 OpenAPI 3.1 `$ref` sibling에는 명시적인 안전 경계를
-적용한다. remote `$ref`, custom dialect, recursive/discriminator schema, Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
+적용한다. remote `$ref`, custom dialect, recursive/discriminator schema, SSE와 STDIO는 지원하지 않는다.
 정확한 serialization 및 validation 경계는 [사용자 가이드](docs/user-guide.md#지원-범위와-제한)를 참고한다.
