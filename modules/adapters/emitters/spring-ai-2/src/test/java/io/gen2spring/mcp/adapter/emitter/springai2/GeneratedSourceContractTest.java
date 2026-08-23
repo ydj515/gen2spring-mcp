@@ -3,6 +3,9 @@ package io.gen2spring.mcp.adapter.emitter.springai2;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.gen2spring.mcp.adapter.emitter.support.BuildProjectScaffoldRegistry;
+import io.gen2spring.mcp.application.port.outbound.GeneratedToolSources;
+import io.gen2spring.mcp.domain.error.GeneratorException;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,20 @@ class GeneratedSourceContractTest {
 
         assertThrows(UnsupportedOperationException.class,
                 () -> files.put("unexpected", new byte[0]));
+    }
+
+    @Test
+    void rejectsDuplicatePathsAcrossScaffoldAndGeneratedSources() {
+        var projectScaffolds = BuildProjectScaffoldRegistry.of(Map.of(
+                "GRADLE_KOTLIN", model -> Map.of("duplicate.txt", new byte[] {1})));
+        var generator = new SpringAi2ProjectGenerator(
+                context -> new GeneratedToolSources(Map.of("duplicate.txt", new byte[] {2})),
+                projectScaffolds);
+
+        GeneratorException failure = assertThrows(GeneratorException.class,
+                () -> generator.generate(JavaSourceRendererTest.contextWithWeatherTool()));
+
+        assertEquals("Generated project files contain duplicate paths", failure.safeMessage());
     }
 
     private Map<String, byte[]> generatedFiles() {

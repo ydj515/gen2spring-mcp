@@ -7,6 +7,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import io.gen2spring.mcp.adapter.emitter.support.GradleKotlinProjectScaffold;
+import io.gen2spring.mcp.adapter.emitter.support.ProjectScaffoldModel;
+import io.gen2spring.mcp.adapter.emitter.support.ProjectScaffoldModel.Dependency;
+import io.gen2spring.mcp.adapter.emitter.support.ProjectScaffoldModel.ProjectDocumentation;
+import io.gen2spring.mcp.adapter.emitter.support.ProjectScaffoldModel.Scope;
 import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
 import io.gen2spring.mcp.domain.error.GeneratorException;
@@ -17,8 +22,6 @@ import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.SecretBinding;
 import io.gen2spring.mcp.domain.tool.OutputKind;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -27,6 +30,10 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 public final class ProjectFileRenderer {
+    private static final String PROJECT_SUMMARY = """
+            Generated Spring AI MCP server. It exposes the selected OpenAPI operations as
+            deterministic MCP tools and invokes the configured provider over HTTP.
+            """.stripTrailing();
     private static final Pattern ARTIFACT_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
     private static final Pattern SECRET_PROPERTY = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,127}");
     private static final Pattern ENVIRONMENT_VARIABLE = Pattern.compile("[A-Z][A-Z0-9_]{0,127}");
@@ -37,6 +44,7 @@ public final class ProjectFileRenderer {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final CompatibilityProfile profile;
+    private final GradleKotlinProjectScaffold gradleScaffold;
 
     public ProjectFileRenderer(CompatibilityProfile profile) {
         if (!supports(profile)) {
@@ -44,69 +52,21 @@ public final class ProjectFileRenderer {
                     "The compatibility profile is not supported by the Spring AI 1 renderer");
         }
         this.profile = profile;
+        this.gradleScaffold = new GradleKotlinProjectScaffold();
     }
 
     public String buildGradle(ProjectCoordinates coordinates) {
         ProjectCoordinates safeCoordinates = requireCoordinates(coordinates);
-        var target = profile.target();
-        return """
-                plugins {
-                    java
-                    id(\"org.springframework.boot\") version \"%s\"
-                }
-
-                group = \"%s\"
-                version = \"0.1.0\"
-
-                repositories {
-                    mavenCentral()
-                }
-
-                java {
-                    toolchain {
-                        languageVersion = JavaLanguageVersion.of(%d)
-                    }
-                }
-
-                dependencies {
-                    implementation(platform(\"org.springframework.boot:spring-boot-dependencies:%s\"))
-                    implementation(platform(\"org.springframework.ai:spring-ai-bom:%s\"))
-                    implementation(\"org.springframework.ai:spring-ai-starter-mcp-server-webmvc\")
-                    implementation(\"org.springframework.boot:spring-boot-starter-web\")
-                    implementation(\"org.springframework.boot:spring-boot-starter-validation\")
-                    implementation(\"org.springframework.boot:spring-boot-starter-actuator\")
-                    implementation(\"io.micrometer:micrometer-registry-prometheus\")
-                    implementation(\"io.micrometer:micrometer-registry-otlp\")
-                    implementation(\"io.micrometer:micrometer-tracing-bridge-otel\")
-                    implementation(\"io.opentelemetry:opentelemetry-exporter-otlp\")
-                    testImplementation(\"org.springframework.boot:spring-boot-starter-test\")
-                }
-
-                tasks.bootJar {
-                    archiveFileName.set(\"%s.jar\")
-                }
-
-                tasks.withType<JavaCompile> {
-                    options.compilerArgs.add("-parameters")
-                }
-
-                tasks.test {
-                    useJUnitPlatform()
-                }
-                """.formatted(
-                target.springBootVersion(), safeCoordinates.groupId(), target.javaVersion(),
-                target.springBootVersion(), target.springAiVersion(), safeCoordinates.artifactId());
+        return gradleScaffold.buildGradle(
+                safeCoordinates.groupId(), safeCoordinates.artifactId(), profile, dependencies());
     }
 
     public String settingsGradle(ProjectCoordinates coordinates) {
-        return "rootProject.name = \"%s\"\n".formatted(requireCoordinates(coordinates).artifactId());
+        return gradleScaffold.settingsGradle(requireCoordinates(coordinates).artifactId());
     }
 
     public String gradleProperties() {
-        return """
-                org.gradle.caching=true
-                org.gradle.configuration-cache=true
-                """;
+        return gradleScaffold.gradleProperties();
     }
 
     public String applicationYaml(GenerationContext context) {
@@ -173,114 +133,16 @@ public final class ProjectFileRenderer {
 
     public String dockerfile(ProjectCoordinates coordinates) {
         String artifactId = requireCoordinates(coordinates).artifactId();
-        return """
-                FROM %s
-                WORKDIR /app
-                COPY build/libs/%s.jar /app/app.jar
-                USER 10001:10001
-                ENTRYPOINT [\"java\", \"-jar\", \"/app/app.jar\"]
-                """.formatted(profile.containerImage(), artifactId);
+        return gradleScaffold.dockerfile(profile, artifactId);
     }
 
     public String dockerignore(ProjectCoordinates coordinates) {
         String artifactId = requireCoordinates(coordinates).artifactId();
-        return """
-                **
-                !Dockerfile
-                !build/
-                !build/libs/
-                !build/libs/%s.jar
-                """.formatted(artifactId);
+        return gradleScaffold.dockerignore(artifactId);
     }
 
     public String readme(GenerationContext context) {
-        ProjectCoordinates coordinates = requireContext(context);
-        List<String> environmentVariables = secretProperties(context.tools()).values().stream()
-                .map(placeholder -> placeholder.substring(2, placeholder.length() - 2))
-                .toList();
-        String secrets = environmentVariables.isEmpty() ? "No provider secrets are required."
-                : "Set these environment variables before starting:\n\n"
-                        + environmentVariables.stream().map(value -> "- `" + value + "`").reduce("", (left, right) -> left + right + "\n");
-        String tools = renderedTools(context.tools());
-        String dockerEnvironment = dockerEnvironment(context.tools());
-        String responseHandling = renderedResponseHandling(context.tools());
-        String observability = renderedObservability();
-        var target = profile.target();
-        return """
-                # %s
-
-                Generated Spring AI MCP server. It exposes the selected OpenAPI operations as
-                deterministic MCP tools and invokes the configured provider over HTTP.
-
-                ## Run
-
-                Requirements: Java %d.
-
-                ```bash
-                ./gradlew bootRun
-                ```
-
-                The Streamable HTTP MCP endpoint is `http://localhost:8080/mcp`.
-
-                %s
-
-                ## Provider configuration
-
-                %s
-
-                Provider calls use a 2 second connect timeout, 5 second response-read timeout,
-                10 second total timeout, 1 MiB response limit, 16 concurrent requests, and a
-                64 request queue by default. Override the `provider` values in `application.yml`
-                only with positive timeout values up to 300000 milliseconds.
-
-                ## MCP client configuration
-
-                ```json
-                {
-                  "mcpServers": {
-                    "%s": {
-                      "url": "http://localhost:8080/mcp"
-                    }
-                  }
-                }
-                ```
-
-                ## Tools
-
-                %s
-
-                ## Test
-
-                ```bash
-                ./gradlew test
-                ```
-
-                ## Docker
-
-                ```bash
-                ./gradlew bootJar
-                docker build -t %s .
-                docker run --rm -p 8080:8080%s %s
-                ```
-
-                ## Generator information
-
-                - Compatibility profile: `%s`
-                - Template: `%s`
-                - Generator module: `%s`
-                - Runtime version: `%s`
-                - Gradle %s
-                - Container image: `%s`
-                - Java %d
-                - Spring Boot %s
-                - Spring AI %s
-
-                %s
-                """.formatted(
-                coordinates.artifactId(), target.javaVersion(), observability, secrets, coordinates.artifactId(), tools,
-                coordinates.artifactId(), dockerEnvironment, coordinates.artifactId(), profile.id(), profile.templateVersion(),
-                profile.generatorModule(), profile.runtimeVersion(), profile.gradleVersion(), profile.containerImage(),
-                target.javaVersion(), target.springBootVersion(), target.springAiVersion(), responseHandling);
+        return gradleScaffold.readme(scaffoldModel(context));
     }
 
     private String renderedObservability() {
@@ -324,20 +186,53 @@ public final class ProjectFileRenderer {
     }
 
     public String gitignore() {
-        return "/.gradle/\n/build/\n";
+        return gradleScaffold.gitignore();
     }
 
     public byte[] wrapperAsset(String fileName) {
-        try (InputStream resource = ProjectFileRenderer.class.getResourceAsStream("/wrapper/" + fileName)) {
-            if (resource == null) {
-                throw GeneratorException.user(SOURCE_GENERATION_FAILED, "spring-ai-1-render",
-                        "A required Gradle wrapper asset is missing");
-            }
-            return resource.readAllBytes();
-        } catch (IOException exception) {
-            throw GeneratorException.system(SOURCE_GENERATION_FAILED, "spring-ai-1-render",
-                    "Failed to load a Gradle wrapper asset", exception);
-        }
+        return gradleScaffold.wrapperAsset(fileName);
+    }
+
+    ProjectScaffoldModel scaffoldModel(GenerationContext context) {
+        ProjectCoordinates coordinates = requireContext(context);
+        List<String> environmentVariables = secretProperties(context.tools()).values().stream()
+                .map(placeholder -> placeholder.substring(2, placeholder.length() - 2))
+                .toList();
+        return new ProjectScaffoldModel(
+                coordinates.groupId(),
+                coordinates.artifactId(),
+                coordinates.packageName(),
+                JavaSourceRenderer.upperCamel(context.request().domain()) + "McpApplication",
+                profile,
+                dependencies(),
+                applicationYaml(context),
+                new ProjectDocumentation(
+                        PROJECT_SUMMARY,
+                        environmentVariables,
+                        dockerEnvironment(context.tools()),
+                        renderedTools(context.tools()),
+                        renderedObservability(),
+                        renderedResponseHandling(context.tools())));
+    }
+
+    private List<Dependency> dependencies() {
+        return List.of(
+                implementation("org.springframework.ai", "spring-ai-starter-mcp-server-webmvc"),
+                implementation("org.springframework.boot", "spring-boot-starter-web"),
+                implementation("org.springframework.boot", "spring-boot-starter-validation"),
+                implementation("org.springframework.boot", "spring-boot-starter-actuator"),
+                implementation("io.micrometer", "micrometer-registry-prometheus"),
+                implementation("io.micrometer", "micrometer-registry-otlp"),
+                implementation("io.micrometer", "micrometer-tracing-bridge-otel"),
+                implementation("io.opentelemetry", "opentelemetry-exporter-otlp"),
+                new Dependency(
+                        "org.springframework.boot",
+                        "spring-boot-starter-test",
+                        Scope.TEST_IMPLEMENTATION));
+    }
+
+    private Dependency implementation(String groupId, String artifactId) {
+        return new Dependency(groupId, artifactId, Scope.IMPLEMENTATION);
     }
 
     ProjectCoordinates requireContext(GenerationContext context) {
