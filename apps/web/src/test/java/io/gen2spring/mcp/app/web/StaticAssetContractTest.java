@@ -3,11 +3,36 @@ package io.gen2spring.mcp.app.web;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.app.web.security.WebSecurityConfiguration;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 class StaticAssetContractTest {
+    @Test
+    void packagesTheLocalDesignSystemWithoutWeakeningTheCsp() throws Exception {
+        String styles = resource("/static/styles.css");
+        String tokens = resource("/static/design-tokens.css");
+        String shell = resource("/static/app-shell.css");
+        String editor = resource("/static/editor.css");
+        String hosted = resource("/static/hosted.css");
+
+        assertTrue(tokens.contains("--app-bg: #f6f8fc"));
+        assertTrue(tokens.contains("--app-primary: #3568f4"));
+        assertTrue(tokens.contains("--app-danger-soft: #fff0f1"));
+        assertTrue(styles.contains("@import url('/design-tokens.css')"));
+        assertTrue(styles.contains("@import url('/app-shell.css')"));
+        assertTrue(styles.contains("@import url('/editor.css')"));
+        assertTrue(styles.contains("@import url('/hosted.css')"));
+        assertTrue(styles.indexOf("design-tokens.css") < styles.indexOf("app-shell.css"));
+        assertTrue(styles.indexOf("app-shell.css") < styles.indexOf("editor.css"));
+        assertTrue(styles.indexOf("editor.css") < styles.indexOf("hosted.css"));
+        assertFalse(shell.isBlank());
+        assertFalse(editor.isBlank());
+        assertFalse(hosted.isBlank());
+        assertTrue(WebSecurityConfiguration.CONTENT_SECURITY_POLICY.contains("font-src 'self'"));
+    }
+
     @Test
     void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
         String index = resource("/templates/editor.html");

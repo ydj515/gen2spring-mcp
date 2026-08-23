@@ -27,7 +27,7 @@ mise install java@17
 ### 로컬 UI
 
 ```bash
-mise run ui
+mise run dev
 ```
 
 서버가 출력하는 `READY` JSON의 `url`을 브라우저에서 연다. 기본 local mode는

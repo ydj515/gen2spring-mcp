@@ -18,7 +18,7 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
         name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 public class WebSecurityConfiguration {
     public static final String CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; "
-            + "style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; "
+            + "style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; "
             + "form-action 'none'; frame-ancestors 'none'";
 
     @Bean

@@ -13,6 +13,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -107,7 +108,9 @@ class HostedWebMvcContractTest {
         when(resources.specifications(OWNER, 51, Optional.empty())).thenReturn(List.of());
 
         mvc.perform(get("/api/specifications"))
-                .andExpect(status().is3xxRedirection());
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string(
+                        "Content-Security-Policy", containsString("font-src 'self'")));
         mvc.perform(get("/api/specifications").with(user()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(0));

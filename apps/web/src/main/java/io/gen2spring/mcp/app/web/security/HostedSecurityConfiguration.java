@@ -15,7 +15,8 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 @ConditionalOnProperty(name = "gen2spring.mode", havingValue = "hosted")
 public class HostedSecurityConfiguration {
     static final String CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; style-src 'self'; "
-            + "img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+            + "font-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; "
+            + "form-action 'self'; frame-ancestors 'none'";
 
     @Bean
     HostedAccountResolver hostedAccountResolver(AccountStore accounts, Clock clock) {

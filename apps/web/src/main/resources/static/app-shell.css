@@ -1,0 +1,11 @@
+.app-shell {
+  min-width: 0;
+  color: var(--app-text);
+  background: var(--app-bg);
+}
+
+.surface {
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-panel);
+  background: var(--app-surface);
+}

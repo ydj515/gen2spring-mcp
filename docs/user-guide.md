@@ -51,12 +51,12 @@ Spring Boot 3.5 WebMVC + Thymeleaf UI에서 specification 분석, endpoint 선�
 생성·검증, artifact download를 수행한다. 브라우저는 OpenAPI를 해석하지 않고 서버가 반환한 지원 판정을 표시한다.
 
 ```bash
-mise run ui
+mise run dev
 mise run ui:test
 mise run ui:build
 ```
 
-포트를 고정하려면 `GEN2SPRING_UI_PORT=8080 mise run ui`로 실행한다. 직접 실행할 수도 있다.
+포트를 고정하려면 `GEN2SPRING_UI_PORT=8080 mise run dev`로 실행한다. 직접 실행할 수도 있다.
 
 ```bash
 GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
