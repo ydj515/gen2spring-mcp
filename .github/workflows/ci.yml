@@ -41,7 +41,7 @@ jobs:
           :modules:adapters:emitters:support:test
           :modules:adapters:emitters:spring-ai-1:fastTest
           :modules:adapters:emitters:spring-ai-2:fastTest
-          :modules:adapters:validation:test
+          :modules:adapters:validation:fastTest
           :modules:bootstrap:test
           :apps:cli:fastTest
           :apps:cli:installDist
@@ -87,7 +87,7 @@ jobs:
           :modules:adapters:emitters:support:test
           :modules:adapters:emitters:spring-ai-1:fastTest
           :modules:adapters:emitters:spring-ai-2:fastTest
-          :modules:adapters:validation:test
+          :modules:adapters:validation:fastTest
           :modules:bootstrap:test
           :apps:cli:fastTest
           :apps:cli:installDist
