@@ -8,6 +8,7 @@
 - Mobile implementation capture: `gen2spring-ui-step2-400-final.png` (current-task QA artifact, not committed)
 - Step 2 interaction refinement capture: `gen2spring-ui-step2-settings-final.png` (current-task QA artifact, not committed)
 - Step 5 always-visible detail capture: `gen2spring-ui-step5-details-final.png` (current-task QA artifact, not committed)
+- Post-refinement Step 2 capture: `gen2spring-ui-step2-compact-final.png` (current-task QA artifact, not committed)
 - Source pixels: `1487 x 1058`
 - Desktop implementation pixels: `1404 x 1024`, captured from a `1440 x 1024` in-app browser viewport
 - Tablet viewport: `768 x 900`; mobile viewport and pixels: `400 x 900`
@@ -19,7 +20,7 @@
 
 The approved no-sidebar direction is preserved: a slim product header, connected five-step progress, horizontal summary, grouped endpoint table, and persistent previous/next dock. Typography uses a restrained system stack with a clear heading/body hierarchy. Spacing, one-pixel borders, low-elevation shadows, neutral surfaces, primary blue, and semantic success/error colors follow the supplied product references without decorative gradients or unrelated imagery.
 
-The implementation intentionally omits the mock's work-list and account controls because those routes and account interactions are not part of the current local editor. The real fixture adds two summary facts and longer endpoint descriptions, but keeps the same scan order and density.
+The implementation intentionally omits the mock's work-list and account controls because those routes and account interactions are not part of the current local editor. The real fixture keeps four essential summary facts and uses its actual endpoint descriptions while preserving the same scan order and density.
 
 ## Focused-region comparison
 
@@ -54,7 +55,8 @@ Focused review covered the connected stepper, summary strip, endpoint search/fil
 1. First comparison found two P2 issues: Bootstrap Icons rendered as missing glyph boxes because cache-busting font URLs were rejected by the local-only query-string policy, and `position: sticky` did not keep the action dock visible at the top of long steps. The implementation now serves a query-free local font URL and uses a centered fixed dock.
 2. Second comparison found two P2 polish issues: resource groups derived from `admin`, `auth`, and `customers` remained English, and programmatic heading focus showed a large outline. The implementation now localizes the groups and suppresses the non-interactive heading outline.
 3. The interaction-detail comparison found that Step 5 still used a disclosure control, endpoint settings looked like a secondary navigation button, and wizard hover inherited a filled button background. The implementation now keeps progress detail visible, uses a transparent sliders control, and limits wizard hover to text color.
-4. The final desktop comparison and responsive captures show no remaining actionable P0, P1, or P2 findings.
+4. A final compact-layout refinement reduced the summary to four essential facts, consolidated the endpoint toolbar, and tightened the persistent action dock. The post-refinement Step 2 comparison preserves the approved hierarchy and exposes Tool settings with the sliders affordance.
+5. The final desktop comparison and responsive captures show no remaining actionable P0, P1, or P2 findings.
 
 ## Findings
 
