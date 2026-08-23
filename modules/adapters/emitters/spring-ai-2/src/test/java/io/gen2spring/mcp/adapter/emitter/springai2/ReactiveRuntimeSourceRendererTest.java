@@ -32,6 +32,7 @@ class ReactiveRuntimeSourceRendererTest {
         assertTrue(executor.contains("WebClient"), executor);
         assertTrue(executor.contains("ConnectionProvider"), executor);
         assertTrue(executor.contains("Mono<"), executor);
+        assertTrue(executor.contains("Mono.deferContextual"), executor);
         assertTrue(executor.contains("maxConnections(maxConcurrentRequests)"), executor);
         assertTrue(executor.contains("pendingAcquireMaxCount(maxQueuedRequests)"), executor);
         assertTrue(executor.contains("maxInMemorySize(responseMaxBytes)"), executor);

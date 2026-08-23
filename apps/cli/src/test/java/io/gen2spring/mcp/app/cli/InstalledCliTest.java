@@ -38,16 +38,20 @@ class InstalledCliTest {
         assertEquals(profiles.stdout(), repeatedProfiles.stdout());
         assertEquals("", repeatedProfiles.stderr());
         var installedProfiles = JSON.readTree(profiles.stdout()).path("profiles");
-        assertEquals(8, installedProfiles.size());
+        assertEquals(12, installedProfiles.size());
         assertEquals(List.of(
                         "spring-ai-1.1-java17-maven-mvc-streamable",
                         "spring-ai-1.1-java17-mvc-streamable",
                         "spring-ai-1.1-java21-maven-mvc-streamable",
                         "spring-ai-1.1-java21-mvc-streamable",
                         "spring-ai-2.0-java17-maven-mvc-streamable",
+                        "spring-ai-2.0-java17-maven-webflux-async-streamable",
                         "spring-ai-2.0-java17-mvc-streamable",
+                        "spring-ai-2.0-java17-webflux-async-streamable",
                         "spring-ai-2.0-java21-maven-mvc-streamable",
-                        "spring-ai-2.0-java21-mvc-streamable"),
+                        "spring-ai-2.0-java21-maven-webflux-async-streamable",
+                        "spring-ai-2.0-java21-mvc-streamable",
+                        "spring-ai-2.0-java21-webflux-async-streamable"),
                 installedProfiles.valueStream().map(profile -> profile.path("id").asText()).toList());
         assertInstalledProfile(installedProfiles.get(0),
                 "spring-ai-1.1-java17-maven-mvc-streamable", 17, "3.5.16", "1.1.8",

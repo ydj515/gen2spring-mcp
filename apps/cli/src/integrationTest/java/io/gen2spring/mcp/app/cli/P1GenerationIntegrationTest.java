@@ -157,6 +157,54 @@ class P1GenerationIntegrationTest {
             "3.3.4",
             JAVA_21_IMAGE,
             "config/weather-generation-spring-ai2-java21-maven.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_17_WEBFLUX = new ProfileCase(
+            "spring-ai-2.0-java17-webflux-async-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            17,
+            "GRADLE_KOTLIN",
+            "9.6.1",
+            "9.6.1",
+            JAVA_17_IMAGE,
+            "config/weather-generation-java17.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_17_MAVEN_WEBFLUX = new ProfileCase(
+            "spring-ai-2.0-java17-maven-webflux-async-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            17,
+            "MAVEN",
+            "3.9.16",
+            "3.3.4",
+            JAVA_17_IMAGE,
+            "config/weather-generation-spring-ai2-java17-maven.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_21_WEBFLUX = new ProfileCase(
+            "spring-ai-2.0-java21-webflux-async-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            21,
+            "GRADLE_KOTLIN",
+            "9.6.1",
+            "9.6.1",
+            JAVA_21_IMAGE,
+            "config/weather-generation.yaml");
+    private static final ProfileCase SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX = new ProfileCase(
+            "spring-ai-2.0-java21-maven-webflux-async-streamable",
+            "generator-spring-ai-2",
+            "spring-ai-2-v3",
+            "4.1.0",
+            "2.0.0",
+            21,
+            "MAVEN",
+            "3.9.16",
+            "3.3.4",
+            JAVA_21_IMAGE,
+            "config/weather-generation-spring-ai2-java21-maven.yaml");
     private static final List<ProfileCase> PROFILE_CASES = List.of(
             SPRING_AI_1_JAVA_17,
             SPRING_AI_1_JAVA_21,
@@ -167,15 +215,24 @@ class P1GenerationIntegrationTest {
             SPRING_AI_1_JAVA_21_MAVEN,
             SPRING_AI_2_JAVA_17_MAVEN,
             SPRING_AI_2_JAVA_21_MAVEN);
+    private static final List<ProfileCase> WEBFLUX_PROFILE_CASES = List.of(
+            SPRING_AI_2_JAVA_17_MAVEN_WEBFLUX,
+            SPRING_AI_2_JAVA_17_WEBFLUX,
+            SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX,
+            SPRING_AI_2_JAVA_21_WEBFLUX);
     private static final List<ProfileCase> ALL_PROFILE_CASES = List.of(
             SPRING_AI_1_JAVA_17_MAVEN,
             SPRING_AI_1_JAVA_17,
             SPRING_AI_1_JAVA_21_MAVEN,
             SPRING_AI_1_JAVA_21,
             SPRING_AI_2_JAVA_17_MAVEN,
+            SPRING_AI_2_JAVA_17_MAVEN_WEBFLUX,
             SPRING_AI_2_JAVA_17,
+            SPRING_AI_2_JAVA_17_WEBFLUX,
             SPRING_AI_2_JAVA_21_MAVEN,
-            SPRING_AI_2_JAVA_21);
+            SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX,
+            SPRING_AI_2_JAVA_21,
+            SPRING_AI_2_JAVA_21_WEBFLUX);
     private static final Set<String> REQUIRED_OUTPUTS = Set.of(
             ".dockerignore",
             ".gitignore",
@@ -283,6 +340,28 @@ class P1GenerationIntegrationTest {
 
             assertMavenReleaseContract(first, specification, profile);
             assertMavenReleaseContract(second, specification, profile);
+            assertEquals(first.sourceChecksum(), second.sourceChecksum(), profile.id());
+            assertEquals(first.manifest(), second.manifest(), profile.id());
+            assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
+            assertValidationReportsEqualExceptMeasurements(first.report(), second.report());
+        }
+    }
+
+    @Test
+    void webfluxAsyncProfilesValidateAndArchiveDeterministically() throws Exception {
+        Path specification = resource("openapi/weather-api.yaml");
+        targetJavaHomes();
+        assertInstalledProfileMatrix();
+
+        for (ProfileCase profile : WEBFLUX_PROFILE_CASES) {
+            Path configuration = configurationFor(profile);
+            String outputName = "webflux-weather-mcp-server-" + profile.id();
+            GenerationResult first = generate(specification, configuration, tempDir.resolve(outputName));
+            GenerationResult second = generate(
+                    specification, configuration, tempDir.resolve(outputName + "-second"));
+
+            assertWebFluxReleaseContract(first, profile);
+            assertWebFluxReleaseContract(second, profile);
             assertEquals(first.sourceChecksum(), second.sourceChecksum(), profile.id());
             assertEquals(first.manifest(), second.manifest(), profile.id());
             assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
@@ -574,10 +653,20 @@ class P1GenerationIntegrationTest {
                     actual.path("target").path("springBootVersion").asText());
             assertEquals(expected.springAiVersion(), actual.path("target").path("springAiVersion").asText());
             assertEquals(expected.buildTool(), actual.path("target").path("buildTool").asText());
-            assertEquals("MVC", actual.path("target").path("webStack").asText());
-            assertEquals("SYNC", actual.path("target").path("programmingModel").asText());
+            assertEquals(expected.webStack(), actual.path("target").path("webStack").asText());
+            assertEquals(expected.programmingModel(), actual.path("target").path("programmingModel").asText());
             assertEquals("STREAMABLE_HTTP", actual.path("target").path("transport").asText());
         }
+    }
+
+    private Path configurationFor(ProfileCase profile) throws IOException, URISyntaxException {
+        Path source = resource(profile.configurationResource());
+        if (!profile.webFlux()) {
+            return source;
+        }
+        String configuration = Files.readString(source, UTF_8)
+                .replaceFirst("(?m)^targetProfileId: \\S+$", "targetProfileId: " + profile.id());
+        return Files.writeString(tempDir.resolve(profile.id() + ".yaml"), configuration, UTF_8);
     }
 
     private void assertReleaseContract(
@@ -803,6 +892,41 @@ class P1GenerationIntegrationTest {
                 Files.readString(result.projectRoot().resolve("Dockerfile"), UTF_8));
         assertFalse(outputPaths.stream().anyMatch(path -> path.startsWith("gradle")
                 || path.equals("build.gradle.kts") || path.equals("settings.gradle.kts")));
+    }
+
+    private void assertWebFluxReleaseContract(
+            GenerationResult result,
+            ProfileCase profile) throws Exception {
+        assertTrue(Files.isDirectory(result.projectRoot()));
+        assertTrue(Files.isRegularFile(result.archive()));
+        assertEquals(regularFiles(result.projectRoot()), result.archiveEntries().keySet());
+        assertEquals(profile.id(), result.manifest().path("targetProfileId").asText());
+        assertEquals(profile.buildTool(), result.manifest().path("buildTool").path("type").asText());
+        assertEquals("VALIDATED", result.report().path("status").asText());
+        assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"),
+                result.report().path("stages").findValuesAsText("status"));
+        assertEquals(List.of(TOOL_NAME), result.report().path("tools").findValuesAsText("name"));
+
+        Path project = result.projectRoot();
+        assertTrue(Files.isRegularFile(project.resolve(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolSpecifications.java")));
+        assertFalse(Files.exists(project.resolve(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java")));
+        assertFalse(Files.exists(project.resolve(
+                "src/main/java/com/example/weather/runtime/ToolArgumentContext.java")));
+        String applicationYaml = Files.readString(project.resolve("src/main/resources/application.yml"), UTF_8);
+        assertTrue(applicationYaml.contains("type: ASYNC"), applicationYaml);
+        assertTrue(applicationYaml.contains("protocol: STREAMABLE"), applicationYaml);
+        String build = Files.readString(project.resolve(
+                "MAVEN".equals(profile.buildTool()) ? "pom.xml" : "build.gradle.kts"), UTF_8);
+        assertTrue(build.contains("spring-ai-starter-mcp-server-webflux"), build);
+        assertTrue(build.contains("spring-boot-starter-webflux"), build);
+        assertFalse(build.contains("spring-ai-starter-mcp-server-webmvc"), build);
+        for (String source : mainSourceFiles(project).values()) {
+            assertFalse(source.contains("RestClient"), source);
+            assertFalse(source.contains(".block("), source);
+            assertFalse(source.contains("boundedElastic"), source);
+        }
     }
 
     private void assertEquivalentRepresentativeGeneration(GenerationResult result) {
@@ -1829,7 +1953,19 @@ class P1GenerationIntegrationTest {
             String distributionVersion,
             String wrapperVersion,
             String containerImage,
-            String configurationResource) {}
+            String configurationResource) {
+        boolean webFlux() {
+            return id.contains("-webflux-");
+        }
+
+        String webStack() {
+            return webFlux() ? "WEBFLUX" : "MVC";
+        }
+
+        String programmingModel() {
+            return webFlux() ? "ASYNC" : "SYNC";
+        }
+    }
 
     private record TargetJavaHomes(Path java17Home, Path java21Home) {}
 }

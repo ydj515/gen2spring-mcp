@@ -16,7 +16,8 @@ final class ReactiveHttpClientSourceRenderer {
                             Map<String, Object> arguments,
                             List<String> secretNames,
                             List<String> secretValues%s) {
-                        return Mono.defer(() -> {
+                        return Mono.deferContextual(contextView -> {
+                            try (var reactiveScope = runtimeTelemetry.openReactiveScope(contextView)) {
                             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromUri(baseUrl).path(operation.path());
                             Map<String, Object> pathVariables = new LinkedHashMap<>();
                             HttpHeaders headers = new HttpHeaders();
@@ -103,6 +104,7 @@ final class ReactiveHttpClientSourceRenderer {
                                                 body,
                                                 contentType));
                             });
+                            }
                         });
                     }
 

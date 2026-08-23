@@ -83,7 +83,7 @@ class WebMvcContractTest {
         mockMvc.perform(get("/api/profiles").with(localRequest()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType("application/json;charset=UTF-8"))
-                .andExpect(jsonPath("$.profiles.length()").value(8))
+                .andExpect(jsonPath("$.profiles.length()").value(12))
                 .andExpect(jsonPath("$.profiles[0].id")
                         .value("spring-ai-1.1-java17-maven-mvc-streamable"))
                 .andExpect(jsonPath("$.profiles[0].buildTool.type").value("MAVEN"))

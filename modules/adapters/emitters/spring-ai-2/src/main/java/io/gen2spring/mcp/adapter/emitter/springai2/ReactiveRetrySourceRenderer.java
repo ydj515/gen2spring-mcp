@@ -62,12 +62,13 @@ final class ReactiveRetrySourceRenderer {
                             List<String> secretValues,
                             Object internalPageValue,
                             long remainingNanos) {
-                        return Mono.defer(() -> {
+                        return Mono.deferContextual(contextView -> {
+                            try (var reactiveScope = runtimeTelemetry.openReactiveScope(contextView)) {
                             RuntimeTelemetry.Call providerCall = runtimeTelemetry.startProviderCall(
                                     operation.operationId(), operation.method());
                             Mono<AttemptResult> result;
                             try (var ignored = providerCall.openScope()) {
-                                result = executeOnce(
+                                result = runtimeTelemetry.propagateCurrentSpan(executeOnce(
                                                 operation,
                                                 arguments,
                                                 secretNames,
@@ -90,12 +91,13 @@ final class ReactiveRetrySourceRenderer {
                                                     new ProviderAttempt(
                                                             outcome, status, null, null, null, null),
                                                     networkFailure);
-                                        }));
+                                        })));
                             }
                             return result.doOnCancel(() -> providerCall.complete(
                                     RuntimeTelemetry.Outcome.CANCELLED,
                                     RuntimeTelemetry.ErrorCategory.NONE,
                                     RuntimeTelemetry.HttpStatusClass.NONE));
+                            }
                         });
                     }
 

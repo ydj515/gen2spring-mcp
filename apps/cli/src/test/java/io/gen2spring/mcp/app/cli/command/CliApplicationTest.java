@@ -53,7 +53,7 @@ class CliApplicationTest {
         assertEquals("", result.stderr());
         JsonNode json = JSON.readTree(result.stdout());
         JsonNode profiles = json.path("profiles");
-        assertEquals(8, profiles.size());
+        assertEquals(12, profiles.size());
         assertProfile(
                 profiles.get(0),
                 "spring-ai-1.1-java17-maven-mvc-streamable",
@@ -90,21 +90,21 @@ class CliApplicationTest {
                 "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
                         + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
         assertProfile(
-                profiles.get(5),
+                profileById(profiles, "spring-ai-2.0-java17-mvc-streamable"),
                 "spring-ai-2.0-java17-mvc-streamable",
                 17, "4.1.0", "2.0.0", "GRADLE_KOTLIN", "9.6.1", "9.6.1",
                 "generator-spring-ai-2", "spring-ai-2-v3",
                 "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
                         + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8");
         assertProfile(
-                profiles.get(6),
+                profileById(profiles, "spring-ai-2.0-java21-maven-mvc-streamable"),
                 "spring-ai-2.0-java21-maven-mvc-streamable",
                 21, "4.1.0", "2.0.0", "MAVEN", "3.9.16", "3.3.4",
                 "generator-spring-ai-2", "spring-ai-2-v3",
                 "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
                         + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64");
         assertProfile(
-                profiles.get(7),
+                profileById(profiles, "spring-ai-2.0-java21-mvc-streamable"),
                 "spring-ai-2.0-java21-mvc-streamable",
                 21, "4.1.0", "2.0.0", "GRADLE_KOTLIN", "9.6.1", "9.6.1",
                 "generator-spring-ai-2", "spring-ai-2-v3",
@@ -494,6 +494,13 @@ class CliApplicationTest {
         assertEquals("MVC", target.path("webStack").asText());
         assertEquals("SYNC", target.path("programmingModel").asText());
         assertEquals("STREAMABLE_HTTP", target.path("transport").asText());
+    }
+
+    private JsonNode profileById(JsonNode profiles, String id) {
+        return profiles.valueStream()
+                .filter(profile -> id.equals(profile.path("id").asText()))
+                .findFirst()
+                .orElseThrow();
     }
 
     private SpecificationAnalyzer unusedAnalyzer() {

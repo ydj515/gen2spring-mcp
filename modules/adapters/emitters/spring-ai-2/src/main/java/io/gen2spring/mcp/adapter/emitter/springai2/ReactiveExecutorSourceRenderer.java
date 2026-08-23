@@ -232,18 +232,20 @@ final class ReactiveExecutorSourceRenderer {
             return """
                     public Mono<JsonNode> execute(OperationDefinition operation, Map<String, Object> arguments) {
                         Map<String, Object> safeArguments = immutableArguments(arguments);
-                        return Mono.defer(() -> {
-                            List<String> secretNames = new ArrayList<>();
-                            List<String> secretValues = new ArrayList<>();
-                            long deadlineNanos = System.nanoTime()
-                                    + Duration.ofMillis(totalTimeoutMillis).toNanos();
+                        return Mono.deferContextual(contextView -> {
+                            try (var reactiveScope = runtimeTelemetry.openReactiveScope(contextView)) {
+                                List<String> secretNames = new ArrayList<>();
+                                List<String> secretValues = new ArrayList<>();
+                                long deadlineNanos = System.nanoTime()
+                                        + Duration.ofMillis(totalTimeoutMillis).toNanos();
                 %s
-                            return outcome.flatMap(result -> {
-                                if (result instanceof NormalizedSuccess success) {
-                                    return Mono.just(success.payload());
-                                }
-                                return Mono.error(new ProviderErrorException((ProviderError) result));
-                            });
+                                return runtimeTelemetry.propagateCurrentSpan(outcome.flatMap(result -> {
+                                    if (result instanceof NormalizedSuccess success) {
+                                        return Mono.just(success.payload());
+                                    }
+                                    return Mono.error(new ProviderErrorException((ProviderError) result));
+                                }));
+                            }
                         });
                     }
                     """.formatted(operation);
@@ -251,14 +253,16 @@ final class ReactiveExecutorSourceRenderer {
         return """
                     public Mono<JsonNode> execute(OperationDefinition operation, Map<String, Object> arguments) {
                         Map<String, Object> safeArguments = immutableArguments(arguments);
-                        return Mono.defer(() -> {
+                        return Mono.deferContextual(contextView -> {
+                            try (var reactiveScope = runtimeTelemetry.openReactiveScope(contextView)) {
                             List<String> secretNames = new ArrayList<>();
                             List<String> secretValues = new ArrayList<>();
                             RuntimeTelemetry.Call providerCall = runtimeTelemetry.startProviderCall(
                                     operation.operationId(), operation.method());
                             Mono<OperationOutcome> outcome;
                             try (var ignored = providerCall.openScope()) {
-                                outcome = executeOnce(operation, safeArguments, secretNames, secretValues)
+                                outcome = runtimeTelemetry.propagateCurrentSpan(
+                                        executeOnce(operation, safeArguments, secretNames, secretValues)
                                         .timeout(Duration.ofMillis(totalTimeoutMillis))
                                         .map(attempt -> completeProviderCall(providerCall, attempt))
                                         .onErrorResume(failure -> Mono.just(completeFailure(
@@ -266,7 +270,7 @@ final class ReactiveExecutorSourceRenderer {
                                                 operation,
                                                 failure,
                                                 secretNames,
-                                                secretValues)));
+                                                secretValues))));
                             }
                             return outcome
                                     .doOnCancel(() -> providerCall.complete(
@@ -279,6 +283,7 @@ final class ReactiveExecutorSourceRenderer {
                                         }
                                         return Mono.error(new ProviderErrorException((ProviderError) result));
                                     });
+                            }
                         });
                     }
                 """;

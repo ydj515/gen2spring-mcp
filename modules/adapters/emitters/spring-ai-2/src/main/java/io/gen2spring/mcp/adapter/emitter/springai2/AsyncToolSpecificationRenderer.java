@@ -114,7 +114,7 @@ final class AsyncToolSpecificationRenderer {
                                                         RuntimeTelemetry.HttpStatusClass.NONE))
                                                 .onErrorMap(failure -> safeFailure(
                                                         telemetryCall, toolName, failure));
-                                        return result;
+                                        return runtimeTelemetry.propagateCurrentSpan(result);
                                     } catch (SchemaValueValidator.SchemaValueInvalid failure) {
                                         telemetryCall.complete(
                                                 RuntimeTelemetry.Outcome.INTERNAL_ERROR,

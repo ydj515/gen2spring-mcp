@@ -264,29 +264,15 @@ public final class ProjectFileRenderer {
                 && "2.0.0".equals(target.springAiVersion())
                 && supportsRuntime(target)
                 && "STREAMABLE_HTTP".equals(target.transport())
-                && (CompatibilityProfileRegistry.defaults()
-                                .find(candidate.id())
-                                .filter(candidate::equals)
-                                .isPresent()
-                        || deferredWebFluxProfile(candidate));
+                && CompatibilityProfileRegistry.defaults()
+                        .find(candidate.id())
+                        .filter(candidate::equals)
+                        .isPresent();
     }
 
     private boolean supportsRuntime(CompatibilityProfile.TargetPlatform target) {
         return "MVC".equals(target.webStack()) && "SYNC".equals(target.programmingModel())
                 || "WEBFLUX".equals(target.webStack()) && "ASYNC".equals(target.programmingModel());
-    }
-
-    private boolean deferredWebFluxProfile(CompatibilityProfile candidate) {
-        var target = candidate.target();
-        if (!"WEBFLUX".equals(target.webStack()) || !"ASYNC".equals(target.programmingModel())) {
-            return false;
-        }
-        String expectedId = "spring-ai-2.0-java" + target.javaVersion()
-                + ("MAVEN".equals(target.buildTool()) ? "-maven" : "")
-                + "-webflux-async-streamable";
-        return expectedId.equals(candidate.id())
-                && "spring-ai-2-v3".equals(candidate.templateVersion())
-                && "0.3.0".equals(candidate.runtimeVersion());
     }
 
     private boolean supportsBuildTool(CompatibilityProfile candidate) {

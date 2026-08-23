@@ -18,10 +18,10 @@ import io.gen2spring.mcp.application.usecase.ProgressStatus;
 import io.gen2spring.mcp.application.validation.ValidationReport;
 import io.gen2spring.mcp.application.validation.ValidationRequest;
 import io.gen2spring.mcp.application.validation.ValidationStageResult;
+import io.gen2spring.mcp.adapter.validation.ApplicationRuntimeValidator.Readiness;
+import io.gen2spring.mcp.adapter.validation.ApplicationRuntimeValidator.ReadinessResult;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,8 +45,6 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofMillis(100);
     private static final Duration POST_MCP_OBSERVATION_WINDOW = Duration.ofMillis(50);
     private static final int DEFAULT_MAX_PROCESS_OUTPUT_BYTES = 64 * 1024;
-    private static final Pattern TOMCAT_STARTUP_PORT = Pattern.compile(
-            "(?m)^.*\\bTomcat started on port ([1-9][0-9]{0,4}) \\(http\\) with context path '.*'$");
     private static final List<String> ORDERED_STAGES = List.of(
             "COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL");
     private static final String INITIALIZE_SUCCESS = "MCP initialize contract matched";
@@ -56,11 +54,10 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private static final String TOOL_CALL_FAILURE = "MCP Tool call validation failed safely";
 
     private final BoundedProcessRunner processRunner;
-    private final LoopbackPortAllocator portAllocator;
     private final McpStreamableHttpClient mcpClient;
     private final Duration buildTimeout;
     private final Duration startupTimeout;
-    private final Duration pollInterval;
+    private final ApplicationRuntimeValidator applicationRuntimeValidator;
     private final int maxProcessOutputBytes;
     private final WrapperSnapshotHook wrapperSnapshotHook;
     private final ApplicationLaunchHook applicationLaunchHook;
@@ -189,11 +186,11 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             JavaRuntimeResolver javaRuntimeResolver,
             ValidationHostPlatform platform) {
         this.processRunner = Objects.requireNonNull(processRunner, "processRunner");
-        this.portAllocator = Objects.requireNonNull(portAllocator, "portAllocator");
+        LoopbackPortAllocator allocator = Objects.requireNonNull(portAllocator, "portAllocator");
         this.mcpClient = Objects.requireNonNull(mcpClient, "mcpClient");
         this.buildTimeout = positive(buildTimeout, "buildTimeout");
         this.startupTimeout = positive(startupTimeout, "startupTimeout");
-        this.pollInterval = positive(pollInterval, "pollInterval");
+        this.applicationRuntimeValidator = new ApplicationRuntimeValidator(startupTimeout, pollInterval, allocator);
         this.wrapperSnapshotHook = Objects.requireNonNull(wrapperSnapshotHook, "wrapperSnapshotHook");
         this.applicationLaunchHook = Objects.requireNonNull(applicationLaunchHook, "applicationLaunchHook");
         this.mockUpstreamFactory = Objects.requireNonNull(mockUpstreamFactory, "mockUpstreamFactory");
@@ -326,6 +323,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             List<ValidationStageResult> stages,
             long applicationStarted,
             ValidationProgress progress) {
+        ServerEndpointDetector endpointDetector = applicationRuntimeValidator.requireEndpointDetector(request.profile());
         BoundedProcessRunner.RunningProcess application = null;
         BoundedProcessRunner.Result applicationResult = null;
         Readiness readiness = Readiness.START_FAILED;
@@ -352,7 +350,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 request.runtime().requireStable();
                 application = processRunner.start(command, request.root(), maxProcessOutputBytes, environment);
                 phase = ValidationPhase.APPLICATION_READINESS;
-                ReadinessResult readinessResult = awaitReadiness(application);
+                ReadinessResult readinessResult = applicationRuntimeValidator.awaitReadiness(application, endpointDetector);
                 readiness = readinessResult.status();
                 applicationDurationMillis = elapsedMillis(applicationStarted);
                 if (readiness != Readiness.READY) {
@@ -369,7 +367,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 phase = ValidationPhase.UPSTREAM_VERIFICATION;
                 upstream.sealAndAwaitVerified(startupTimeout);
                 phase = ValidationPhase.APPLICATION_INTEGRITY;
-                String integrityFailure = verifyApplicationAfterMcpRoundTrip(application, readinessResult.endpoint());
+                String integrityFailure = verifyApplicationAfterMcpRoundTrip(
+                        application, readinessResult.endpoint(), endpointDetector);
                 if (integrityFailure != null) {
                     throw new ApplicationStageException(integrityFailure);
                 }
@@ -526,7 +525,6 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         return switch (readiness) {
             case TIMED_OUT -> "application startup timeout";
             case OUTPUT_LIMIT_REACHED -> "application startup output exceeded the discovery limit";
-            case PORT_DISCOVERY_INVALID -> "application did not publish one valid bound loopback port";
             default -> "application exited before readiness";
         };
     }
@@ -552,29 +550,15 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     private String verifyApplicationAfterMcpRoundTrip(
             BoundedProcessRunner.RunningProcess application,
-            URI expectedEndpoint) throws IOException, InterruptedException {
-        String immediateFailure = applicationIntegrityFailure(application, expectedEndpoint);
+            URI expectedEndpoint,
+            ServerEndpointDetector endpointDetector) throws IOException, InterruptedException {
+        String immediateFailure = applicationRuntimeValidator.integrityFailure(
+                application, expectedEndpoint, endpointDetector);
         if (immediateFailure != null) {
             return immediateFailure;
         }
         Thread.sleep(POST_MCP_OBSERVATION_WINDOW.toMillis());
-        return applicationIntegrityFailure(application, expectedEndpoint);
-    }
-
-    private String applicationIntegrityFailure(BoundedProcessRunner.RunningProcess application, URI expectedEndpoint)
-            throws IOException, InterruptedException {
-        application.requireCollectorsHealthy();
-        if (!application.isAlive()) {
-            return "application exited after MCP validation";
-        }
-        if (application.stdoutTruncated()) {
-            return "application output exceeded the discovery limit after MCP validation";
-        }
-        EndpointDiscovery discovery = discoverEndpoint(application.stdoutSnapshot());
-        if (discovery.invalid() || discovery.endpoint() == null || !expectedEndpoint.equals(discovery.endpoint())) {
-            return "application endpoint changed during MCP validation";
-        }
-        return null;
+        return applicationRuntimeValidator.integrityFailure(application, expectedEndpoint, endpointDetector);
     }
 
     private ValidationReport mcpFailureReport(
@@ -598,65 +582,6 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                     "MCP_TOOL_CALL", FAILED, failure.toolsCallDurationMillis(), 0, 1, TOOL_CALL_FAILURE));
         }
         return failedReport(stages, failure.tools());
-    }
-
-    private ReadinessResult awaitReadiness(BoundedProcessRunner.RunningProcess application)
-            throws InterruptedException {
-        long deadline = deadline(startupTimeout);
-        while (System.nanoTime() < deadline) {
-            if (!application.isAlive()) {
-                return new ReadinessResult(Readiness.EXITED, null);
-            }
-            if (application.stdoutTruncated()) {
-                return new ReadinessResult(Readiness.OUTPUT_LIMIT_REACHED, null);
-            }
-            EndpointDiscovery discovery = discoverEndpoint(application.stdoutSnapshot());
-            if (discovery.invalid()) {
-                return new ReadinessResult(Readiness.PORT_DISCOVERY_INVALID, null);
-            }
-            if (discovery.endpoint() == null) {
-                sleepUntilNextPoll(deadline);
-                continue;
-            }
-            URI endpoint = discovery.endpoint();
-            int connectMillis = (int) Math.max(1, Math.min(250,
-                    Duration.ofNanos(Math.max(1, deadline - System.nanoTime())).toMillis()));
-            try (var socket = new Socket()) {
-                socket.connect(new InetSocketAddress("127.0.0.1", endpoint.getPort()), connectMillis);
-                if (application.isAlive()) {
-                    return new ReadinessResult(Readiness.READY, endpoint);
-                }
-                return new ReadinessResult(Readiness.EXITED, null);
-            } catch (IOException ignored) {
-                sleepUntilNextPoll(deadline);
-            }
-        }
-        return new ReadinessResult(application.isAlive() ? Readiness.TIMED_OUT : Readiness.EXITED, null);
-    }
-
-    private EndpointDiscovery discoverEndpoint(String output) {
-        var matcher = TOMCAT_STARTUP_PORT.matcher(output);
-        URI endpoint = null;
-        int matches = 0;
-        while (matcher.find()) {
-            matches++;
-            if (matches > 1) {
-                return EndpointDiscovery.INVALID;
-            }
-            try {
-                endpoint = portAllocator.mcpUri(Integer.parseInt(matcher.group(1)));
-            } catch (IllegalArgumentException exception) {
-                return EndpointDiscovery.INVALID;
-            }
-        }
-        return endpoint == null ? EndpointDiscovery.NOT_READY : new EndpointDiscovery(endpoint, false);
-    }
-
-    private void sleepUntilNextPoll(long deadline) throws InterruptedException {
-        long sleepMillis = Math.max(1, Math.min(
-                pollInterval.toMillis(),
-                Duration.ofNanos(Math.max(1, deadline - System.nanoTime())).toMillis()));
-        Thread.sleep(sleepMillis);
     }
 
     private Path resolveArtifact(Path root, String artifactId) {
@@ -843,6 +768,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 || !expected.containsKey(expectedToolCall.tool().name())) {
             throw new IllegalArgumentException("Expected Tool call is not bound to expected Tool metadata");
         }
+        applicationRuntimeValidator.requireEndpointDetector(request.profile());
         return new ValidatedRequest(
                 root, request.artifactId(), Collections.unmodifiableMap(expected), expectedToolCall,
                 request.profile(), null);
@@ -1008,21 +934,6 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     private static long elapsedMillis(long started) {
         return Math.max(0, Duration.ofNanos(System.nanoTime() - started).toMillis());
-    }
-
-    private static long deadline(Duration duration) {
-        long now = System.nanoTime();
-        long nanos = duration.toNanos();
-        return Long.MAX_VALUE - now < nanos ? Long.MAX_VALUE : now + nanos;
-    }
-
-    private enum Readiness { READY, EXITED, TIMED_OUT, START_FAILED, OUTPUT_LIMIT_REACHED, PORT_DISCOVERY_INVALID }
-
-    private record ReadinessResult(Readiness status, URI endpoint) {}
-
-    private record EndpointDiscovery(URI endpoint, boolean invalid) {
-        private static final EndpointDiscovery NOT_READY = new EndpointDiscovery(null, false);
-        private static final EndpointDiscovery INVALID = new EndpointDiscovery(null, true);
     }
 
     @FunctionalInterface

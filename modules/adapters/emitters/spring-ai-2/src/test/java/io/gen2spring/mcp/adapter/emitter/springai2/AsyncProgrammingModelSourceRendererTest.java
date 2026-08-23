@@ -31,16 +31,24 @@ class AsyncProgrammingModelSourceRendererTest {
                 "src/main/java/com/example/weather/generated/tool/WeatherMcpToolSpecifications.java");
         String executor = sources.get(
                 "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java");
+        String telemetry = sources.get(
+                "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java");
 
         assertTrue(tools.contains("Mono<JsonNode>"), tools);
         assertTrue(tools.contains("Map<String, Object> rawArguments"), tools);
         assertTrue(specifications.contains("McpServerFeatures.AsyncToolSpecification"), specifications);
         assertTrue(specifications.contains("Mono<McpSchema.CallToolResult>"), specifications);
         assertTrue(specifications.contains("RuntimeTelemetry.Outcome.CANCELLED"), specifications);
+        assertTrue(specifications.contains("runtimeTelemetry.propagateCurrentSpan(result)"), specifications);
         assertFalse(specifications.contains("toAsyncToolSpecification"), specifications);
         assertFalse(specifications.contains("boundedElastic"), specifications);
         assertFalse(specifications.contains("ToolArgumentContext"), specifications);
         assertTrue(executor.contains("WebClient"), executor);
+        assertTrue(executor.contains("Mono.deferContextual"), executor);
+        assertTrue(executor.contains("runtimeTelemetry.openReactiveScope(contextView)"), executor);
+        assertTrue(telemetry.contains("reactor.util.context.ContextView"), telemetry);
+        assertTrue(telemetry.contains("propagateCurrentSpan"), telemetry);
+        assertTrue(telemetry.contains("openReactiveScope"), telemetry);
         assertFalse(executor.contains(".block("), executor);
     }
 

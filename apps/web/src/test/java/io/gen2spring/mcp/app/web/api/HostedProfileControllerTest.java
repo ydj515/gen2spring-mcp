@@ -29,7 +29,7 @@ class HostedProfileControllerTest {
 
         mvc.perform(get("/api/profiles"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.profiles.length()").value(8))
+                .andExpect(jsonPath("$.profiles.length()").value(12))
                 .andExpect(jsonPath("$.profiles[0].id")
                         .value("spring-ai-1.1-java17-maven-mvc-streamable"))
                 .andExpect(jsonPath("$.profiles[0].buildTool.type").value("MAVEN"));

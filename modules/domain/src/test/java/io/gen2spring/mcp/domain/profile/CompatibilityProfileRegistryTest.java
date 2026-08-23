@@ -28,42 +28,62 @@ class CompatibilityProfileRegistryTest {
                 "spring-ai-1.1-java21-maven-mvc-streamable",
                 "spring-ai-1.1-java21-mvc-streamable",
                 "spring-ai-2.0-java17-maven-mvc-streamable",
+                "spring-ai-2.0-java17-maven-webflux-async-streamable",
                 "spring-ai-2.0-java17-mvc-streamable",
+                "spring-ai-2.0-java17-webflux-async-streamable",
                 "spring-ai-2.0-java21-maven-mvc-streamable",
-                "spring-ai-2.0-java21-mvc-streamable"),
+                "spring-ai-2.0-java21-maven-webflux-async-streamable",
+                "spring-ai-2.0-java21-mvc-streamable",
+                "spring-ai-2.0-java21-webflux-async-streamable"),
                 registry.profiles().stream().map(CompatibilityProfile::id).toList());
 
-        assertProfile(registry.profiles().get(0),
+        assertProfile(registry.find("spring-ai-1.1-java17-maven-mvc-streamable").orElseThrow(),
                 "spring-ai-1.1-java17-maven-mvc-streamable", 17, "3.5.16", "1.1.8",
                 "MAVEN", "3.9.16", "3.3.4",
                 "generator-spring-ai-1", "spring-ai-1-v2", JAVA_17_IMAGE);
-        assertProfile(registry.profiles().get(1),
+        assertProfile(registry.find("spring-ai-1.1-java17-mvc-streamable").orElseThrow(),
                 "spring-ai-1.1-java17-mvc-streamable", 17, "3.5.16", "1.1.8",
                 "GRADLE_KOTLIN", "9.6.1", "9.6.1",
                 "generator-spring-ai-1", "spring-ai-1-v2", JAVA_17_IMAGE);
-        assertProfile(registry.profiles().get(2),
+        assertProfile(registry.find("spring-ai-1.1-java21-maven-mvc-streamable").orElseThrow(),
                 "spring-ai-1.1-java21-maven-mvc-streamable", 21, "3.5.16", "1.1.8",
                 "MAVEN", "3.9.16", "3.3.4",
                 "generator-spring-ai-1", "spring-ai-1-v2", JAVA_21_IMAGE);
-        assertProfile(registry.profiles().get(3),
+        assertProfile(registry.find("spring-ai-1.1-java21-mvc-streamable").orElseThrow(),
                 "spring-ai-1.1-java21-mvc-streamable", 21, "3.5.16", "1.1.8",
                 "GRADLE_KOTLIN", "9.6.1", "9.6.1",
                 "generator-spring-ai-1", "spring-ai-1-v2", JAVA_21_IMAGE);
-        assertProfile(registry.profiles().get(4),
+        assertProfile(registry.find("spring-ai-2.0-java17-maven-mvc-streamable").orElseThrow(),
                 "spring-ai-2.0-java17-maven-mvc-streamable", 17, "4.1.0", "2.0.0",
                 "MAVEN", "3.9.16", "3.3.4",
                 "generator-spring-ai-2", "spring-ai-2-v3", JAVA_17_IMAGE);
-        assertProfile(registry.profiles().get(5),
+        assertProfile(registry.find("spring-ai-2.0-java17-mvc-streamable").orElseThrow(),
                 "spring-ai-2.0-java17-mvc-streamable", 17, "4.1.0", "2.0.0",
                 "GRADLE_KOTLIN", "9.6.1", "9.6.1",
                 "generator-spring-ai-2", "spring-ai-2-v3", JAVA_17_IMAGE);
-        assertProfile(registry.profiles().get(6),
+        assertProfile(registry.find("spring-ai-2.0-java21-maven-mvc-streamable").orElseThrow(),
                 "spring-ai-2.0-java21-maven-mvc-streamable", 21, "4.1.0", "2.0.0",
                 "MAVEN", "3.9.16", "3.3.4",
                 "generator-spring-ai-2", "spring-ai-2-v3", JAVA_21_IMAGE);
-        assertProfile(registry.profiles().get(7),
+        assertProfile(registry.find("spring-ai-2.0-java21-mvc-streamable").orElseThrow(),
                 "spring-ai-2.0-java21-mvc-streamable", 21, "4.1.0", "2.0.0",
                 "GRADLE_KOTLIN", "9.6.1", "9.6.1",
+                "generator-spring-ai-2", "spring-ai-2-v3", JAVA_21_IMAGE);
+        assertProfile(registry.find("spring-ai-2.0-java17-maven-webflux-async-streamable").orElseThrow(),
+                "spring-ai-2.0-java17-maven-webflux-async-streamable", 17, "4.1.0", "2.0.0",
+                "MAVEN", "WEBFLUX", "ASYNC", "3.9.16", "3.3.4",
+                "generator-spring-ai-2", "spring-ai-2-v3", JAVA_17_IMAGE);
+        assertProfile(registry.find("spring-ai-2.0-java17-webflux-async-streamable").orElseThrow(),
+                "spring-ai-2.0-java17-webflux-async-streamable", 17, "4.1.0", "2.0.0",
+                "GRADLE_KOTLIN", "WEBFLUX", "ASYNC", "9.6.1", "9.6.1",
+                "generator-spring-ai-2", "spring-ai-2-v3", JAVA_17_IMAGE);
+        assertProfile(registry.find("spring-ai-2.0-java21-maven-webflux-async-streamable").orElseThrow(),
+                "spring-ai-2.0-java21-maven-webflux-async-streamable", 21, "4.1.0", "2.0.0",
+                "MAVEN", "WEBFLUX", "ASYNC", "3.9.16", "3.3.4",
+                "generator-spring-ai-2", "spring-ai-2-v3", JAVA_21_IMAGE);
+        assertProfile(registry.find("spring-ai-2.0-java21-webflux-async-streamable").orElseThrow(),
+                "spring-ai-2.0-java21-webflux-async-streamable", 21, "4.1.0", "2.0.0",
+                "GRADLE_KOTLIN", "WEBFLUX", "ASYNC", "9.6.1", "9.6.1",
                 "generator-spring-ai-2", "spring-ai-2-v3", JAVA_21_IMAGE);
     }
 
@@ -76,9 +96,13 @@ class CompatibilityProfileRegistryTest {
                 "spring-ai-1.1-java21-maven-mvc-streamable",
                 "spring-ai-1.1-java21-mvc-streamable",
                 "spring-ai-2.0-java17-maven-mvc-streamable",
+                "spring-ai-2.0-java17-maven-webflux-async-streamable",
                 "spring-ai-2.0-java17-mvc-streamable",
+                "spring-ai-2.0-java17-webflux-async-streamable",
                 "spring-ai-2.0-java21-maven-mvc-streamable",
-                "spring-ai-2.0-java21-mvc-streamable")) {
+                "spring-ai-2.0-java21-maven-webflux-async-streamable",
+                "spring-ai-2.0-java21-mvc-streamable",
+                "spring-ai-2.0-java21-webflux-async-streamable")) {
             var found = registry.find(id);
             assertTrue(found.isPresent(), id);
             CompatibilityProfile listed = registry.profiles().stream()
@@ -197,10 +221,30 @@ class CompatibilityProfileRegistryTest {
             String generatorModule,
             String templateVersion,
             String containerImage) {
+        assertProfile(
+                profile, id, javaVersion, springBootVersion, springAiVersion, buildTool,
+                "MVC", "SYNC", distributionVersion, wrapperVersion,
+                generatorModule, templateVersion, containerImage);
+    }
+
+    private static void assertProfile(
+            CompatibilityProfile profile,
+            String id,
+            int javaVersion,
+            String springBootVersion,
+            String springAiVersion,
+            String buildTool,
+            String webStack,
+            String programmingModel,
+            String distributionVersion,
+            String wrapperVersion,
+            String generatorModule,
+            String templateVersion,
+            String containerImage) {
         assertEquals(id, profile.id());
         assertEquals(new CompatibilityProfile.TargetPlatform(
                 javaVersion, springBootVersion, springAiVersion,
-                buildTool, "MVC", "SYNC", "STREAMABLE_HTTP"), profile.target());
+                buildTool, webStack, programmingModel, "STREAMABLE_HTTP"), profile.target());
         assertEquals(generatorModule, profile.generatorModule());
         assertEquals(templateVersion, profile.templateVersion());
         assertEquals("0.3.0", profile.runtimeVersion());

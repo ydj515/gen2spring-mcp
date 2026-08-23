@@ -112,6 +112,7 @@ class AsyncGeneratedProjectTest {
                 import static org.junit.jupiter.api.Assertions.assertEquals;
                 import static org.junit.jupiter.api.Assertions.assertFalse;
                 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+                import static org.junit.jupiter.api.Assertions.assertNotNull;
                 import static org.junit.jupiter.api.Assertions.assertTrue;
 
                 import com.sun.net.httpserver.HttpExchange;
@@ -150,6 +151,9 @@ class AsyncGeneratedProjectTest {
                             assertEquals("60", query(exchange, "nx"));
                             assertEquals("127", query(exchange, "ny"));
                             assertEquals("test-key", query(exchange, "serviceKey"));
+                            String traceparent = exchange.getRequestHeaders().getFirst("traceparent");
+                            assertNotNull(traceparent);
+                            assertTrue(traceparent.matches("00-[0-9a-f]{32}-[0-9a-f]{16}-(00|01)"));
                             respond(exchange, 200, "{\\\"forecast\\\":\\\"sunny\\\"}");
                         });
                         upstream.start();

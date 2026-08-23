@@ -410,6 +410,47 @@ final class RuntimeTelemetryRenderer {
         String source = render(packageName, tools);
         source = replaceReactive(
                 source,
+                "import org.springframework.stereotype.Component;",
+                "import org.springframework.stereotype.Component;\n"
+                        + "import reactor.core.publisher.Mono;\n"
+                        + "import reactor.util.context.ContextView;");
+        source = replaceReactive(
+                source,
+                "private static final String BRIDGE_UNAVAILABLE_MESSAGE =\n"
+                        + "            \"Generated telemetry bridge is unavailable\";",
+                "private static final String BRIDGE_UNAVAILABLE_MESSAGE =\n"
+                        + "            \"Generated telemetry bridge is unavailable\";\n"
+                        + "    private static final String REACTOR_SPAN_CONTEXT_KEY =\n"
+                        + "            RuntimeTelemetry.class.getName() + \".span\";");
+        source = replaceReactive(
+                source,
+                "    public enum Outcome {",
+                "    public <T> Mono<T> propagateCurrentSpan(Mono<T> publisher) {\n"
+                        + "        java.util.Objects.requireNonNull(publisher);\n"
+                        + "        Span span = tracer.currentSpan();\n"
+                        + "        if (span == null) {\n"
+                        + "            return publisher;\n"
+                        + "        }\n"
+                        + "        return publisher.contextWrite(context ->\n"
+                        + "                context.put(REACTOR_SPAN_CONTEXT_KEY, span));\n"
+                        + "    }\n\n"
+                        + "    public ReactiveScope openReactiveScope(ContextView contextView) {\n"
+                        + "        java.util.Objects.requireNonNull(contextView);\n"
+                        + "        Span span = contextView.getOrDefault(REACTOR_SPAN_CONTEXT_KEY, null);\n"
+                        + "        if (span == null) {\n"
+                        + "            return () -> {};\n"
+                        + "        }\n"
+                        + "        Tracer.SpanInScope scope = tracer.withSpan(span);\n"
+                        + "        return scope::close;\n"
+                        + "    }\n\n"
+                        + "    @FunctionalInterface\n"
+                        + "    public interface ReactiveScope extends AutoCloseable {\n"
+                        + "        @Override\n"
+                        + "        void close();\n"
+                        + "    }\n\n"
+                        + "    public enum Outcome {");
+        source = replaceReactive(
+                source,
                 "SUCCESS(\"success\"),\n        EXPECTED_ERROR",
                 "SUCCESS(\"success\"),\n        CANCELLED(\"cancelled\"),\n        EXPECTED_ERROR");
         source = replaceReactive(
