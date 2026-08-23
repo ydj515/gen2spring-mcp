@@ -120,6 +120,8 @@ final class PosixValidationHost implements ValidationHostPlatform {
 final class WindowsValidationHost implements ValidationHostPlatform {
     private static final Pattern SNAPSHOT_NAME = Pattern.compile(
             "\\.(?:gradlew|mvnw)-validated-[0-9a-f-]+\\.(?:bat|cmd)");
+    private static final Pattern MAVEN_SNAPSHOT_DIRECTORY = Pattern.compile(
+            "\\.mvnw-validated-[0-9a-f-]+");
 
     private final Path command;
     private final StablePathIdentity commandIdentity;
@@ -170,13 +172,9 @@ final class WindowsValidationHost implements ValidationHostPlatform {
         if (wrapperSnapshot == null || javaHome == null || wrapperSnapshot.getFileName() == null) {
             throw ValidationHostPlatform.failure();
         }
-        String snapshotName = wrapperSnapshot.getFileName().toString();
+        String snapshotName = snapshotCommandPath(wrapperSnapshot);
         String home = javaHome.toString();
-        ValidationHostPlatform.requireSafeWindowsArgument(snapshotName);
         ValidationHostPlatform.requireSafeWindowsArgument(home);
-        if (!SNAPSHOT_NAME.matcher(snapshotName).matches()) {
-            throw ValidationHostPlatform.failure();
-        }
         String commandLine = "call " + snapshotName
                 + " -Dorg.gradle.java.installations.auto-detect=false"
                 + " -Dorg.gradle.java.installations.auto-download=false"
@@ -191,11 +189,7 @@ final class WindowsValidationHost implements ValidationHostPlatform {
         if (wrapperSnapshot == null || wrapperSnapshot.getFileName() == null || arguments == null) {
             throw ValidationHostPlatform.failure();
         }
-        String snapshotName = wrapperSnapshot.getFileName().toString();
-        ValidationHostPlatform.requireSafeWindowsArgument(snapshotName);
-        if (!SNAPSHOT_NAME.matcher(snapshotName).matches()) {
-            throw ValidationHostPlatform.failure();
-        }
+        String snapshotName = snapshotCommandPath(wrapperSnapshot);
         StringBuilder commandLine = new StringBuilder("call ").append(snapshotName);
         for (String argument : List.copyOf(arguments)) {
             ValidationHostPlatform.requireSafeWindowsArgument(argument);
@@ -207,6 +201,24 @@ final class WindowsValidationHost implements ValidationHostPlatform {
             }
         }
         return List.of(command.toString(), "/D", "/E:OFF", "/V:OFF", "/S", "/C", commandLine.toString());
+    }
+
+    private static String snapshotCommandPath(Path wrapperSnapshot) {
+        String snapshotName = wrapperSnapshot.getFileName().toString();
+        ValidationHostPlatform.requireSafeWindowsArgument(snapshotName);
+        if (SNAPSHOT_NAME.matcher(snapshotName).matches()) {
+            return snapshotName;
+        }
+        Path parent = wrapperSnapshot.getParent();
+        if (!"mvnw.cmd".equals(snapshotName) || parent == null || parent.getFileName() == null) {
+            throw ValidationHostPlatform.failure();
+        }
+        String directoryName = parent.getFileName().toString();
+        ValidationHostPlatform.requireSafeWindowsArgument(directoryName);
+        if (!MAVEN_SNAPSHOT_DIRECTORY.matcher(directoryName).matches()) {
+            throw ValidationHostPlatform.failure();
+        }
+        return directoryName + "\\" + snapshotName;
     }
 
     private void requireStableCommand() {

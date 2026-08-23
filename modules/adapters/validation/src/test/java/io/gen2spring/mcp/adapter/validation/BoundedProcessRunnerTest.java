@@ -3,6 +3,7 @@ package io.gen2spring.mcp.adapter.validation;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,12 +32,19 @@ class BoundedProcessRunnerTest {
     @Test
     void terminatesAProcessAndItsDescendantAfterTheConfiguredTimeout() throws Exception {
         Path childPid = tempDir.resolve("child.pid");
+        BoundedProcessRunner.RunningProcess process = runner.start(
+                javaCommand("child", childPid.toString()), tempDir, 64 * 1024);
+        long pid;
+        boolean timedOut;
 
-        var result = runner.run(javaCommand("child", childPid.toString()), tempDir, Duration.ofMillis(300), 64 * 1024);
+        try (process) {
+            pid = waitForPid(childPid);
+            timedOut = !process.awaitExit(Duration.ofMillis(300));
+        }
+        var result = process.result(timedOut);
 
         assertTrue(result.timedOut());
         assertFalse(result.processAlive());
-        long pid = waitForPid(childPid);
         assertTrue(waitUntilDead(pid), "descendant must not survive timeout cleanup");
     }
 
@@ -64,14 +72,17 @@ class BoundedProcessRunnerTest {
     @Test
     void collectorFailureTerminatesTheProcess() throws Exception {
         Path pidFile = tempDir.resolve("collector.pid");
+        IOException collectorFailure = new IOException("synthetic collector failure");
         var failing = new BoundedProcessRunner((input, limit) -> {
-            Thread.sleep(300);
-            throw new IOException("synthetic collector failure");
+            waitForPid(pidFile);
+            throw collectorFailure;
         });
 
-        assertThrows(IOException.class,
+        IOException failure = assertThrows(IOException.class,
                 () -> failing.run(javaCommand("pid", pidFile.toString()), tempDir, Duration.ofSeconds(10), 1024));
 
+        assertSame(collectorFailure, failure.getCause());
+        assertEquals(0, failure.getSuppressed().length);
         assertTrue(waitUntilDead(waitForPid(pidFile)));
     }
 

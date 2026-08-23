@@ -377,6 +377,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 upstreamFailure = failure;
                 throw failure;
             } finally {
+                boolean interruptedBeforeCleanup = Thread.currentThread().isInterrupted();
                 try {
                     upstream.close();
                 } catch (Error cleanupFailure) {
@@ -394,6 +395,10 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                         addSuppressedSafely(upstreamFailure, cleanupFailure);
                     } else {
                         throw cleanupFailure;
+                    }
+                } finally {
+                    if (interruptedBeforeCleanup) {
+                        Thread.currentThread().interrupt();
                     }
                 }
             }

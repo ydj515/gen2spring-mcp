@@ -10,11 +10,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -72,7 +76,7 @@ public final class BoundedProcessRunner {
                 process.close();
             } catch (IOException | RuntimeException | Error cleanupFailure) {
                 if (primary != null) {
-                    primary.addSuppressed(cleanupFailure);
+                    addSuppressedSafely(primary, cleanupFailure);
                 } else {
                     throw cleanupFailure;
                 }
@@ -184,6 +188,33 @@ public final class BoundedProcessRunner {
         }
     }
 
+    private static void addSuppressedSafely(Throwable primary, Throwable suppressed) {
+        if (containsThrowable(primary, suppressed) || containsThrowable(suppressed, primary)) {
+            return;
+        }
+        primary.addSuppressed(suppressed);
+    }
+
+    private static boolean containsThrowable(Throwable root, Throwable target) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<Throwable> pending = new ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            Throwable current = pending.removeFirst();
+            if (current == target) {
+                return true;
+            }
+            if (!visited.add(current)) {
+                continue;
+            }
+            if (current.getCause() != null) {
+                pending.addLast(current.getCause());
+            }
+            Collections.addAll(pending, current.getSuppressed());
+        }
+        return false;
+    }
+
     @FunctionalInterface
     interface OutputCollector {
         StreamSummary collect(InputStream input, int maxBytes) throws Exception;
@@ -279,7 +310,7 @@ public final class BoundedProcessRunner {
                     stdoutSummary, stderrSummary);
             if (!failures.isEmpty()) {
                 Throwable first = failures.getFirst();
-                failures.stream().skip(1).forEach(first::addSuppressed);
+                failures.stream().skip(1).forEach(failure -> addSuppressedSafely(first, failure));
                 if (first instanceof IOException exception) {
                     throw exception;
                 }

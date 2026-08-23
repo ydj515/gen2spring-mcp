@@ -742,7 +742,7 @@ class GradleMcpProjectValidatorTest {
     void preservesTheInterruptFlagWhileCleaningUpAfterUpstreamVerification() throws Exception {
         Path root = runnableProject("");
         TrackingMockFactory mocks = new TrackingMockFactory(
-                false, new RuntimeException("interrupted-secret-like-value"), true);
+                false, new RuntimeException("interrupted-secret-like-value"), true, null, true);
         io.gen2spring.mcp.application.validation.ValidationReport report;
 
         try {
@@ -1258,6 +1258,7 @@ class GradleMcpProjectValidatorTest {
         private final Error fatalFailure;
         private final boolean interruptBeforeFailure;
         private final Error closeFailure;
+        private final boolean clearInterruptOnClose;
         private final AtomicBoolean closed = new AtomicBoolean();
 
         private TrackingMockFactory(boolean failOnClose) {
@@ -1273,11 +1274,21 @@ class GradleMcpProjectValidatorTest {
                 Throwable failure,
                 boolean interruptBeforeFailure,
                 Error closeFailure) {
+            this(failOnClose, failure, interruptBeforeFailure, closeFailure, false);
+        }
+
+        private TrackingMockFactory(
+                boolean failOnClose,
+                Throwable failure,
+                boolean interruptBeforeFailure,
+                Error closeFailure,
+                boolean clearInterruptOnClose) {
             this.failOnClose = failOnClose;
             this.runtimeFailure = failure instanceof RuntimeException exception ? exception : null;
             this.fatalFailure = failure instanceof Error error ? error : null;
             this.interruptBeforeFailure = interruptBeforeFailure;
             this.closeFailure = closeFailure;
+            this.clearInterruptOnClose = clearInterruptOnClose;
         }
 
         @Override
@@ -1315,6 +1326,9 @@ class GradleMcpProjectValidatorTest {
                         delegate.close();
                     } finally {
                         closed.set(true);
+                        if (clearInterruptOnClose) {
+                            Thread.interrupted();
+                        }
                     }
                     if (closeFailure != null) {
                         throw closeFailure;
