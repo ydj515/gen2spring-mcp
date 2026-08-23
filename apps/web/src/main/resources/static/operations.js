@@ -57,9 +57,14 @@ export function initializeOperations({onSelectionChange, onEdit}) {
     selectAll.disabled = selectable.length === 0;
     selectAll.checked = selectable.length > 0 && selected.length === selectable.length;
     selectAll.indeterminate = selected.length > 0 && selected.length < selectable.length;
-    counts.textContent = state.analysis
-      ? `전체 ${state.operations.length} · 선택 ${selected.length} · 경고 ${state.analysis.counts.supportedWithWarning} · 지원하지 않음 ${state.analysis.counts.unsupported}`
-      : '파일 분석 후 endpoint를 선택할 수 있습니다.';
+    if (state.analysis) {
+      const total = state.operations.length;
+      const warn = state.analysis.counts.supportedWithWarning;
+      const unsup = state.analysis.counts.unsupported;
+      counts.innerHTML = `전체 <span class="count-highlight">${total}</span> · 선택 <span class="count-highlight">${selected.length}</span> · 경고 <span class="count-highlight">${warn}</span> · 지원하지 않음 <span class="count-unsupported">${unsup}</span>`;
+    } else {
+      counts.textContent = '파일 분석 후 endpoint를 선택할 수 있습니다.';
+    }
     captureGroupExpansion(list, groupExpansion);
     list.replaceChildren(...groupOperations(visible)
       .map(resourceGroup => operationGroupElement(resourceGroup, groupExpansion)));
@@ -75,9 +80,11 @@ export function initializeOperations({onSelectionChange, onEdit}) {
     updateState({operations, selectedOperationId});
     onSelectionChange();
   };
+  const refresh = document.querySelector('#operation-refresh');
 
   search.addEventListener('input', render);
   filter.addEventListener('change', render);
+  if (refresh) refresh.addEventListener('click', render);
   selectAll.addEventListener('change', () => {
     const state = getState();
     const enabled = selectAll.checked;
@@ -129,6 +136,9 @@ function operationGroupElement(resourceGroup, groupExpansion) {
   group.open = groupExpansion.get(resourceGroup.key) ?? true;
   const summary = document.createElement('summary');
   summary.className = 'endpoint-group__summary';
+  const groupChevron = document.createElement('i');
+  groupChevron.className = 'bi bi-chevron-down endpoint-group__chevron';
+  groupChevron.setAttribute('aria-hidden', 'true');
   const icon = document.createElement('i');
   icon.className = 'bi bi-folder2-open';
   icon.setAttribute('aria-hidden', 'true');
@@ -136,22 +146,11 @@ function operationGroupElement(resourceGroup, groupExpansion) {
   name.textContent = resourceGroup.label;
   const count = document.createElement('span');
   count.textContent = `(${resourceGroup.operations.length})`;
-  const groupChevron = document.createElement('i');
-  groupChevron.className = 'bi bi-chevron-up endpoint-group__chevron';
-  groupChevron.setAttribute('aria-hidden', 'true');
-  summary.append(icon, name, count, groupChevron);
+  summary.append(groupChevron, icon, name, count);
 
   const table = document.createElement('div');
   table.className = 'endpoint-group__table';
-  const columnHead = document.createElement('div');
-  columnHead.className = 'endpoint-column-head';
-  columnHead.setAttribute('aria-hidden', 'true');
-  ['선택', 'ENDPOINT', '설명', '지원 상태', ''].forEach(label => {
-    const cell = document.createElement('span');
-    cell.textContent = label;
-    columnHead.append(cell);
-  });
-  table.append(columnHead, ...resourceGroup.operations.map(operationRow));
+  table.append(...resourceGroup.operations.map(operationRow));
   group.replaceChildren(summary, table);
   item.append(group);
   return item;
@@ -186,30 +185,35 @@ function operationRow(operation) {
   path.textContent = operation.path;
   identity.append(method, path);
 
-  const description = document.createElement('div');
+  const description = document.createElement('span');
   description.className = 'endpoint-description';
-  const title = document.createElement('strong');
-  title.textContent = operation.summary || operation.operationId || 'operationId가 없는 endpoint';
-  const operationId = document.createElement('span');
-  operationId.textContent = operation.description || operation.operationId || '설명이 제공되지 않았습니다.';
-  description.append(title, operationId);
+  description.textContent = operation.summary || operation.operationId || '';
 
+  const statusWrap = document.createElement('div');
+  statusWrap.className = 'endpoint-status-wrap';
   const status = document.createElement('span');
   status.className = 'support-badge';
   status.textContent = statusLabel(operation.status);
+  statusWrap.append(status);
+  if (!selectable && operation.issues.length > 0) {
+    const infoIcon = document.createElement('i');
+    infoIcon.className = 'bi bi-info-circle endpoint-info-icon';
+    infoIcon.setAttribute('aria-hidden', 'true');
+    statusWrap.append(infoIcon);
+  }
 
   const edit = document.createElement('button');
   edit.type = 'button';
   edit.className = 'endpoint-edit';
   edit.dataset.operationIndex = operation.sourceIndex;
   edit.setAttribute('aria-label', `${operation.method} ${operation.path} Tool 설정`);
-  const settingsIcon = document.createElement('i');
-  settingsIcon.className = 'bi bi-sliders';
-  settingsIcon.setAttribute('aria-hidden', 'true');
-  edit.append(settingsIcon);
+  const chevronIcon = document.createElement('i');
+  chevronIcon.className = 'bi bi-chevron-down';
+  chevronIcon.setAttribute('aria-hidden', 'true');
+  edit.append(chevronIcon);
   edit.disabled = !(selectable && operation.operationId);
 
-  row.append(selection, identity, description, status, edit);
+  row.append(selection, identity, description, statusWrap, edit);
   item.append(row);
 
   if (operation.issues.length > 0) {

@@ -12,8 +12,8 @@ const ui = Object.fromEntries([
   'profile-help-button', 'profile-help', 'profile-notice-list',
   'preview-button', 'preview-status',
   'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'downloads',
-  'summary-version', 'summary-selected', 'summary-excluded', 'summary-warnings',
-  'summary-profile', 'summary-validation', 'validation-operation'
+  'summary-version', 'summary-selected', 'summary-excluded',
+  'summary-profile', 'validation-operation'
 ].map(id => [id, byId(id)]));
 const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
 
@@ -255,17 +255,21 @@ function formatProfileLabel(profile) {
 }
 
 function initializeProfileHelp() {
-  ui['profile-help-button'].addEventListener('click', () => {
-    const open = ui['profile-help-button'].getAttribute('aria-expanded') !== 'true';
-    setProfileHelpOpen(open);
+  const container = ui['profile-help-button'].closest('.profile-field');
+  if (!container) return;
+
+  container.addEventListener('mouseenter', () => {
+    setProfileHelpOpen(true);
   });
+  container.addEventListener('mouseleave', () => {
+    setProfileHelpOpen(false);
+  });
+  
+  ui['profile-help-button'].addEventListener('focus', () => setProfileHelpOpen(true));
+  ui['profile-help-button'].addEventListener('blur', () => setProfileHelpOpen(false));
+  
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') setProfileHelpOpen(false);
-  });
-  document.addEventListener('click', event => {
-    if (ui['profile-help-button'].getAttribute('aria-expanded') !== 'true') return;
-    if (ui['profile-help-button'].contains(event.target) || ui['profile-help'].contains(event.target)) return;
-    setProfileHelpOpen(false);
   });
 }
 
@@ -338,15 +342,10 @@ function resetSpecificationPresentation() {
 function renderGenerationSummary() {
   const state = getState();
   const selected = state.operations.filter(operation => operation.enabled);
-  const warnings = selected.filter(operation => operation.status === 'SUPPORTED_WITH_WARNING').length;
   ui['summary-version'].textContent = state.analysis?.openApiVersion ?? '—';
   ui['summary-selected'].textContent = String(selected.length);
   ui['summary-excluded'].textContent = String(Math.max(0, state.operations.length - selected.length));
-  ui['summary-warnings'].textContent = String(warnings);
   ui['summary-profile'].textContent = ui['target-profile'].value || '—';
-  ui['summary-validation'].textContent = ui['validation-operation'].value
-    ? `${ui['validation-operation'].value} · MCP protocol`
-    : '미선택';
 }
 
 function updatePreviewGate() {

@@ -9,7 +9,8 @@ const elements = ids([
   'retry-enabled', 'retry-status-codes', 'retry-network-errors', 'retry-max-retries',
   'retry-initial-backoff', 'retry-max-backoff', 'retry-respect-retry-after',
   'pagination-enabled', 'pagination-request-parameter', 'pagination-initial-value',
-  'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items'
+  'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items',
+  'selected-tool-list-container'
 ]);
 let openOperationId = null;
 
@@ -58,7 +59,11 @@ function renderToolRows() {
   moveEditorHome();
   const enabled = getState().operations.filter(operation => operation.enabled);
   if (!enabled.some(operation => operation.operationId === openOperationId)) openOperationId = null;
-  elements['selected-tool-empty'].hidden = enabled.length !== 0;
+  const hasEnabled = enabled.length !== 0;
+  elements['selected-tool-empty'].hidden = hasEnabled;
+  if (elements['selected-tool-list-container']) {
+    elements['selected-tool-list-container'].hidden = !hasEnabled;
+  }
   elements['selected-tool-list'].replaceChildren(...enabled.map(toolRow));
   if (!openOperationId) {
     elements['operation-editor'].disabled = true;
@@ -80,6 +85,11 @@ function toolRow(operation) {
   const summary = document.createElement('summary');
   const summaryContent = document.createElement('span');
   summaryContent.className = 'selected-tool-summary-content';
+  
+  const chevron = document.createElement('i');
+  chevron.className = 'bi bi-chevron-down selected-tool-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  
   const identity = document.createElement('span');
   identity.className = 'selected-tool-identity';
   const method = document.createElement('span');
@@ -88,10 +98,10 @@ function toolRow(operation) {
   method.textContent = operation.method;
   const path = document.createElement('code');
   path.textContent = operation.path;
+  identity.append(method, path);
   const operationId = document.createElement('span');
   operationId.className = 'selected-operation-id';
   operationId.textContent = operation.operationId;
-  identity.append(method, path, operationId);
   const tool = document.createElement('span');
   tool.className = 'selected-tool-name';
   tool.textContent = operation.toolName;
@@ -99,7 +109,7 @@ function toolRow(operation) {
   state.className = 'configuration-state';
   state.dataset.role = 'configuration-state';
   state.textContent = hasOverrides(operation) ? '사용자 설정' : '기본값';
-  summaryContent.append(identity, tool, state);
+  summaryContent.append(chevron, identity, operationId, tool, state);
   summary.append(summaryContent);
   const slot = document.createElement('div');
   slot.className = 'selected-tool-editor';
