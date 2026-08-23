@@ -299,6 +299,42 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void keepsWizardAnnouncementsAndProfileHelpStableAcrossFocusTransitions() throws Exception {
+        String wizard = resource("/static/wizard.js");
+        String app = resource("/static/app.js");
+
+        // A programmatic hash write must not focus and announce the same step
+        // again when the resulting hashchange event arrives.
+        assertTrue(wizard.contains("if (target === getState().currentStep)"));
+        assertTrue(wizard.contains("keepActiveStepVisible(target, true)"));
+
+        // Focus may move from the help button into one of the notice links.
+        // Close only after focus leaves the complete profile field.
+        assertTrue(app.contains("container.addEventListener('focusin'"));
+        assertTrue(app.contains("container.addEventListener('focusout'"));
+        assertTrue(app.contains("!container.contains(event.relatedTarget)"));
+        assertFalse(app.contains("profile-help-button'].addEventListener('blur'"));
+    }
+
+    @Test
+    void keepsEditorTablesAndControlsUsableAcrossTheMobileBreakpoint() throws Exception {
+        String editorStyles = resource("/static/editor.css");
+        String legacyStyles = resource("/static/legacy.css");
+        int compactStart = editorStyles.indexOf("@media (max-width: 760px)");
+        int phoneStart = editorStyles.indexOf("@media (max-width: 400px)", compactStart);
+        String compactStyles = editorStyles.substring(compactStart, phoneStart);
+
+        assertTrue(compactStyles.contains(".selected-tool-list-header { display: none; }"));
+        assertTrue(compactStyles.contains(".selected-tool-summary-content {"));
+        assertTrue(compactStyles.contains("grid-template-columns: 1.25rem minmax(0, 1fr) auto;"));
+        assertTrue(compactStyles.contains(".parameter-row { grid-template-columns: 1fr; align-items: stretch; }"));
+        assertFalse(compactStyles.contains(".endpoint-toolbar { position: static;"));
+        assertTrue(editorStyles.contains(".endpoint-toolbar {\n  position: sticky;"));
+        assertTrue(legacyStyles.contains("overflow-x: clip;"));
+        assertFalse(legacyStyles.contains("overflow-x: hidden;"));
+    }
+
+    @Test
     void rendersProfileLabelsAndCompatibilityNoticesWithoutHtmlInjection() throws Exception {
         String app = resource("/static/app.js");
 

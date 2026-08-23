@@ -153,7 +153,13 @@ export function initializeWizard() {
   panels.get(3).addEventListener('input', render);
   window.addEventListener('hashchange', () => {
     const match = window.location.hash.match(/^#step-([1-5])$/);
-    if (match) goToStep(Number(match[1]), {forceStepVisibility: true});
+    if (!match) return;
+    const target = Number(match[1]);
+    if (target === getState().currentStep) {
+      keepActiveStepVisible(target, true);
+      return;
+    }
+    goToStep(target, {forceStepVisibility: true});
   });
 
   subscribe(() => render());

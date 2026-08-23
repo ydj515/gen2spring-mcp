@@ -264,9 +264,11 @@ function initializeProfileHelp() {
   container.addEventListener('mouseleave', () => {
     setProfileHelpOpen(false);
   });
-  
-  ui['profile-help-button'].addEventListener('focus', () => setProfileHelpOpen(true));
-  ui['profile-help-button'].addEventListener('blur', () => setProfileHelpOpen(false));
+
+  container.addEventListener('focusin', () => setProfileHelpOpen(true));
+  container.addEventListener('focusout', event => {
+    if (!container.contains(event.relatedTarget)) setProfileHelpOpen(false);
+  });
   
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') setProfileHelpOpen(false);
