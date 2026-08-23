@@ -1,6 +1,9 @@
 import {getState, subscribe, updateState} from './state.js';
 
 const GROUP_LABELS = Object.freeze({
+  admin: '관리',
+  auth: '인증',
+  customers: '고객',
   users: '사용자',
   orders: '주문',
   payments: '결제',
@@ -40,6 +43,7 @@ export function initializeOperations({onSelectionChange, onEdit}) {
   const list = document.querySelector('#operation-list');
   const counts = document.querySelector('#operation-counts');
   const empty = document.querySelector('#operation-empty');
+  const groupExpansion = new Map();
 
   const render = () => {
     const state = getState();
@@ -56,7 +60,9 @@ export function initializeOperations({onSelectionChange, onEdit}) {
     counts.textContent = state.analysis
       ? `전체 ${state.operations.length} · 선택 ${selected.length} · 경고 ${state.analysis.counts.supportedWithWarning} · 지원하지 않음 ${state.analysis.counts.unsupported}`
       : '파일 분석 후 endpoint를 선택할 수 있습니다.';
-    list.replaceChildren(...groupOperations(visible).map(operationGroupElement));
+    captureGroupExpansion(list, groupExpansion);
+    list.replaceChildren(...groupOperations(visible)
+      .map(resourceGroup => operationGroupElement(resourceGroup, groupExpansion)));
     empty.hidden = visible.length !== 0;
   };
 
@@ -101,19 +107,26 @@ export function initializeOperations({onSelectionChange, onEdit}) {
   render();
 }
 
+function captureGroupExpansion(list, groupExpansion) {
+  for (const item of list.querySelectorAll('.endpoint-group')) {
+    const group = item.querySelector('details');
+    if (group) groupExpansion.set(item.dataset.groupKey, group.open);
+  }
+}
+
 function preservedSelection(operations, selectedOperationId) {
   return operations.find(operation => operation.enabled && operation.operationId === selectedOperationId)?.operationId
     ?? operations.find(operation => operation.enabled)?.operationId
     ?? null;
 }
 
-function operationGroupElement(resourceGroup) {
+function operationGroupElement(resourceGroup, groupExpansion) {
   const item = document.createElement('li');
   item.className = 'endpoint-group';
   item.dataset.groupKey = resourceGroup.key;
 
   const group = document.createElement('details');
-  group.open = true;
+  group.open = groupExpansion.get(resourceGroup.key) ?? true;
   const summary = document.createElement('summary');
   summary.className = 'endpoint-group__summary';
   const icon = document.createElement('i');

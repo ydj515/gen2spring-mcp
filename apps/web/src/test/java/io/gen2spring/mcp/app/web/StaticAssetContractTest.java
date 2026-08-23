@@ -20,6 +20,9 @@ class StaticAssetContractTest {
         assertTrue(tokens.contains("--app-bg: #f6f8fc"));
         assertTrue(tokens.contains("--app-primary: #3568f4"));
         assertTrue(tokens.contains("--app-danger-soft: #fff0f1"));
+        assertTrue(tokens.contains("@font-face"));
+        assertTrue(tokens.contains("/webjars/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2"));
+        assertFalse(tokens.contains("bootstrap-icons.woff2?"));
         assertTrue(styles.contains("@import url('/design-tokens.css')"));
         assertTrue(styles.contains("@import url('/app-shell.css')"));
         assertTrue(styles.contains("@import url('/editor.css')"));
@@ -68,7 +71,7 @@ class StaticAssetContractTest {
         assertTrue(editor.indexOf("id=\"generation-summary\"")
                 < editor.indexOf("id=\"specification-step\""));
         assertTrue(editorStyles.contains("--action-dock-clearance"));
-        assertTrue(editorStyles.contains(".wizard-nav {\n  position: sticky;"));
+        assertTrue(editorStyles.contains(".wizard-nav {\n  position: fixed;"));
         assertTrue(editorStyles.contains("scroll-padding-inline"));
         assertTrue(editorStyles.contains("padding-bottom: var(--action-dock-clearance)"));
         assertTrue(wizard.contains("scrollIntoView"));
@@ -84,6 +87,12 @@ class StaticAssetContractTest {
 
         assertTrue(operations.contains("export function groupOperations(operations)"));
         assertTrue(operations.contains("'schema-contracts': '스키마 계약'"));
+        assertTrue(operations.contains("admin: '관리'"));
+        assertTrue(operations.contains("auth: '인증'"));
+        assertTrue(operations.contains("customers: '고객'"));
+        assertTrue(operations.contains("const groupExpansion = new Map()"));
+        assertTrue(operations.contains("captureGroupExpansion(list, groupExpansion)"));
+        assertTrue(operations.contains("group.open = groupExpansion.get(resourceGroup.key) ?? true"));
         assertTrue(operations.contains("operation.issues"));
         assertTrue(operations.contains("group.replaceChildren"));
         assertTrue(operations.contains("operation.sourceIndex"));
@@ -93,6 +102,7 @@ class StaticAssetContractTest {
         assertTrue(editorStyles.contains(".endpoint-group"));
         assertTrue(editorStyles.contains(".endpoint-row"));
         assertTrue(editorStyles.contains(".endpoint-issue-row"));
+        assertTrue(editorStyles.contains(".wizard-panel h2:focus-visible { outline: none; }"));
     }
 
     @Test

@@ -93,7 +93,7 @@ Application tokens bridge to Bootstrap variables and remain the only source of a
 | `--app-danger` | `#d63b44` | Unsupported/error text/icon |
 | `--app-danger-soft` | `#fff0f1` | Unsupported/error background |
 
-Spacing uses `4, 8, 12, 16, 24, 32, 48px`. Controls use an `8px` radius, data surfaces `12px`, and large containers `16px`. Shadows are restricted to the top bar and persistent action dock. Typography uses Bootstrap's system font stack with a 14-16px body baseline; no `@font-face` is introduced.
+Spacing uses `4, 8, 12, 16, 24, 32, 48px`. Controls use an `8px` radius, data surfaces `12px`, and large containers `16px`. Shadows are restricted to the top bar and persistent action dock. Typography uses Bootstrap's system font stack with a 14-16px body baseline; no remote text font is introduced. The packaged Bootstrap Icons font is declared locally with a query-free URL because local mode rejects query strings by policy.
 
 ## 8. Editor
 
@@ -111,7 +111,7 @@ On mobile the strip becomes a compact two-column grid. Long profile identifiers 
 
 ### 8.3 Persistent action dock
 
-Each visible wizard panel retains its existing back/next identifiers, but its `.wizard-nav` renders as a sticky viewport-bottom action dock. The active panel supplies the controls, blocking hint, and button state. The editor reserves bottom padding equal to the dock height so the final content row is never obscured.
+Each visible wizard panel retains its existing back/next identifiers, but its `.wizard-nav` renders as a fixed viewport-bottom action dock. The active panel supplies the controls, blocking hint, and button state. The editor reserves bottom padding equal to the dock height so the final content row is never obscured.
 
 Step 4 keeps `설정 검증 및 미리보기` as a secondary in-content action and `프로젝트 생성` as the primary generation action. Step 5 has no next action and keeps only contextual back/delete/download controls.
 
