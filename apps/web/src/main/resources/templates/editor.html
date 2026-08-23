@@ -74,9 +74,7 @@
     <section id="operations-step" class="workflow-step wizard-panel" data-step="2" aria-labelledby="operations-title" hidden>
       <div class="section-heading endpoint-heading">
         <div><p class="step-kicker">STEP 2</p><h2 id="operations-title" tabindex="-1">2. API endpoint 선택</h2></div>
-        <label class="select-all" for="select-all-operations">
-          <input id="select-all-operations" type="checkbox" disabled> 선택 가능한 항목 전체
-        </label>
+        <p>생성할 MCP Tool에 포함할 endpoint를 선택하세요.</p>
       </div>
       <fieldset id="operation-selection" class="endpoint-selection" disabled>
         <legend class="visually-hidden">MCP Tool로 만들 endpoint</legend>
@@ -94,8 +92,11 @@
               <option value="unsupported">지원하지 않음</option>
             </select>
           </div>
+          <p id="operation-counts" class="endpoint-counts" aria-live="polite">파일 분석 후 endpoint를 선택할 수 있습니다.</p>
+          <label class="select-all" for="select-all-operations">
+            <input id="select-all-operations" type="checkbox" disabled> 선택 가능한 항목 전체
+          </label>
         </div>
-        <p id="operation-counts" class="endpoint-counts" aria-live="polite">파일 분석 후 endpoint를 선택할 수 있습니다.</p>
         <ul id="operation-list" class="operation-list"></ul>
         <p id="operation-empty" class="empty-state" hidden>검색 조건에 맞는 endpoint가 없습니다.</p>
       </fieldset>

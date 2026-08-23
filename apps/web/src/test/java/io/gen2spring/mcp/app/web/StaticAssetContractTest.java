@@ -78,6 +78,24 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void groupsEndpointsByResourceWithoutChangingSelectionIdentity() throws Exception {
+        String operations = resource("/static/operations.js");
+        String editorStyles = resource("/static/editor.css");
+
+        assertTrue(operations.contains("export function groupOperations(operations)"));
+        assertTrue(operations.contains("'schema-contracts': '스키마 계약'"));
+        assertTrue(operations.contains("operation.issues"));
+        assertTrue(operations.contains("group.replaceChildren"));
+        assertTrue(operations.contains("operation.sourceIndex"));
+        assertTrue(operations.contains("document.createElement('details')"));
+        assertTrue(operations.contains("document.createElement('summary')"));
+        assertFalse(operations.contains("innerHTML"));
+        assertTrue(editorStyles.contains(".endpoint-group"));
+        assertTrue(editorStyles.contains(".endpoint-row"));
+        assertTrue(editorStyles.contains(".endpoint-issue-row"));
+    }
+
+    @Test
     void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
         String index = resource("/templates/editor.html") + resource("/templates/fragments/ui.html");
         String styles = applicationStyles();
