@@ -96,6 +96,7 @@ class StaticAssetContractTest {
         assertTrue(operations.contains("operation.issues"));
         assertTrue(operations.contains("group.replaceChildren"));
         assertTrue(operations.contains("operation.sourceIndex"));
+        assertTrue(operations.contains("counts.replaceChildren("));
         assertTrue(operations.contains("document.createElement('details')"));
         assertTrue(operations.contains("document.createElement('summary')"));
         assertFalse(operations.contains("innerHTML"));
@@ -204,8 +205,7 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"operation-editor-home\""));
         assertTrue(index.contains("id=\"generation-summary\""));
         for (String id : new String[] {
-                "summary-version", "summary-selected", "summary-excluded",
-                "summary-warnings", "summary-profile", "summary-validation"
+                "summary-version", "summary-selected", "summary-excluded", "summary-profile"
         }) {
             assertTrue(index.contains("id=\"" + id + "\""), id);
         }

@@ -61,7 +61,12 @@ export function initializeOperations({onSelectionChange, onEdit}) {
       const total = state.operations.length;
       const warn = state.analysis.counts.supportedWithWarning;
       const unsup = state.analysis.counts.unsupported;
-      counts.innerHTML = `전체 <span class="count-highlight">${total}</span> · 선택 <span class="count-highlight">${selected.length}</span> · 경고 <span class="count-highlight">${warn}</span> · 지원하지 않음 <span class="count-unsupported">${unsup}</span>`;
+      counts.replaceChildren(
+        document.createTextNode('전체 '), countValue(total, 'count-highlight'),
+        document.createTextNode(' · 선택 '), countValue(selected.length, 'count-highlight'),
+        document.createTextNode(' · 경고 '), countValue(warn, 'count-highlight'),
+        document.createTextNode(' · 지원하지 않음 '), countValue(unsup, 'count-unsupported')
+      );
     } else {
       counts.textContent = '파일 분석 후 endpoint를 선택할 수 있습니다.';
     }
@@ -207,10 +212,10 @@ function operationRow(operation) {
   edit.className = 'endpoint-edit';
   edit.dataset.operationIndex = operation.sourceIndex;
   edit.setAttribute('aria-label', `${operation.method} ${operation.path} Tool 설정`);
-  const chevronIcon = document.createElement('i');
-  chevronIcon.className = 'bi bi-chevron-down';
-  chevronIcon.setAttribute('aria-hidden', 'true');
-  edit.append(chevronIcon);
+  const settingsIcon = document.createElement('i');
+  settingsIcon.className = 'bi bi-sliders';
+  settingsIcon.setAttribute('aria-hidden', 'true');
+  edit.append(settingsIcon);
   edit.disabled = !(selectable && operation.operationId);
 
   row.append(selection, identity, description, statusWrap, edit);
@@ -237,6 +242,13 @@ function operationRow(operation) {
     item.append(issues);
   }
   return item;
+}
+
+function countValue(value, className) {
+  const count = document.createElement('span');
+  count.className = className;
+  count.textContent = String(value);
+  return count;
 }
 
 function searchableText(operation) {
