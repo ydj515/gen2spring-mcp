@@ -126,6 +126,29 @@ class StaticAssetContractTest {
     }
 
     @Test
+    void givesHostedResourcesAndJobStateTheSameResponsiveHierarchy() throws Exception {
+        String dashboard = resource("/templates/dashboard.html");
+        String jobDetail = resource("/templates/job-detail.html");
+        String hosted = resource("/static/hosted.js");
+        String hostedStyles = resource("/static/hosted.css");
+
+        assertTrue(dashboard.contains("class=\"hosted-dashboard-grid\""));
+        assertTrue(dashboard.contains("class=\"table-responsive hosted-resource-table\""));
+        assertTrue(dashboard.contains("아직 등록된 OpenAPI 문서가 없습니다."));
+        assertTrue(dashboard.contains("아직 실행한 작업이 없습니다."));
+        assertTrue(jobDetail.contains("class=\"job-detail-grid\""));
+        assertTrue(jobDetail.contains("class=\"job-timeline\""));
+        assertTrue(jobDetail.contains("class=\"artifact-list hosted-artifact-list\""));
+        assertTrue(jobDetail.contains("class=\"job-cancel-form\""));
+        assertTrue(hosted.contains("feedback.dataset.feedbackState"));
+        assertTrue(hosted.contains("가져오기 작업을 등록했습니다."));
+        assertFalse(hosted.contains("innerHTML"));
+        assertTrue(hostedStyles.contains(".hosted-dashboard-grid"));
+        assertTrue(hostedStyles.contains(".hosted-resource-table"));
+        assertTrue(hostedStyles.contains("@media (max-width: 400px)"));
+    }
+
+    @Test
     void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
         String index = resource("/templates/editor.html") + resource("/templates/fragments/ui.html");
         String styles = applicationStyles();

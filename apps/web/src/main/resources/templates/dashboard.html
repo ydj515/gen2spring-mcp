@@ -28,34 +28,47 @@
       <p id="hosted-feedback" class="status" role="status" aria-live="polite"></p>
     </section>
 
-    <section class="surface" aria-labelledby="specifications-title">
-      <div class="surface-heading">
-        <div><p class="section-kicker">SPECIFICATIONS</p><h2 id="specifications-title">OpenAPI 문서</h2></div>
-        <span class="count-badge" th:text="${#lists.size(specifications)} + '개'">0개</span>
-      </div>
-      <ul class="hosted-list">
-        <li th:each="spec : ${specifications}">
-          <a th:href="@{/editor(specification=${spec.id.value})}"><strong th:text="${spec.label}">OpenAPI 문서</strong></a>
-          <span class="status-badge" th:text="${spec.sourceType}">UPLOAD</span>
-          <code th:text="${spec.id.value}">id</code>
-        </li>
-        <li class="empty-state" th:if="${#lists.isEmpty(specifications)}">아직 등록된 OpenAPI 문서가 없습니다.</li>
-      </ul>
-    </section>
+    <div class="hosted-dashboard-grid">
+      <section class="surface" aria-labelledby="specifications-title">
+        <div class="surface-heading">
+          <div><p class="section-kicker">SPECIFICATIONS</p><h2 id="specifications-title">OpenAPI 문서</h2></div>
+          <span class="count-badge" th:text="${#lists.size(specifications)} + '개'">0개</span>
+        </div>
+        <div class="table-responsive hosted-resource-table">
+          <table>
+            <thead><tr><th scope="col">문서</th><th scope="col">가져오기 방식</th><th scope="col">식별자</th></tr></thead>
+            <tbody>
+              <tr th:each="spec : ${specifications}">
+                <td data-label="문서"><a th:href="@{/editor(specification=${spec.id.value})}"><strong th:text="${spec.label}">OpenAPI 문서</strong></a></td>
+                <td data-label="가져오기 방식"><span class="status-badge" th:text="${spec.sourceType}">UPLOAD</span></td>
+                <td data-label="식별자"><code th:text="${spec.id.value}">id</code></td>
+              </tr>
+              <tr th:if="${#lists.isEmpty(specifications)}"><td class="empty-state" colspan="3">아직 등록된 OpenAPI 문서가 없습니다.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-    <section class="surface" aria-labelledby="jobs-title">
-      <div class="surface-heading">
-        <div><p class="section-kicker">JOBS</p><h2 id="jobs-title">작업 내역</h2></div>
-        <span class="count-badge" th:text="${#lists.size(jobs)} + '개'">0개</span>
-      </div>
-      <ul class="hosted-list">
-        <li th:each="job : ${jobs}">
-          <a th:href="@{/jobs/{id}(id=${job.id.value})}" th:text="${job.kind + ' · ' + job.status}">작업</a>
-          <time th:text="${job.createdAt}">시간</time>
-        </li>
-        <li class="empty-state" th:if="${#lists.isEmpty(jobs)}">아직 실행한 작업이 없습니다.</li>
-      </ul>
-    </section>
+      <section class="surface" aria-labelledby="jobs-title">
+        <div class="surface-heading">
+          <div><p class="section-kicker">JOBS</p><h2 id="jobs-title">작업 내역</h2></div>
+          <span class="count-badge" th:text="${#lists.size(jobs)} + '개'">0개</span>
+        </div>
+        <div class="table-responsive hosted-resource-table">
+          <table>
+            <thead><tr><th scope="col">작업</th><th scope="col">상태</th><th scope="col">생성 시각</th></tr></thead>
+            <tbody>
+              <tr th:each="job : ${jobs}">
+                <td data-label="작업"><a th:href="@{/jobs/{id}(id=${job.id.value})}" th:text="${job.kind}">작업</a></td>
+                <td data-label="상태"><span class="status-badge" th:attr="data-state=${job.status}" th:text="${job.status}">QUEUED</span></td>
+                <td data-label="생성 시각"><time th:text="${job.createdAt}">시간</time></td>
+              </tr>
+              <tr th:if="${#lists.isEmpty(jobs)}"><td class="empty-state" colspan="3">아직 실행한 작업이 없습니다.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </main>
   <script src="/hosted.js" defer></script>
 </body>

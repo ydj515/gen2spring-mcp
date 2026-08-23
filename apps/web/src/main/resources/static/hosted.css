@@ -2,3 +2,122 @@
 .hosted-list {
   min-width: 0;
 }
+
+main.hosted-shell {
+  display: grid;
+  width: min(100%, 90rem);
+  max-width: none;
+  gap: var(--app-space-4);
+  padding: var(--app-space-8) clamp(1rem, 4vw, 3rem) var(--app-space-12);
+}
+.hosted-shell .page-header { margin-bottom: var(--app-space-2); }
+.hosted-shell .primary-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--app-space-2);
+  min-height: 2.75rem;
+  padding: 0.625rem 1rem;
+  border-radius: var(--app-radius-control);
+  background: var(--app-primary);
+  color: var(--app-surface);
+  font-weight: 800;
+  text-decoration: none;
+}
+.hosted-shell .primary-link:hover { background: var(--app-primary-hover); }
+.hosted-actions form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--app-space-3);
+  margin: 0;
+}
+.hosted-actions form label { grid-column: 1 / -1; color: var(--app-text); font-weight: 700; }
+.hosted-actions input { min-height: 2.75rem; }
+#hosted-feedback { margin-bottom: 0; }
+#hosted-feedback[data-feedback-state="pending"] { color: var(--app-primary); }
+#hosted-feedback[data-feedback-state="success"] { color: var(--app-success); }
+#hosted-feedback[data-feedback-state="error"] { color: var(--app-danger); }
+
+.hosted-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--app-space-4);
+}
+.hosted-resource-table {
+  overflow-x: auto;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-control);
+}
+.hosted-resource-table table { width: 100%; border-collapse: collapse; }
+.hosted-resource-table th,
+.hosted-resource-table td { padding: var(--app-space-3) var(--app-space-4); border-bottom: 1px solid var(--app-border); text-align: left; vertical-align: middle; }
+.hosted-resource-table th { background: var(--app-surface-subtle); color: var(--app-muted); font-size: 0.75rem; letter-spacing: 0.04em; }
+.hosted-resource-table tbody tr:last-child td { border-bottom: 0; }
+.hosted-resource-table a { color: var(--app-text); text-decoration: none; }
+.hosted-resource-table a:hover { color: var(--app-primary); text-decoration: underline; }
+.hosted-resource-table code { display: block; max-width: 12rem; overflow: hidden; color: var(--app-muted); text-overflow: ellipsis; white-space: nowrap; }
+.hosted-resource-table .empty-state { border: 0; border-radius: 0; }
+
+.status-badge[data-state="SUCCEEDED"] { background: var(--app-success-soft); color: var(--app-success); }
+.status-badge[data-state="FAILED"] { background: var(--app-danger-soft); color: var(--app-danger); }
+.status-badge[data-state="CANCELLED"] { background: #f1f3f7; color: var(--app-muted); }
+.status-badge[data-state="RUNNING"] { background: var(--app-primary-soft); color: var(--app-primary-hover); }
+.status-badge[data-state="QUEUED"] { background: var(--app-warning-soft); color: var(--app-warning); }
+
+.job-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.7fr) minmax(0, 1.3fr);
+  gap: var(--app-space-4);
+}
+.job-artifacts { grid-column: 1 / -1; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--app-space-3); }
+.detail-grid > div { padding: var(--app-space-4); border-radius: var(--app-radius-control); background: var(--app-surface-subtle); }
+.detail-grid dt { color: var(--app-muted); font-size: 0.8rem; }
+.detail-grid dd { margin: var(--app-space-1) 0 0; font-weight: 800; }
+.job-cancel-form { margin-top: var(--app-space-6); }
+.job-cancel-form button { display: inline-flex; align-items: center; gap: var(--app-space-2); }
+.job-timeline { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.job-timeline li {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--app-space-3);
+  min-height: 3.25rem;
+  padding-block: var(--app-space-3);
+  border-bottom: 1px solid var(--app-border);
+}
+.job-timeline li:last-child { border-bottom: 0; }
+.job-timeline i { color: var(--app-primary); font-size: 0.6rem; }
+.job-timeline time { color: var(--app-muted); font-size: 0.8rem; }
+.hosted-artifact-list { display: flex; flex-wrap: wrap; gap: var(--app-space-3); }
+.hosted-artifact-list a { display: inline-flex; align-items: center; gap: var(--app-space-2); min-height: 2.75rem; padding: 0.625rem 0.875rem; border: 1px solid var(--app-border); border-radius: var(--app-radius-control); color: var(--app-text); font-weight: 700; text-decoration: none; }
+.hosted-artifact-list a:hover { border-color: var(--app-primary); color: var(--app-primary); }
+
+@media (max-width: 900px) {
+  .hosted-dashboard-grid,
+  .job-detail-grid { grid-template-columns: 1fr; }
+  .job-artifacts { grid-column: auto; }
+}
+
+@media (max-width: 400px) {
+  main.hosted-shell { padding: var(--app-space-6) 1rem var(--app-space-8); }
+  .hosted-shell .page-header .primary-link { width: 100%; }
+  .hosted-actions form { grid-template-columns: 1fr; }
+  .hosted-resource-table { overflow: visible; border: 0; }
+  .hosted-resource-table table,
+  .hosted-resource-table tbody,
+  .hosted-resource-table tr,
+  .hosted-resource-table td { display: block; width: 100%; }
+  .hosted-resource-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .hosted-resource-table tr { margin-bottom: var(--app-space-3); padding: var(--app-space-3); border: 1px solid var(--app-border); border-radius: var(--app-radius-control); }
+  .hosted-resource-table td { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: var(--app-space-2); padding: var(--app-space-2) 0; border: 0; }
+  .hosted-resource-table td::before { color: var(--app-muted); content: attr(data-label); font-size: 0.75rem; font-weight: 700; }
+  .hosted-resource-table td[colspan] { display: block; }
+  .hosted-resource-table td[colspan]::before { content: none; }
+  .detail-grid { grid-template-columns: 1fr; }
+  .job-cancel-form button { width: 100%; justify-content: center; }
+  .job-timeline li { grid-template-columns: 1rem minmax(0, 1fr); }
+  .job-timeline time { grid-column: 2; }
+  .hosted-artifact-list { display: grid; }
+  .hosted-artifact-list a { width: 100%; }
+}
