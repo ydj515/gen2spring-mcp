@@ -1,4 +1,5 @@
 import org.gradle.api.plugins.jvm.JvmTestSuite
+import org.gradle.api.tasks.testing.Test
 
 dependencies {
     implementation(project(":modules:domain"))
@@ -25,4 +26,12 @@ testing {
             }
         }
     }
+}
+
+tasks.register<Test>("fastTest") {
+    group = "verification"
+    description = "Run Spring AI 2 source rendering tests without generated project builds"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
 }

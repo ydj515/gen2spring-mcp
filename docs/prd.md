@@ -988,12 +988,13 @@ src/main/java/{packageName}/
 │   │   └── {Domain}Operations.java
 │   └── tool/                             # MCP 도구 진입점 및 ToolSpecification 빈 등록
 │       ├── {Domain}McpTools.java
-│       └── {Domain}McpToolCallbacks.java
+│       └── {Domain}McpToolCallbacks.java  # MVC Sync
+│           또는 {Domain}McpToolSpecifications.java  # WebFlux Async
 └── runtime/                              # 프로덕션 안정성 보장 엔진
-    ├── OpenApiOperationExecutor.java    # RestClient 호출, 타임아웃, 큐/동시성, 1MB 크기 제한
+    ├── OpenApiOperationExecutor.java    # MVC RestClient 또는 WebFlux WebClient 실행 경계
     ├── ResponseNormalizer.java           # 응답 정규화 및 에러 포맷팅
     ├── RuntimeTelemetry.java             # Micrometer 메트릭 및 W3C 분산 추적
-    ├── ToolArgumentContext.java          # 파라미터 컨텍스트 전달
+    ├── ToolArgumentContext.java          # MVC Sync 파라미터 컨텍스트 전달
     └── RetryPolicy / PaginationPolicy    # 재시도 및 페이징 제어 (선택적 생성)
 ```
 
@@ -1880,6 +1881,11 @@ native file key를 제공하지 않는 Windows JDK에서는 physical path, file 
 metadata를 사용하고 hard-link 관계는 별도로 확인한다. CLI private staging은 owner-only Windows ACL을
 요구한다. 관련 구현 경계는 [issue #2](https://github.com/ydj515/gen2spring-mcp/issues/2)와 연결한다.
 
+지원 matrix는 Spring AI 1.1 MVC Sync 4개, Spring AI 2.0 MVC Sync 4개, Spring AI 2.0 WebFlux Async 4개로
+총 12개다. `mise run generator:test`는 생성 프로젝트 wrapper를 실행하지 않는 빠른 계약 검증이며,
+`mise run generator:acceptance`는 POSIX 전체 12개 또는 Windows 대표 2개를 실행한다. 동일한 경계는 수동
+`Generation Acceptance` GitHub Actions workflow에도 반영한다.
+
 ### 17.4 MCP Contract Test
 
 - initialize
@@ -2010,21 +2016,21 @@ metadata를 사용하고 hard-link 관계는 별도로 확인한다. CLI private
 - mTLS provider-egress와 public HTTP/HTTPS 80/443 destination policy
 - linear Catalog family/revision publication과 deterministic compatible/breaking diff
 - active Runtime CAS migration, append-only history, grant-aware rollback, multi-replica cutover
+- Maven 기반 Spring AI 1.1·2.0 MVC Sync 생성
+- Spring AI 2.0 WebFlux Async 생성
+- Gradle·Maven, Java 17·21을 조합한 12개 Streamable HTTP profile
 
 ### P2 남은 범위
 
-- WebFlux
-- Async
-- Maven
 - STDIO
 - Kotlin
 - cross-Catalog public Gateway, sharing, OAuth2 credential acquisition, billing
 - AI description enhancement
 
-### P2 다음 확정 슬라이스: 생성 대상 확장
+### P2 생성 대상 확장: 완료
 
-Maven, WebFlux, Async를 하나의 생성 대상 확장 슬라이스로 구현한다. 구현과 전체 generation acceptance가
-완료되기 전까지 위 세 항목은 `P2 남은 범위`에 유지한다.
+Maven, WebFlux, Async를 하나의 생성 대상 확장 슬라이스로 구현했다. 빠른 계약 검증과 POSIX 전체 12개
+generation acceptance, 저장소 비-hosted 회귀 검증을 통과한 뒤 세 항목을 `P2 완료`로 이동했다.
 
 공식 지원 대상으로 등록할 조합은 12개다.
 

@@ -30,7 +30,7 @@ jobs:
       - name: Capture Java 21 home
         shell: bash
         run: echo "GEN2SPRING_JAVA_21_HOME=$(realpath "$JAVA_HOME")" >> "$GITHUB_ENV"
-      - name: Test Linux core
+      - name: Test Linux generator contracts
         run: >-
           ./gradlew clean
           :modules:domain:test
@@ -38,9 +38,20 @@ jobs:
           :modules:adapters:configuration:test
           :modules:adapters:openapi:test
           :modules:adapters:filesystem:test
+          :modules:adapters:emitters:support:test
+          :modules:adapters:emitters:spring-ai-1:fastTest
+          :modules:adapters:emitters:spring-ai-2:fastTest
+          :modules:adapters:validation:test
           :modules:bootstrap:test
+          :apps:cli:fastTest
           :apps:cli:installDist
-          :apps:web:classes
+          --no-daemon --non-interactive --rerun-tasks
+      - name: Test Linux Web profile contracts
+        run: >-
+          ./gradlew :apps:web:test
+          --tests '*WebMvcContractTest.preservesTheProfilesUploadAndPreviewApi'
+          --tests '*HostedProfileControllerTest.exposesCanonicalProfilesInHostedMode'
+          --tests '*StaticAssetContractTest'
           --no-daemon --non-interactive --rerun-tasks
 
   windows:
@@ -64,7 +75,7 @@ jobs:
       - name: Capture Java 21 home
         shell: pwsh
         run: Add-Content -Path $env:GITHUB_ENV -Value "GEN2SPRING_JAVA_21_HOME=$((Resolve-Path -LiteralPath $env:JAVA_HOME).ProviderPath)"
-      - name: Test Windows core
+      - name: Test Windows generator contracts
         shell: pwsh
         run: >-
           .\gradlew.bat clean
@@ -73,7 +84,19 @@ jobs:
           :modules:adapters:configuration:test
           :modules:adapters:openapi:test
           :modules:adapters:filesystem:test
+          :modules:adapters:emitters:support:test
+          :modules:adapters:emitters:spring-ai-1:fastTest
+          :modules:adapters:emitters:spring-ai-2:fastTest
+          :modules:adapters:validation:test
           :modules:bootstrap:test
+          :apps:cli:fastTest
           :apps:cli:installDist
-          :apps:web:classes
+          --no-daemon --non-interactive --rerun-tasks
+      - name: Test Windows Web profile contracts
+        shell: pwsh
+        run: >-
+          .\gradlew.bat :apps:web:test
+          --tests '*WebMvcContractTest.preservesTheProfilesUploadAndPreviewApi'
+          --tests '*HostedProfileControllerTest.exposesCanonicalProfilesInHostedMode'
+          --tests '*StaticAssetContractTest'
           --no-daemon --non-interactive --rerun-tasks

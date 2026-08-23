@@ -233,6 +233,9 @@ class P1GenerationIntegrationTest {
             SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX,
             SPRING_AI_2_JAVA_21,
             SPRING_AI_2_JAVA_21_WEBFLUX);
+    private static final List<ProfileCase> WINDOWS_REPRESENTATIVE_PROFILE_CASES = List.of(
+            SPRING_AI_1_JAVA_17,
+            SPRING_AI_2_JAVA_21_MAVEN_WEBFLUX);
     private static final Set<String> REQUIRED_OUTPUTS = Set.of(
             ".dockerignore",
             ".gitignore",
@@ -366,6 +369,26 @@ class P1GenerationIntegrationTest {
             assertEquals(first.manifest(), second.manifest(), profile.id());
             assertCanonicalArchiveEntriesEqual(first.archiveEntries(), second.archiveEntries());
             assertValidationReportsEqualExceptMeasurements(first.report(), second.report());
+        }
+    }
+
+    @Test
+    void windowsRepresentativeProfilesValidateAcrossTargetAxes() throws Exception {
+        Path specification = resource("openapi/weather-api.yaml");
+        targetJavaHomes();
+        assertInstalledProfileMatrix();
+
+        for (ProfileCase profile : WINDOWS_REPRESENTATIVE_PROFILE_CASES) {
+            GenerationResult result = generate(
+                    specification,
+                    configurationFor(profile),
+                    tempDir.resolve("windows-representative-" + profile.id()));
+
+            if (profile.webFlux()) {
+                assertWebFluxReleaseContract(result, profile);
+            } else {
+                assertReleaseContract(result, specification, profile);
+            }
         }
     }
 

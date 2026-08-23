@@ -175,17 +175,40 @@ OPENAPI_MCP=apps/cli/build/install/openapi-mcp/bin/openapi-mcp
 "$OPENAPI_MCP" profiles
 ```
 
-`profiles`는 다음 네 항목을 ID 순서대로 항상 같은 JSON으로 출력한다. Spring Boot 3.5.16과
-Spring AI 1.1.8 조합의 generated source는 Jackson 2를 사용하며 `McpToolParam` annotation을 생성하지 않는다.
-다른 family는 Spring Boot 4.1.0과 Spring AI 2.0.0을 사용한다. 모든 profile은 Gradle 9.6.1,
-Spring MVC Sync와 Streamable HTTP `/mcp`를 사용한다.
+`profiles`는 다음 조합을 펼친 12개 항목을 ID 순서대로 항상 같은 JSON으로 출력한다. Spring AI 1.1.8은
+Spring Boot 3.5.16과 Jackson 2를 사용하며 `McpToolParam` annotation을 생성하지 않는다. Spring AI 2.0.0은
+Spring Boot 4.1.0을 사용한다.
 
-| ID | Java | Spring Boot | Spring AI | Container image |
-| --- | ---: | ---: | ---: | --- |
-| `spring-ai-1.1-java17-mvc-streamable` | 17 | 3.5.16 | 1.1.8 | `eclipse-temurin:17.0.19_10-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8` |
-| `spring-ai-1.1-java21-mvc-streamable` | 21 | 3.5.16 | 1.1.8 | `eclipse-temurin:21.0.11_10-jre-noble@sha256:373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64` |
-| `spring-ai-2.0-java17-mvc-streamable` | 17 | 4.1.0 | 2.0.0 | `eclipse-temurin:17.0.19_10-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8` |
-| `spring-ai-2.0-java21-mvc-streamable` | 21 | 4.1.0 | 2.0.0 | `eclipse-temurin:21.0.11_10-jre-noble@sha256:373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64` |
+| Spring AI | Java | Build tool | Web stack | Model | Transport | 개수 |
+| --- | --- | --- | --- | --- | --- | ---: |
+| 1.1.8 | 17, 21 | Gradle 9.6.1, Maven 3.9.16 | MVC | Sync | Streamable HTTP | 4 |
+| 2.0.0 | 17, 21 | Gradle 9.6.1, Maven 3.9.16 | MVC | Sync | Streamable HTTP | 4 |
+| 2.0.0 | 17, 21 | Gradle 9.6.1, Maven 3.9.16 | WebFlux | Async | Streamable HTTP | 4 |
+
+Maven profile은 Maven Wrapper 3.3.4를 사용한다. Spring AI 1.1 WebFlux Async 조합은 upstream transport
+결함이 해결되고 Java·build tool 전체 acceptance가 통과할 때까지 선택 항목으로 등록하지 않는다.
+
+정확한 profile ID는 다음과 같다.
+
+| Profile ID | Java | Build tool | Server model |
+| --- | ---: | --- | --- |
+| `spring-ai-1.1-java17-mvc-streamable` | 17 | Gradle | MVC Sync |
+| `spring-ai-1.1-java17-maven-mvc-streamable` | 17 | Maven | MVC Sync |
+| `spring-ai-1.1-java21-mvc-streamable` | 21 | Gradle | MVC Sync |
+| `spring-ai-1.1-java21-maven-mvc-streamable` | 21 | Maven | MVC Sync |
+| `spring-ai-2.0-java17-mvc-streamable` | 17 | Gradle | MVC Sync |
+| `spring-ai-2.0-java17-maven-mvc-streamable` | 17 | Maven | MVC Sync |
+| `spring-ai-2.0-java17-webflux-async-streamable` | 17 | Gradle | WebFlux Async |
+| `spring-ai-2.0-java17-maven-webflux-async-streamable` | 17 | Maven | WebFlux Async |
+| `spring-ai-2.0-java21-mvc-streamable` | 21 | Gradle | MVC Sync |
+| `spring-ai-2.0-java21-maven-mvc-streamable` | 21 | Maven | MVC Sync |
+| `spring-ai-2.0-java21-webflux-async-streamable` | 21 | Gradle | WebFlux Async |
+| `spring-ai-2.0-java21-maven-webflux-async-streamable` | 21 | Maven | WebFlux Async |
+
+Java 17 image는
+`eclipse-temurin:17.0.19_10-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8`,
+Java 21 image는
+`eclipse-temurin:21.0.11_10-jre-noble@sha256:373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64`로 고정한다.
 
 Java 21 기본 profile은 `spring-ai-2.0-java21-mvc-streamable`이다. 생성 Dockerfile은 위 image를
 digest로 고정하고 `USER 10001:10001`로 실행한다. `.dockerignore`는 Dockerfile과 실행 JAR만 포함한다.
@@ -336,7 +359,7 @@ max backoff 10000ms 이하이며 total timeout 안에서만 적용한다. GET op
 
 ## 생성 산출물
 
-성공한 output에는 Gradle project, generated source/test, `application.yml`, generated `README.md`,
+성공한 output에는 선택한 Gradle 또는 Maven project, generated source/test, `application.yml`, generated `README.md`,
 `Dockerfile`, `.dockerignore`, 원본 OpenAPI, `GENERATION_MANIFEST.json`, `VALIDATION_REPORT.json`과
 sibling ZIP이 생긴다.
 
@@ -359,12 +382,13 @@ src/main/java/{packageName}/
 │   │   └── {Domain}Operations.java
 │   └── tool/                             # MCP 도구 진입점 및 ToolSpecification 빈 등록
 │       ├── {Domain}McpTools.java
-│       └── {Domain}McpToolCallbacks.java
+│       └── {Domain}McpToolCallbacks.java  # MVC Sync
+│           또는 {Domain}McpToolSpecifications.java  # WebFlux Async
 └── runtime/                              # 프로덕션 안정성 보장 엔진
-    ├── OpenApiOperationExecutor.java    # RestClient 호출, 타임아웃, 큐/동시성, 1MB 크기 제한
+    ├── OpenApiOperationExecutor.java    # MVC RestClient 또는 WebFlux WebClient 실행 경계
     ├── ResponseNormalizer.java           # 응답 정규화 및 에러 포맷팅
     ├── RuntimeTelemetry.java             # Micrometer 메트릭 및 W3C 분산 추적
-    ├── ToolArgumentContext.java          # 파라미터 컨텍스트 전달
+    ├── ToolArgumentContext.java          # MVC Sync 파라미터 컨텍스트 전달
     └── RetryPolicy / PaginationPolicy    # 재시도 및 페이징 제어 (선택적 생성)
 ```
 
@@ -373,7 +397,7 @@ src/main/java/{packageName}/
 생성 프로젝트의 `application.yml`에서 `spring.ai.mcp.server.annotation-scanner.enabled: false`를 기본 적용하는 이유는 다음과 같습니다.
 
 1. **OpenAPI 스키마 무결성 보장 (Deterministic Tool Schema)**: Spring AI의 자동 리플렉션 스캔은 Java 파라미터 타입으로부터 JSON Schema를 동적 생성하므로 OpenAPI 원본의 세부 제약(포맷, required 순서, custom constraints 등)이 유실될 수 있습니다. 본 생성기는 OpenAPI 명세에서 도출된 엄격한 JSON Schema 리터럴을 `DefaultToolDefinition.inputSchema`에 직접 주입하여 MCP 클라이언트와의 계약을 완벽히 보장합니다.
-2. **도구 중복 등록 및 어노테이션 혼선 방지**: Spring AI MCP Server Starter의 스캐너는 일반 `@Tool`이 아닌 `@McpTool`을 스캔하며, Spring AI 버전 간(1.1의 Community 패키지 vs 2.0의 공식 패키지) 어노테이션 네임스페이스가 상이합니다. 어노테이션 스캐너를 비활성화하고 `List<McpServerFeatures.SyncToolSpecification>` 빈으로 명시적 등록함으로써 도구 중복 등록과 스캔 누락을 원천 차단합니다.
+2. **도구 중복 등록 및 어노테이션 혼선 방지**: Spring AI MCP Server Starter의 스캐너는 일반 `@Tool`이 아닌 `@McpTool`을 스캔하며, Spring AI 버전 간(1.1의 Community 패키지 vs 2.0의 공식 패키지) 어노테이션 네임스페이스가 상이합니다. 어노테이션 스캐너를 비활성화하고 profile에 맞는 Sync 또는 Async `ToolSpecification` 빈으로 명시적 등록해 도구 중복 등록과 스캔 누락을 차단합니다.
 3. **런타임 파이프라인 및 안전한 에러 캡슐화**: 커스텀 `callHandler`를 통해 도구 호출 시 W3C 분산 추적 및 Micrometer 메트릭(`RuntimeTelemetry`)을 수집하고, 백엔드 API 오류 시 원시 스택트레이스 대신 정제된 safe error payload(`isError=true`)를 안전하게 반환합니다.
 
 ## 지원 범위와 제한
@@ -389,7 +413,8 @@ src/main/java/{packageName}/
 - compatible object `allOf`, branch 8개 이하의 `oneOf`·`anyOf`·multi-type union
 - compatible constraint를 결합하는 OpenAPI 3.1 `$ref` sibling
 - Jakarta Validation, API key query/header의 `SERVER_SECRET` injection
-- Java 17·21, Spring MVC Sync, Streamable HTTP, generic/typed JSON output
+- Java 17·21, Gradle·Maven, Spring MVC Sync, Spring AI 2.0 WebFlux Async
+- Streamable HTTP, generic/typed JSON output
 
 제한:
 
@@ -402,7 +427,7 @@ src/main/java/{packageName}/
 - nullable path와 required nullable query/header, conflicting 또는 empty `allOf`, budget을 넘는 composition,
   remote `$ref`, custom JSON Schema dialect, discriminator와 recursive schema는 해당 endpoint를 이유와 함께
   지원 불가로 표시한다.
-- Maven, WebFlux, async, SSE와 STDIO는 지원하지 않는다.
+- Spring AI 1.1 WebFlux Async, SSE와 STDIO는 지원하지 않는다.
 - local UI는 URL import를 제공하지 않는다. hosted URL import도 문서 내부 remote `$ref`는 거부한다.
 
 Windows validation host는 repository `gradlew.bat`와 trusted `cmd.exe`, verified target의
