@@ -6,8 +6,26 @@ public record CompatibilityProfile(
         String generatorModule,
         String templateVersion,
         String runtimeVersion,
-        String gradleVersion,
+        BuildToolchain buildToolchain,
         String containerImage) {
+    public CompatibilityProfile(
+            String id,
+            TargetPlatform target,
+            String generatorModule,
+            String templateVersion,
+            String runtimeVersion,
+            String gradleVersion,
+            String containerImage) {
+        this(
+                id,
+                target,
+                generatorModule,
+                templateVersion,
+                runtimeVersion,
+                new BuildToolchain(gradleVersion, gradleVersion),
+                containerImage);
+    }
+
     public static CompatibilityProfile p0() {
         return CompatibilityProfileRegistry.defaults()
                 .find("spring-ai-2.0-java21-mvc-streamable")
@@ -16,6 +34,13 @@ public record CompatibilityProfile(
 
     public boolean supports(TargetPlatform candidate) {
         return target.equals(candidate);
+    }
+
+    public String gradleVersion() {
+        if (target == null || !"GRADLE_KOTLIN".equals(target.buildTool()) || buildToolchain == null) {
+            return null;
+        }
+        return buildToolchain.distributionVersion();
     }
 
     public record TargetPlatform(

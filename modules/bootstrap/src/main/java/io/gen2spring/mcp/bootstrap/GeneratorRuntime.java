@@ -12,6 +12,7 @@ import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataDocumentFac
 import io.gen2spring.mcp.adapter.filesystem.SafeProjectWriter;
 import io.gen2spring.mcp.adapter.filesystem.SourceTreeChecksum;
 import io.gen2spring.mcp.adapter.filesystem.ValidationReportWriter;
+import io.gen2spring.mcp.domain.profile.CompatibilityCatalog;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
@@ -24,7 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 
 public record GeneratorRuntime(
-        CompatibilityProfileRegistry profiles,
+        CompatibilityCatalog compatibilityCatalog,
         SpecificationAnalyzer analyzer,
         GenerationConfigurationParser configurationParser,
         ProjectGeneratorRegistry projectGenerators,
@@ -32,7 +33,7 @@ public record GeneratorRuntime(
         GenerationPipeline pipeline) {
 
     public GeneratorRuntime {
-        Objects.requireNonNull(profiles, "profiles");
+        Objects.requireNonNull(compatibilityCatalog, "compatibilityCatalog");
         Objects.requireNonNull(analyzer, "analyzer");
         Objects.requireNonNull(configurationParser, "configurationParser");
         Objects.requireNonNull(projectGenerators, "projectGenerators");
@@ -41,7 +42,8 @@ public record GeneratorRuntime(
     }
 
     public static GeneratorRuntime defaults() {
-        CompatibilityProfileRegistry profiles = CompatibilityProfileRegistry.defaults();
+        CompatibilityCatalog compatibilityCatalog = CompatibilityCatalog.defaults();
+        CompatibilityProfileRegistry profiles = compatibilityCatalog.profiles();
         SpecificationAnalyzer analyzer = new SwaggerOpenApiAnalyzer();
         ProjectGeneratorRegistry projectGenerators = ProjectGeneratorRegistry.of(Map.of(
                 "generator-spring-ai-1", new SpringAi1ProjectGenerator(),
@@ -60,7 +62,7 @@ public record GeneratorRuntime(
                 new RuntimeMetadataDocumentFactory(),
                 new CanonicalRuntimeMetadataCodec());
         return new GeneratorRuntime(
-                profiles,
+                compatibilityCatalog,
                 analyzer,
                 new GenerationConfigurationParser(profiles),
                 projectGenerators,
@@ -68,8 +70,12 @@ public record GeneratorRuntime(
                 pipeline);
     }
 
+    public CompatibilityProfileRegistry profiles() {
+        return compatibilityCatalog.profiles();
+    }
+
     public List<String> generatorModules() {
-        return profiles.profiles().stream()
+        return profiles().profiles().stream()
                 .map(profile -> profile.generatorModule())
                 .distinct()
                 .sorted()

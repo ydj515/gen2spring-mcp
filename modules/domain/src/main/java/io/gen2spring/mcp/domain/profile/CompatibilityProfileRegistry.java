@@ -23,7 +23,7 @@ public final class CompatibilityProfileRegistry {
     }
 
     public static CompatibilityProfileRegistry defaults() {
-        return Defaults.INSTANCE;
+        return CompatibilityCatalog.defaults().profiles();
     }
 
     public static CompatibilityProfileRegistry of(List<CompatibilityProfile> profiles) {
@@ -68,7 +68,9 @@ public final class CompatibilityProfileRegistry {
                 || isBlank(profile.generatorModule())
                 || isBlank(profile.templateVersion())
                 || isBlank(profile.runtimeVersion())
-                || isBlank(profile.gradleVersion())
+                || profile.buildToolchain() == null
+                || isBlank(profile.buildToolchain().distributionVersion())
+                || isBlank(profile.buildToolchain().wrapperVersion())
                 || isBlank(profile.containerImage())) {
             throw invalidProfiles();
         }
@@ -93,47 +95,4 @@ public final class CompatibilityProfileRegistry {
         return new IllegalArgumentException(INVALID_PROFILES_MESSAGE);
     }
 
-    private static final class Defaults {
-        private static final String JAVA_17_IMAGE = "eclipse-temurin:17.0.19_10-jre-noble@sha256:"
-                + "543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8";
-        private static final String JAVA_21_IMAGE = "eclipse-temurin:21.0.11_10-jre-noble@sha256:"
-                + "373787d1d45a87f084fda43e7de0e9acf5eedee049446efac738f13587ec4c64";
-
-        private static final CompatibilityProfileRegistry INSTANCE = CompatibilityProfileRegistry.of(List.of(
-                profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v2",
-                        17, JAVA_17_IMAGE),
-                profile("spring-ai-1.1", "3.5.16", "1.1.8", "generator-spring-ai-1", "spring-ai-1-v2",
-                        21, JAVA_21_IMAGE),
-                profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v3",
-                        17, JAVA_17_IMAGE),
-                profile("spring-ai-2.0", "4.1.0", "2.0.0", "generator-spring-ai-2", "spring-ai-2-v3",
-                        21, JAVA_21_IMAGE)));
-
-        private static CompatibilityProfile profile(
-                String family,
-                String springBootVersion,
-                String springAiVersion,
-                String generatorModule,
-                String templateVersion,
-                int javaVersion,
-                String containerImage) {
-            return new CompatibilityProfile(
-                    family + "-java" + javaVersion + "-mvc-streamable",
-                    new CompatibilityProfile.TargetPlatform(
-                            javaVersion,
-                            springBootVersion,
-                            springAiVersion,
-                            "GRADLE_KOTLIN",
-                            "MVC",
-                            "SYNC",
-                            "STREAMABLE_HTTP"),
-                    generatorModule,
-                    templateVersion,
-                    "0.3.0",
-                    "9.6.1",
-                    containerImage);
-        }
-
-        private Defaults() {}
-    }
 }
