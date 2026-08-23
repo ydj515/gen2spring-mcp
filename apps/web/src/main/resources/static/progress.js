@@ -47,7 +47,6 @@ export function clearProgress() {
   fill.style.width = '0%';
   fill.dataset.state = 'running';
   document.querySelector('#job-progress-percent').textContent = '0%';
-  document.querySelector('#job-progress-details').open = false;
 }
 
 export function renderProgress(snapshot) {
@@ -82,8 +81,6 @@ export function renderProgress(snapshot) {
     : running ? `${label(running.stage)} 진행 중입니다.`
     : settled === stages.length ? '모든 단계를 완료했습니다.'
     : '생성 작업을 준비하고 있습니다.';
-
-  if (failed) document.querySelector('#job-progress-details').open = true;
 
   document.querySelector('#progress-list').replaceChildren(...stages.map(entry => {
     const item = document.createElement('li');

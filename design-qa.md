@@ -6,6 +6,8 @@
 - Desktop implementation capture: `gen2spring-ui-step2-1440-final-v2.png` (current-task QA artifact, not committed)
 - Tablet implementation capture: `gen2spring-ui-step2-768.png` (current-task QA artifact, not committed)
 - Mobile implementation capture: `gen2spring-ui-step2-400-final.png` (current-task QA artifact, not committed)
+- Step 2 interaction refinement capture: `gen2spring-ui-step2-settings-final.png` (current-task QA artifact, not committed)
+- Step 5 always-visible detail capture: `gen2spring-ui-step5-details-final.png` (current-task QA artifact, not committed)
 - Source pixels: `1487 x 1058`
 - Desktop implementation pixels: `1404 x 1024`, captured from a `1440 x 1024` in-app browser viewport
 - Tablet viewport: `768 x 900`; mobile viewport and pixels: `400 x 900`
@@ -39,6 +41,9 @@ Focused review covered the connected stepper, summary strip, endpoint search/fil
 - Move through steps 2, 3, and 4 with the persistent action dock.
 - Run representative-call preview for all 34 selected tools.
 - Generate the project and observe all 8 stages reach 100%, including three downloadable artifacts.
+- Confirm the Step 5 stage list is a static region with all 8 stages visible and no disclosure control.
+- Confirm endpoint settings use a 44 px transparent sliders control and only the icon color changes on hover.
+- Confirm inactive wizard-step hover changes only text color while its background and number mark remain unchanged.
 - Upload and analyze `swagger-3.0.yml`: OpenAPI `3.0.4`, 38 total, 34 selected, 4 unsupported.
 - Check 1440 px, 768 px, and 400 px layouts for horizontal overflow and visible persistent actions.
 - Check browser warning and error logs: none.
@@ -48,7 +53,8 @@ Focused review covered the connected stepper, summary strip, endpoint search/fil
 
 1. First comparison found two P2 issues: Bootstrap Icons rendered as missing glyph boxes because cache-busting font URLs were rejected by the local-only query-string policy, and `position: sticky` did not keep the action dock visible at the top of long steps. The implementation now serves a query-free local font URL and uses a centered fixed dock.
 2. Second comparison found two P2 polish issues: resource groups derived from `admin`, `auth`, and `customers` remained English, and programmatic heading focus showed a large outline. The implementation now localizes the groups and suppresses the non-interactive heading outline.
-3. The final desktop comparison and responsive captures show no remaining actionable P0, P1, or P2 findings.
+3. The interaction-detail comparison found that Step 5 still used a disclosure control, endpoint settings looked like a secondary navigation button, and wizard hover inherited a filled button background. The implementation now keeps progress detail visible, uses a transparent sliders control, and limits wizard hover to text color.
+4. The final desktop comparison and responsive captures show no remaining actionable P0, P1, or P2 findings.
 
 ## Findings
 
@@ -62,6 +68,7 @@ Focused review covered the connected stepper, summary strip, endpoint search/fil
 - [x] Grouped endpoint table with explicit unsupported reasons
 - [x] Persistent previous/next actions across long steps
 - [x] Editor steps 1 through 5, preview, progress, and result states
+- [x] Always-visible generation stages and lightweight endpoint settings control
 - [x] Hosted dashboard and job-detail redesign contracts
 - [x] Desktop, tablet, and 400 px responsive checks
 - [x] OpenAPI 3.0 and 3.1 regression flows

@@ -200,13 +200,13 @@ function operationRow(operation) {
 
   const edit = document.createElement('button');
   edit.type = 'button';
-  edit.className = 'endpoint-edit secondary';
+  edit.className = 'endpoint-edit';
   edit.dataset.operationIndex = operation.sourceIndex;
   edit.setAttribute('aria-label', `${operation.method} ${operation.path} Tool 설정`);
-  const chevron = document.createElement('i');
-  chevron.className = 'bi bi-chevron-right';
-  chevron.setAttribute('aria-hidden', 'true');
-  edit.append(chevron);
+  const settingsIcon = document.createElement('i');
+  settingsIcon.className = 'bi bi-sliders';
+  settingsIcon.setAttribute('aria-hidden', 'true');
+  edit.append(settingsIcon);
   edit.disabled = !(selectable && operation.operationId);
 
   row.append(selection, identity, description, status, edit);

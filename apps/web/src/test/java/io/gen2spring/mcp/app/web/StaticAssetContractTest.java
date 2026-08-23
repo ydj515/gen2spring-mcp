@@ -103,6 +103,12 @@ class StaticAssetContractTest {
         assertTrue(editorStyles.contains(".endpoint-row"));
         assertTrue(editorStyles.contains(".endpoint-issue-row"));
         assertTrue(editorStyles.contains(".wizard-panel h2:focus-visible { outline: none; }"));
+        assertTrue(operations.contains("edit.className = 'endpoint-edit';"));
+        assertTrue(operations.contains("settingsIcon.className = 'bi bi-sliders';"));
+        assertFalse(operations.contains("endpoint-edit secondary"));
+        assertFalse(operations.contains("chevron.className = 'bi bi-chevron-right';"));
+        assertTrue(editorStyles.contains(".endpoint-row .endpoint-edit:hover:not(:disabled)"));
+        assertTrue(editorStyles.contains(".wizard-progress .wizard-chip:hover:not(:disabled)"));
     }
 
     @Test
@@ -339,7 +345,9 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"job-progress-fill\""));
         assertTrue(index.contains("id=\"job-progress-details\""));
         assertTrue(index.contains("id=\"progress-list\""));
-        assertTrue(index.contains("<summary>상세 보기</summary>"));
+        assertTrue(index.contains("class=\"progress-details-title\">상세 보기</h3>"));
+        assertFalse(index.contains("<details id=\"job-progress-details\""));
+        assertFalse(index.contains("<summary>상세 보기</summary>"));
 
         assertTrue(progress.contains("export function renderProgress(snapshot)"));
         assertTrue(progress.contains("OpenAPI 문서 분석"));
@@ -347,6 +355,7 @@ class StaticAssetContractTest {
         assertTrue(progress.contains("대표 Tool 호출 검증"));
         assertTrue(progress.contains("산출물 패키징"));
         assertTrue(progress.contains("'SKIPPED'"));
+        assertFalse(progress.contains("document.querySelector('#job-progress-details').open"));
         assertTrue(app.contains("renderProgress(snapshot)"));
         // The job state line must be Korean, not the raw RUNNING — COMPILE constants.
         // Both modes' status vocabularies are covered: local emits VALIDATED and
