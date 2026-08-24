@@ -282,8 +282,6 @@ section, .error-summary {
 .selected-operation-id { color: var(--muted); font-size: .82rem; }
 .selected-tool-name { overflow-wrap: anywhere; color: var(--primary-dark); font-weight: 750; }
 .configuration-state { padding: .2rem .55rem; border-radius: 999px; background: var(--primary-light); color: var(--primary-dark); font-size: .75rem; font-weight: 800; }
-.selected-tool-editor { padding: 0 .9rem .9rem; }
-.selected-tool-editor fieldset { margin: 0; padding: 1rem; }
 .generation-summary { position: sticky; top: 1rem; padding: 1rem; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface-2); }
 .generation-summary h3 { margin-top: 0; }
 .generation-summary dl { display: grid; gap: .6rem; margin: 0; }
@@ -391,7 +389,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   button { transition: none; }
   button:active:not(:disabled) { transform: none; }
 }
-:focus-visible { outline: 3px solid var(--warning); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 
 .status { color: var(--muted); }
 .summary-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .3rem 1rem; }

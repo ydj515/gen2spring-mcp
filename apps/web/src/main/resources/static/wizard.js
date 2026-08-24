@@ -26,13 +26,14 @@ const filled = id => (document.querySelector(`#${id}`)?.value ?? '').trim() !== 
 export function blockingReason(step, state) {
   if (step === 1) return state.analysis ? '' : 'OpenAPI 파일을 먼저 분석해 주세요.';
   if (step === 2) {
-    return state.operations.some(operation => operation.enabled)
+    return state.operations.some(operation => operation.endpointSelected)
       ? '' : 'endpoint를 하나 이상 선택해 주세요.';
   }
   if (step === 3) {
     const missing = REQUIRED_PROJECT_FIELDS.filter(id => !filled(id));
-    return missing.length === 0
-      ? '' : `${missing.map(id => FIELD_LABELS[id]).join(', ')} 항목을 채워 주세요.`;
+    if (missing.length !== 0) return `${missing.map(id => FIELD_LABELS[id]).join(', ')} 항목을 채워 주세요.`;
+    return state.operations.some(operation => operation.enabled)
+      ? '' : '생성할 Tool을 하나 이상 선택해 주세요.';
   }
   if (step === 4) {
     return state.jobId ? '' : '프로젝트 생성을 시작하면 진행 상황을 볼 수 있습니다.';
@@ -46,8 +47,9 @@ export function canAdvance(step, state) {
   // holds an id whose operations were never re-fetched; trusting it would
   // strand the user on an empty step 2.
   if (step === 1) return Boolean(state.analysis);
-  if (step === 2) return state.operations.some(operation => operation.enabled);
-  if (step === 3) return REQUIRED_PROJECT_FIELDS.every(filled);
+  if (step === 2) return state.operations.some(operation => operation.endpointSelected);
+  if (step === 3) return REQUIRED_PROJECT_FIELDS.every(filled)
+    && state.operations.some(operation => operation.enabled);
   // Step 5 opens once a job exists. Starting generation carries the user there,
   // and this keeps the step reachable again after navigating back.
   if (step === 4) return Boolean(state.jobId);

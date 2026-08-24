@@ -1,6 +1,6 @@
 import * as api from './api.js';
 import {getState, updateState} from './state.js';
-import {buildConfiguration, initializeEditor, renderOperations, selectOperation} from './editor.js';
+import {buildConfiguration, initializeEditor, renderOperations} from './editor.js';
 import {initializeUpload} from './upload.js';
 import {initializeOperations} from './operations.js';
 import {initializeWizard} from './wizard.js';
@@ -13,20 +13,22 @@ const ui = Object.fromEntries([
   'preview-button', 'preview-status',
   'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'downloads',
   'summary-version', 'summary-selected', 'summary-excluded',
-  'summary-profile', 'validation-operation'
+  'summary-profile', 'validation-operation', 'validation-parameter-summary', 'validation-checklist',
+  'artifact-placeholder-list', 'job-error-details', 'job-error-detail'
 ].map(id => [id, byId(id)]));
 const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
+let previewRequestVersion = 0;
 
 const wizard = initializeWizard();
-initializeEditor(invalidatePreview);
+initializeEditor(() => {
+  renderParameterSummary();
+  invalidatePreview();
+});
 initializeOperations({
   onSelectionChange: () => {
     renderOperations();
+    renderParameterSummary();
     invalidatePreview();
-  },
-  onEdit: operationId => {
-    wizard.goToStep(3);
-    selectOperation(operationId);
   }
 });
 const upload = initializeUpload({
@@ -34,10 +36,8 @@ const upload = initializeUpload({
     ui['preview-button'].disabled = false;
     renderAnalysis(analysis);
     renderOperations();
+    renderParameterSummary();
     invalidatePreview();
-    // A retained specification replays this callback on resume; advancing
-    // unconditionally would discard the restored step.
-    if (getState().currentStep === 1) wizard.goToStep(2);
   },
   onReset: resetSpecificationPresentation,
   onFailure: showFailure
@@ -51,10 +51,13 @@ for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'd
   'target-profile', 'validation-operation', 'validation-arguments']) {
   byId(id).addEventListener('change', invalidatePreview);
 }
+ui['validation-operation'].addEventListener('change', renderParameterSummary);
 
 loadProfiles();
 resumeRetainedState().then(() => wizard.syncGate());
 renderGenerationSummary();
+renderParameterSummary();
+renderValidationChecklist();
 
 async function loadProfiles() {
   try {
@@ -107,20 +110,27 @@ async function resumeRetainedSpecification() {
 
 async function runPreview() {
   clearFailure();
+  const requestVersion = ++previewRequestVersion;
   try {
     const configuration = buildConfiguration();
+    updateState({preview: null});
     ui['preview-button'].disabled = true;
+    ui['generate-button'].disabled = true;
     ui['preview-status'].textContent = '미리보기를 생성하고 있습니다.';
+    renderValidationChecklist();
+    renderPreviewEmpty('설정을 검증하고 있습니다.');
     const preview = await api.preview(getState().specificationId, configuration);
+    if (requestVersion !== previewRequestVersion) return;
     updateState({preview});
     renderPreview(preview);
-    ui['preview-status'].textContent = `${preview.tools.length}개 Tool을 생성할 준비가 됐습니다.`;
+    ui['preview-status'].textContent = `설정 검증을 완료했습니다. ${preview.tools.length}개 Tool을 생성할 수 있습니다.`;
     ui['generate-button'].disabled = false;
   } catch (failure) {
+    if (requestVersion !== previewRequestVersion) return;
     invalidatePreview();
     showFailure(failure);
   } finally {
-    updatePreviewGate();
+    if (requestVersion === previewRequestVersion) updatePreviewGate();
   }
 }
 
@@ -136,6 +146,7 @@ async function startGeneration() {
     const accepted = await api.startJob(getState().specificationId, configuration);
     updateState({jobId: accepted.id, job: accepted});
     ui['delete-job-button'].disabled = !api.hostedMode;
+    renderJob(accepted);
     wizard.goToStep(5);
     await followJob(accepted.id);
   } catch (failure) {
@@ -217,7 +228,7 @@ async function removeJob() {
     updateState({jobId: null, job: null});
     ui['job-status'].textContent = '생성 작업을 삭제했습니다.';
     clearProgress();
-    ui['downloads'].replaceChildren();
+    renderArtifacts({id: jobId, downloads: []});
     ui['delete-job-button'].disabled = true;
     ui['generate-button'].disabled = !getState().preview;
     // Deleting the job closes the step 5 gate, so step 5 must stop being current.
@@ -228,10 +239,12 @@ async function removeJob() {
 }
 
 function invalidatePreview() {
+  previewRequestVersion += 1;
   updateState({preview: null});
   ui['generate-button'].disabled = true;
-  ui['preview-status'].textContent = '생성 전 미리보기가 필요합니다.';
-  ui['preview-output'].replaceChildren();
+  ui['preview-status'].textContent = '생성 전 설정 검증이 필요합니다.';
+  renderValidationChecklist();
+  renderPreviewEmpty();
   renderGenerationSummary();
   updatePreviewGate();
   wizard.syncGate();
@@ -255,21 +268,24 @@ function formatProfileLabel(profile) {
 }
 
 function initializeProfileHelp() {
-  const container = ui['profile-help-button'].closest('.profile-field');
-  if (!container) return;
+  const anchor = ui['profile-help-button'].closest('.profile-help-anchor');
+  if (!anchor) return;
 
-  container.addEventListener('mouseenter', () => {
+  anchor.addEventListener('mouseenter', () => {
     setProfileHelpOpen(true);
   });
-  container.addEventListener('mouseleave', () => {
+  anchor.addEventListener('mouseleave', () => {
     setProfileHelpOpen(false);
   });
 
-  container.addEventListener('focusin', () => setProfileHelpOpen(true));
-  container.addEventListener('focusout', event => {
-    if (!container.contains(event.relatedTarget)) setProfileHelpOpen(false);
+  anchor.addEventListener('focusin', () => setProfileHelpOpen(true));
+  anchor.addEventListener('focusout', event => {
+    if (!anchor.contains(event.relatedTarget)) setProfileHelpOpen(false);
   });
-  
+  ui['profile-help-button'].addEventListener('click', () => {
+    if (window.matchMedia('(hover: none)').matches) setProfileHelpOpen(true);
+  });
+
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') setProfileHelpOpen(false);
   });
@@ -312,17 +328,20 @@ function safeReferenceUrl(value) {
 
 function renderAnalysis(analysis) {
   const values = [
-    ['파일', analysis.file?.name ?? 'OpenAPI'],
-    ['OpenAPI', analysis.openApiVersion],
-    ['Endpoint', String(analysis.counts.total)],
-    ['선택 가능', String(analysis.counts.supported + analysis.counts.supportedWithWarning)]
+    ['전체 Endpoint', String(analysis.counts.total)],
+    ['선택 가능', String(analysis.counts.supported + analysis.counts.supportedWithWarning)],
+    ['경고', String(analysis.counts.supportedWithWarning)],
+    ['지원하지 않음', String(analysis.counts.unsupported)]
   ];
-  ui['analysis-summary'].replaceChildren(...values.flatMap(([term, description]) => {
+  ui['analysis-summary'].replaceChildren(...values.map(([term, description]) => {
+    const item = document.createElement('div');
+    item.className = 'analysis-summary__item';
     const dt = document.createElement('dt');
     dt.textContent = term;
     const dd = document.createElement('dd');
     dd.textContent = description;
-    return [dt, dd];
+    item.append(dt, dd);
+    return item;
   }));
   renderGenerationSummary();
 }
@@ -331,9 +350,11 @@ function resetSpecificationPresentation() {
   ui['preview-button'].disabled = true;
   clearFailure();
   ui['analysis-summary'].replaceChildren();
-  ui['preview-output'].replaceChildren();
+  renderPreviewEmpty();
+  renderValidationChecklist();
+  renderParameterSummary();
   clearProgress();
-  ui['downloads'].replaceChildren();
+  renderArtifacts({id: '', downloads: []});
   ui['job-status'].textContent = '아직 생성 작업을 시작하지 않았습니다.';
   ui['delete-job-button'].disabled = true;
   invalidatePreview();
@@ -343,11 +364,16 @@ function resetSpecificationPresentation() {
 
 function renderGenerationSummary() {
   const state = getState();
-  const selected = state.operations.filter(operation => operation.enabled);
-  ui['summary-version'].textContent = state.analysis?.openApiVersion ?? '—';
-  ui['summary-selected'].textContent = String(selected.length);
-  ui['summary-excluded'].textContent = String(Math.max(0, state.operations.length - selected.length));
-  ui['summary-profile'].textContent = ui['target-profile'].value || '—';
+  const selectedEndpoints = state.operations.filter(operation => operation.endpointSelected);
+  const generatedTools = state.operations.filter(operation => operation.enabled);
+  const fileName = state.analysis?.file?.name;
+  const version = state.analysis?.openApiVersion;
+  ui['summary-version'].textContent = fileName && version ? `${fileName} · ${version}` : version ?? '—';
+  ui['summary-selected'].textContent = String(selectedEndpoints.length);
+  ui['summary-excluded'].textContent = String(generatedTools.length);
+  const artifactId = byId('artifact-id').value.trim();
+  const profile = ui['target-profile'].value;
+  ui['summary-profile'].textContent = artifactId && profile ? `${artifactId} · ${profile}` : profile || artifactId || '—';
 }
 
 function updatePreviewGate() {
@@ -359,25 +385,159 @@ function updatePreviewGate() {
     || required.some(id => !byId(id).value.trim());
 }
 
-function renderPreview(preview) {
-  ui['preview-output'].replaceChildren(...preview.tools.map(tool => {
-    const card = document.createElement('article');
-    card.className = 'tool-card surface-subtle';
-    const heading = document.createElement('h3');
-    heading.textContent = tool.name;
-    const description = document.createElement('p');
-    description.textContent = tool.description;
-    const schema = document.createElement('pre');
-    schema.textContent = JSON.stringify({
-      inputSchema: tool.inputSchema,
-      output: tool.output,
-      ...(tool.retry ? {retry: tool.retry} : {}),
-      ...(tool.pagination ? {pagination: tool.pagination} : {}),
-      ...(tool.responseNormalization ? {responseNormalization: tool.responseNormalization} : {})
-    }, null, 2);
-    card.append(heading, description, schema);
-    return card;
+function renderParameterSummary() {
+  const operation = getState().operations.find(
+    candidate => candidate.operationId === ui['validation-operation'].value);
+  if (!operation) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = '대표 Tool을 선택하면 입력 항목을 확인할 수 있습니다.';
+    ui['validation-parameter-summary'].replaceChildren(empty);
+    return;
+  }
+  const parameters = operation.parameters.filter(parameter => parameter.source === 'USER_INPUT');
+  if (parameters.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'validation-parameter-empty';
+    empty.textContent = '사용자가 입력할 파라미터가 없습니다.';
+    ui['validation-parameter-summary'].replaceChildren(empty);
+    return;
+  }
+  const list = document.createElement('ul');
+  parameters.forEach(parameter => {
+    const item = document.createElement('li');
+    const name = document.createElement('strong');
+    name.textContent = parameter.name;
+    const meta = document.createElement('span');
+    meta.textContent = `${parameter.location} · ${parameter.type}${parameter.required ? ' · 필수' : ' · 선택'}`;
+    item.append(name, meta);
+    list.append(item);
+  });
+  ui['validation-parameter-summary'].replaceChildren(list);
+}
+
+function renderValidationChecklist(preview = null) {
+  const state = getState();
+  const enabledCount = state.operations.filter(operation => operation.enabled).length;
+  const previewCount = preview?.tools?.length ?? 0;
+  const representativeId = ui['validation-operation'].value;
+  const representativeIncluded = Boolean(preview?.tools?.some(tool => tool.operationId === representativeId));
+  const checks = [
+    {
+      label: 'OpenAPI 분석',
+      detail: state.analysis ? `OpenAPI ${state.analysis.openApiVersion} 분석 완료` : '분석 대기',
+      status: state.analysis ? 'SUCCESS' : 'PENDING'
+    },
+    {
+      label: '생성 Tool',
+      detail: enabledCount > 0 ? `${enabledCount}개 Tool 선택` : 'Tool 선택 대기',
+      status: enabledCount > 0 ? 'SUCCESS' : 'PENDING'
+    },
+    {
+      label: '미리보기 결과',
+      detail: preview ? `${previewCount}개 Tool 확인` : '설정 검증 대기',
+      status: preview ? 'SUCCESS' : 'PENDING'
+    },
+    {
+      label: '대표 Tool 포함',
+      detail: preview ? (representativeIncluded ? representativeId : '대표 Tool 누락') : '설정 검증 대기',
+      status: preview ? (representativeIncluded ? 'SUCCESS' : 'FAILED') : 'PENDING'
+    }
+  ];
+  ui['validation-checklist'].replaceChildren(...checks.map(check => {
+    const item = document.createElement('li');
+    item.dataset.status = check.status;
+    const icon = document.createElement('i');
+    icon.className = check.status === 'SUCCESS' ? 'bi bi-check-circle-fill'
+      : check.status === 'FAILED' ? 'bi bi-x-circle-fill' : 'bi bi-circle';
+    icon.setAttribute('aria-hidden', 'true');
+    const content = document.createElement('span');
+    const label = document.createElement('strong');
+    label.textContent = check.label;
+    const detail = document.createElement('small');
+    detail.textContent = check.detail;
+    content.append(label, detail);
+    item.append(icon, content);
+    return item;
   }));
+}
+
+function renderPreviewEmpty(message = '설정을 검증하면 대표 Tool 정보가 표시됩니다.') {
+  const empty = document.createElement('p');
+  empty.className = 'empty-state';
+  empty.textContent = message;
+  ui['preview-output'].replaceChildren(empty);
+}
+
+function renderPreview(preview) {
+  renderValidationChecklist(preview);
+  const representativeId = ui['validation-operation'].value;
+  const tool = preview.tools.find(candidate => candidate.operationId === representativeId);
+  const operation = getState().operations.find(candidate => candidate.operationId === representativeId);
+  if (!tool || !operation) {
+    renderPreviewEmpty('대표 Tool을 미리보기 결과에서 확인하지 못했습니다.');
+    return;
+  }
+  const result = document.createElement('article');
+  result.className = 'representative-tool-result';
+  const heading = document.createElement('div');
+  heading.className = 'representative-tool-heading';
+  const icon = document.createElement('i');
+  icon.className = 'bi bi-check-circle-fill';
+  icon.setAttribute('aria-hidden', 'true');
+  const title = document.createElement('div');
+  const kicker = document.createElement('span');
+  kicker.textContent = '검증 완료';
+  const name = document.createElement('h3');
+  name.textContent = tool.name;
+  title.append(kicker, name);
+  heading.append(icon, title);
+  const description = document.createElement('p');
+  description.textContent = tool.description;
+  const facts = document.createElement('dl');
+  facts.className = 'representative-tool-facts';
+  for (const [term, value] of [
+    ['Endpoint', `${operation.method} ${operation.path}`],
+    ['Operation ID', operation.operationId],
+    ['Output', tool.output?.mode ?? 'GENERIC_JSON']
+  ]) {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    facts.append(dt, dd);
+  }
+  const inputsTitle = document.createElement('h4');
+  inputsTitle.textContent = '입력 파라미터';
+  const inputs = document.createElement('ul');
+  inputs.className = 'representative-input-list';
+  const properties = Object.entries(tool.inputSchema?.properties ?? {});
+  if (properties.length === 0) {
+    const item = document.createElement('li');
+    item.textContent = '사용자 입력 없음';
+    inputs.append(item);
+  } else {
+    properties.forEach(([propertyName, definition]) => {
+      const item = document.createElement('li');
+      item.textContent = `${propertyName} · ${definition.type ?? 'value'}`;
+      inputs.append(item);
+    });
+  }
+  const disclosure = document.createElement('details');
+  disclosure.className = 'preview-disclosure';
+  const disclosureTitle = document.createElement('summary');
+  disclosureTitle.textContent = 'Schema 및 정책 전체 보기';
+  const schema = document.createElement('pre');
+  schema.textContent = JSON.stringify({
+    inputSchema: tool.inputSchema,
+    output: tool.output,
+    ...(tool.retry ? {retry: tool.retry} : {}),
+    ...(tool.pagination ? {pagination: tool.pagination} : {}),
+    ...(tool.responseNormalization ? {responseNormalization: tool.responseNormalization} : {})
+  }, null, 2);
+  disclosure.append(disclosureTitle, schema);
+  result.append(heading, description, facts, inputsTitle, inputs, disclosure);
+  ui['preview-output'].replaceChildren(result);
 }
 
 function renderJob(snapshot) {
@@ -387,9 +547,30 @@ function renderJob(snapshot) {
     ? `${stateLabel(snapshot.state)} ${snapshot.error.message}`
     : stateLabel(snapshot.state);
   renderProgress(snapshot);
-  ui['downloads'].replaceChildren(...snapshot.downloads.map(artifact => {
+  const detail = snapshot.error?.message ?? '';
+  ui['job-error-details'].hidden = detail === '';
+  ui['job-error-detail'].textContent = detail;
+  renderArtifacts(snapshot);
+}
+
+function renderArtifacts(snapshot) {
+  const downloads = snapshot.downloads ?? [];
+  ui['artifact-placeholder-list'].hidden = downloads.length > 0;
+  ui['downloads'].hidden = downloads.length === 0;
+  ui['downloads'].replaceChildren(...downloads.map(artifact => {
     const name = typeof artifact === 'string' ? artifact : artifact.name;
     const item = document.createElement('li');
+    const metadata = document.createElement('span');
+    metadata.className = 'artifact-meta';
+    const artifactIcon = document.createElement('i');
+    artifactIcon.className = 'bi bi-file-earmark-zip';
+    artifactIcon.setAttribute('aria-hidden', 'true');
+    const artifactName = document.createElement('strong');
+    artifactName.textContent = artifactTitle(name);
+    metadata.append(artifactIcon, artifactName);
+    const description = document.createElement('span');
+    description.className = 'artifact-description';
+    description.textContent = '생성 및 검증이 완료된 산출물입니다.';
     const button = document.createElement('button');
     button.type = 'button';
     // Collecting a result is not the primary action on this step, so these stay
@@ -402,7 +583,7 @@ function renderJob(snapshot) {
     label.textContent = artifactLabel(name);
     button.append(icon, label);
     button.addEventListener('click', () => downloadArtifact(snapshot.id, artifact));
-    item.append(button);
+    item.append(metadata, description, button);
     return item;
   }));
 }
@@ -416,7 +597,11 @@ const ARTIFACT_LABELS = {
 // An unknown artifact keeps its raw name, matching the stage and job state
 // label policy in progress.js.
 function artifactLabel(name) {
-  return `${ARTIFACT_LABELS[name] ?? name} 내려받기`;
+  return `${artifactTitle(name)} 내려받기`;
+}
+
+function artifactTitle(name) {
+  return ARTIFACT_LABELS[name] ?? name;
 }
 
 async function downloadArtifact(jobId, artifact) {

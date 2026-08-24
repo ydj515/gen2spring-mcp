@@ -60,7 +60,7 @@ class StaticAssetContractTest {
     }
 
     @Test
-    void keepsWizardContextAndActionsVisibleWhileLongStepsScroll() throws Exception {
+    void alignsWizardContextAndKeepsActionsInDocumentFlow() throws Exception {
         String fragment = resource("/templates/fragments/ui.html");
         String editor = resource("/templates/editor.html");
         String editorStyles = resource("/static/editor.css");
@@ -68,12 +68,17 @@ class StaticAssetContractTest {
 
         assertTrue(fragment.contains("class=\"wizard-step-connector\""));
         assertTrue(editor.contains("class=\"generation-summary summary-strip\""));
+        assertTrue(editor.contains("class=\"generation-summary__item\""));
+        assertTrue(editor.contains("class=\"generation-summary__icon"));
         assertTrue(editor.indexOf("id=\"generation-summary\"")
                 < editor.indexOf("id=\"specification-step\""));
-        assertTrue(editorStyles.contains("--action-dock-clearance"));
-        assertTrue(editorStyles.contains(".wizard-nav {\n  position: fixed;"));
+        assertTrue(editorStyles.contains("--editor-frame-width: 90rem"));
+        assertTrue(editorStyles.contains("width: min(100%, var(--editor-frame-width))"));
+        assertTrue(editorStyles.contains(".wizard-progress {\n  width: 100%;"));
+        assertFalse(editorStyles.contains("--action-dock-clearance"));
+        assertFalse(editorStyles.contains(".wizard-nav {\n  position: fixed;"));
         assertTrue(editorStyles.contains("scroll-padding-inline"));
-        assertTrue(editorStyles.contains("padding-bottom: var(--action-dock-clearance)"));
+        assertFalse(editorStyles.contains("padding-bottom: var(--action-dock-clearance)"));
         assertTrue(wizard.contains("scrollIntoView"));
         assertTrue(wizard.contains("prefers-reduced-motion"));
         assertTrue(wizard.contains("subscribe(() => render())"));
@@ -104,11 +109,11 @@ class StaticAssetContractTest {
         assertTrue(editorStyles.contains(".endpoint-row"));
         assertTrue(editorStyles.contains(".endpoint-issue-row"));
         assertTrue(editorStyles.contains(".wizard-panel h2:focus-visible { outline: none; }"));
-        assertTrue(operations.contains("edit.className = 'endpoint-edit';"));
-        assertTrue(operations.contains("settingsIcon.className = 'bi bi-sliders';"));
-        assertFalse(operations.contains("endpoint-edit secondary"));
+        assertTrue(operations.contains("checkbox.dataset.operationIndex"));
+        assertFalse(operations.contains("edit.className = 'endpoint-edit';"));
+        assertFalse(operations.contains("settingsIcon.className = 'bi bi-sliders';"));
         assertFalse(operations.contains("chevron.className = 'bi bi-chevron-right';"));
-        assertTrue(editorStyles.contains(".endpoint-row .endpoint-edit:hover:not(:disabled)"));
+        assertFalse(editorStyles.contains(".endpoint-row .endpoint-edit:hover:not(:disabled)"));
         assertTrue(editorStyles.contains(".wizard-progress .wizard-chip:hover:not(:disabled)"));
     }
 
@@ -120,14 +125,17 @@ class StaticAssetContractTest {
         String editorStyles = resource("/static/editor.css");
 
         assertTrue(index.contains("class=\"uploaded-file file-state-card\""));
-        assertTrue(index.contains("class=\"field-grid project-settings-grid\""));
-        assertTrue(index.contains("class=\"preview-workspace\""));
-        assertTrue(index.contains("class=\"preview-input surface-subtle\""));
-        assertTrue(index.contains("class=\"preview-result surface-subtle\""));
+        assertTrue(index.contains("class=\"field-grid project-settings-grid row g-3\""));
+        assertTrue(index.contains("class=\"preview-workspace row g-4\""));
+        assertTrue(index.contains("class=\"preview-input surface-subtle col-12 col-xl-5\""));
+        assertTrue(index.contains("class=\"preview-result surface-subtle col-12 col-xl-7\""));
+        assertTrue(index.contains("id=\"validation-arguments-details\""));
+        assertTrue(index.contains("class=\"validation-checklist\""));
         assertTrue(index.contains("class=\"job-progress-hero\""));
         assertTrue(index.contains("id=\"job-progress-percent\""));
         assertTrue(index.contains("class=\"pipeline-panel\""));
         assertTrue(index.contains("<ul id=\"downloads\" class=\"downloads artifact-list\""));
+        assertTrue(index.contains("id=\"artifact-placeholder-list\""));
         assertTrue(index.contains("class=\"bi bi-question-circle\""));
         assertFalse(index.contains(">?</button>"));
         assertFalse(index.contains("<svg"));
@@ -136,6 +144,8 @@ class StaticAssetContractTest {
         assertTrue(progress.contains("#job-progress-percent"));
         assertTrue(progress.contains("document.createElement('i')"));
         assertTrue(editorStyles.contains(".project-settings-grid"));
+        assertTrue(index.contains("col-12 col-sm-6 col-lg-4 col-xl-2"));
+        assertTrue(editorStyles.contains("@media (min-width: 1200px)"));
         assertTrue(editorStyles.contains(".preview-workspace"));
         assertTrue(editorStyles.contains(".job-progress-hero"));
         assertFalse(app.contains("innerHTML"));
@@ -187,7 +197,7 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"step-back-3\""));
         assertTrue(index.contains("id=\"step-next-3\""));
         assertTrue(index.contains("id=\"step-hint-3\""));
-        assertTrue(index.contains("id=\"step-next-4\""));
+        assertFalse(index.contains("id=\"step-next-4\""));
         assertTrue(index.contains("id=\"step-back-5\""));
         assertTrue(index.contains("tabindex=\"-1\""));
         assertTrue(index.contains("id=\"specification-file\" class=\"visually-hidden\" type=\"file\" accept=\".yaml,.yml,.json\""));
@@ -202,7 +212,9 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"operation-counts\""));
         assertTrue(index.contains("id=\"operation-list\""));
         assertTrue(index.contains("id=\"selected-tool-list\""));
-        assertTrue(index.contains("id=\"operation-editor-home\""));
+        assertTrue(index.contains("class=\"tool-workspace row g-0\""));
+        assertTrue(index.contains("class=\"tool-editor-panel col-12 col-xl-5\""));
+        assertFalse(index.contains("id=\"operation-editor-home\""));
         assertTrue(index.contains("id=\"generation-summary\""));
         for (String id : new String[] {
                 "summary-version", "summary-selected", "summary-excluded", "summary-profile"
@@ -215,7 +227,7 @@ class StaticAssetContractTest {
         assertTrue(index.contains("aria-controls=\"profile-help\""));
         assertTrue(index.contains("id=\"profile-help\""));
         assertTrue(index.contains("id=\"profile-notice-list\""));
-        assertTrue(index.contains("id=\"profile-help\" class=\"profile-help\" role=\"region\"")
+        assertTrue(index.contains("id=\"profile-help\" class=\"profile-help\" role=\"tooltip\"")
                 && index.contains("hidden"));
         assertTrue(index.contains("id=\"preview-button\" type=\"button\" disabled"));
         assertTrue(index.contains("id=\"generate-button\""));
@@ -251,7 +263,9 @@ class StaticAssetContractTest {
         assertTrue(styles.contains(".generation-summary { position: sticky;"));
         assertTrue(styles.contains(".generation-layout { grid-template-columns:"));
         assertTrue(styles.contains(".generation-summary { position: static; }"));
-        assertTrue(styles.contains(".selected-tool-summary-content { display: grid;"));
+        assertTrue(styles.contains(".tool-workspace {"));
+        assertTrue(styles.contains(".tool-table__row[aria-selected=\"true\"]"));
+        assertFalse(styles.contains(".selected-tool-editor"));
         assertTrue(styles.contains(".profile-help[hidden] { display: none; }"));
 
         // A wizard panel and the summary aside share a grid row, so a margin on
@@ -308,28 +322,42 @@ class StaticAssetContractTest {
         assertTrue(wizard.contains("if (target === getState().currentStep)"));
         assertTrue(wizard.contains("keepActiveStepVisible(target, true)"));
 
-        // Focus may move from the help button into one of the notice links.
-        // Close only after focus leaves the complete profile field.
-        assertTrue(app.contains("container.addEventListener('focusin'"));
-        assertTrue(app.contains("container.addEventListener('focusout'"));
-        assertTrue(app.contains("!container.contains(event.relatedTarget)"));
-        assertFalse(app.contains("profile-help-button'].addEventListener('blur'"));
+        // Hovering the select must not open help. The compact anchor owns hover,
+        // focus, and tap so the icon behaves like the visible popover trigger.
+        assertTrue(app.contains("closest('.profile-help-anchor')"));
+        assertTrue(app.contains("anchor.addEventListener('mouseenter'"));
+        assertTrue(app.contains("anchor.addEventListener('mouseleave'"));
+        assertTrue(app.contains("anchor.addEventListener('focusin'"));
+        assertTrue(app.contains("anchor.addEventListener('focusout'"));
+        assertTrue(app.contains("ui['profile-help-button'].addEventListener('click'"));
+        assertTrue(app.contains("!anchor.contains(event.relatedTarget)"));
+        assertFalse(app.contains("closest('.profile-field')"));
     }
 
     @Test
     void keepsEditorTablesAndControlsUsableAcrossTheMobileBreakpoint() throws Exception {
         String editorStyles = resource("/static/editor.css");
         String legacyStyles = resource("/static/legacy.css");
-        int compactStart = editorStyles.indexOf("@media (max-width: 760px)");
+        int workspaceStart = editorStyles.indexOf("@media (max-width: 1199.98px)");
+        int compactStart = editorStyles.indexOf("@media (max-width: 767.98px)");
         int phoneStart = editorStyles.indexOf("@media (max-width: 400px)", compactStart);
+        assertTrue(workspaceStart >= 0);
+        assertTrue(compactStart > workspaceStart);
+        assertTrue(phoneStart > compactStart);
+        String workspaceStyles = editorStyles.substring(workspaceStart, compactStart);
         String compactStyles = editorStyles.substring(compactStart, phoneStart);
 
-        assertTrue(compactStyles.contains(".selected-tool-list-header { display: none; }"));
-        assertTrue(compactStyles.contains(".selected-tool-summary-content {"));
-        assertTrue(compactStyles.contains("grid-template-columns: 1.25rem minmax(0, 1fr) auto;"));
+        assertTrue(workspaceStyles.contains(".tool-table-panel { border-right: 0;"));
+        assertTrue(workspaceStyles.contains(".tool-editor-panel { border-top: 1px solid var(--app-border);"));
+        assertTrue(compactStyles.contains(".tool-table-header { display: none; }"));
+        assertTrue(compactStyles.contains(".tool-row-select { grid-template-columns: minmax(0, 1fr) auto;"));
         assertTrue(compactStyles.contains(".parameter-row { grid-template-columns: 1fr; align-items: stretch; }"));
-        assertFalse(compactStyles.contains(".endpoint-toolbar { position: static;"));
+        assertTrue(compactStyles.contains(".validation-checklist { grid-template-columns: 1fr;"));
+        assertTrue(compactStyles.contains(".progress-overview { grid-template-columns: 1fr;"));
+        assertTrue(compactStyles.contains(".artifact-placeholder-list li { grid-template-columns: minmax(0, 1fr) auto;"));
+        assertTrue(compactStyles.contains(".endpoint-toolbar__meta { align-items: flex-start;"));
         assertTrue(editorStyles.contains(".endpoint-toolbar {\n  position: sticky;"));
+        assertTrue(editorStyles.contains("outline: 3px solid var(--app-primary);"));
         assertTrue(legacyStyles.contains("overflow-x: clip;"));
         assertFalse(legacyStyles.contains("overflow-x: hidden;"));
     }
@@ -381,11 +409,18 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"job-progress-fill\""));
         assertTrue(index.contains("id=\"job-progress-details\""));
         assertTrue(index.contains("id=\"progress-list\""));
-        assertTrue(index.contains("class=\"progress-details-title\">상세 보기</h3>"));
+        assertTrue(index.contains("id=\"progress-overview\""));
+        assertTrue(index.contains("class=\"progress-details-title\">상세 진행</h3>"));
         assertFalse(index.contains("<details id=\"job-progress-details\""));
         assertFalse(index.contains("<summary>상세 보기</summary>"));
 
         assertTrue(progress.contains("export function renderProgress(snapshot)"));
+        assertTrue(progress.contains("export function groupProgressStages(stages)"));
+        assertTrue(progress.contains("준비"));
+        assertTrue(progress.contains("프로젝트 생성"));
+        assertTrue(progress.contains("컴파일 및 기동"));
+        assertTrue(progress.contains("MCP 검증"));
+        assertTrue(progress.contains("패키징"));
         assertTrue(progress.contains("OpenAPI 문서 분석"));
         assertTrue(progress.contains("Spring 컨텍스트 기동"));
         assertTrue(progress.contains("대표 Tool 호출 검증"));
@@ -420,6 +455,39 @@ class StaticAssetContractTest {
 
         assertFalse(progress.contains("innerHTML"));
         assertFalse(progress.contains("EventSource"));
+    }
+
+    @Test
+    void presentsAdvancedToolPoliciesAsExpandableRows() throws Exception {
+        String index = resource("/templates/editor.html");
+        String styles = resource("/static/editor.css");
+
+        assertTrue(index.contains("data-policy-section=\"retry\" open"));
+        assertTrue(index.contains("class=\"bi bi-chevron-down policy-section__chevron\""));
+        assertTrue(styles.contains(".policy-section__meta"));
+        assertTrue(styles.contains(".policy-section__chevron"));
+        assertTrue(styles.contains(".policy-section[open] .policy-section__chevron"));
+    }
+
+    @Test
+    void rotatesOnlyRunningPipelineIconsAndRespectsReducedMotion() throws Exception {
+        String styles = resource("/static/editor.css");
+        String progress = resource("/static/progress.js");
+
+        assertTrue(styles.contains("@keyframes pipeline-spin"));
+        assertTrue(progress.contains("if (status === 'RUNNING') return 'bi bi-arrow-clockwise pipeline-spinner';"));
+        assertTrue(styles.contains(".pipeline-spinner {"));
+        assertTrue(styles.contains(".pipeline-spinner::before {\n"
+                + "  display: grid;\n"
+                + "  width: 100%;\n"
+                + "  height: 100%;\n"
+                + "  place-items: center;"));
+        assertTrue(styles.contains("transform-origin: 50% 50%;"));
+        assertTrue(styles.contains("animation: pipeline-spin 1s linear infinite;"));
+        assertTrue(styles.contains("@media (prefers-reduced-motion: reduce)"));
+        assertTrue(styles.contains(".pipeline-spinner::before { animation: none; }"));
+        assertTrue(styles.contains("animation: none;"));
+        assertFalse(styles.contains(".progress-list li[data-status=\"RUNNING\"] > i {"));
     }
 
     @Test
@@ -458,6 +526,7 @@ class StaticAssetContractTest {
 
     @Test
     void assignsUploadAndEndpointSelectionToDedicatedStateOwners() throws Exception {
+        String template = resource("/templates/editor.html");
         String app = resource("/static/app.js");
         String api = resource("/static/api.js");
         String state = resource("/static/state.js");
@@ -479,23 +548,38 @@ class StaticAssetContractTest {
         assertTrue(upload.contains("resetSpecificationState"));
         assertTrue(upload.contains("let requestVersion = 0;"));
         assertTrue(upload.contains("if (version !== requestVersion) return;"));
+        assertFalse(upload.contains("ANALYSIS_ADVANCE_DELAY_MILLIS"));
+        assertFalse(upload.contains("pendingAdvance"));
+        assertFalse(upload.contains("onReadyToAdvance"));
+        assertTrue(upload.contains("dropzone.hidden = false;"));
+        assertTrue(template.contains("id=\"step-next-1\" type=\"button\" disabled"));
+        assertTrue(template.contains("id=\"step-hint-1\""));
+        assertFalse(template.contains("id=\"analysis-transition-status\""));
+        assertTrue(app.contains("item.className = 'analysis-summary__item';"));
+        assertTrue(applicationStyles().contains("grid-template-columns: repeat(4, minmax(0, 1fr));"));
+        assertTrue(app.contains("'전체 Endpoint'"));
         assertTrue(operations.contains("operation.issues"));
         assertTrue(operations.contains("operation.status"));
         assertTrue(operations.contains("operation.supported"));
+        assertTrue(operations.contains("operation.endpointSelected"));
         assertTrue(operations.contains("selectable"));
         assertTrue(operations.contains("textContent"));
         assertTrue(operations.contains("operation-search"));
         assertTrue(operations.contains("select-all-operations"));
         assertTrue(operations.contains("preservedSelection"));
-        assertTrue(editor.contains("document.createElement('details')"));
+        assertFalse(editor.contains("document.createElement('details')"));
         assertTrue(editor.contains("기본값"));
         assertTrue(editor.contains("사용자 설정"));
-        assertTrue(editor.contains("operation-editor-home"));
         assertTrue(editor.contains("selected-tool-list"));
-        assertTrue(editor.contains("selected-tool-summary-content"));
-        assertTrue(editor.contains("if (!openOperationId) return;"));
+        assertTrue(editor.contains("checkbox.dataset.toolEnabledId"));
+        assertTrue(editor.contains("filter(operation => operation.endpointSelected"));
+        assertTrue(editor.contains("row.dataset.operationId"));
+        assertTrue(editor.contains("row.setAttribute('aria-selected'"));
+        assertTrue(editor.contains("document.querySelectorAll('.policy-section')"));
+        assertFalse(editor.contains("openOperationId"));
         assertTrue(state.contains("resetSpecificationState"));
         assertTrue(state.contains("operation.supported"));
+        assertTrue(state.contains("endpointSelected: operation.supported"));
         assertTrue(api.contains("X-Specification-Name"));
         assertTrue(api.contains("/api/specifications/uploads"));
         assertTrue(api.contains("export async function analysis(specificationId)"));
@@ -506,8 +590,14 @@ class StaticAssetContractTest {
         assertTrue(app.contains("resumeRetainedSpecification"));
         assertTrue(app.contains("await resumeRetainedSpecification();\n  await resumeRetainedJob();"));
         assertTrue(app.contains("onAnalysis: analysis => {\n    ui['preview-button'].disabled = false;"));
+        assertFalse(app.contains("onReadyToAdvance"));
+        assertTrue(app.contains("initializeEditor(() => {\n  renderParameterSummary();\n  invalidatePreview();\n});"));
+        assertTrue(app.contains("let previewRequestVersion = 0;"));
+        assertTrue(app.contains("const requestVersion = ++previewRequestVersion;"));
+        assertTrue(app.contains("if (requestVersion !== previewRequestVersion) return;"));
         assertTrue(app.contains("function resetSpecificationPresentation() {\n  ui['preview-button'].disabled = true;"));
         assertTrue(app.contains("renderGenerationSummary"));
+        assertTrue(app.contains("operation => operation.endpointSelected"));
         assertTrue(app.contains("['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED']"));
         assertTrue(app.contains("ui['delete-job-button'].disabled = api.hostedMode;"));
         assertTrue(app.contains("ui['delete-job-button'].disabled = !api.hostedMode;"));
@@ -542,7 +632,7 @@ class StaticAssetContractTest {
             assertTrue(index.contains("id=\"" + id + "\""), id);
             assertTrue(index.contains("for=\"" + id + "\""), id + " label");
         }
-        assertTrue(index.contains("id=\"tool-description\" maxlength=\"1024\""));
+        assertTrue(index.contains("id=\"tool-description\" class=\"form-control\" maxlength=\"1024\""));
         assertTrue(editor.contains("['USER_INPUT', 'SERVER_SECRET']"));
         assertTrue(editor.contains("Number.isSafeInteger"));
         assertTrue(editor.contains("parseSafeJson(value('validation-arguments'))"));

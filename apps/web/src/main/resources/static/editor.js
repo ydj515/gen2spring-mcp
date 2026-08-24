@@ -2,20 +2,19 @@ import {getState, updateState} from './state.js';
 
 const ids = names => Object.fromEntries(names.map(name => [name, document.querySelector(`#${name}`)]));
 const elements = ids([
-  'operation-editor', 'operation-enabled', 'tool-name',
+  'operation-editor', 'tool-name',
   'tool-description', 'parameter-editor', 'data-path', 'success-code-path', 'success-values',
   'error-message-path', 'total-count-path', 'validation-operation', 'output-mode',
-  'selected-tool-list', 'selected-tool-empty', 'operation-editor-home',
+  'selected-tool-list', 'selected-tool-empty', 'tool-editor-target',
   'retry-enabled', 'retry-status-codes', 'retry-network-errors', 'retry-max-retries',
   'retry-initial-backoff', 'retry-max-backoff', 'retry-respect-retry-after',
   'pagination-enabled', 'pagination-request-parameter', 'pagination-initial-value',
   'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items',
-  'selected-tool-list-container'
+  'selected-tool-list-container', 'tool-editor-panel'
 ]);
-let openOperationId = null;
 
 export function initializeEditor(onDirty) {
-  for (const id of ['operation-enabled', 'tool-name', 'tool-description', 'data-path',
+  for (const id of ['tool-name', 'tool-description', 'data-path',
     'success-code-path', 'success-values', 'error-message-path', 'total-count-path', 'output-mode',
     'retry-enabled', 'retry-status-codes', 'retry-network-errors', 'retry-max-retries',
     'retry-initial-backoff', 'retry-max-backoff', 'retry-respect-retry-after',
@@ -23,12 +22,7 @@ export function initializeEditor(onDirty) {
     'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items']) {
     elements[id].addEventListener('change', () => {
       saveSelectedOperation();
-      if (id === 'operation-enabled') {
-        renderToolRows();
-        renderValidationOperations();
-      } else {
-        updateToolSummary(getState().selectedOperationId);
-      }
+      updateToolSummary(getState().selectedOperationId);
       onDirty();
     });
   }
@@ -40,6 +34,30 @@ export function initializeEditor(onDirty) {
     updateToolSummary(getState().selectedOperationId);
     onDirty();
   });
+  elements['selected-tool-list'].addEventListener('click', event => {
+    const button = event.target.closest('button[data-operation-id]');
+    if (button) selectOperation(button.dataset.operationId);
+  });
+  elements['selected-tool-list'].addEventListener('change', event => {
+    const checkbox = event.target.closest('input[data-tool-enabled-id]');
+    if (!checkbox) return;
+    saveSelectedOperation();
+    const operations = getState().operations.map(operation => operation.operationId === checkbox.dataset.toolEnabledId
+      ? {...operation, enabled: operation.supported && checkbox.checked}
+      : operation);
+    updateState({operations});
+    renderToolRows();
+    renderValidationOperations();
+    onDirty();
+  });
+  document.querySelectorAll('.policy-section').forEach(section => {
+    section.addEventListener('toggle', () => {
+      if (!section.open) return;
+      document.querySelectorAll('.policy-section').forEach(candidate => {
+        if (candidate !== section) candidate.open = false;
+      });
+    });
+  });
 }
 
 export function renderOperations() {
@@ -48,50 +66,56 @@ export function renderOperations() {
 }
 
 export function selectOperation(operationId) {
-  if (openOperationId) saveSelectedOperation();
-  openOperationId = operationId;
+  saveSelectedOperation();
+  const exists = getState().operations.some(operation => operation.supported
+    && operation.operationId === operationId);
+  if (!exists) return;
   updateState({selectedOperationId: operationId});
-  renderOperations();
-  elements['selected-tool-list'].querySelector(`details[open]`)?.scrollIntoView({block: 'nearest'});
+  elements['tool-editor-panel'].open = true;
+  renderToolRows();
+  elements['operation-editor'].querySelector('input, textarea, select')?.focus();
 }
 
 function renderToolRows() {
-  moveEditorHome();
-  const enabled = getState().operations.filter(operation => operation.enabled);
-  if (!enabled.some(operation => operation.operationId === openOperationId)) openOperationId = null;
-  const hasEnabled = enabled.length !== 0;
-  elements['selected-tool-empty'].hidden = hasEnabled;
+  const state = getState();
+  const tools = state.operations.filter(operation => operation.endpointSelected && operation.operationId);
+  let selectedOperationId = state.selectedOperationId;
+  if (!tools.some(operation => operation.operationId === selectedOperationId)) {
+    selectedOperationId = tools[0]?.operationId ?? null;
+    updateState({selectedOperationId});
+  }
+  const hasTools = tools.length !== 0;
+  elements['selected-tool-empty'].hidden = hasTools;
   if (elements['selected-tool-list-container']) {
-    elements['selected-tool-list-container'].hidden = !hasEnabled;
+    elements['selected-tool-list-container'].classList.toggle('is-empty', !hasTools);
   }
-  elements['selected-tool-list'].replaceChildren(...enabled.map(toolRow));
-  if (!openOperationId) {
-    elements['operation-editor'].disabled = true;
-    return;
-  }
-  const active = [...elements['selected-tool-list'].querySelectorAll('details')]
-    .find(details => details.dataset.operationId === openOperationId);
-  if (!active) return;
-  active.open = true;
-  active.querySelector('[data-role="editor-slot"]').append(elements['operation-editor']);
-  updateState({selectedOperationId: openOperationId});
+  elements['selected-tool-list'].replaceChildren(...tools.map(operation => toolRow(operation, selectedOperationId)));
   renderSelectedOperation();
 }
 
-function toolRow(operation) {
-  const details = document.createElement('details');
-  details.className = 'selected-tool-row';
-  details.dataset.operationId = operation.operationId;
-  const summary = document.createElement('summary');
-  const summaryContent = document.createElement('span');
-  summaryContent.className = 'selected-tool-summary-content';
-  
-  const chevron = document.createElement('i');
-  chevron.className = 'bi bi-chevron-down selected-tool-chevron';
-  chevron.setAttribute('aria-hidden', 'true');
-  
+function toolRow(operation, selectedOperationId) {
+  const row = document.createElement('div');
+  row.className = 'tool-table__row';
+  row.dataset.operationId = operation.operationId;
+  row.setAttribute('role', 'row');
+  row.setAttribute('aria-selected', String(operation.operationId === selectedOperationId));
+
+  const enabledLabel = document.createElement('label');
+  enabledLabel.className = 'tool-enabled-toggle';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = operation.enabled;
+  checkbox.dataset.toolEnabledId = operation.operationId;
+  checkbox.setAttribute('aria-label', `${operation.method} ${operation.path} Tool 생성`);
+  enabledLabel.append(checkbox);
+
+  const select = document.createElement('button');
+  select.type = 'button';
+  select.className = 'tool-row-select';
+  select.dataset.operationId = operation.operationId;
+  select.setAttribute('aria-label', `${operation.method} ${operation.path} 세부 설정`);
   const identity = document.createElement('span');
-  identity.className = 'selected-tool-identity';
+  identity.className = 'tool-row-identity';
   const method = document.createElement('span');
   method.className = 'method-badge';
   method.dataset.method = operation.method;
@@ -100,56 +124,26 @@ function toolRow(operation) {
   path.textContent = operation.path;
   identity.append(method, path);
   const operationId = document.createElement('span');
-  operationId.className = 'selected-operation-id';
+  operationId.className = 'tool-row-operation-id';
   operationId.textContent = operation.operationId;
   const tool = document.createElement('span');
-  tool.className = 'selected-tool-name';
+  tool.className = 'tool-row-name';
   tool.textContent = operation.toolName;
-  const state = document.createElement('span');
-  state.className = 'configuration-state';
-  state.dataset.role = 'configuration-state';
-  state.textContent = hasOverrides(operation) ? '사용자 설정' : '기본값';
-  summaryContent.append(chevron, identity, operationId, tool, state);
-  summary.append(summaryContent);
-  const slot = document.createElement('div');
-  slot.className = 'selected-tool-editor';
-  slot.dataset.role = 'editor-slot';
-  details.append(summary, slot);
-  details.addEventListener('toggle', () => toggleToolRow(details));
-  return details;
-}
-
-function toggleToolRow(details) {
-  const operationId = details.dataset.operationId;
-  if (!details.open) {
-    if (openOperationId === operationId) {
-      moveEditorHome();
-      openOperationId = null;
-    }
-    return;
-  }
-  if (openOperationId && openOperationId !== operationId) saveSelectedOperation();
-  openOperationId = operationId;
-  [...elements['selected-tool-list'].querySelectorAll('details')].forEach(candidate => {
-    if (candidate !== details) candidate.open = false;
-  });
-  updateState({selectedOperationId: operationId});
-  details.querySelector('[data-role="editor-slot"]').append(elements['operation-editor']);
-  renderSelectedOperation();
-}
-
-function moveEditorHome() {
-  if (elements['operation-editor'].parentElement !== elements['operation-editor-home']) {
-    elements['operation-editor-home'].append(elements['operation-editor']);
-  }
+  const configuration = document.createElement('span');
+  configuration.className = 'configuration-state';
+  configuration.dataset.role = 'configuration-state';
+  configuration.textContent = hasOverrides(operation) ? '사용자 설정' : '기본값';
+  select.append(identity, operationId, tool, configuration);
+  row.append(enabledLabel, select);
+  return row;
 }
 
 function updateToolSummary(operationId) {
   const operation = getState().operations.find(candidate => candidate.operationId === operationId);
-  const row = [...elements['selected-tool-list'].querySelectorAll('details')]
+  const row = [...elements['selected-tool-list'].querySelectorAll('[data-operation-id]')]
     .find(candidate => candidate.dataset.operationId === operationId);
   if (!operation || !row) return;
-  row.querySelector('.selected-tool-name').textContent = operation.toolName;
+  row.querySelector('.tool-row-name').textContent = operation.toolName;
   row.querySelector('[data-role="configuration-state"]').textContent = hasOverrides(operation)
     ? '사용자 설정' : '기본값';
 }
@@ -169,8 +163,10 @@ function hasOverrides(operation) {
 function renderSelectedOperation() {
   const operation = selectedOperation();
   elements['operation-editor'].disabled = !operation;
+  elements['tool-editor-target'].textContent = operation
+    ? `${operation.method} ${operation.path}`
+    : '왼쪽에서 Tool을 선택하세요.';
   if (!operation) return;
-  elements['operation-enabled'].checked = operation.enabled;
   elements['tool-name'].value = operation.toolName;
   elements['tool-description'].value = operation.toolDescription;
   elements['output-mode'].value = operation.outputMode;
@@ -234,9 +230,8 @@ function parameterRow(parameter) {
 }
 
 function saveSelectedOperation() {
-  if (!openOperationId) return;
   const state = getState();
-  const selected = state.operations.find(operation => operation.operationId === openOperationId) ?? null;
+  const selected = state.operations.find(operation => operation.operationId === state.selectedOperationId) ?? null;
   if (!selected) return;
   const parameterControls = [...elements['parameter-editor'].querySelectorAll('[data-parameter-name]')];
   const parameters = selected.parameters.map(parameter => {
@@ -264,7 +259,6 @@ function saveSelectedOperation() {
   }
   const replacement = {
     ...selected,
-    enabled: elements['operation-enabled'].checked,
     toolName: elements['tool-name'].value.trim(),
     toolDescription: elements['tool-description'].value.trim(),
     outputMode: elements['output-mode'].value,
@@ -300,19 +294,16 @@ function saveSelectedOperation() {
   };
   const operations = state.operations.map(operation =>
     operation.operationId === replacement.operationId ? replacement : operation);
-  if (!replacement.enabled) openOperationId = null;
-  updateState({
-    operations,
-    selectedOperationId: replacement.enabled
-      ? state.selectedOperationId
-      : operations.find(operation => operation.enabled)?.operationId ?? null
-  });
+  updateState({operations});
   setPolicyControls('retry', replacement.retry.enabled);
   setPolicyControls('pagination', replacement.pagination.enabled);
 }
 
 function setPolicyControls(prefix, enabled) {
-  document.querySelectorAll(`.policy-fields [id^="${prefix}-"]`).forEach(control => {
+  const fields = document.querySelector(`#${prefix}-fields`);
+  if (!fields) return;
+  fields.hidden = !enabled;
+  fields.querySelectorAll(`[id^="${prefix}-"]`).forEach(control => {
     control.disabled = !enabled;
   });
 }

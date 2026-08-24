@@ -35,7 +35,7 @@ function operationGroup(path) {
   return {key, label: GROUP_LABELS[key] ?? fallback};
 }
 
-export function initializeOperations({onSelectionChange, onEdit}) {
+export function initializeOperations({onSelectionChange}) {
   const fieldset = document.querySelector('#operation-selection');
   const search = document.querySelector('#operation-search');
   const filter = document.querySelector('#operation-filter');
@@ -48,7 +48,7 @@ export function initializeOperations({onSelectionChange, onEdit}) {
   const render = () => {
     const state = getState();
     const selectable = state.operations.filter(operation => operation.supported);
-    const selected = selectable.filter(operation => operation.enabled);
+    const selected = selectable.filter(operation => operation.endpointSelected);
     const query = search.value.trim().toLocaleLowerCase('ko');
     const visible = state.operations.filter(operation => matchesFilter(operation, filter.value)
       && searchableText(operation).includes(query));
@@ -79,7 +79,11 @@ export function initializeOperations({onSelectionChange, onEdit}) {
   const updateSelection = (sourceIndex, enabled) => {
     const state = getState();
     const operations = state.operations.map(operation => operation.sourceIndex === sourceIndex
-      ? {...operation, enabled: operation.supported && enabled}
+      ? {
+          ...operation,
+          endpointSelected: operation.supported && enabled,
+          enabled: operation.supported && enabled
+        }
       : operation);
     const selectedOperationId = preservedSelection(operations, state.selectedOperationId);
     updateState({operations, selectedOperationId});
@@ -95,6 +99,7 @@ export function initializeOperations({onSelectionChange, onEdit}) {
     const enabled = selectAll.checked;
     const operations = state.operations.map(operation => ({
       ...operation,
+      endpointSelected: operation.supported && enabled,
       enabled: operation.supported && enabled
     }));
     updateState({
@@ -108,13 +113,6 @@ export function initializeOperations({onSelectionChange, onEdit}) {
     if (!checkbox) return;
     updateSelection(Number(checkbox.dataset.operationIndex), checkbox.checked);
   });
-  list.addEventListener('click', event => {
-    const button = event.target.closest('button[data-operation-index]');
-    if (!button) return;
-    const operation = getState().operations.find(
-      candidate => candidate.sourceIndex === Number(button.dataset.operationIndex));
-    if (operation?.supported && operation.operationId) onEdit(operation.operationId);
-  });
   subscribe(render);
   render();
 }
@@ -127,8 +125,9 @@ function captureGroupExpansion(list, groupExpansion) {
 }
 
 function preservedSelection(operations, selectedOperationId) {
-  return operations.find(operation => operation.enabled && operation.operationId === selectedOperationId)?.operationId
-    ?? operations.find(operation => operation.enabled)?.operationId
+  return operations.find(operation => operation.endpointSelected
+    && operation.operationId === selectedOperationId)?.operationId
+    ?? operations.find(operation => operation.endpointSelected)?.operationId
     ?? null;
 }
 
@@ -174,7 +173,7 @@ function operationRow(operation) {
   selection.className = 'endpoint-check';
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
-  checkbox.checked = selectable && operation.enabled;
+  checkbox.checked = selectable && operation.endpointSelected;
   checkbox.disabled = !selectable;
   checkbox.dataset.operationIndex = operation.sourceIndex;
   checkbox.setAttribute('aria-label', `${operation.method} ${operation.path} 선택`);
@@ -207,18 +206,7 @@ function operationRow(operation) {
     statusWrap.append(infoIcon);
   }
 
-  const edit = document.createElement('button');
-  edit.type = 'button';
-  edit.className = 'endpoint-edit';
-  edit.dataset.operationIndex = operation.sourceIndex;
-  edit.setAttribute('aria-label', `${operation.method} ${operation.path} Tool 설정`);
-  const settingsIcon = document.createElement('i');
-  settingsIcon.className = 'bi bi-sliders';
-  settingsIcon.setAttribute('aria-hidden', 'true');
-  edit.append(settingsIcon);
-  edit.disabled = !(selectable && operation.operationId);
-
-  row.append(selection, identity, description, statusWrap, edit);
+  row.append(selection, identity, description, statusWrap);
   item.append(row);
 
   if (operation.issues.length > 0) {

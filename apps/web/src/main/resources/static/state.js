@@ -62,6 +62,7 @@ export function analyzedOperations(operations) {
     return {
       ...operation,
       sourceIndex: index,
+      endpointSelected: operation.supported,
       enabled: operation.supported,
       defaultToolName,
       defaultToolDescription,

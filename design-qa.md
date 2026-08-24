@@ -76,3 +76,154 @@ Focused review covered the connected stepper, summary strip, endpoint search/fil
 - [x] OpenAPI 3.0 and 3.1 regression flows
 
 final result: passed
+
+---
+
+# Step 3 interaction and Step 5 connected pipeline QA — 2026-08-25
+
+## Evidence
+
+- Source visual truth: user-provided Step 3 interaction and Step 5 progress captures reviewed during implementation; temporary local capture paths are intentionally excluded from repository documentation.
+- Desktop implementation: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-3-row-hover-disclosure.png` and `implemented-step-5-connected.png`.
+- Mobile implementation: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-3-row-hover-disclosure-mobile.png` and `implemented-step-5-connected-mobile.png`.
+- Side-by-side comparison input: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-5-connected.png`; source is left and implementation is right.
+- Step 5 source pixels, implementation pixels, and CSS viewport: `1290 x 834`; device pixel ratio: `1`. No density normalization was required.
+- States: Step 3 with the first Tool selected and the editor open; Step 5 while MCP validation is running at `50%`, with `3 / 5 단계` complete.
+
+## Full-view and focused comparison
+
+- Step 3 treats the checkbox and selection control as one row-level interaction surface. Hover and focus-within paint the complete row, while the selected row keeps a stronger primary-soft fill.
+- The Tool editor is a native disclosure. Its header has one radius system, a visible `접기`/`열기` affordance, and reopens when a Tool row is selected.
+- Step 5 follows the source hierarchy: stage copy and percentage, full-width progress bar, five connected stages, current-task callout, detailed stage table, logs, and artifact rows.
+- The five visible stages are exactly `준비`, `프로젝트 생성`, `컴파일 및 기동`, `MCP 검증`, and `패키징`. The percentage still derives from the eight real backend tasks, while the user-facing count derives from the five groups.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing local system typography is retained. Percent, current stage, five stage labels, and section headings preserve the source hierarchy without oversized body copy.
+- Spacing and layout rhythm: the Step 5 header, progress bar, timeline, current-task card, detail table, and artifact rows use consistent panel and control radii. At `390 x 844`, the timeline becomes vertical and the detail/artifact rows reflow without page overflow.
+- Colors and visual tokens: primary blue marks active progress, semantic green marks completed stages, neutral gray marks pending work, and the current-task card uses the existing primary-soft token.
+- Image and icon fidelity: the screen contains no raster product imagery. All interface glyphs use the packaged Bootstrap Icons font; no custom SVG, emoji, or CSS-drawn icon was introduced.
+- Copy and content: pipeline labels match the user's requested five-stage wording. Technical task descriptions remain tied to the server's eight actual generation stages.
+- Accessibility and interaction: the Tool editor uses native `details`/`summary`, row selection reopens it, the progress track exposes `aria-valuenow`, status text remains in live regions, and disabled artifacts remain non-actionable.
+
+## Primary interactions tested
+
+- Close the Tool editor from its header, select a Tool row, and confirm the editor opens again.
+- Confirm the selected row and row focus state paint the complete row rather than only the button cells.
+- Upload `weather.yaml`, validate the representative Tool with `{"city":"Seoul"}`, and run the real generation pipeline.
+- Capture Step 5 during MCP validation and confirm the five grouped stages, current task, `3 / 5 단계`, and eight detailed tasks stay synchronized.
+- Confirm no horizontal page overflow at `1290 x 834` and `390 x 844` for Steps 3 and 5.
+- Check browser console logs after desktop and mobile passes: none.
+
+## Comparison history
+
+1. The first Step 5 comparison found a P2 information mismatch: the top counter showed `4 / 8 단계` even though the visible timeline has five groups. The implementation now keeps the percentage based on eight real tasks but reports the visible grouped count as `3 / 5 단계` during MCP validation.
+2. The post-fix `1290 x 834` comparison and the `390 x 844` mobile pass show no actionable P0, P1, or P2 findings.
+
+## Findings
+
+- No actionable P0, P1, or P2 findings remain.
+- P3: the reference's illustrative `65%` and the implementation's observed `50%` differ because the implementation uses actual settled backend task count rather than simulated progress.
+
+final result: passed
+
+---
+
+# Step 2–4 visual harmonization QA — 2026-08-25
+
+## Evidence
+
+- Source visual truth: `docs/superpowers/specs/assets/wizard-flow-refinement/step-2-endpoint-selection.png`, `step-3-generation-settings.png`, and `step-4-preview-generation.png`.
+- Desktop implementation: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-2-harmonized.png`, `implemented-step-3-harmonized.png`, and `implemented-step-4-harmonized.png`.
+- Focused interaction capture: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-3-profile-help.png`.
+- Mobile implementation: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-2-mobile.png`, `implemented-step-3-mobile.png`, and `implemented-step-4-mobile.png`.
+- Side-by-side comparison input: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-2-harmonized.png` through `comparison-step-4-harmonized.png`; source is left and implementation is right.
+- Source pixels: `1487 x 1058`; desktop implementation pixels and CSS viewport: `1440 x 1024`; mobile implementation pixels and CSS viewport: `390 x 844`; device pixel ratio: `1`.
+- Normalization: each source was resized to `1440 x 1024` and composed beside the corresponding `1440 x 1024` implementation capture. Repository fixture content remains authoritative, so comparison judges hierarchy, spacing, control treatment, and interaction state rather than literal endpoint rows.
+- States: Step 2 with 34 selected endpoints, Step 3 with the first Tool selected, Profile help open for the focused comparison, and Step 4 after all four validation checks succeeded.
+
+## Full-view and focused comparison
+
+- Step 2 retains the approved single-toolbar/table hierarchy while search, filter, select-all, live counts, and refresh now share one control scale and type system.
+- Step 3 keeps the approved flat project row and 7/5 Tool workspace. The editor is now one white panel with a compact heading, two-column basic fields, and one divided policy accordion; endpoint paths no longer inherit Bootstrap's pink `code` color.
+- Step 4 keeps the approved task/result split but intentionally uses compact 24 px numbered markers per the user's correction. The successful result and project-generation action remain visually dominant.
+- The Profile help comparison confirms the Bootstrap Icon sits immediately after the label and opens a bounded popover on trigger focus; hover uses the same open path. Policy focus, selected row, and expanded policy states use the shared primary blue.
+
+## Required fidelity surfaces
+
+- Fonts and typography: search, select, labels, table metadata, Tool fields, policy summaries, and validation copy use the same local system stack and optical scale. Code paths are dark neutral rather than Bootstrap magenta.
+- Spacing and layout rhythm: controls use a shared 44 px baseline, Step 3's six fields remain one desktop row, the Tool editor has one internal rhythm, and Step 4 columns retain a visible gutter. At `390 x 844`, fields and validation columns stack with zero page overflow.
+- Colors and visual tokens: focus and expanded states use `#3568f4`/primary-soft; warning yellow remains reserved for warnings rather than generic focus. Neutral borders, white surfaces, semantic green, and primary blue match the approved flow.
+- Image and icon fidelity: the UI requires no raster product imagery. All interface glyphs use the packaged Bootstrap Icons font; no custom SVG, CSS illustration, emoji, or placeholder asset was introduced.
+- Copy and content: existing product terminology and server-derived endpoint/profile values remain unchanged. The Tool editor subtitle clarifies the editing purpose without adding a new workflow.
+- Accessibility and interaction: the help trigger preserves `aria-expanded`/`aria-controls`, opens on hover/focus/touch focus, closes after its anchor loses focus or hover, and supports Escape. Native checkboxes, details, labels, live regions, and disabled states remain intact.
+
+## Primary interactions tested
+
+- Upload and analyze `swagger-3.1.yml`; remain on Step 1 until the manual next action.
+- Open Step 2, confirm all 34 selectable endpoints remain selected, and verify the compact toolbar at desktop and mobile widths.
+- Open Step 3, focus the Profile help trigger, switch the Pagination policy open, and confirm blue computed focus/open colors.
+- Open Step 4, run `설정 검증하기`, confirm four `SUCCESS` checks, and confirm project generation becomes enabled.
+- Verify `documentElement.scrollWidth === innerWidth` at `1440 x 1024` and `390 x 844` for Steps 2–4.
+- Check browser console logs after the flow: none.
+
+## Comparison history
+
+1. The first Step 2 browser pass found a P1 checkbox regression: Bootstrap's form-check background produced a solid blue square without a visible check under the local CSP. The Bootstrap class was removed from the native checkbox while retaining Bootstrap form controls and grid utilities.
+2. The first Step 3 pass found two P2 issues: the help icon remained pushed to the field edge and the selected profile text truncated too early. The label now has intrinsic width, the icon follows it at a 4 px gap, and the profile column receives 20% of the desktop row.
+3. The first Step 4 pass found a P2 gutter mismatch because bordered Bootstrap columns painted across their gutters. Explicit proportional flex widths and a shared 16 px gap now separate task and result surfaces, with a one-column fallback below XL.
+4. Post-fix desktop comparisons and 390 px captures show no actionable P0, P1, or P2 findings.
+
+## Findings
+
+- No actionable P0, P1, or P2 findings remain.
+- P3: on a narrow screen with all 34 Tools selected, the persistent editor follows the complete Tool table and therefore requires a long vertical scroll; this preserves the approved table-first mobile order.
+
+final result: passed
+
+---
+
+# Wizard flow refinement design QA — 2026-08-25
+
+## Evidence
+
+- Approved references: `docs/superpowers/specs/assets/wizard-flow-refinement/step-1-openapi-file.png` through `step-5-generation-progress.png`
+- Implementation captures: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-1.png` through `implemented-step-5.png`
+- Side-by-side comparisons: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-1.png` through `comparison-step-5.png`
+- Manual-next Step 1 comparison: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-1-manual-next.png`
+- Reference size: `1487 x 1058`; implementation viewport and capture: `1440 x 1024`; mobile verification viewport: `400 x 900`
+- States: Step 1 analyzed, Step 2 selected, Step 3 configured, Step 4 validated, Step 5 completed.
+
+## Comparison scope
+
+- Full view: shared frame width, connected stepper, summary strip, primary panel, and normal-flow actions.
+- Focused regions: Step 1 upload completion, Step 3 Tool table/editor split and policies, Step 4 validation checklist, Step 5 grouped and detailed progress.
+- Typography and icons: system type hierarchy and packaged Bootstrap Icons; no handmade SVG, emoji, CSS illustration, or placeholder imagery.
+- Responsiveness: 1440 px and 400 px passes showed no horizontal overflow. The summary, Tool workspace, validation results, progress groups, and artifact placeholders stack at compact widths.
+- Accessibility: semantic labels, native checkbox/details controls, disabled/loading states, live regions, focus styles, and reduced-motion rules remain present.
+
+## Primary interactions tested
+
+- Upload and analyze both `swagger-3.1.yml` and `swagger-3.0.yml`; remain in Step 1 after successful analysis until the user selects `다음: Endpoint 선택`.
+- Keep the Step 1 next button disabled for invalid, removed, and not-yet-analyzed files.
+- Select endpoints directly in Step 2 and control Tool generation directly with row checkboxes in Step 3.
+- Preserve per-Tool edits when switching rows and allow only one advanced-policy section to remain open.
+- Validate the representative Tool in Step 4 before enabling project generation.
+- Complete all 8 generation stages, show 5 grouped stages, and replace 3 disabled artifact placeholders with 3 downloads.
+- Confirm the failure grouping exposes `컴파일 및 기동: FAILED` and marks later groups as skipped.
+- Check current-page browser warning and error logs: none.
+
+## Comparison history
+
+1. The first five-step comparison found a P1 mismatch in Step 1: the completed state hid the upload target and rendered analysis facts as an unstructured definition list. The implementation now keeps the upload target, file card, success notice, and four analysis metrics visible together.
+2. The first Step 3 comparison found a P2 density mismatch: the project settings consumed two rows and pushed the Tool editor down. Desktop settings now use the approved six-column row, with three-, two-, and one-column responsive fallbacks.
+3. The focused interaction pass found two P2 state-sync risks: excluding the active representative Tool could leave its parameter summary visible, and an older preview response could win after settings changed. The editor now refreshes the representative summary on every Tool change and rejects stale preview responses with a request version.
+4. The second comparisons for Step 1 and Step 3 found no remaining actionable P0, P1, or P2 fidelity issues. Dynamic endpoint paths and profile labels differ from the mock only because the browser pass uses repository fixtures and current server data.
+5. The manual-next refinement intentionally replaces the approved transient auto-transition status with a normal-flow primary button. At `1440 x 1024`, the button remains inside the main panel, aligns to the right edge, and introduces no horizontal overflow.
+
+## Findings
+
+- No actionable P0, P1, or P2 findings remain.
+- P3: hosted-mode browser QA remains outside this local editor refinement; existing automated hosted contracts continue to cover that surface.
+
+final result: passed

@@ -21,7 +21,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     surface.dataset.uploadState = state;
     const finished = state === 'completed';
     completed.hidden = !finished;
-    dropzone.hidden = finished;
+    dropzone.hidden = false;
     surface.setAttribute('aria-busy', String(state === 'analyzing'));
   };
 
@@ -117,7 +117,9 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     }
   });
   input.addEventListener('change', () => analyze(input.files?.[0]));
-  replace.addEventListener('click', () => input.click());
+  replace.addEventListener('click', () => {
+    input.click();
+  });
   remove.addEventListener('click', reset);
 
   for (const name of ['dragenter', 'dragover']) {

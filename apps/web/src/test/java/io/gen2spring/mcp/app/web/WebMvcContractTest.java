@@ -62,10 +62,14 @@ class WebMvcContractTest {
                 .andExpect(status().isOk())
                 .andExpect(view().name("editor"))
                 .andExpect(content().string(containsString(">1. OpenAPI 파일</h2>")))
+                .andExpect(content().string(containsString("id=\"step-next-1\" type=\"button\" disabled")))
+                .andExpect(content().string(containsString("id=\"step-hint-1\"")))
                 .andExpect(content().string(containsString(">2. API endpoint 선택</h2>")))
                 .andExpect(content().string(containsString(">3. 생성 설정</h2>")))
                 .andExpect(content().string(containsString("id=\"selected-tool-list\"")))
                 .andExpect(content().string(containsString("id=\"generation-summary\"")))
+                .andExpect(content().string(containsString("class=\"generation-summary__item\"")))
+                .andExpect(content().string(containsString("class=\"generation-summary__icon")))
                 .andExpect(content().string(not(containsString("<h2>4."))))
                 .andExpect(content().string(not(containsString("<h2>5."))))
                 .andExpect(content().string(containsString("name=\"app-mode\" content=\"local\"")))
@@ -81,6 +85,55 @@ class WebMvcContractTest {
                 .andExpect(header().string("Content-Security-Policy",
                         WebSecurityConfiguration.CONTENT_SECURITY_POLICY));
         }
+    }
+
+    @Test
+    void rendersHarmonizedResponsiveControlsForTheConfigurationFlow() throws Exception {
+        mockMvc.perform(get("/editor").with(localRequest()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(
+                        "class=\"endpoint-toolbar__filters row g-2\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"operation-search\" class=\"form-control\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"operation-filter\" class=\"form-select\"")))
+                .andExpect(content().string(containsString(
+                        "class=\"field-grid project-settings-grid row g-3\"")))
+                .andExpect(content().string(containsString(
+                        "class=\"field col-12 col-sm-6 col-lg-4 col-xl-2\"")))
+                .andExpect(content().string(containsString("class=\"profile-help-anchor\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"profile-help\" class=\"profile-help\" role=\"tooltip\"")))
+                .andExpect(content().string(containsString("class=\"tool-workspace row g-0\"")))
+                .andExpect(content().string(containsString("class=\"tool-editor-heading__title\"")))
+                .andExpect(content().string(containsString(
+                        "class=\"field-grid tool-basic-fields row g-3\"")))
+                .andExpect(content().string(containsString("class=\"preview-workspace row g-4\"")))
+                .andExpect(content().string(containsString(
+                        "class=\"preview-input surface-subtle col-12 col-xl-5\"")))
+                .andExpect(content().string(not(containsString(">TOOL EDITOR</p>"))));
+    }
+
+    @Test
+    void rendersAnExplicitToolEditorAndConnectedGenerationTimeline() throws Exception {
+        mockMvc.perform(get("/editor").with(localRequest()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(
+                        "<details id=\"tool-editor-panel\" class=\"tool-editor-panel col-12 col-xl-5\" open>")))
+                .andExpect(content().string(containsString(
+                        "<summary class=\"tool-editor-heading\">")))
+                .andExpect(content().string(containsString(
+                        "class=\"tool-editor-heading__affordance\"")))
+                .andExpect(content().string(containsString(
+                        "class=\"job-progress-header\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"progress-overview\" class=\"progress-overview job-progress-timeline\"")))
+                .andExpect(content().string(containsString(
+                        "class=\"current-task-card\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"job-current-task\"")))
+                .andExpect(content().string(containsString(
+                        "class=\"progress-details-title\">상세 진행</h3>")));
     }
 
     @Test
