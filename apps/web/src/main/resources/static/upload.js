@@ -13,15 +13,18 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
   const completed = document.querySelector('#uploaded-file');
   const fileName = document.querySelector('#uploaded-file-name');
   const fileDetails = document.querySelector('#uploaded-file-details');
-  const live = document.querySelector('#upload-live-status');
+  const icon = document.querySelector('#upload-status-icon');
+  const statusText = document.querySelector('#upload-status-text');
   let dragDepth = 0;
   let requestVersion = 0;
 
   const setUploadState = state => {
     surface.dataset.uploadState = state;
     const finished = state === 'completed';
-    completed.hidden = !finished;
-    dropzone.hidden = false;
+    const showCompleted = finished || (state === 'drag-over' && Boolean(getState().analysis));
+    completed.hidden = !showCompleted;
+    dropzone.hidden = showCompleted;
+    icon.hidden = !finished;
     surface.setAttribute('aria-busy', String(state === 'analyzing'));
   };
 
@@ -31,7 +34,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     dragDepth = 0;
     resetSpecificationState();
     setUploadState('idle');
-    live.textContent = '분석할 OpenAPI 파일을 선택해 주세요.';
+    statusText.textContent = '분석할 OpenAPI 파일을 선택해 주세요.';
     fileName.textContent = '';
     fileDetails.textContent = '';
     onReset();
@@ -55,7 +58,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     fileName.textContent = analyzedName;
     setUploadState('completed');
     fileDetails.textContent = `${Number.isSafeInteger(analyzedSize) ? formatBytes(analyzedSize) : '저장된 파일'} · OpenAPI ${analysis.openApiVersion}`;
-    live.textContent = `${analysis.counts.total}개 endpoint 분석을 완료했습니다.`;
+    statusText.textContent = `${analysis.counts.total}개 endpoint 분석을 완료했습니다.`;
     onAnalysis(analysis);
   };
 
@@ -66,14 +69,14 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     if (!(file instanceof File) || !VALID_NAME.test(file.name) || file.name.includes('..')
         || file.size < 1 || file.size > MAX_BYTES) {
       setUploadState('error');
-      live.textContent = 'YAML, YML, JSON 파일을 10MB 이하로 선택해 주세요.';
-      onFailure({message: live.textContent});
+      statusText.textContent = 'YAML, YML, JSON 파일을 10MB 이하로 선택해 주세요.';
+      onFailure({message: statusText.textContent});
       return;
     }
     fileName.textContent = file.name;
     fileDetails.textContent = formatBytes(file.size);
     setUploadState('analyzing');
-    live.textContent = `${file.name} 파일을 분석하고 있습니다.`;
+    statusText.textContent = `${file.name} 파일을 분석하고 있습니다.`;
     try {
       const analysis = await api.upload(file);
       if (version !== requestVersion) return;
@@ -82,7 +85,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
       if (version !== requestVersion) return;
       resetSpecificationState();
       setUploadState('error');
-      live.textContent = 'OpenAPI 파일을 분석하지 못했습니다.';
+      statusText.textContent = 'OpenAPI 파일을 분석하지 못했습니다.';
       onFailure(failure);
     }
   };
@@ -95,7 +98,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     resetSpecificationState();
     onReset();
     setUploadState('analyzing');
-    live.textContent = '저장된 OpenAPI 파일을 분석하고 있습니다.';
+    statusText.textContent = '저장된 OpenAPI 파일을 분석하고 있습니다.';
     try {
       const analysis = await api.analysis(specificationId);
       if (version !== requestVersion) return;
@@ -104,7 +107,7 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
       if (version !== requestVersion) return;
       resetSpecificationState();
       setUploadState('error');
-      live.textContent = '저장된 OpenAPI 파일을 분석하지 못했습니다.';
+      statusText.textContent = '저장된 OpenAPI 파일을 분석하지 못했습니다.';
       onFailure(failure);
     }
   };
@@ -132,7 +135,9 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
   surface.addEventListener('dragleave', event => {
     event.preventDefault();
     dragDepth = Math.max(0, dragDepth - 1);
-    if (dragDepth === 0 && surface.dataset.uploadState === 'drag-over') setUploadState('idle');
+    if (dragDepth === 0 && surface.dataset.uploadState === 'drag-over') {
+      setUploadState(getState().analysis ? 'completed' : 'idle');
+    }
   });
   surface.addEventListener('drop', event => {
     event.preventDefault();

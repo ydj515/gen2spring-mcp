@@ -177,7 +177,7 @@ export function renderProgress(snapshot) {
 }
 
 function stageIcon(status) {
-  if (status === 'SUCCESS') return 'bi bi-check-circle-fill';
+  if (status === 'SUCCESS') return 'bi bi-check-lg';
   if (status === 'FAILED') return 'bi bi-x-circle-fill';
   if (status === 'RUNNING') return 'bi bi-arrow-clockwise pipeline-spinner';
   if (status === 'SKIPPED') return 'bi bi-dash-circle';

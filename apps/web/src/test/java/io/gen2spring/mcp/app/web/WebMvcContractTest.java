@@ -61,11 +61,13 @@ class WebMvcContractTest {
             mockMvc.perform(get(route).with(localRequest()))
                 .andExpect(status().isOk())
                 .andExpect(view().name("editor"))
-                .andExpect(content().string(containsString(">1. OpenAPI 파일</h2>")))
+                .andExpect(content().string(containsString(">OpenAPI 파일</h2>")))
                 .andExpect(content().string(containsString("id=\"step-next-1\" type=\"button\" disabled")))
                 .andExpect(content().string(containsString("id=\"step-hint-1\"")))
-                .andExpect(content().string(containsString(">2. API endpoint 선택</h2>")))
-                .andExpect(content().string(containsString(">3. 생성 설정</h2>")))
+                .andExpect(content().string(containsString(">API endpoint 선택</h2>")))
+                .andExpect(content().string(containsString(">생성 설정</h2>")))
+                .andExpect(content().string(containsString(">미리보기와 생성</h2>")))
+                .andExpect(content().string(containsString(">생성 진행</h2>")))
                 .andExpect(content().string(containsString("id=\"selected-tool-list\"")))
                 .andExpect(content().string(containsString("id=\"generation-summary\"")))
                 .andExpect(content().string(containsString("class=\"generation-summary__item\"")))
@@ -112,6 +114,28 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString(
                         "class=\"preview-input surface-subtle col-12 col-xl-5\"")))
                 .andExpect(content().string(not(containsString(">TOOL EDITOR</p>"))));
+    }
+
+    @Test
+    void rendersProgressivePolicyControlsWithContextualHelp() throws Exception {
+        mockMvc.perform(get("/editor").with(localRequest()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(
+                        "id=\"policy-retry-toggle\" class=\"policy-section__toggle\" type=\"button\" aria-expanded=\"true\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"policy-pagination-toggle\" class=\"policy-section__toggle\" type=\"button\" aria-expanded=\"false\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"policy-retry-help-button\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"policy-normalization-help\" class=\"policy-help\" role=\"tooltip\"")))
+                .andExpect(content().string(containsString("id=\"policy-retry-status\"")))
+                .andExpect(content().string(containsString("id=\"policy-parameters-status\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"retry-enabled\" class=\"policy-enable-checkbox\" type=\"checkbox\"")))
+                .andExpect(content().string(containsString(
+                        "id=\"retry-fields\" class=\"field-grid policy-fields\" hidden")))
+                .andExpect(content().string(containsString(
+                        "id=\"pagination-fields\" class=\"field-grid policy-fields\" hidden")));
     }
 
     @Test

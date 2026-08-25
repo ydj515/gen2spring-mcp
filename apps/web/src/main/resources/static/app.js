@@ -14,7 +14,7 @@ const ui = Object.fromEntries([
   'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'downloads',
   'summary-version', 'summary-selected', 'summary-excluded',
   'summary-profile', 'validation-operation', 'validation-parameter-summary', 'validation-checklist',
-  'artifact-placeholder-list', 'job-error-details', 'job-error-detail'
+  'artifact-placeholder-list', 'artifact-status', 'job-error-details', 'job-error-detail'
 ].map(id => [id, byId(id)]));
 const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
 let previewRequestVersion = 0;
@@ -556,6 +556,7 @@ function renderJob(snapshot) {
 function renderArtifacts(snapshot) {
   const downloads = snapshot.downloads ?? [];
   ui['artifact-placeholder-list'].hidden = downloads.length > 0;
+  ui['artifact-status'].hidden = downloads.length === 0;
   ui['downloads'].hidden = downloads.length === 0;
   ui['downloads'].replaceChildren(...downloads.map(artifact => {
     const name = typeof artifact === 'string' ? artifact : artifact.name;
@@ -568,9 +569,6 @@ function renderArtifacts(snapshot) {
     const artifactName = document.createElement('strong');
     artifactName.textContent = artifactTitle(name);
     metadata.append(artifactIcon, artifactName);
-    const description = document.createElement('span');
-    description.className = 'artifact-description';
-    description.textContent = '생성 및 검증이 완료된 산출물입니다.';
     const button = document.createElement('button');
     button.type = 'button';
     // Collecting a result is not the primary action on this step, so these stay
@@ -580,10 +578,11 @@ function renderArtifacts(snapshot) {
     icon.className = 'bi bi-download';
     icon.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span');
-    label.textContent = artifactLabel(name);
+    label.textContent = '다운로드';
+    button.setAttribute('aria-label', `${artifactTitle(name)} 다운로드`);
     button.append(icon, label);
     button.addEventListener('click', () => downloadArtifact(snapshot.id, artifact));
-    item.append(metadata, description, button);
+    item.append(metadata, button);
     return item;
   }));
 }
@@ -593,12 +592,6 @@ const ARTIFACT_LABELS = {
   manifest: '매니페스트',
   report: '검증 리포트'
 };
-
-// An unknown artifact keeps its raw name, matching the stage and job state
-// label policy in progress.js.
-function artifactLabel(name) {
-  return `${artifactTitle(name)} 내려받기`;
-}
 
 function artifactTitle(name) {
   return ARTIFACT_LABELS[name] ?? name;

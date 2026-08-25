@@ -52,7 +52,7 @@
 
     <section id="specification-step" class="workflow-step wizard-panel" data-step="1" aria-labelledby="specification-title">
       <div class="section-heading">
-        <div><p class="step-kicker">STEP 1</p><h2 id="specification-title" tabindex="-1">1. OpenAPI 파일</h2></div>
+        <div><p class="step-kicker">STEP 1</p><h2 id="specification-title" tabindex="-1">OpenAPI 파일</h2></div>
         <p>YAML, YML, JSON · 최대 10MB</p>
       </div>
       <div id="upload-surface" class="upload-surface" data-upload-state="idle">
@@ -75,7 +75,10 @@
           </div>
         </div>
       </div>
-      <p id="upload-live-status" class="status" role="status" aria-live="polite">분석할 OpenAPI 파일을 선택해 주세요.</p>
+      <p id="upload-live-status" class="status upload-status" role="status" aria-live="polite">
+        <i id="upload-status-icon" class="bi bi-check-circle-fill upload-status__icon" aria-hidden="true" hidden></i>
+        <span id="upload-status-text">분석할 OpenAPI 파일을 선택해 주세요.</span>
+      </p>
       <dl id="analysis-summary" class="summary-grid" aria-label="분석 결과"></dl>
       <div class="wizard-nav wizard-nav--forward">
         <p id="step-hint-1" class="wizard-hint" role="status" aria-live="polite"></p>
@@ -85,7 +88,7 @@
 
     <section id="operations-step" class="workflow-step wizard-panel" data-step="2" aria-labelledby="operations-title" hidden>
       <div class="section-heading endpoint-heading">
-        <div><p class="step-kicker">STEP 2</p><h2 id="operations-title" tabindex="-1">2. API endpoint 선택</h2></div>
+        <div><p class="step-kicker">STEP 2</p><h2 id="operations-title" tabindex="-1">API endpoint 선택</h2></div>
         <p>생성할 MCP Tool에 포함할 endpoint를 선택하세요.</p>
       </div>
       <fieldset id="operation-selection" class="endpoint-selection" disabled>
@@ -132,7 +135,7 @@
 
     <section id="generation-step" class="workflow-step wizard-panel" data-step="3" aria-labelledby="generation-title" hidden>
       <div class="section-heading">
-        <div><p class="step-kicker">STEP 3</p><h2 id="generation-title" tabindex="-1">3. 생성 설정</h2></div>
+        <div><p class="step-kicker">STEP 3</p><h2 id="generation-title" tabindex="-1">생성 설정</h2></div>
         <p>프로젝트와 Tool 세부 설정을 확인한 뒤 미리보기합니다.</p>
       </div>
 
@@ -209,60 +212,106 @@
                 </div>
 
                 <div class="tool-policy-accordion" aria-label="고급 Tool 정책">
-                  <details class="policy-section" data-policy-section="retry" open>
-                    <summary>
-                      <span><i class="bi bi-arrow-repeat" aria-hidden="true"></i>Retry</span>
-                      <span class="policy-section__meta"><small>일시적 오류 재시도</small><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
-                    </summary>
-                    <div class="policy-section__body">
-                      <label class="checkbox" for="retry-enabled"><input id="retry-enabled" type="checkbox"> bounded retry 사용</label>
+                  <section class="policy-section" data-policy-section="retry">
+                    <div class="policy-section__header">
+                      <button id="policy-retry-toggle" class="policy-section__toggle" type="button" aria-expanded="true" aria-controls="policy-retry-panel">
+                        <span class="policy-section__identity"><i class="bi bi-arrow-repeat" aria-hidden="true"></i><span><strong>Retry</strong><small>일시적 오류 재시도</small></span></span>
+                        <span class="policy-section__summary"><span id="policy-retry-status" class="policy-status">사용 안 함</span><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
+                      </button>
+                      <span class="policy-help-anchor">
+                        <button id="policy-retry-help-button" class="policy-help-button" type="button" aria-label="Retry 설정 도움말" aria-expanded="false" aria-controls="policy-retry-help"><i class="bi bi-info-circle" aria-hidden="true"></i></button>
+                        <div id="policy-retry-help" class="policy-help" role="tooltip" hidden>
+                          <strong>일시적인 실패를 자동으로 다시 요청합니다.</strong>
+                          <p>429·503 응답이나 네트워크 오류에 사용할 수 있습니다. 재시도 횟수와 시도 사이의 대기 시간을 제한해 무한 반복을 방지합니다.</p>
+                          <p><b>Retry-After</b>를 켜면 서버가 알려준 대기 시간을 우선 반영합니다.</p>
+                        </div>
+                      </span>
+                    </div>
+                    <div id="policy-retry-panel" class="policy-section__body">
+                      <label class="policy-enable-row" for="retry-enabled"><span><strong>Bounded retry 사용</strong><small>정해진 횟수와 대기 시간 안에서만 재시도합니다.</small></span><input id="retry-enabled" class="policy-enable-checkbox" type="checkbox"></label>
                       <div id="retry-fields" class="field-grid policy-fields" hidden>
-                        <div class="field"><label for="retry-status-codes">HTTP error status codes</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
-                        <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> network error retry</label>
-                        <div class="field"><label for="retry-max-retries">Maximum retries</label><input id="retry-max-retries" type="number" min="1" max="3" value="1"></div>
-                        <div class="field"><label for="retry-initial-backoff">Initial backoff milliseconds</label><input id="retry-initial-backoff" type="number" min="1" max="5000" value="100"></div>
-                        <div class="field"><label for="retry-max-backoff">Maximum backoff milliseconds</label><input id="retry-max-backoff" type="number" min="1" max="10000" value="1000"></div>
-                        <label class="checkbox" for="retry-respect-retry-after"><input id="retry-respect-retry-after" type="checkbox" checked> Retry-After 반영</label>
+                        <div class="field"><label for="retry-status-codes">재시도할 HTTP 상태 코드</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
+                        <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> 네트워크 오류도 재시도</label>
+                        <div class="field"><label for="retry-max-retries">최대 재시도 횟수</label><input id="retry-max-retries" type="number" min="1" max="3" value="1"></div>
+                        <div class="field"><label for="retry-initial-backoff">최초 대기 시간 (ms)</label><input id="retry-initial-backoff" type="number" min="1" max="5000" value="100"></div>
+                        <div class="field"><label for="retry-max-backoff">최대 대기 시간 (ms)</label><input id="retry-max-backoff" type="number" min="1" max="10000" value="1000"></div>
+                        <label class="checkbox" for="retry-respect-retry-after"><input id="retry-respect-retry-after" type="checkbox" checked> Retry-After 응답 반영</label>
                       </div>
                     </div>
-                  </details>
-                  <details class="policy-section" data-policy-section="pagination">
-                    <summary>
-                      <span><i class="bi bi-list-ol" aria-hidden="true"></i>Pagination</span>
-                      <span class="policy-section__meta"><small>cursor 기반 반복 호출</small><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
-                    </summary>
-                    <div class="policy-section__body">
-                      <label class="checkbox" for="pagination-enabled"><input id="pagination-enabled" type="checkbox"> cursor pagination 사용</label>
+                  </section>
+                  <section class="policy-section" data-policy-section="pagination">
+                    <div class="policy-section__header">
+                      <button id="policy-pagination-toggle" class="policy-section__toggle" type="button" aria-expanded="false" aria-controls="policy-pagination-panel">
+                        <span class="policy-section__identity"><i class="bi bi-list-ol" aria-hidden="true"></i><span><strong>Pagination</strong><small>cursor 기반 반복 호출</small></span></span>
+                        <span class="policy-section__summary"><span id="policy-pagination-status" class="policy-status">사용 안 함</span><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
+                      </button>
+                      <span class="policy-help-anchor">
+                        <button id="policy-pagination-help-button" class="policy-help-button" type="button" aria-label="Pagination 설정 도움말" aria-expanded="false" aria-controls="policy-pagination-help"><i class="bi bi-info-circle" aria-hidden="true"></i></button>
+                        <div id="policy-pagination-help" class="policy-help" role="tooltip" hidden>
+                          <strong>여러 페이지의 결과를 한 번의 Tool 호출로 모읍니다.</strong>
+                          <p>응답의 다음 cursor를 요청 파라미터에 넣어 반복 호출합니다. Items와 Next value 경로는 JSON Pointer로 지정합니다.</p>
+                          <p>최대 페이지 수와 항목 수가 반복 호출의 종료 한계입니다.</p>
+                        </div>
+                      </span>
+                    </div>
+                    <div id="policy-pagination-panel" class="policy-section__body" hidden>
+                      <label class="policy-enable-row" for="pagination-enabled"><span><strong>Cursor pagination 사용</strong><small>다음 cursor가 있는 동안 후속 페이지를 요청합니다.</small></span><input id="pagination-enabled" class="policy-enable-checkbox" type="checkbox"></label>
                       <div id="pagination-fields" class="field-grid policy-fields" hidden>
                         <div class="field"><label for="pagination-request-parameter">Cursor query parameter</label><input id="pagination-request-parameter" type="text" maxlength="128"></div>
-                        <div class="field"><label for="pagination-initial-value">Initial value as JSON string or integer</label><textarea id="pagination-initial-value" rows="2"></textarea></div>
+                        <div class="field"><label for="pagination-initial-value">초기 cursor 값 (JSON 문자열 또는 정수)</label><textarea id="pagination-initial-value" rows="2"></textarea></div>
                         <div class="field"><label for="pagination-items-path">Items JSON Pointer</label><input id="pagination-items-path" type="text" value="/items"></div>
                         <div class="field"><label for="pagination-next-value-path">Next value JSON Pointer</label><input id="pagination-next-value-path" type="text" value="/next"></div>
-                        <div class="field"><label for="pagination-max-pages">Maximum pages</label><input id="pagination-max-pages" type="number" min="2" max="20" value="10"></div>
-                        <div class="field"><label for="pagination-max-items">Maximum items</label><input id="pagination-max-items" type="number" min="1" max="2000" value="1000"></div>
+                        <div class="field"><label for="pagination-max-pages">최대 페이지 수</label><input id="pagination-max-pages" type="number" min="2" max="20" value="10"></div>
+                        <div class="field"><label for="pagination-max-items">최대 항목 수</label><input id="pagination-max-items" type="number" min="1" max="2000" value="1000"></div>
                       </div>
                     </div>
-                  </details>
-                  <details class="policy-section" data-policy-section="parameters">
-                    <summary>
-                      <span><i class="bi bi-key" aria-hidden="true"></i>Parameter sources</span>
-                      <span class="policy-section__meta"><small>사용자 입력과 서버 시크릿</small><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
-                    </summary>
-                    <div class="policy-section__body"><div id="parameter-editor"></div></div>
-                  </details>
-                  <details class="policy-section" data-policy-section="normalization">
-                    <summary>
-                      <span><i class="bi bi-braces" aria-hidden="true"></i>Response normalization</span>
-                      <span class="policy-section__meta"><small>응답 데이터 정규화</small><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
-                    </summary>
-                    <div class="policy-section__body field-grid">
-                      <div class="field"><label for="data-path">Data JSON Pointer</label><input id="data-path" type="text"></div>
-                      <div class="field"><label for="success-code-path">Success code JSON Pointer</label><input id="success-code-path" type="text"></div>
-                      <div class="field"><label for="success-values">Success values JSON array</label><textarea id="success-values" rows="2">[]</textarea></div>
-                      <div class="field"><label for="error-message-path">Error message JSON Pointer</label><input id="error-message-path" type="text"></div>
-                      <div class="field"><label for="total-count-path">Total count JSON Pointer</label><input id="total-count-path" type="text"></div>
+                  </section>
+                  <section class="policy-section" data-policy-section="parameters">
+                    <div class="policy-section__header">
+                      <button id="policy-parameters-toggle" class="policy-section__toggle" type="button" aria-expanded="false" aria-controls="policy-parameters-panel">
+                        <span class="policy-section__identity"><i class="bi bi-key" aria-hidden="true"></i><span><strong>Parameter sources</strong><small>사용자 입력과 서버 시크릿</small></span></span>
+                        <span class="policy-section__summary"><span id="policy-parameters-status" class="policy-status">0개</span><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
+                      </button>
+                      <span class="policy-help-anchor">
+                        <button id="policy-parameters-help-button" class="policy-help-button" type="button" aria-label="Parameter sources 설정 도움말" aria-expanded="false" aria-controls="policy-parameters-help"><i class="bi bi-info-circle" aria-hidden="true"></i></button>
+                        <div id="policy-parameters-help" class="policy-help" role="tooltip" hidden>
+                          <strong>요청 파라미터 값을 어디에서 받을지 정합니다.</strong>
+                          <p><b>User input</b>은 Tool 호출자가 값을 전달합니다. <b>Server secret</b>은 서버 환경 변수에서 값을 읽어 호출자에게 노출하지 않습니다.</p>
+                          <p>API key나 내부 토큰처럼 사용자가 직접 입력하면 안 되는 값은 Server secret을 사용합니다.</p>
+                        </div>
+                      </span>
                     </div>
-                  </details>
+                    <div id="policy-parameters-panel" class="policy-section__body" hidden>
+                      <p class="policy-section__description">파라미터마다 사용자 입력 또는 서버 환경 변수를 선택하세요.</p>
+                      <div id="parameter-editor"></div>
+                    </div>
+                  </section>
+                  <section class="policy-section" data-policy-section="normalization">
+                    <div class="policy-section__header">
+                      <button id="policy-normalization-toggle" class="policy-section__toggle" type="button" aria-expanded="false" aria-controls="policy-normalization-panel">
+                        <span class="policy-section__identity"><i class="bi bi-braces" aria-hidden="true"></i><span><strong>Response normalization</strong><small>응답 데이터 정규화</small></span></span>
+                        <span class="policy-section__summary"><span id="policy-normalization-status" class="policy-status">기본값</span><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
+                      </button>
+                      <span class="policy-help-anchor">
+                        <button id="policy-normalization-help-button" class="policy-help-button" type="button" aria-label="Response normalization 설정 도움말" aria-expanded="false" aria-controls="policy-normalization-help"><i class="bi bi-info-circle" aria-hidden="true"></i></button>
+                        <div id="policy-normalization-help" class="policy-help" role="tooltip" hidden>
+                          <strong>서로 다른 API 응답을 일관된 결과로 정리합니다.</strong>
+                          <p>데이터, 성공 코드, 오류 메시지, 전체 개수의 위치를 JSON Pointer로 지정합니다. 예: <code>/data/items</code></p>
+                          <p>별도 정규화가 필요하지 않으면 비워 두어 원본 응답을 사용합니다.</p>
+                        </div>
+                      </span>
+                    </div>
+                    <div id="policy-normalization-panel" class="policy-section__body" hidden>
+                      <p class="policy-section__description">필요한 값만 지정하고 나머지는 비워 둘 수 있습니다.</p>
+                      <div class="field-grid policy-fields policy-fields--always">
+                        <div class="field"><label for="data-path">Data JSON Pointer</label><input id="data-path" type="text"></div>
+                        <div class="field"><label for="success-code-path">Success code JSON Pointer</label><input id="success-code-path" type="text"></div>
+                        <div class="field"><label for="success-values">Success values JSON array</label><textarea id="success-values" rows="2">[]</textarea></div>
+                        <div class="field"><label for="error-message-path">Error message JSON Pointer</label><input id="error-message-path" type="text"></div>
+                        <div class="field"><label for="total-count-path">Total count JSON Pointer</label><input id="total-count-path" type="text"></div>
+                      </div>
+                    </div>
+                  </section>
                 </div>
                 </fieldset>
               </div>
@@ -279,7 +328,7 @@
 
     <section id="generation-run-step" class="workflow-step wizard-panel" data-step="4" aria-labelledby="generation-run-title" hidden>
       <div class="section-heading">
-        <div><p class="step-kicker">STEP 4</p><h2 id="generation-run-title" tabindex="-1">4. 미리보기와 생성</h2></div>
+        <div><p class="step-kicker">STEP 4</p><h2 id="generation-run-title" tabindex="-1">미리보기와 생성</h2></div>
         <p>대표 호출로 설정을 검증한 뒤 프로젝트를 생성합니다.</p>
       </div>
 
@@ -332,7 +381,7 @@
 
     <section id="generation-job-step" class="workflow-step wizard-panel" data-step="5" aria-labelledby="generation-job-title" hidden>
       <div class="section-heading">
-        <div><p class="step-kicker">STEP 5</p><h2 id="generation-job-title" tabindex="-1">5. 생성 진행</h2></div>
+        <div><p class="step-kicker">STEP 5</p><h2 id="generation-job-title" tabindex="-1">생성 진행</h2></div>
         <p>생성과 검증이 끝나면 산출물을 내려받을 수 있습니다.</p>
       </div>
 
@@ -374,12 +423,17 @@
         </div>
       </div>
       <div class="artifact-section">
-        <h3>생성 산출물</h3>
-        <p>생성과 검증이 완료되면 다운로드할 수 있습니다.</p>
+        <div class="artifact-section__heading">
+          <div>
+            <h3>생성 산출물</h3>
+            <p>생성과 검증이 완료되면 다운로드할 수 있습니다.</p>
+          </div>
+          <span id="artifact-status" class="artifact-status" hidden><i class="bi bi-check-lg" aria-hidden="true"></i>검증 완료</span>
+        </div>
         <ul id="artifact-placeholder-list" class="artifact-placeholder-list" aria-label="준비 중인 생성 산출물">
-          <li><span class="artifact-meta"><i class="bi bi-archive" aria-hidden="true"></i><strong>프로젝트 아카이브</strong></span><span>생성 완료 후 제공</span><button class="secondary" type="button" disabled><i class="bi bi-download" aria-hidden="true"></i>내려받기</button></li>
-          <li><span class="artifact-meta"><i class="bi bi-file-earmark-text" aria-hidden="true"></i><strong>매니페스트</strong></span><span>생성 완료 후 제공</span><button class="secondary" type="button" disabled><i class="bi bi-download" aria-hidden="true"></i>내려받기</button></li>
-          <li><span class="artifact-meta"><i class="bi bi-clipboard-check" aria-hidden="true"></i><strong>검증 리포트</strong></span><span>검증 완료 후 제공</span><button class="secondary" type="button" disabled><i class="bi bi-download" aria-hidden="true"></i>내려받기</button></li>
+          <li><span class="artifact-meta"><i class="bi bi-archive" aria-hidden="true"></i><strong>프로젝트 아카이브</strong></span><span>생성 완료 후 제공</span><button class="secondary" type="button" disabled><i class="bi bi-download" aria-hidden="true"></i>다운로드</button></li>
+          <li><span class="artifact-meta"><i class="bi bi-file-earmark-text" aria-hidden="true"></i><strong>매니페스트</strong></span><span>생성 완료 후 제공</span><button class="secondary" type="button" disabled><i class="bi bi-download" aria-hidden="true"></i>다운로드</button></li>
+          <li><span class="artifact-meta"><i class="bi bi-clipboard-check" aria-hidden="true"></i><strong>검증 리포트</strong></span><span>검증 완료 후 제공</span><button class="secondary" type="button" disabled><i class="bi bi-download" aria-hidden="true"></i>다운로드</button></li>
         </ul>
         <ul id="downloads" class="downloads artifact-list" aria-label="생성 산출물" hidden></ul>
       </div>

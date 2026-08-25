@@ -50,13 +50,31 @@ export function initializeEditor(onDirty) {
     renderValidationOperations();
     onDirty();
   });
-  document.querySelectorAll('.policy-section').forEach(section => {
-    section.addEventListener('toggle', () => {
-      if (!section.open) return;
-      document.querySelectorAll('.policy-section').forEach(candidate => {
-        if (candidate !== section) candidate.open = false;
-      });
+  document.querySelectorAll('.policy-section__toggle').forEach(toggle => {
+    setPolicySectionOpen(toggle.closest('.policy-section'), toggle.getAttribute('aria-expanded') === 'true');
+    toggle.addEventListener('click', () => {
+      const section = toggle.closest('.policy-section');
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      if (open) {
+        document.querySelectorAll('.policy-section').forEach(candidate => {
+          if (candidate !== section) setPolicySectionOpen(candidate, false);
+        });
+      }
+      setPolicySectionOpen(section, open);
     });
+  });
+  document.querySelectorAll('.policy-help-button').forEach(button => {
+    button.addEventListener('click', () => {
+      const open = button.getAttribute('aria-expanded') !== 'true';
+      closePolicyHelp(button);
+      setPolicyHelpOpen(button, open);
+    });
+  });
+  document.addEventListener('click', event => {
+    if (!event.target.closest('.policy-help-anchor')) closePolicyHelp();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closePolicyHelp();
   });
 }
 
@@ -166,7 +184,10 @@ function renderSelectedOperation() {
   elements['tool-editor-target'].textContent = operation
     ? `${operation.method} ${operation.path}`
     : '왼쪽에서 Tool을 선택하세요.';
-  if (!operation) return;
+  if (!operation) {
+    updatePolicySummaries(null);
+    return;
+  }
   elements['tool-name'].value = operation.toolName;
   elements['tool-description'].value = operation.toolDescription;
   elements['output-mode'].value = operation.outputMode;
@@ -192,6 +213,7 @@ function renderSelectedOperation() {
   elements['error-message-path'].value = operation.responseNormalization.errorMessagePath;
   elements['total-count-path'].value = operation.responseNormalization.totalCountPath;
   elements['parameter-editor'].replaceChildren(...operation.parameters.map(parameter => parameterRow(parameter)));
+  updatePolicySummaries(operation);
 }
 
 function parameterRow(parameter) {
@@ -297,6 +319,7 @@ function saveSelectedOperation() {
   updateState({operations});
   setPolicyControls('retry', replacement.retry.enabled);
   setPolicyControls('pagination', replacement.pagination.enabled);
+  updatePolicySummaries(replacement);
 }
 
 function setPolicyControls(prefix, enabled) {
@@ -306,6 +329,58 @@ function setPolicyControls(prefix, enabled) {
   fields.querySelectorAll(`[id^="${prefix}-"]`).forEach(control => {
     control.disabled = !enabled;
   });
+}
+
+function setPolicySectionOpen(section, open) {
+  if (!section) return;
+  const toggle = section.querySelector('.policy-section__toggle');
+  const panel = toggle ? document.querySelector(`#${toggle.getAttribute('aria-controls')}`) : null;
+  if (!toggle || !panel) return;
+  toggle.setAttribute('aria-expanded', String(open));
+  panel.hidden = !open;
+  section.classList.toggle('is-open', open);
+}
+
+function setPolicyHelpOpen(button, open) {
+  if (!button) return;
+  const help = document.querySelector(`#${button.getAttribute('aria-controls')}`);
+  if (!help) return;
+  button.setAttribute('aria-expanded', String(open));
+  help.hidden = !open;
+}
+
+function closePolicyHelp(except = null) {
+  document.querySelectorAll('.policy-help-button').forEach(button => {
+    if (button !== except) setPolicyHelpOpen(button, false);
+  });
+}
+
+function updatePolicySummaries(operation) {
+  const status = (name, label, active = false) => {
+    const element = document.querySelector(`#policy-${name}-status`);
+    if (!element) return;
+    element.textContent = label;
+    element.classList.toggle('is-enabled', active);
+  };
+  if (!operation) {
+    status('retry', '사용 안 함');
+    status('pagination', '사용 안 함');
+    status('parameters', '0개');
+    status('normalization', '기본값');
+    return;
+  }
+  status('retry', operation.retry.enabled ? '사용 중' : '사용 안 함', operation.retry.enabled);
+  status('pagination', operation.pagination.enabled ? '사용 중' : '사용 안 함', operation.pagination.enabled);
+  const secretCount = operation.parameters.filter(parameter => parameter.source === 'SERVER_SECRET').length;
+  const parameterLabel = secretCount > 0
+    ? `${operation.parameters.length}개 · 시크릿 ${secretCount}`
+    : `${operation.parameters.length}개`;
+  status('parameters', parameterLabel, secretCount > 0);
+  const normalization = operation.responseNormalization;
+  const normalized = normalization.dataPath !== '' || normalization.successCodePath !== ''
+    || normalization.successValuesText !== '[]' || normalization.errorMessagePath !== ''
+    || normalization.totalCountPath !== '';
+  status('normalization', normalized ? '사용자 설정' : '기본값', normalized);
 }
 
 function renderValidationOperations() {

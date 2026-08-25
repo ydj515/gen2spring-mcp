@@ -1,3 +1,52 @@
+# Upload and policy UX refinement QA — 2026-08-25
+
+## Evidence
+
+- Source visual truth: `docs/superpowers/specs/2026-08-25-upload-policy-ux-refinement-design.md` for the approved Step 1 replacement behavior and `docs/superpowers/specs/assets/upload-policy-ux-refinement/qa/source-step-3.png` for the Step 3 policy issue.
+- Desktop implementation: `docs/superpowers/specs/assets/upload-policy-ux-refinement/qa/implemented-step-1-completed.png`, `implemented-step-3-final.png`, and `implemented-step-3-retry-help.png`.
+- Mobile implementation: `docs/superpowers/specs/assets/upload-policy-ux-refinement/qa/implemented-step-1-mobile.png` and `implemented-step-3-mobile.png`.
+- Focused comparison: `docs/superpowers/specs/assets/upload-policy-ux-refinement/qa/comparison-step-3.png`; source is left and implementation is right.
+- Source Step 3 pixels: `461 x 612`. Step 1 desktop pixels and CSS viewport: `1226 x 794`. Step 3 desktop pixels and CSS viewport: `1440 x 1200`. Mobile pixels and CSS viewport: `400 x 900`. Device pixel ratio: `1`.
+- State: `swagger-3.1.yml` analyzed with 38 endpoints, the first Tool selected, and Retry enabled. The help-open state was captured separately.
+
+## Full-view and focused comparison
+
+- Step 1 replaces the large upload dropzone with one compact uploaded-file card after analysis. The success notice now starts with a visible check icon and the status copy remains a live-region text node.
+- Step 3 uses full-width policy rows with separate accordion and information controls. Retry and Pagination reveal dependent fields only when enabled, while header summaries communicate current state without opening the section.
+- The focused comparison was required because hierarchy, enabled-state disclosure, independent help, and label alignment are the requested fidelity surfaces.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing application type scale and weights are preserved. Redundant numeric prefixes are removed from all five panel headings without changing the step kicker or stepper.
+- Spacing and layout rhythm: the completed file card replaces rather than follows the dropzone. Policy rows, enable controls, dividers, status chips, and dependent fields use one consistent rhythm. The `400 px` captures have no horizontal page overflow.
+- Colors and visual tokens: existing neutral, primary-blue, and semantic-green tokens are reused. Green is reserved for successful analysis; interactive policy controls stay primary blue.
+- Image and icon fidelity: visible glyphs use the packaged Bootstrap Icons font. No custom SVG, CSS-drawn icon, emoji, raster placeholder, or external image dependency was introduced.
+- Copy and content: all four policies have concise Korean explanations. Retry and Pagination show `사용 중` or `사용 안 함`, Parameter sources shows parameter and server-secret counts, and Response normalization shows `기본값` or `사용자 설정`.
+- Accessibility and interaction: section toggles and help buttons independently expose `aria-expanded` and `aria-controls`. Help closes on Escape or outside click, only one policy body remains open, and hidden dependent inputs are disabled without losing their state values.
+
+## Primary interactions tested
+
+- Upload and analyze `swagger-3.1.yml`; confirm the dropzone is hidden, the uploaded-file card is visible, and `38개 endpoint 분석을 완료했습니다.` includes a check icon.
+- Enable and disable Retry and Pagination; confirm dependent fields appear only while enabled and retained values survive Tool selection changes.
+- Open all four policy help popovers; confirm they do not open policy bodies and dismiss on Escape or outside click.
+- Confirm opening one policy closes the previously open policy.
+- Check Step 1 and Step 3 at `400 x 900`; confirm `documentElement.scrollWidth === innerWidth`.
+- Check browser warning and error logs after the desktop and mobile passes: none.
+
+## Comparison history
+
+1. The first live-browser pass found a P2 control issue: an intermediate Bootstrap switch inherited the global input minimum height and stretched vertically. The enable control was changed to a regular `20 x 20 px` checkbox, the cached local server was restarted, and the final capture confirms the corrected geometry.
+2. The final desktop comparison, focused help state, and `400 px` responsive captures show no remaining actionable P0, P1, or P2 findings.
+
+## Findings
+
+- No actionable P0, P1, or P2 findings remain.
+- No P3 follow-up is required for the requested Step 1 and Step 3 surfaces.
+
+final result: passed
+
+---
+
 # UI redesign design QA
 
 ## Evidence
@@ -74,6 +123,55 @@ Focused review covered the connected stepper, summary strip, endpoint search/fil
 - [x] Hosted dashboard and job-detail redesign contracts
 - [x] Desktop, tablet, and 400 px responsive checks
 - [x] OpenAPI 3.0 and 3.1 regression flows
+
+final result: passed
+
+---
+
+# Step 5 minimal progress checks and artifact list QA — 2026-08-25
+
+## Evidence
+
+- Source visual truth: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/source-step-5-progress-complete.png` plus the user's explicit request to remove the completed-marker circles and match the progress-bar color; `docs/superpowers/specs/assets/wizard-flow-refinement/qa/source-step-5-artifacts.png` plus the approved compact-list direction.
+- Implementation captures: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-5-progress-final-967.png`, `implemented-step-5-artifact-section-final-967.png`, and `implemented-step-5-artifacts-mobile.png`.
+- Side-by-side comparison inputs: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-5-progress-minimal-checks.png` and `comparison-step-5-artifact-list-redesign.png`; source is left and implementation is right.
+- Desktop viewport: `967 x 935`; mobile viewport: `390 x 844`; device pixel ratio: `1`.
+- Source pixels: progress `961 x 935`, artifacts `967 x 295`. Implementation component pixels: progress `840 x 915`, artifacts `840 x 276`. Comparisons normalize both sides to an `840 px` component width while preserving aspect ratio.
+- State: real local generation completed at `100%`, `5 / 5 단계`, all eight detailed tasks complete, and three artifacts available.
+
+## Full-view and focused comparison
+
+- The progress component keeps the reference hierarchy while increasing the progress-bar-to-stage gap to `32 px`. Completed stages now use bare Bootstrap `check-lg` glyphs with transparent borders and backgrounds.
+- Computed browser styles confirm the progress fill, completed checks, and completed connector lines all resolve to `rgb(79, 70, 229)` (`#4f46e5`).
+- The artifact area replaces three independent bordered cards with one divided list, removes repeated row descriptions, adds one `검증 완료` status, and gives every row the same icon-plus-`다운로드` action.
+- A focused comparison was required because the marker treatment, repeated-copy removal, list border, button labels, and row alignment are the requested fidelity surfaces.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing local system stack, weights, and hierarchy are unchanged. Artifact names remain the dominant row labels and the action copy is reduced to one consistent word.
+- Spacing and layout rhythm: the stage gap is visibly larger without increasing marker size. Artifact rows share one container, equal padding, dividers, and aligned actions.
+- Colors and visual tokens: completed checks and connectors use the exact progress-bar token; the success badge retains semantic green. The completed-marker border computes to transparent.
+- Image and icon fidelity: the screen requires no raster product imagery. Progress, status, file, and download glyphs use the packaged Bootstrap Icons font; no custom SVG, CSS-drawn icon, emoji, or placeholder asset was introduced.
+- Copy and content: repeated `생성 및 검증이 완료된 산출물입니다.` text is removed. Visible actions say `다운로드`; item-specific accessible names remain `프로젝트 아카이브 다운로드`, `매니페스트 다운로드`, and `검증 리포트 다운로드`.
+- Accessibility and responsiveness: status is not communicated by color alone, download controls retain artifact-specific accessible names, the three mobile buttons measure `47 px` high, and the `390 px` viewport has no horizontal overflow.
+
+## Primary interactions tested
+
+- Upload and analyze `swagger-3.1.yml`, validate all 34 selected Tools, generate the project, and observe all eight real stages complete.
+- Confirm the completed stage checks and connectors match the progress fill through computed styles.
+- Click `프로젝트 아카이브 다운로드` and confirm the artifact request returns HTTP `200`.
+- Confirm three concise visible download labels, three distinct accessible labels, and the visible `검증 완료` state.
+- Check browser warning and error logs after the desktop and mobile passes: none.
+
+## Comparison history
+
+1. The first browser comparison found a P2 token mismatch: the checks and connectors used `--app-primary` (`#3568f4`) while the progress bar used `--primary` (`#4f46e5`). The implementation and contract test now use the progress-bar token.
+2. The post-fix computed styles and updated comparison show identical progress, check, and connector colors with transparent marker borders. No actionable P0, P1, or P2 findings remain.
+
+## Findings
+
+- No actionable P0, P1, or P2 findings remain.
+- No P3 follow-up is required for the requested Step 5 surfaces.
 
 final result: passed
 

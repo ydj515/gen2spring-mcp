@@ -181,11 +181,11 @@ class StaticAssetContractTest {
         String styles = applicationStyles();
 
         assertTrue(index.contains("<html lang=\"ko\""));
-        assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">1. OpenAPI 파일</h2>"));
-        assertTrue(index.contains("<h2 id=\"operations-title\" tabindex=\"-1\">2. API endpoint 선택</h2>"));
-        assertTrue(index.contains("<h2 id=\"generation-title\" tabindex=\"-1\">3. 생성 설정</h2>"));
-        assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">4. 미리보기와 생성</h2>"));
-        assertTrue(index.contains("<h2 id=\"generation-job-title\" tabindex=\"-1\">5. 생성 진행</h2>"));
+        assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">OpenAPI 파일</h2>"));
+        assertTrue(index.contains("<h2 id=\"operations-title\" tabindex=\"-1\">API endpoint 선택</h2>"));
+        assertTrue(index.contains("<h2 id=\"generation-title\" tabindex=\"-1\">생성 설정</h2>"));
+        assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">미리보기와 생성</h2>"));
+        assertTrue(index.contains("<h2 id=\"generation-job-title\" tabindex=\"-1\">생성 진행</h2>"));
         assertFalse(index.contains("<h2>6."));
 
         assertTrue(index.contains("class=\"wizard-steps\""));
@@ -204,6 +204,8 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"upload-dropzone\""));
         assertTrue(index.contains("data-upload-state=\"idle\""));
         assertTrue(index.contains("id=\"upload-live-status\""));
+        assertTrue(index.contains("id=\"upload-status-icon\""));
+        assertTrue(index.contains("id=\"upload-status-text\""));
         assertTrue(index.contains("aria-live=\"polite\""));
         assertTrue(index.contains("id=\"replace-file-button\""));
         assertTrue(index.contains("id=\"remove-file-button\""));
@@ -229,6 +231,16 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"profile-notice-list\""));
         assertTrue(index.contains("id=\"profile-help\" class=\"profile-help\" role=\"tooltip\"")
                 && index.contains("hidden"));
+        for (String policy : new String[] {"retry", "pagination", "parameters", "normalization"}) {
+            assertTrue(index.contains("id=\"policy-" + policy + "-toggle\""), policy + " toggle");
+            assertTrue(index.contains("id=\"policy-" + policy + "-help-button\""), policy + " help button");
+            assertTrue(index.contains("id=\"policy-" + policy + "-help\""), policy + " help");
+            assertTrue(index.contains("aria-controls=\"policy-" + policy + "-panel\""), policy + " panel binding");
+        }
+        assertTrue(index.contains("id=\"policy-retry-status\""));
+        assertTrue(index.contains("id=\"policy-pagination-status\""));
+        assertTrue(index.contains("id=\"policy-parameters-status\""));
+        assertTrue(index.contains("id=\"policy-normalization-status\""));
         assertTrue(index.contains("id=\"preview-button\" type=\"button\" disabled"));
         assertTrue(index.contains("id=\"generate-button\""));
         assertTrue(index.contains("name=\"csrf-token\""));
@@ -332,6 +344,20 @@ class StaticAssetContractTest {
         assertTrue(app.contains("ui['profile-help-button'].addEventListener('click'"));
         assertTrue(app.contains("!anchor.contains(event.relatedTarget)"));
         assertFalse(app.contains("closest('.profile-field')"));
+    }
+
+    @Test
+    void replacesCompletedUploadAndKeepsPolicyHelpIndependentFromDisclosure() throws Exception {
+        String upload = resource("/static/upload.js");
+        String editor = resource("/static/editor.js");
+
+        assertTrue(upload.contains("dropzone.hidden = showCompleted"));
+        assertTrue(upload.contains("icon.hidden = !finished"));
+        assertTrue(upload.contains("getState().analysis ? 'completed' : 'idle'"));
+        assertTrue(editor.contains("function setPolicySectionOpen(section, open)"));
+        assertTrue(editor.contains("function setPolicyHelpOpen(button, open)"));
+        assertTrue(editor.contains("function updatePolicySummaries(operation)"));
+        assertTrue(editor.contains("if (event.key === 'Escape') closePolicyHelp();"));
     }
 
     @Test
@@ -439,13 +465,27 @@ class StaticAssetContractTest {
         }
         assertTrue(app.contains("stateLabel(snapshot.state)"));
         assertFalse(app.contains("${snapshot.currentStage}"));
-        // Download labels are Korean like the rest of the interface, and the
-        // buttons stay at secondary weight beside the primary generate action.
-        assertTrue(app.contains("function artifactLabel(name)"));
+        // Completed artifacts share one compact list. Their visible action stays
+        // concise while the accessible name retains the artifact identity.
+        assertTrue(index.contains("id=\"artifact-status\" class=\"artifact-status\" hidden"));
+        assertTrue(app.contains("ui['artifact-status'].hidden = downloads.length === 0;"));
+        assertTrue(app.contains("label.textContent = '다운로드';"));
+        assertTrue(app.contains("button.setAttribute('aria-label', `${artifactTitle(name)} 다운로드`);"));
+        assertFalse(app.contains("artifact-description"));
+        assertFalse(app.contains("생성 및 검증이 완료된 산출물입니다."));
         assertTrue(app.contains("프로젝트 아카이브"));
         assertTrue(app.contains("검증 리포트"));
         assertFalse(app.contains("`Download ${name}`"));
+        assertTrue(progress.contains("if (status === 'SUCCESS') return 'bi bi-check-lg';"));
         assertTrue(styles.contains(".progress-fill"));
+        assertTrue(styles.contains(".job-progress-hero .progress-overview { margin-top: var(--app-space-8); }"));
+        assertTrue(styles.contains(".progress-overview li[data-status=\"SUCCESS\"]:not(:last-child)::after { border-top-color: var(--primary); }"));
+        assertTrue(styles.contains(".progress-overview li[data-status=\"SUCCESS\"] .pipeline-marker {\n"
+                + "  border-color: transparent;\n"
+                + "  background: transparent;\n"
+                + "  color: var(--primary);\n"
+                + "}"));
+        assertTrue(styles.contains(".artifact-list,\n.artifact-placeholder-list {"));
         // A failure marks every later stage SKIPPED. Counting the full list would
         // render a build that died at stage 3 as 88% complete.
         assertTrue(progress.contains("const counted = failed ? stages.slice(0, failedIndex) : stages;"));
@@ -462,11 +502,16 @@ class StaticAssetContractTest {
         String index = resource("/templates/editor.html");
         String styles = resource("/static/editor.css");
 
-        assertTrue(index.contains("data-policy-section=\"retry\" open"));
+        assertTrue(index.contains("data-policy-section=\"retry\""));
+        assertTrue(index.contains("id=\"policy-retry-toggle\" class=\"policy-section__toggle\""));
+        assertTrue(index.contains("aria-expanded=\"true\" aria-controls=\"policy-retry-panel\""));
         assertTrue(index.contains("class=\"bi bi-chevron-down policy-section__chevron\""));
-        assertTrue(styles.contains(".policy-section__meta"));
+        assertTrue(styles.contains(".policy-section__summary"));
         assertTrue(styles.contains(".policy-section__chevron"));
-        assertTrue(styles.contains(".policy-section[open] .policy-section__chevron"));
+        assertTrue(styles.contains(".policy-section.is-open .policy-section__chevron"));
+        assertTrue(index.contains("id=\"retry-enabled\" class=\"policy-enable-checkbox\" type=\"checkbox\""));
+        assertTrue(styles.contains(".policy-enable-checkbox"));
+        assertTrue(styles.contains("width: 1.25rem;\n  height: 1.25rem;\n  min-height: 0;"));
     }
 
     @Test
@@ -551,7 +596,7 @@ class StaticAssetContractTest {
         assertFalse(upload.contains("ANALYSIS_ADVANCE_DELAY_MILLIS"));
         assertFalse(upload.contains("pendingAdvance"));
         assertFalse(upload.contains("onReadyToAdvance"));
-        assertTrue(upload.contains("dropzone.hidden = false;"));
+        assertTrue(upload.contains("dropzone.hidden = showCompleted;"));
         assertTrue(template.contains("id=\"step-next-1\" type=\"button\" disabled"));
         assertTrue(template.contains("id=\"step-hint-1\""));
         assertFalse(template.contains("id=\"analysis-transition-status\""));
