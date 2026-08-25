@@ -799,6 +799,7 @@ main.editor-main .workflow-step {
 .job-progress-copy > p:last-child { margin: var(--app-space-1) 0 0; color: var(--app-muted); font-size: 0.8rem; }
 .job-progress-metric { display: grid; justify-items: end; gap: var(--app-space-1); flex: 0 0 auto; }
 .job-progress-hero .progress-track { width: 100%; margin-top: var(--app-space-5); }
+.progress-fill { background: var(--app-primary); }
 .job-progress-percent { color: var(--app-primary); font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; line-height: 1; }
 .progress-stage { margin: 0; color: var(--app-text); font-size: 1.125rem; font-weight: 750; }
 .progress-count { color: var(--app-muted); font-size: 0.8rem; font-weight: 700; }
@@ -829,7 +830,7 @@ main.editor-main .workflow-step {
   border-top: 2px solid var(--app-border);
   content: '';
 }
-.progress-overview li[data-status="SUCCESS"]:not(:last-child)::after { border-top-color: var(--primary); }
+.progress-overview li[data-status="SUCCESS"]:not(:last-child)::after { border-top-color: rgba(var(--bs-primary-rgb), 0.68); }
 .pipeline-marker {
   position: relative;
   z-index: 1;
@@ -851,7 +852,7 @@ main.editor-main .workflow-step {
 .progress-overview li[data-status="SUCCESS"] .pipeline-marker {
   border-color: transparent;
   background: transparent;
-  color: var(--primary);
+  color: rgba(var(--bs-primary-rgb), 0.68);
 }
 .progress-overview li[data-status="SUCCESS"] .pipeline-marker i { font-size: 1.25rem; }
 .progress-overview li[data-status="RUNNING"] .pipeline-marker { border-color: var(--app-primary); color: var(--app-primary); box-shadow: 0 0 0 4px var(--app-primary-soft); }
@@ -871,6 +872,16 @@ main.editor-main .workflow-step {
   place-items: center;
   transform-origin: 50% 50%;
   animation: pipeline-spin 1s linear infinite;
+}
+#delete-job-button.secondary {
+  border-color: var(--app-danger);
+  background: var(--app-surface);
+  color: var(--app-danger);
+}
+#delete-job-button.secondary:hover:not(:disabled) {
+  border-color: var(--app-danger);
+  background: var(--app-danger-soft);
+  color: var(--app-danger);
 }
 @media (prefers-reduced-motion: reduce) {
   .pipeline-spinner::before { animation: none; }
@@ -1167,7 +1178,7 @@ button.toolbar-refresh:hover:not(:disabled) { background: var(--app-surface); co
     border-top: 0;
     border-left: 2px solid var(--app-border);
   }
-  .progress-overview li[data-status="SUCCESS"]:not(:last-child)::after { border-left-color: var(--app-success); }
+  .progress-overview li[data-status="SUCCESS"]:not(:last-child)::after { border-left-color: rgba(var(--bs-primary-rgb), 0.68); }
   .progress-list-heading { display: none; }
   .progress-list li { grid-template-columns: 1.5rem minmax(0, 1fr) auto; gap: var(--app-space-2); padding: var(--app-space-3); }
   .pipeline-description { grid-column: 2 / -1; grid-row: 2; }

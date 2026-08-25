@@ -479,11 +479,11 @@ class StaticAssetContractTest {
         assertTrue(progress.contains("if (status === 'SUCCESS') return 'bi bi-check-lg';"));
         assertTrue(styles.contains(".progress-fill"));
         assertTrue(styles.contains(".job-progress-hero .progress-overview { margin-top: var(--app-space-8); }"));
-        assertTrue(styles.contains(".progress-overview li[data-status=\"SUCCESS\"]:not(:last-child)::after { border-top-color: var(--primary); }"));
+        assertTrue(styles.contains(".progress-overview li[data-status=\"SUCCESS\"]:not(:last-child)::after { border-top-color: rgba(var(--bs-primary-rgb), 0.68); }"));
         assertTrue(styles.contains(".progress-overview li[data-status=\"SUCCESS\"] .pipeline-marker {\n"
                 + "  border-color: transparent;\n"
                 + "  background: transparent;\n"
-                + "  color: var(--primary);\n"
+                + "  color: rgba(var(--bs-primary-rgb), 0.68);\n"
                 + "}"));
         assertTrue(styles.contains(".artifact-list,\n.artifact-placeholder-list {"));
         // A failure marks every later stage SKIPPED. Counting the full list would
@@ -495,6 +495,25 @@ class StaticAssetContractTest {
 
         assertFalse(progress.contains("innerHTML"));
         assertFalse(progress.contains("EventSource"));
+    }
+
+    @Test
+    void usesPrimaryProgressEmphasisAndDangerDeleteAction() throws Exception {
+        String styles = resource("/static/editor.css");
+
+        assertTrue(styles.contains(".progress-fill { background: var(--app-primary); }"));
+        assertTrue(styles.contains("border-top-color: rgba(var(--bs-primary-rgb), 0.68);"));
+        assertTrue(styles.contains("color: rgba(var(--bs-primary-rgb), 0.68);"));
+        assertTrue(styles.contains("border-left-color: rgba(var(--bs-primary-rgb), 0.68);"));
+        assertTrue(styles.contains("#delete-job-button.secondary {"));
+        assertTrue(styles.contains("border-color: var(--app-danger);\n"
+                + "  background: var(--app-surface);\n"
+                + "  color: var(--app-danger);"));
+        assertTrue(styles.contains("#delete-job-button.secondary:hover:not(:disabled) {\n"
+                + "  border-color: var(--app-danger);\n"
+                + "  background: var(--app-danger-soft);\n"
+                + "  color: var(--app-danger);\n"
+                + "}"));
     }
 
     @Test
