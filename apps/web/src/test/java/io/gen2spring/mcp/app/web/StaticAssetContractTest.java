@@ -21,8 +21,12 @@ class StaticAssetContractTest {
         assertTrue(tokens.contains("--app-primary: #3568f4"));
         assertTrue(tokens.contains("--app-danger-soft: #fff0f1"));
         assertTrue(tokens.contains("@font-face"));
+        assertTrue(tokens.contains("font-family: gen2spring-bootstrap-icons"));
         assertTrue(tokens.contains("/webjars/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2"));
         assertFalse(tokens.contains("bootstrap-icons.woff2?"));
+        assertTrue(tokens.contains("font-family: gen2spring-bootstrap-icons !important"));
+        assertTrue(editor.contains("--bs-form-select-bg-img: url('/select-chevron.svg')"));
+        assertFalse(editor.contains("data:image"));
         assertTrue(styles.contains("@import url('/design-tokens.css')"));
         assertTrue(styles.contains("@import url('/app-shell.css')"));
         assertTrue(styles.contains("@import url('/editor.css')"));
@@ -34,6 +38,7 @@ class StaticAssetContractTest {
         assertFalse(editor.isBlank());
         assertFalse(hosted.isBlank());
         assertTrue(WebSecurityConfiguration.CONTENT_SECURITY_POLICY.contains("font-src 'self'"));
+        assertFalse(WebSecurityConfiguration.CONTENT_SECURITY_POLICY.contains("img-src 'self' data:"));
     }
 
     @Test

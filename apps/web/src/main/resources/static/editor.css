@@ -5,6 +5,8 @@
   outline-offset: 2px;
 }
 
+.form-select { --bs-form-select-bg-img: url('/select-chevron.svg'); }
+
 .wizard-progress {
   width: 100%;
   margin-inline: 0;

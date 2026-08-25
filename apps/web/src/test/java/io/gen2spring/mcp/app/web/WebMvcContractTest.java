@@ -90,6 +90,16 @@ class WebMvcContractTest {
     }
 
     @Test
+    void servesCspCompatibleIconAssetsWithoutQueryStrings() throws Exception {
+        mockMvc.perform(get("/webjars/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2")
+                        .with(localRequest()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/select-chevron.svg").with(localRequest()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("image/svg+xml"));
+    }
+
+    @Test
     void rendersHarmonizedResponsiveControlsForTheConfigurationFlow() throws Exception {
         mockMvc.perform(get("/editor").with(localRequest()))
                 .andExpect(status().isOk())

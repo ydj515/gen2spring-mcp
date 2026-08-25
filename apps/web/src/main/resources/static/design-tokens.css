@@ -1,8 +1,14 @@
 @font-face {
-  font-family: bootstrap-icons;
+  font-family: gen2spring-bootstrap-icons;
   font-display: block;
   src: url('/webjars/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2') format('woff2'),
        url('/webjars/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff') format('woff');
+}
+
+.bi::before,
+[class^="bi-"]::before,
+[class*=" bi-"]::before {
+  font-family: gen2spring-bootstrap-icons !important;
 }
 
 :root {
