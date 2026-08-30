@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -470,7 +471,7 @@ class InstalledCliTest {
     }
 
     private void assertInstalledProfile(
-            com.fasterxml.jackson.databind.JsonNode profile,
+            JsonNode profile,
             String id,
             int javaVersion,
             String springBootVersion,
@@ -503,7 +504,7 @@ class InstalledCliTest {
         assertEquals("STREAMABLE_HTTP", profile.path("target").path("transport").asText());
     }
 
-    private void assertExactPairedFixtureCounts(com.fasterxml.jackson.databind.JsonNode analysis) {
+    private void assertExactPairedFixtureCounts(JsonNode analysis) {
         assertEquals(38, analysis.path("counts").path("total").asInt());
         assertEquals(34, analysis.path("counts").path("supported").asInt());
         assertEquals(0, analysis.path("counts").path("supportedWithWarning").asInt());
@@ -527,7 +528,7 @@ class InstalledCliTest {
     }
 
     private void assertOperationDecision(
-            com.fasterxml.jackson.databind.JsonNode analysis,
+            JsonNode analysis,
             String operationId,
             String status,
             String issueCode) {

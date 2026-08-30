@@ -1,6 +1,11 @@
 [tools]
 java = "21.0.2"
 
+[tasks."lint:imports"]
+description = "Reject fully qualified annotations and avoidable app FQCN usage"
+run = "./gradlew verifyJavaImportStyle --no-daemon --non-interactive"
+run_windows = ".\\gradlew.bat verifyJavaImportStyle --no-daemon --non-interactive"
+
 [tasks."generator:test"]
 description = "Run fast generator contracts without nested generated project builds"
 run = '''

@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
@@ -727,7 +728,7 @@ class P1GenerationIntegrationTest {
         assertEquals("1.0", runtimeMetadata.path("metadataVersion").textValue());
         assertEquals(sha256(Files.readAllBytes(specification)),
                 runtimeMetadata.path("specificationChecksum").textValue());
-        com.fasterxml.jackson.databind.node.ObjectNode checksumPayload = runtimeMetadata.deepCopy();
+        ObjectNode checksumPayload = runtimeMetadata.deepCopy();
         String metadataChecksum = checksumPayload.remove("checksum").textValue();
         assertEquals(sha256(JSON.writeValueAsBytes(checksumPayload)), metadataChecksum);
         assertEquals(1, runtimeMetadata.path("tools").size());
@@ -1369,8 +1370,8 @@ class P1GenerationIntegrationTest {
             JsonNode summary = stage.get("summary");
             assertTrue(summary != null && summary.isTextual(),
                     "validation report summary must be a string");
-            ((com.fasterxml.jackson.databind.node.ObjectNode) stage).put("durationMillis", 0);
-            ((com.fasterxml.jackson.databind.node.ObjectNode) stage).put(
+            ((ObjectNode) stage).put("durationMillis", 0);
+            ((ObjectNode) stage).put(
                     "summary",
                     summary.textValue().replaceAll("\\bstdoutBytes=\\d+\\b", "stdoutBytes=<measured>")
                             .replaceAll("\\bstderrBytes=\\d+\\b", "stderrBytes=<measured>"));

@@ -30,6 +30,8 @@ jobs:
       - name: Capture Java 21 home
         shell: bash
         run: echo "GEN2SPRING_JAVA_21_HOME=$(realpath "$JAVA_HOME")" >> "$GITHUB_ENV"
+      - name: Verify Java import style
+        run: ./gradlew verifyJavaImportStyle --no-daemon --non-interactive
       - name: Test Linux generator contracts
         run: >-
           ./gradlew clean
@@ -75,6 +77,9 @@ jobs:
       - name: Capture Java 21 home
         shell: pwsh
         run: Add-Content -Path $env:GITHUB_ENV -Value "GEN2SPRING_JAVA_21_HOME=$((Resolve-Path -LiteralPath $env:JAVA_HOME).ProviderPath)"
+      - name: Verify Java import style
+        shell: pwsh
+        run: .\gradlew.bat verifyJavaImportStyle --no-daemon --non-interactive
       - name: Test Windows generator contracts
         shell: pwsh
         run: >-

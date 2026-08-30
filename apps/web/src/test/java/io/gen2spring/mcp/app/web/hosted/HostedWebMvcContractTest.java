@@ -18,6 +18,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff;
@@ -379,10 +381,10 @@ class HostedWebMvcContractTest {
                 new SpecificationId(UUID.randomUUID()), fileName, Files.size(source), analysis);
     }
 
-    private com.fasterxml.jackson.databind.JsonNode uploadHostedFixture(String fileName, String version)
+    private JsonNode uploadHostedFixture(String fileName, String version)
             throws Exception {
         byte[] source = Files.readAllBytes(repositoryRoot().resolve(fileName));
-        var response = new com.fasterxml.jackson.databind.ObjectMapper().readTree(mvc.perform(
+        var response = new ObjectMapper().readTree(mvc.perform(
                         post("/api/specifications/uploads")
                                 .with(user()).with(csrf())
                                 .header("X-Specification-Name", fileName)
@@ -413,7 +415,7 @@ class HostedWebMvcContractTest {
     }
 
     private void assertOperationDecision(
-            com.fasterxml.jackson.databind.JsonNode analysis,
+            JsonNode analysis,
             String operationId,
             String status,
             String issueCode) {
