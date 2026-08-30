@@ -5,12 +5,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -402,13 +406,13 @@ class InstalledCliTest {
             return diagnostic.append("\nvalidationReport=")
                     .append(JSON.writerWithDefaultPrettyPrinter().writeValueAsString(safe))
                     .toString();
-        } catch (java.io.IOException | RuntimeException failure) {
+        } catch (IOException | RuntimeException failure) {
             return diagnostic.append("\nvalidationReport=unreadable").toString();
         }
     }
 
     private Result run(Path executable, String... arguments) throws Exception {
-        List<String> command = new java.util.ArrayList<>();
+        List<String> command = new ArrayList<>();
         command.add(executable.toString());
         command.addAll(List.of(arguments));
         Process process = new ProcessBuilder(command).start();
@@ -462,7 +466,7 @@ class InstalledCliTest {
     }
 
     private boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).startsWith("windows");
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows");
     }
 
     private void assertInstalledProfile(
@@ -504,7 +508,7 @@ class InstalledCliTest {
         assertEquals(34, analysis.path("counts").path("supported").asInt());
         assertEquals(0, analysis.path("counts").path("supportedWithWarning").asInt());
         assertEquals(4, analysis.path("counts").path("unsupported").asInt());
-        var customers = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
+        var customers = StreamSupport.stream(analysis.path("operations").spliterator(), false)
                 .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
                 .findFirst().orElseThrow();
         assertEquals("SUPPORTED", customers.path("status").asText());
@@ -527,7 +531,7 @@ class InstalledCliTest {
             String operationId,
             String status,
             String issueCode) {
-        var operation = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
+        var operation = StreamSupport.stream(analysis.path("operations").spliterator(), false)
                 .filter(candidate -> candidate.path("operationId").asText().equals(operationId))
                 .findFirst().orElseThrow();
         assertEquals(status, operation.path("status").asText());

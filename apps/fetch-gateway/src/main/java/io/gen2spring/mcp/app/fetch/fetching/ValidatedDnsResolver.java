@@ -4,6 +4,7 @@ import io.gen2spring.mcp.domain.platform.imports.NetworkAddressPolicy;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import org.apache.hc.client5.http.DnsResolver;
@@ -71,8 +72,8 @@ public final class ValidatedDnsResolver implements DnsResolver {
     private static final class ListSupport {
         private ListSupport() {}
 
-        private static java.util.List<InetAddress> copy(InetAddress[] addresses) {
-            return java.util.List.copyOf(Arrays.asList(addresses));
+        private static List<InetAddress> copy(InetAddress[] addresses) {
+            return List.copyOf(Arrays.asList(addresses));
         }
     }
 }

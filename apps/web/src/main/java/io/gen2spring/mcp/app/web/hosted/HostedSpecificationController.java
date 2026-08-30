@@ -10,6 +10,7 @@ import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -104,7 +105,7 @@ final class HostedSpecificationController {
         var owner = accounts.resolve(authentication).accountId();
         var result = json.createObjectNode();
         var values = result.putArray("items");
-        java.util.Optional<HostedCursorCodec.Cursor> decoded;
+        Optional<HostedCursorCodec.Cursor> decoded;
         try { decoded = cursors.decode(cursor); }
         catch (IllegalArgumentException failure) { throw new HostedSubmissionService.HostedSubmissionFailure(); }
         var page = resources.specifications(owner, limit + 1, decoded.map(value ->

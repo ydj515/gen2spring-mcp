@@ -22,6 +22,7 @@ import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -187,7 +188,7 @@ class CliApplicationTest {
         AtomicReference<Boolean> ownerOnlyAccess = new AtomicReference<>();
         var hook = new CliApplication.PublicationHook() {
             @Override
-            public void afterStagingIdentityRecorded(Path staging) throws java.io.IOException {
+            public void afterStagingIdentityRecorded(Path staging) throws IOException {
                 stagingPath.set(staging);
                 ownerOnlyAccess.set(hasOwnerOnlyAccess(staging.getParent()));
             }
@@ -204,7 +205,7 @@ class CliApplicationTest {
         assertTrue(Files.isRegularFile(output));
     }
 
-    private boolean hasOwnerOnlyAccess(Path path) throws java.io.IOException {
+    private boolean hasOwnerOnlyAccess(Path path) throws IOException {
         PosixFileAttributeView posix = Files.getFileAttributeView(path, PosixFileAttributeView.class);
         if (posix != null) {
             return PosixFilePermissions.fromString("rwx------").equals(posix.readAttributes().permissions());
@@ -227,9 +228,9 @@ class CliApplicationTest {
         AtomicReference<Path> stagingPath = new AtomicReference<>();
         var hook = new CliApplication.PublicationHook() {
             @Override
-            public void afterTargetLinked(Path target, Path staging) throws java.io.IOException {
+            public void afterTargetLinked(Path target, Path staging) throws IOException {
                 stagingPath.set(staging);
-                throw new java.io.IOException("forced post-link failure");
+                throw new IOException("forced post-link failure");
             }
         };
 
@@ -250,7 +251,7 @@ class CliApplicationTest {
         AtomicReference<Path> stagingPath = new AtomicReference<>();
         var hook = new CliApplication.PublicationHook() {
             @Override
-            public void afterStagingIdentityRecorded(Path staging) throws java.io.IOException {
+            public void afterStagingIdentityRecorded(Path staging) throws IOException {
                 stagingPath.set(staging);
                 Files.move(staging, staging.resolveSibling(staging.getFileName() + ".original"));
                 Files.writeString(staging, "replacement");
@@ -277,7 +278,7 @@ class CliApplicationTest {
         AtomicReference<Path> originalTargetPath = new AtomicReference<>();
         var hook = new CliApplication.PublicationHook() {
             @Override
-            public void afterTargetLinked(Path target, Path staging) throws java.io.IOException {
+            public void afterTargetLinked(Path target, Path staging) throws IOException {
                 stagingPath.set(staging);
                 byte[] sameBytes = Files.readAllBytes(target);
                 Path original = target.resolveSibling(target.getFileName() + ".original");
@@ -402,7 +403,7 @@ class CliApplicationTest {
                     "--output", safeTemp.resolve("linked-analysis.json").toString());
             assertEquals(3, linkedInput.exitCode());
             assertFalse(Files.exists(safeTemp.resolve("linked-analysis.json")));
-        } catch (UnsupportedOperationException | java.io.IOException exception) {
+        } catch (UnsupportedOperationException | IOException exception) {
             // Symbolic links are not available on every supported test filesystem.
         }
 
@@ -423,7 +424,7 @@ class CliApplicationTest {
                     "--output", alias.resolve("analysis.json").toString());
             assertEquals(2, ancestorOutput.exitCode());
             assertFalse(Files.exists(physicalDirectory.resolve("analysis.json")));
-        } catch (UnsupportedOperationException | java.io.IOException exception) {
+        } catch (UnsupportedOperationException | IOException exception) {
             // Symbolic links are not available on every supported test filesystem.
         }
     }

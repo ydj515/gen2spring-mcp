@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
@@ -45,7 +46,7 @@ class HostedManagedRuntimeControllerTest {
         ManagedRuntimeInstance instance = instance();
         when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
         when(runtimes.activate(
-                OWNER, CATALOG, Optional.of("https://api.example/"), Optional.of(Duration.ofHours(2)), java.util.Map.of()))
+                OWNER, CATALOG, Optional.of("https://api.example/"), Optional.of(Duration.ofHours(2)), Map.of()))
                 .thenReturn(new RuntimeActivation(
                         instance, "g2s_rt_private-token", URI.create("https://runtime.example/mcp/" + RUNTIME.value())));
         when(runtimes.require(OWNER, RUNTIME)).thenReturn(instance);
@@ -55,7 +56,7 @@ class HostedManagedRuntimeControllerTest {
         ManagedRuntimeResponse activated = controller.activate(
                 authentication,
                 CATALOG.toString(),
-                new HostedManagedRuntimeController.ActivationRequest("https://api.example/", 7200L, java.util.Map.of()));
+                new HostedManagedRuntimeController.ActivationRequest("https://api.example/", 7200L, Map.of()));
         ManagedRuntimeResponse details = controller.runtime(authentication, RUNTIME.value().toString());
         controller.revoke(authentication, RUNTIME.value().toString());
 

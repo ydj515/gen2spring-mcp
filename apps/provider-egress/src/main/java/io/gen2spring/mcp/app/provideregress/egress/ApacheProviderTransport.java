@@ -4,6 +4,7 @@ import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -60,7 +61,7 @@ final class ApacheProviderTransport implements ProviderTransport, AutoCloseable 
         }
         try (var response = client.execute(outbound)) {
             byte[] body = readBounded(response.getEntity() == null
-                    ? java.io.InputStream.nullInputStream() : response.getEntity().getContent());
+                    ? InputStream.nullInputStream() : response.getEntity().getContent());
             return ProviderResponsePolicy.requireAllowed(response.getCode(), headers(response.getHeaders()), body);
         } catch (ProviderEgressFailure failure) {
             throw failure;
@@ -74,7 +75,7 @@ final class ApacheProviderTransport implements ProviderTransport, AutoCloseable 
         client.close();
     }
 
-    private byte[] readBounded(java.io.InputStream input) throws IOException {
+    private byte[] readBounded(InputStream input) throws IOException {
         try (input; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
             int total = 0;

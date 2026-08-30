@@ -1534,6 +1534,7 @@ class GeneratedProjectSmokeTest {
                 import org.junit.jupiter.api.Test;
                 import org.junit.jupiter.api.extension.ExtendWith;
                 import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.beans.factory.annotation.Qualifier;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.boot.test.web.server.LocalServerPort;
                 import org.springframework.boot.test.system.CapturedOutput;
@@ -1558,7 +1559,7 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicInteger providerFailureCalls = new AtomicInteger();
 
                     @Autowired
-                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    @Qualifier("generatedToolSpecifications")
                     private List<McpServerFeatures.SyncToolSpecification> specifications;
 
                     @LocalServerPort
@@ -2913,6 +2914,7 @@ class GeneratedProjectSmokeTest {
                 import io.modelcontextprotocol.server.McpServerFeatures;
                 import io.modelcontextprotocol.spec.McpSchema;
                 import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.beans.factory.annotation.Qualifier;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
@@ -2931,7 +2933,7 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicInteger requestCount = new AtomicInteger();
 
                     @Autowired
-                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    @Qualifier("generatedToolSpecifications")
                     private List<McpServerFeatures.SyncToolSpecification> specifications;
 
                     private final JsonMapper jsonMapper = JsonMapper.builder().build();
@@ -3068,6 +3070,7 @@ class GeneratedProjectSmokeTest {
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
                 import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.beans.factory.annotation.Qualifier;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
@@ -3085,7 +3088,7 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicInteger requestCount = new AtomicInteger();
 
                     @Autowired
-                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    @Qualifier("generatedToolSpecifications")
                     private List<McpServerFeatures.SyncToolSpecification> specifications;
 
                     private final JsonMapper jsonMapper = JsonMapper.builder().build();
@@ -3172,6 +3175,7 @@ class GeneratedProjectSmokeTest {
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
                 import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.beans.factory.annotation.Qualifier;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
@@ -3191,7 +3195,7 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicInteger boundedCalls = new AtomicInteger();
 
                     @Autowired
-                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    @Qualifier("generatedToolSpecifications")
                     private List<McpServerFeatures.SyncToolSpecification> specifications;
 
                     private final JsonMapper jsonMapper = JsonMapper.builder().build();
@@ -3342,6 +3346,7 @@ class GeneratedProjectSmokeTest {
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
                 import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.beans.factory.annotation.Qualifier;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
@@ -3361,7 +3366,7 @@ class GeneratedProjectSmokeTest {
                     private WeatherMcpTools tools;
 
                     @Autowired
-                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    @Qualifier("generatedToolSpecifications")
                     private List<McpServerFeatures.SyncToolSpecification> specifications;
 
                     @DynamicPropertySource
@@ -3545,6 +3550,7 @@ class GeneratedProjectSmokeTest {
                 import org.junit.jupiter.api.AfterAll;
                 import org.junit.jupiter.api.Test;
                 import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.beans.factory.annotation.Qualifier;
                 import org.springframework.boot.test.context.SpringBootTest;
                 import org.springframework.test.context.DynamicPropertyRegistry;
                 import org.springframework.test.context.DynamicPropertySource;
@@ -3561,7 +3567,7 @@ class GeneratedProjectSmokeTest {
                     private static final AtomicReference<String> body = new AtomicReference<>();
 
                     @Autowired
-                    @org.springframework.beans.factory.annotation.Qualifier("generatedToolSpecifications")
+                    @Qualifier("generatedToolSpecifications")
                     private List<McpServerFeatures.SyncToolSpecification> specifications;
 
                     private final JsonMapper jsonMapper = JsonMapper.builder().build();

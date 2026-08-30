@@ -9,11 +9,13 @@ import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinate
 import io.gen2spring.mcp.application.command.GenerationCommand.ToolCallValidation;
 import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfiguration;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
 import io.gen2spring.mcp.application.validation.ValidationStatus;
 import io.gen2spring.mcp.app.web.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.job.JobWorkspace;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -36,7 +38,7 @@ class ArtifactHandlerTest {
             ArtifactHandler.Download archive = handler.download(id, "archive");
             assertEquals("application/zip", archive.contentType());
             assertEquals("attachment; filename=\"" + id + ".zip\"", archive.contentDisposition());
-            assertArrayEquals("zip".getBytes(java.nio.charset.StandardCharsets.UTF_8), archive.bytes());
+            assertArrayEquals("zip".getBytes(StandardCharsets.UTF_8), archive.bytes());
 
             JobWorkspace.Artifact manifest = jobs.artifact(id, "manifest");
             Files.delete(manifest.path());
@@ -51,7 +53,7 @@ class ArtifactHandlerTest {
             Path specification,
             GenerationCommand request,
             Path output,
-            io.gen2spring.mcp.application.usecase.GenerationProgressListener progress)
+            GenerationProgressListener progress)
             throws Exception {
         Files.createDirectory(output);
         Files.writeString(output.resolve("GENERATION_MANIFEST.json"), "manifest");

@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -60,6 +61,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,6 +78,8 @@ import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import java.util.stream.StreamSupport;
 
 @WebMvcTest(
         controllers = {HostedSpecificationController.class, HostedJobController.class,
@@ -217,7 +221,7 @@ class HostedWebMvcContractTest {
                         .with(user()).queryParam("targetCatalogId", target.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
-        org.mockito.Mockito.doThrow(new CatalogDiffService.CatalogDiffUnavailable())
+        doThrow(new CatalogDiffService.CatalogDiffUnavailable())
                 .when(catalogDiffs).compare(OWNER, source, target);
         mvc.perform(get("/api/tool-catalogs/{catalogId}/diff", source)
                         .with(user()).queryParam("targetCatalogId", target.toString()))
@@ -270,7 +274,7 @@ class HostedWebMvcContractTest {
         var analysis = new SpecificationAnalysisView(
                 "a".repeat(64), "3.1.1", "yaml", URI.create("https://weather.example.test"),
                 new SpecificationAnalysisView.Counts(0, 0, 0, 0),
-                List.of(), java.util.Map.of(), List.of());
+                List.of(), Map.of(), List.of());
         var hosted = new HostedSubmissionService.HostedSpecificationAnalysis(
                 id, "weather.yml", 123, analysis);
         when(submissions.upload(eq(OWNER), any(), eq("application/yaml"), eq("weather.yml")))
@@ -363,7 +367,7 @@ class HostedWebMvcContractTest {
                 .andExpect(content().string(not(containsString(OWNER.value().toString()))));
     }
 
-    private org.springframework.test.web.servlet.request.RequestPostProcessor user() {
+    private RequestPostProcessor user() {
         return oidcLogin().idToken(token -> token.issuer(ISSUER).subject("subject-1"));
     }
 
@@ -393,7 +397,7 @@ class HostedWebMvcContractTest {
                 .andExpect(jsonPath("$.file.name").value(fileName))
                 .andExpect(jsonPath("$.file.byteSize").value(source.length))
                 .andReturn().getResponse().getContentAsByteArray());
-        var customers = java.util.stream.StreamSupport.stream(response.path("operations").spliterator(), false)
+        var customers = StreamSupport.stream(response.path("operations").spliterator(), false)
                 .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
                 .findFirst().orElseThrow();
         assertEquals("SUPPORTED", customers.path("status").asText());
@@ -413,7 +417,7 @@ class HostedWebMvcContractTest {
             String operationId,
             String status,
             String issueCode) {
-        var operation = java.util.stream.StreamSupport.stream(analysis.path("operations").spliterator(), false)
+        var operation = StreamSupport.stream(analysis.path("operations").spliterator(), false)
                 .filter(candidate -> candidate.path("operationId").asText().equals(operationId))
                 .findFirst().orElseThrow();
         assertEquals(status, operation.path("status").asText());
@@ -438,8 +442,8 @@ class HostedWebMvcContractTest {
     private RuntimeMetadataArtifact runtimeMetadata() {
         RuntimeTool tool = new RuntimeTool(
                 "getWeather", "weather", "Get weather",
-                java.util.Map.of("type", "object", "properties", java.util.Map.of(), "required", List.of()),
-                "GENERIC_JSON", java.util.Map.of(),
+                Map.of("type", "object", "properties", Map.of(), "required", List.of()),
+                "GENERIC_JSON", Map.of(),
                 new RuntimeHttp(GET, "https://api.example.test", "/weather", List.of(), false, false),
                 null, null, null, List.of());
         return new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(

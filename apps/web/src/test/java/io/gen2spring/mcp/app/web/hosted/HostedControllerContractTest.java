@@ -28,9 +28,14 @@ import io.gen2spring.mcp.domain.platform.job.JobStatus;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.io.ByteArrayInputStream;
@@ -39,6 +44,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpHeaders;
 
 class HostedControllerContractTest {
     private static final AccountId OWNER = new AccountId(UUID.fromString("41dd3b69-589c-4466-a78e-d448407d17b9"));
@@ -66,7 +72,7 @@ class HostedControllerContractTest {
                 id, "weather.yml", 123, analysis);
         when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
         when(submissions.upload(
-                eq(OWNER), any(java.io.InputStream.class), eq("application/yaml"), eq("weather.yml")))
+                eq(OWNER), any(InputStream.class), eq("application/yaml"), eq("weather.yml")))
                 .thenReturn(result);
         when(submissions.analysis(OWNER, id)).thenReturn(result);
         when(submissions.preview(eq(OWNER), eq(id), any(byte[].class)))
@@ -77,18 +83,18 @@ class HostedControllerContractTest {
         HostedSpecificationController controller = new HostedSpecificationController(
                 accounts, submissions, mock(HostedResourceStore.class), new ObjectMapper());
         MockHttpServletRequest uploadRequest = new MockHttpServletRequest();
-        uploadRequest.setContent("openapi: 3.1.1".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        uploadRequest.setContent("openapi: 3.1.1".getBytes(StandardCharsets.UTF_8));
 
         String uploaded = controller.upload(
                 authentication, "application/yaml", "weather.yml", uploadRequest).getBody().toString();
         String analyzed = controller.analysis(authentication, id.value().toString()).toString();
         String previewed = controller.preview(
-                authentication, id.value().toString(), "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+                authentication, id.value().toString(), "{}".getBytes(StandardCharsets.UTF_8)).toString();
 
-        org.junit.jupiter.api.Assertions.assertTrue(uploaded.contains("weather.yml"));
-        org.junit.jupiter.api.Assertions.assertTrue(uploaded.contains("3.1.1"));
+        assertTrue(uploaded.contains("weather.yml"));
+        assertTrue(uploaded.contains("3.1.1"));
         assertEquals(uploaded, analyzed);
-        org.junit.jupiter.api.Assertions.assertTrue(
+        assertTrue(
                 previewed.contains("spring-ai-2.0-java21-mvc-streamable"));
         assertFalse(previewed.contains("objectKey"));
     }
@@ -168,11 +174,11 @@ class HostedControllerContractTest {
         HostedJobEventFeed feed = new HostedJobEventFeed(
                 () -> new HostedJobEventFeed.Payload(payload, 3, JobStatus.SUCCEEDED));
 
-        var change = feed.awaitChange(0, java.time.Duration.ofMillis(200)).orElseThrow();
+        var change = feed.awaitChange(0, Duration.ofMillis(200)).orElseThrow();
 
         assertEquals(payload, change.payload());
         assertTrue(change.terminal(), "a SUCCEEDED job must close the stream");
-        assertTrue(feed.awaitChange(change.version(), java.time.Duration.ofMillis(150)).isEmpty(),
+        assertTrue(feed.awaitChange(change.version(), Duration.ofMillis(150)).isEmpty(),
                 "an unchanged job must time out rather than repeat itself");
     }
 
@@ -189,7 +195,7 @@ class HostedControllerContractTest {
 
         assertThrows(
                 HostedJobController.HostedResourceNotFound.class,
-                () -> controller.download(authentication, artifact.toString(), mock(jakarta.servlet.http.HttpServletResponse.class)));
+                () -> controller.download(authentication, artifact.toString(), mock(HttpServletResponse.class)));
         verifyNoInteractions(storage);
     }
 
@@ -207,7 +213,7 @@ class HostedControllerContractTest {
                         artifactId, JOB, "ZIP", key, "a".repeat(64), 4,
                         "application/zip", Instant.EPOCH, Instant.EPOCH.plusSeconds(60))));
         when(storage.get(key)).thenReturn(new StoredObjectContent() {
-            @Override public java.io.InputStream body() { return new ByteArrayInputStream("evil".getBytes()); }
+            @Override public InputStream body() { return new ByteArrayInputStream("evil".getBytes()); }
             @Override public long size() { return 4; }
             @Override public String sha256() { return "a".repeat(64); }
             @Override public String contentType() { return "application/zip"; }
@@ -219,7 +225,7 @@ class HostedControllerContractTest {
         assertThrows(HostedArtifactController.HostedArtifactFailure.class,
                 () -> controller.download(authentication, artifactId.toString(), response));
         assertEquals(0, response.getContentAsByteArray().length);
-        assertFalse(response.containsHeader(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION));
+        assertFalse(response.containsHeader(HttpHeaders.CONTENT_DISPOSITION));
     }
 
     @Test
@@ -236,8 +242,8 @@ class HostedControllerContractTest {
 
         String response = controller.specifications(authentication, 1, null).toString();
 
-        org.junit.jupiter.api.Assertions.assertTrue(response.contains("nextCursor"));
-        org.junit.jupiter.api.Assertions.assertTrue(response.contains(first.id().value().toString()));
+        assertTrue(response.contains("nextCursor"));
+        assertTrue(response.contains(first.id().value().toString()));
         assertFalse(response.contains(second.id().value().toString()));
         assertFalse(response.contains("objectKey"));
         assertFalse(response.contains("sha256"));
@@ -254,6 +260,6 @@ class HostedControllerContractTest {
         return new SpecificationAnalysisView(
                 "a".repeat(64), "3.1.1", "yaml", URI.create("https://weather.example.test"),
                 new SpecificationAnalysisView.Counts(0, 0, 0, 0),
-                List.of(), java.util.Map.of(), List.of());
+                List.of(), Map.of(), List.of());
     }
 }

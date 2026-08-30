@@ -2,6 +2,7 @@ package io.gen2spring.mcp.app.runtime.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -27,11 +28,13 @@ import io.gen2spring.mcp.application.managed.execution.ManagedToolExecutor;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.runtime.IssuedRuntimeToken;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredential;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
@@ -45,6 +48,7 @@ import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeCredential;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
@@ -58,8 +62,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Arrays;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -147,7 +154,7 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
             var audits = policies.listAudits(OWNER, RUNTIME_ID, 10, Optional.empty()).items();
             assertEquals(2, audits.size());
             assertEquals(Set.of(AuditStatus.SUCCEEDED, AuditStatus.RATE_LIMITED),
-                    audits.stream().map(value -> value.status()).collect(java.util.stream.Collectors.toSet()));
+                    audits.stream().map(value -> value.status()).collect(Collectors.toSet()));
         } finally {
             first.close();
             second.close();
@@ -204,7 +211,7 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
             assertTrue(policies.createGrant(
                     betaGrant, new RuntimeTokenDigest(bytes(32, 0x22)),
                     fixture.targetCatalog(), targetMetadata.checksum(), NOW));
-            org.junit.jupiter.api.Assertions.assertThrows(
+            assertThrows(
                     ManagedRuntimeMigrationService.CatalogMigrationBlocked.class,
                     () -> migrations.rollback(OWNER, RUNTIME_ID, fixture.targetCatalog()));
             assertEquals(fixture.targetCatalog(), runtimeStore.find(RUNTIME_ID).orElseThrow().instance().catalogId());
@@ -228,7 +235,7 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
 
     private Replica replica(
             RuntimeAccess access,
-            io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact metadata,
+            RuntimeMetadataArtifact metadata,
             RuntimePolicyStore policies,
             AtomicInteger providerCalls) {
         ManagedToolExecutor executor = new ManagedToolExecutor((request, timeout) -> {
@@ -292,7 +299,7 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
     }
 
     private ManagedRuntimeInstance seed(
-            io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact metadata) {
+            RuntimeMetadataArtifact metadata) {
         UUID specificationId = UUID.fromString("40000000-0000-0000-0000-000000000001");
         UUID jobId = UUID.fromString("50000000-0000-0000-0000-000000000001");
         UUID catalogId = UUID.fromString("60000000-0000-0000-0000-000000000001");
@@ -328,8 +335,8 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
     }
 
     private VersionedFixture seedVersioned(
-            io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact sourceMetadata,
-            io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact targetMetadata) {
+            RuntimeMetadataArtifact sourceMetadata,
+            RuntimeMetadataArtifact targetMetadata) {
         UUID specificationId = UUID.randomUUID();
         UUID sourceJob = UUID.randomUUID();
         UUID targetJob = UUID.randomUUID();
@@ -418,7 +425,7 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
     private RuntimeCredentialResolver resolver() {
         ManagedRuntimeStore runtimes = new ManagedRuntimeStore() {
             @Override public void create(ManagedRuntimeInstance instance, RuntimeTokenDigest digest,
-                    Map<String, io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId>
+                    Map<String, ManagedCredentialId>
                             credentialBindings) {}
             @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) { return Optional.empty(); }
             @Override public boolean revoke(AccountId owner, RuntimeInstanceId id, Instant revokedAt) { return false; }
@@ -460,7 +467,7 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
                         HttpMethod.GET, "https://api.example", "/" + name, List.of(), false, false),
                 null, null, null, List.of(new RuntimeCredential(
                         "service_key",
-                        io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER,
+                        ParameterLocation.HEADER,
                         "Authorization", true)));
     }
 
@@ -489,7 +496,7 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
     private Set<String> toolNames(Exchange exchange) throws Exception {
         assertEquals(200, exchange.status());
         JsonNode tools = response(exchange.body()).path("result").path("tools");
-        java.util.Set<String> names = new java.util.TreeSet<>();
+        Set<String> names = new TreeSet<>();
         tools.forEach(value -> names.add(value.path("name").asText()));
         return Set.copyOf(names);
     }
@@ -497,14 +504,14 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
     private RuntimeTokenCodec tokens() {
         return new RuntimeTokenCodec() {
             @Override
-            public io.gen2spring.mcp.application.managed.runtime.IssuedRuntimeToken issue() {
+            public IssuedRuntimeToken issue() {
                 throw new UnsupportedOperationException();
             }
 
             @Override
             public boolean matches(String presentedToken, RuntimeTokenDigest persistedDigest) {
                 return "g2s_rt_owner-token".equals(presentedToken)
-                        && java.util.Arrays.equals(new byte[32], persistedDigest.value());
+                        && Arrays.equals(new byte[32], persistedDigest.value());
             }
 
             @Override
@@ -524,7 +531,7 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
 
     private byte[] bytes(int size, int value) {
         byte[] result = new byte[size];
-        java.util.Arrays.fill(result, (byte) value);
+        Arrays.fill(result, (byte) value);
         return result;
     }
 

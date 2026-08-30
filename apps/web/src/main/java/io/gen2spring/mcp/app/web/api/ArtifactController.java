@@ -5,13 +5,14 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+@ConditionalOnProperty(
         name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 final class ArtifactController {
     private static final List<String> ARTIFACTS = List.of("archive", "manifest", "report");

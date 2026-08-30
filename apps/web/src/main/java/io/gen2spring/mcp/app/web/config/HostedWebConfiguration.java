@@ -43,6 +43,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Arrays;
 import javax.sql.DataSource;
 import com.zaxxer.hikari.HikariConfig;
@@ -50,6 +51,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.flywaydb.core.Flyway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
+import org.springframework.boot.web.server.Cookie;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -72,11 +74,11 @@ public class HostedWebConfiguration {
         var cookie = session.getCookie();
         if (server.getAddress() == null || server.getAddress().isLoopbackAddress()
                 || server.getForwardHeadersStrategy() != ServerProperties.ForwardHeadersStrategy.NATIVE
-                || session.getTimeout() == null || session.getTimeout().compareTo(java.time.Duration.ofMinutes(1)) < 0
-                || session.getTimeout().compareTo(java.time.Duration.ofHours(24)) > 0
+                || session.getTimeout() == null || session.getTimeout().compareTo(Duration.ofMinutes(1)) < 0
+                || session.getTimeout().compareTo(Duration.ofHours(24)) > 0
                 || !Boolean.TRUE.equals(cookie.getHttpOnly())
                 || !Boolean.TRUE.equals(cookie.getSecure())
-                || cookie.getSameSite() != org.springframework.boot.web.server.Cookie.SameSite.LAX) {
+                || cookie.getSameSite() != Cookie.SameSite.LAX) {
             throw invalid();
         }
         return new HostedRuntimeInvariant();

@@ -12,11 +12,12 @@ import java.util.Objects;
 import java.util.Set;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
 import io.gen2spring.mcp.app.web.error.WebErrorResponseWriter;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
-@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+@ConditionalOnProperty(
         name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 final class LocalRequestSecurityFilter extends OncePerRequestFilter {
     private static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "OPTIONS", "TRACE");

@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.function.Consumer;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -46,7 +47,7 @@ public final class RuntimeBearerFilter extends OncePerRequestFilter {
         RuntimeInstanceId id = null;
         try {
             id = runtimeId(request.getRequestURI());
-            List<String> authorization = java.util.Collections.list(request.getHeaders("Authorization"));
+            List<String> authorization = Collections.list(request.getHeaders("Authorization"));
             if (authorization.size() != 1 || !authorization.getFirst().startsWith("Bearer ")) {
                 throw new RuntimeAccessAuthenticator.RuntimeUnauthorized();
             }

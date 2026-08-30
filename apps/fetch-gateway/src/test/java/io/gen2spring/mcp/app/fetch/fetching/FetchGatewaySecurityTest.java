@@ -4,6 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.io.ByteArrayInputStream;
@@ -16,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -239,8 +244,8 @@ class FetchGatewaySecurityTest {
 
     @Test
     void usesStrictTlsHostnameVerification() throws Exception {
-        X509Certificate certificate = org.mockito.Mockito.mock(X509Certificate.class);
-        org.mockito.Mockito.when(certificate.getSubjectAlternativeNames())
+        X509Certificate certificate = mock(X509Certificate.class);
+        when(certificate.getSubjectAlternativeNames())
                 .thenReturn(List.of(List.of(2, "other.example.com")));
 
         assertThrows(
@@ -252,20 +257,20 @@ class FetchGatewaySecurityTest {
     @Test
     @SuppressWarnings("deprecation")
     void closesTheResponseWhenEntityStreamingCannotStart() throws Exception {
-        CloseableHttpClient client = org.mockito.Mockito.mock(CloseableHttpClient.class);
-        CloseableHttpResponse response = org.mockito.Mockito.mock(CloseableHttpResponse.class);
-        HttpEntity entity = org.mockito.Mockito.mock(HttpEntity.class);
-        org.mockito.Mockito.when(client.execute(org.mockito.ArgumentMatchers.any(HttpGet.class)))
+        CloseableHttpClient client = mock(CloseableHttpClient.class);
+        CloseableHttpResponse response = mock(CloseableHttpResponse.class);
+        HttpEntity entity = mock(HttpEntity.class);
+        when(client.execute(any(HttpGet.class)))
                 .thenReturn(response);
-        org.mockito.Mockito.when(response.getEntity()).thenReturn(entity);
-        org.mockito.Mockito.when(entity.getContent()).thenThrow(new IOException("private marker"));
+        when(response.getEntity()).thenReturn(entity);
+        when(entity.getContent()).thenThrow(new IOException("private marker"));
         ApacheFetchTransport transport = new ApacheFetchTransport(client);
 
         assertFetchFailure(() -> transport.execute(
                 ImportTarget.parse("https://api.example.com/openapi.yaml"),
                 Duration.ofSeconds(1)));
 
-        org.mockito.Mockito.verify(response).close();
+        verify(response).close();
     }
 
     private BoundedFetcher.FetchResult fetch(
@@ -311,7 +316,7 @@ class FetchGatewaySecurityTest {
 
     private static final class ScriptedTransport implements FetchTransport {
         private final Queue<Response> responses;
-        private final List<String> requests = new java.util.ArrayList<>();
+        private final List<String> requests = new ArrayList<>();
 
         private ScriptedTransport(Response... responses) {
             this.responses = new ArrayDeque<>(List.of(responses));

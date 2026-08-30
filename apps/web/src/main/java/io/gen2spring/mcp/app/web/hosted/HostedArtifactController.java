@@ -4,11 +4,15 @@ import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.app.web.security.HostedAccountResolver;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.security.MessageDigest;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -68,7 +72,7 @@ public final class HostedArtifactController {
             response.setHeader(HttpHeaders.CACHE_CONTROL, "private, no-store");
             response.setHeader(HttpHeaders.CONTENT_TYPE, artifact.contentType());
             response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
-                    "attachment; filename=\"" + artifact.type().toLowerCase(java.util.Locale.ROOT) + "\"");
+                    "attachment; filename=\"" + artifact.type().toLowerCase(Locale.ROOT) + "\"");
             response.setContentLengthLong(artifact.byteSize());
             Files.copy(verified, response.getOutputStream());
         } catch (HostedJobController.HostedResourceNotFound notFound) {
@@ -83,11 +87,11 @@ public final class HostedArtifactController {
         }
     }
 
-    private void restrict(Path file) throws java.io.IOException {
+    private void restrict(Path file) throws IOException {
         try {
-            Files.setPosixFilePermissions(file, java.util.Set.of(
-                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
+            Files.setPosixFilePermissions(file, Set.of(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE));
         } catch (UnsupportedOperationException ignored) {
             // Windows uses the temporary directory ACL.
         }

@@ -2,6 +2,7 @@ package io.gen2spring.mcp.app.web.hosted;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -32,6 +33,7 @@ import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -43,6 +45,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @WebMvcTest(
         controllers = {HostedCredentialController.class, HostedRuntimePolicyController.class},
@@ -95,7 +98,7 @@ class HostedRuntimePolicyMvcContractTest {
                 .andExpect(header().string("Cache-Control", containsString("no-store")))
                 .andExpect(jsonPath("$.credentialId").value(CREDENTIAL.value().toString()));
 
-        org.junit.jupiter.api.Assertions.assertFalse(
+        assertFalse(
                 new HostedCredentialController.CredentialRequest(
                         "label", "BASIC", null, "private-user", "private-password")
                         .toString().contains("private"));
@@ -107,7 +110,7 @@ class HostedRuntimePolicyMvcContractTest {
                 GRANT, RUNTIME, OWNER, "client-a", Set.of("weather"), 10,
                 NOW, NOW.plusSeconds(600), Optional.empty());
         when(grants.create(eq(OWNER), eq(RUNTIME), eq("client-a"), eq(Set.of("weather")),
-                eq(10), eq(java.time.Duration.ofSeconds(600))))
+                eq(10), eq(Duration.ofSeconds(600))))
                 .thenReturn(new IssuedRuntimeGrant(grant, "g2s_rt_one-time-token"));
         when(grants.list(OWNER, RUNTIME)).thenReturn(List.of(grant));
         when(audits.list(eq(OWNER), eq(RUNTIME), eq(50), eq(Optional.empty())))
@@ -132,7 +135,7 @@ class HostedRuntimePolicyMvcContractTest {
                 .andExpect(content().string(not(containsString("headers"))));
     }
 
-    private org.springframework.test.web.servlet.request.RequestPostProcessor user() {
+    private RequestPostProcessor user() {
         return oidcLogin().idToken(token -> token.issuer(ISSUER).subject("subject-1"));
     }
 }

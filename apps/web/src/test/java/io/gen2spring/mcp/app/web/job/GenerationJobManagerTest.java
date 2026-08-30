@@ -14,6 +14,7 @@ import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
 import io.gen2spring.mcp.application.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
 import io.gen2spring.mcp.application.usecase.ProgressStatus;
 import io.gen2spring.mcp.application.validation.ValidationStatus;
 import java.nio.file.Files;
@@ -22,6 +23,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -86,7 +89,7 @@ class GenerationJobManagerTest {
         };
 
         try (GenerationJobManager jobs = manager(executor)) {
-            List<String> retained = new java.util.ArrayList<>();
+            List<String> retained = new ArrayList<>();
             for (int index = 0; index < 6; index++) {
                 String id = jobs.submit(specification(), request()).id();
                 jobs.await(id, Duration.ofSeconds(5));
@@ -160,7 +163,7 @@ class GenerationJobManagerTest {
             jobs.cleanupExpired();
             assertThrows(GenerationJobManager.JobNotFoundException.class, () -> jobs.snapshot(expired));
 
-            List<String> retained = new java.util.ArrayList<>();
+            List<String> retained = new ArrayList<>();
             for (int index = 0; index < 9; index++) {
                 String id = jobs.submit(specification(), request()).id();
                 jobs.await(id, Duration.ofSeconds(5));
@@ -298,7 +301,7 @@ class GenerationJobManagerTest {
             Path specification,
             GenerationCommand request,
             Path output,
-            io.gen2spring.mcp.application.usecase.GenerationProgressListener progress)
+            GenerationProgressListener progress)
             throws Exception {
         return validatedOutput(output);
     }
@@ -347,7 +350,7 @@ class GenerationJobManagerTest {
         }
 
         @Override
-        public Clock withZone(java.time.ZoneId zone) {
+        public Clock withZone(ZoneId zone) {
             return this;
         }
 

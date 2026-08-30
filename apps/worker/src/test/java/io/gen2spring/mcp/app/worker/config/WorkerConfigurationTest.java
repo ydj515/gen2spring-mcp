@@ -17,6 +17,7 @@ import java.sql.Connection;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -153,7 +154,7 @@ class WorkerConfigurationTest {
                         Path.of("/run/secrets/fetch-ca-password")),
                 new WorkerProperties.Encryption(
                         "key-1",
-                        java.util.Map.of("key-1", Path.of("/run/secrets/import-target-key"))),
+                        Map.of("key-1", Path.of("/run/secrets/import-target-key"))),
                 new WorkerProperties.Limits(
                         2.0,
                         4L * 1024 * 1024 * 1024,

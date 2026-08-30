@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,7 +29,7 @@ final class JobWorkspaceTest {
             var artifacts = workspace.capture(
                     jobId, new GenerationOutcome(project, archive, VALIDATED, "checksum"));
 
-            assertEquals(java.util.Set.of("archive", "manifest", "report"), artifacts.keySet());
+            assertEquals(Set.of("archive", "manifest", "report"), artifacts.keySet());
             assertTrue(artifacts.get("manifest").stable());
             assertEquals(Files.size(manifest), artifacts.get("manifest").size());
             assertEquals(Files.size(report), artifacts.get("report").size());

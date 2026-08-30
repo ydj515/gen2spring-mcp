@@ -15,7 +15,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,8 +36,8 @@ class ImportRunnerTest {
 
         assertEquals(0, protocol.run(target, output, work));
 
-        assertEquals(java.util.Set.of("source.yaml", "result.json"),
-                Files.list(output).map(path -> path.getFileName().toString()).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(Set.of("source.yaml", "result.json"),
+                Files.list(output).map(path -> path.getFileName().toString()).collect(Collectors.toSet()));
         String result = Files.readString(output.resolve("result.json"));
         assertTrue(result.contains("\"outcome\":\"SUCCESS\""));
         assertTrue(result.contains("\"mediaType\":\"application/yaml\""));
@@ -105,7 +108,7 @@ class ImportRunnerTest {
     }
 
     private Path readOnlyTarget(String target) throws Exception {
-        Path path = temporaryDirectory.resolve("target-" + java.util.UUID.randomUUID());
+        Path path = temporaryDirectory.resolve("target-" + UUID.randomUUID());
         Files.writeString(path, target, StandardCharsets.UTF_8);
         if (supportsPosix(path)) {
             Files.setPosixFilePermissions(path, EnumSet.of(PosixFilePermission.OWNER_READ));

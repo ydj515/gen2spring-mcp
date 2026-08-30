@@ -6,6 +6,7 @@ import io.gen2spring.mcp.app.web.security.HostedAccountResolver;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Map;
@@ -153,7 +154,7 @@ final class HostedManagedRuntimeController {
         try {
             Map<String, ManagedCredentialId> result = new TreeMap<>();
             requested.forEach((slot, id) -> result.put(slot, ManagedCredentialId.parse(id)));
-            return java.util.Collections.unmodifiableMap(result);
+            return Collections.unmodifiableMap(result);
         } catch (RuntimeException failure) {
             throw new ManagedRuntimeService.ManagedRuntimeRequestInvalid();
         }

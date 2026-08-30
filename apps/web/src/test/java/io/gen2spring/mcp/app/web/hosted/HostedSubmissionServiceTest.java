@@ -2,6 +2,7 @@ package io.gen2spring.mcp.app.web.hosted;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -23,6 +25,7 @@ import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.job.JobView;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
 import io.gen2spring.mcp.application.hosted.job.HostedJobService;
+import io.gen2spring.mcp.application.usecase.GenerationPipeline;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
@@ -31,8 +34,12 @@ import io.gen2spring.mcp.application.hosted.storage.StoredObject;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
+import io.gen2spring.mcp.domain.platform.job.JobId;
+import io.gen2spring.mcp.domain.platform.job.JobStatus;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,6 +56,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 
 class HostedSubmissionServiceTest {
     private static final AccountId OWNER = new AccountId(
@@ -70,8 +78,8 @@ class HostedSubmissionServiceTest {
         assertEquals("swagger-3.1.yml", uploaded.displayLabel());
         assertEquals(1, uploaded.analysis().counts().total());
         assertEquals("getForecast", uploaded.analysis().operations().getFirst().operationId());
-        var registration = org.mockito.ArgumentCaptor.forClass(SpecificationCatalog.Registration.class);
-        org.mockito.Mockito.verify(catalog).register(registration.capture());
+        var registration = ArgumentCaptor.forClass(SpecificationCatalog.Registration.class);
+        verify(catalog).register(registration.capture());
         assertEquals(uploaded.id(), registration.getValue().id());
         assertEquals("swagger-3.1.yml", registration.getValue().displayLabel());
         assertDirectoryEmpty(workRoot);
@@ -189,7 +197,7 @@ class HostedSubmissionServiceTest {
                 specificationView(id, key, source, "weather.yml")));
         GeneratorRuntime generator = mock(GeneratorRuntime.class);
         when(generator.configurationParser()).thenReturn(GeneratorRuntime.defaults().configurationParser());
-        var pipeline = mock(io.gen2spring.mcp.application.usecase.GenerationPipeline.class);
+        var pipeline = mock(GenerationPipeline.class);
         when(generator.pipeline()).thenReturn(pipeline);
         AssertionError fatal = new AssertionError("private-marker");
         doThrow(fatal).when(pipeline).preview(any(Path.class), any());
@@ -205,7 +213,7 @@ class HostedSubmissionServiceTest {
     }
 
     @Test
-    void rejectsInvalidImportTargetsWithOneFixedNonLeakingFailure(@TempDir java.nio.file.Path workRoot) {
+    void rejectsInvalidImportTargetsWithOneFixedNonLeakingFailure(@TempDir Path workRoot) {
         ImportTargetProtector protector = mock(ImportTargetProtector.class);
         HostedSubmissionService service = new HostedSubmissionService(
                 mock(GeneratorRuntime.class), mock(ObjectStorage.class), mock(SpecificationCatalog.class),
@@ -221,9 +229,9 @@ class HostedSubmissionServiceTest {
     }
 
     @Test
-    void hashesTheCanonicalUrlInsteadOfRandomizedCiphertext(@TempDir java.nio.file.Path workRoot) {
+    void hashesTheCanonicalUrlInsteadOfRandomizedCiphertext(@TempDir Path workRoot) {
         ImportTargetProtector protector = mock(ImportTargetProtector.class);
-        when(protector.protect(org.mockito.ArgumentMatchers.any())).thenReturn(encrypted((byte) 1), encrypted((byte) 2));
+        when(protector.protect(any())).thenReturn(encrypted((byte) 1), encrypted((byte) 2));
         CapturingQueue queue = new CapturingQueue();
         HostedJobService jobs = new HostedJobService(queue, (owner, specification) -> false);
         HostedSubmissionService service = new HostedSubmissionService(
@@ -235,7 +243,7 @@ class HostedSubmissionServiceTest {
         service.importUrl(owner, "request-2", "https://public.example/openapi.yaml");
 
         assertEquals(queue.commands.get(0).requestHash(), queue.commands.get(1).requestHash());
-        org.junit.jupiter.api.Assertions.assertNotEquals(
+        assertNotEquals(
                 queue.commands.get(0).requestSnapshot(), queue.commands.get(1).requestSnapshot());
     }
 
@@ -261,7 +269,7 @@ class HostedSubmissionServiceTest {
 
         assertEquals(Optional.empty(), queue.commands.get(0).predecessorCatalogId());
         assertEquals(Optional.of(predecessorCatalogId), queue.commands.get(1).predecessorCatalogId());
-        org.junit.jupiter.api.Assertions.assertNotEquals(
+        assertNotEquals(
                 queue.commands.get(0).requestHash(), queue.commands.get(1).requestHash());
         assertFalse(queue.commands.get(0).requestSnapshot().contains("predecessorCatalogId"));
         assertTrue(queue.commands.get(1).requestSnapshot().contains(predecessorCatalogId.toString()));
@@ -349,14 +357,14 @@ class HostedSubmissionServiceTest {
 
         @Override
         public StoredObject put(
-                ObjectKey key, java.io.InputStream body, long size, String sha256, String contentType) {
+                ObjectKey key, InputStream body, long size, String sha256, String contentType) {
             try {
                 byte[] bytes = body.readAllBytes();
                 this.key.set(key);
                 this.content.set(bytes);
                 this.contentType.set(contentType);
                 return new StoredObject(key, size, sha256, contentType);
-            } catch (java.io.IOException failure) {
+            } catch (IOException failure) {
                 throw new IllegalStateException(failure);
             }
         }
@@ -373,7 +381,7 @@ class HostedSubmissionServiceTest {
                 throw new IllegalStateException(failure);
             }
             return new StoredObjectContent() {
-                @Override public java.io.InputStream body() { return new ByteArrayInputStream(bytes); }
+                @Override public InputStream body() { return new ByteArrayInputStream(bytes); }
                 @Override public long size() { return bytes.length; }
                 @Override public String sha256() { return hash; }
                 @Override public String contentType() { return contentType.get(); }
@@ -403,7 +411,7 @@ class HostedSubmissionServiceTest {
 
     private String encoded(int length, byte value) {
         byte[] bytes = new byte[length];
-        java.util.Arrays.fill(bytes, value);
+        Arrays.fill(bytes, value);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
@@ -414,13 +422,13 @@ class HostedSubmissionServiceTest {
         public CreateJobResult create(CreateJob command) {
             commands.add(command);
             return new CreateJobResult(new JobView(
-                    new io.gen2spring.mcp.domain.platform.job.JobId(UUID.randomUUID()), command.owner(), command.kind(),
-                    io.gen2spring.mcp.domain.platform.job.JobStatus.QUEUED, command.specificationId(),
+                    new JobId(UUID.randomUUID()), command.owner(), command.kind(),
+                    JobStatus.QUEUED, command.specificationId(),
                     command.predecessorCatalogId(), 0, false), false);
         }
 
-        @Override public Optional<JobView> find(AccountId owner, io.gen2spring.mcp.domain.platform.job.JobId jobId) { return Optional.empty(); }
-        @Override public boolean requestCancellation(AccountId owner, io.gen2spring.mcp.domain.platform.job.JobId jobId) { return false; }
+        @Override public Optional<JobView> find(AccountId owner, JobId jobId) { return Optional.empty(); }
+        @Override public boolean requestCancellation(AccountId owner, JobId jobId) { return false; }
         @Override public Optional<JobLease> claim(WorkerId worker, Instant now, Duration duration) { return Optional.empty(); }
         @Override public boolean heartbeat(JobLease lease, Instant leaseUntil) { return false; }
         @Override public boolean complete(JobLease lease, JobCompletion completion) { return false; }

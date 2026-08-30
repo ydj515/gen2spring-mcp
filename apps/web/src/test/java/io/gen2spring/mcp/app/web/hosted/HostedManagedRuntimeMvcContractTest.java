@@ -34,6 +34,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,7 @@ import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @WebMvcTest(controllers = HostedManagedRuntimeController.class, properties = "gen2spring.mode=hosted")
 @Import({HostedSecurityConfiguration.class, HostedManagedRuntimeMvcContractTest.SecurityBeans.class,
@@ -74,7 +76,7 @@ class HostedManagedRuntimeMvcContractTest {
     @Test
     void protectsMutationWithOidcAndCsrfAndReturnsTheTokenOnlyOnce() throws Exception {
         ManagedRuntimeInstance instance = instance();
-        when(runtimes.activate(eq(OWNER), eq(CATALOG), eq(Optional.empty()), eq(Optional.empty()), eq(java.util.Map.of())))
+        when(runtimes.activate(eq(OWNER), eq(CATALOG), eq(Optional.empty()), eq(Optional.empty()), eq(Map.of())))
                 .thenReturn(new RuntimeActivation(
                         instance, "g2s_rt_private-token", URI.create("https://runtime.example/mcp/" + RUNTIME.value())));
         when(runtimes.require(OWNER, RUNTIME)).thenReturn(instance);
@@ -100,7 +102,7 @@ class HostedManagedRuntimeMvcContractTest {
     @Test
     void mapsBoundedSafeControlFailuresWithoutEchoingInputs() throws Exception {
         String privateMarker = "https://private-marker.example/";
-        when(runtimes.activate(eq(OWNER), eq(CATALOG), eq(Optional.of(privateMarker)), any(), eq(java.util.Map.of())))
+        when(runtimes.activate(eq(OWNER), eq(CATALOG), eq(Optional.of(privateMarker)), any(), eq(Map.of())))
                 .thenThrow(new ManagedRuntimeService.ManagedRuntimeRequestInvalid());
         mvc.perform(post("/api/tool-catalogs/{id}/runtimes", CATALOG)
                         .with(user()).with(csrf()).contentType("application/json")
@@ -202,7 +204,7 @@ class HostedManagedRuntimeMvcContractTest {
                 RUNTIME, OWNER, CATALOG, "a".repeat(64), Optional.empty(), NOW, NOW.plusSeconds(3600), Optional.empty());
     }
 
-    private org.springframework.test.web.servlet.request.RequestPostProcessor user() {
+    private RequestPostProcessor user() {
         return oidcLogin().idToken(token -> token.issuer(ISSUER).subject("subject-1"));
     }
 

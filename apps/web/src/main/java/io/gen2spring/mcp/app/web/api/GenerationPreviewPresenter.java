@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityNotice;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.AnalysisWarning;
+import java.util.List;
 import java.util.Objects;
 
 public final class GenerationPreviewPresenter {
@@ -106,7 +108,7 @@ public final class GenerationPreviewPresenter {
     }
 
     private ArrayNode warnings(
-            java.util.List<io.gen2spring.mcp.domain.specification.OpenApiDocument.AnalysisWarning> warnings) {
+            List<AnalysisWarning> warnings) {
         ArrayNode values = json.createArrayNode();
         warnings.forEach(warning -> {
             ObjectNode node = values.addObject();

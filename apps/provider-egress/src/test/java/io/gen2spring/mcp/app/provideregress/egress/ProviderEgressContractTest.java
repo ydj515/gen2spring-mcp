@@ -10,6 +10,7 @@ import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -29,13 +30,13 @@ class ProviderEgressContractTest {
 
         assertEquals("93.184.216.34", resolver.resolve("api.example.com")[0].getHostAddress());
         assertEquals("Provider destination is not public",
-                assertThrows(java.net.UnknownHostException.class,
+                assertThrows(UnknownHostException.class,
                         () -> resolver.resolve("api.example.com")).getMessage());
 
         ValidatedProviderResolver mixed = new ValidatedProviderResolver(host -> new InetAddress[] {
                 InetAddress.getByName("93.184.216.34"), InetAddress.getByName("10.0.0.1")
         });
-        assertThrows(java.net.UnknownHostException.class, () -> mixed.resolve("api.example.com"));
+        assertThrows(UnknownHostException.class, () -> mixed.resolve("api.example.com"));
     }
 
     @Test

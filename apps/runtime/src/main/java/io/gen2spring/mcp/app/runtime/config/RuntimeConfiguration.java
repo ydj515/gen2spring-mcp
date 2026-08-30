@@ -24,10 +24,12 @@ import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.KeyStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.UUID;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
@@ -125,7 +127,7 @@ class RuntimeConfiguration {
             Clock clock) {
         return new ManagedToolExecutor(
                 client, new ManagedExecutionLimits(Duration.ofSeconds(30), 16, 64),
-                policies, clock, java.util.UUID::randomUUID);
+                policies, clock, UUID::randomUUID);
     }
 
     private SSLContext sslContext(RuntimeProperties.Tls properties) {
@@ -149,7 +151,7 @@ class RuntimeConfiguration {
         }
     }
 
-    private KeyStore loadStore(java.nio.file.Path path, char[] password) throws Exception {
+    private KeyStore loadStore(Path path, char[] password) throws Exception {
         KeyStore store = KeyStore.getInstance("PKCS12");
         try (InputStream input = Files.newInputStream(path)) {
             store.load(input, password);
@@ -157,7 +159,7 @@ class RuntimeConfiguration {
         return store;
     }
 
-    private char[] secret(java.nio.file.Path path) {
+    private char[] secret(Path path) {
         try {
             if (path == null || Files.isSymbolicLink(path) || !Files.isRegularFile(path)) {
                 throw new IllegalStateException();

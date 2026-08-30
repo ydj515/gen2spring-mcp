@@ -3,15 +3,19 @@ package io.gen2spring.mcp.app.provideregress.egress;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.adapter.provideregress.ProviderEgressCodec;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
+import java.io.IOException;
 import java.net.URI;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.apache.hc.core5.http.ContentType;
 import org.junit.jupiter.api.Test;
 
@@ -54,7 +58,7 @@ class ProviderEgressSecurityTest {
     @Test
     void rejectsInvalidTimeoutsBeforeTransportExecution() {
         assertThrows(IllegalArgumentException.class,
-                () -> new io.gen2spring.mcp.adapter.provideregress.ProviderEgressCodec()
+                () -> new ProviderEgressCodec()
                         .encodeRequest(new ProviderCallRequest(
                                 HttpMethod.GET, URI.create("https://api.example.com/resource"),
                                 Map.of(), new byte[0]), Duration.ofSeconds(61)));
@@ -68,7 +72,7 @@ class ProviderEgressSecurityTest {
             assertThrows(ProviderEgressFailure.class, () -> transport.execute(request, null));
             assertThrows(ProviderEgressFailure.class, () -> transport.execute(request, Duration.ZERO));
             assertThrows(ProviderEgressFailure.class, () -> transport.execute(request, Duration.ofSeconds(61)));
-        } catch (java.io.IOException failure) {
+        } catch (IOException failure) {
             throw new AssertionError(failure);
         }
     }
@@ -86,14 +90,14 @@ class ProviderEgressSecurityTest {
     void pinsMutualTlsStoreTypesAndProtocol() throws Exception {
         String yaml;
         try (var input = ProviderEgressSecurityTest.class.getResourceAsStream("/application.yml")) {
-            yaml = new String(java.util.Objects.requireNonNull(input).readAllBytes(), StandardCharsets.UTF_8);
+            yaml = new String(Objects.requireNonNull(input).readAllBytes(), StandardCharsets.UTF_8);
         }
 
         assertFalse(yaml.contains("key-store-password:"));
         assertFalse(yaml.contains("trust-store-password:"));
-        org.junit.jupiter.api.Assertions.assertTrue(yaml.contains("key-store-type: PKCS12"));
-        org.junit.jupiter.api.Assertions.assertTrue(yaml.contains("trust-store-type: PKCS12"));
-        org.junit.jupiter.api.Assertions.assertTrue(yaml.contains("enabled-protocols: TLSv1.3"));
-        org.junit.jupiter.api.Assertions.assertTrue(yaml.contains("protocol: TLS"));
+        assertTrue(yaml.contains("key-store-type: PKCS12"));
+        assertTrue(yaml.contains("trust-store-type: PKCS12"));
+        assertTrue(yaml.contains("enabled-protocols: TLSv1.3"));
+        assertTrue(yaml.contains("protocol: TLS"));
     }
 }

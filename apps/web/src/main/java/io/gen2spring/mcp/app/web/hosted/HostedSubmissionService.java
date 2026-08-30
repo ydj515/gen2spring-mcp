@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
+import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
 import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
@@ -25,11 +26,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -162,12 +165,12 @@ public final class HostedSubmissionService {
             var encrypted = protector.protect(target);
             String snapshot = JSON.writeValueAsString(encrypted);
             String requestHash = sha256(
-                    target.uri().toASCIIString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    target.uri().toASCIIString().getBytes(StandardCharsets.UTF_8));
             return jobs.submitImport(owner, idempotencyKey, requestHash, snapshot);
         } catch (Error fatal) {
             throw fatal;
         } catch (RuntimeException failure) {
-            if (failure instanceof io.gen2spring.mcp.application.hosted.job.HostedJobFailure) {
+            if (failure instanceof HostedJobFailure) {
                 throw failure;
             }
             throw failure();
@@ -195,7 +198,7 @@ public final class HostedSubmissionService {
             String snapshot = JSON.writeValueAsString(root);
             return jobs.submitGeneration(
                     owner, specificationId, predecessorCatalogId, idempotencyKey,
-                    sha256(snapshot.getBytes(java.nio.charset.StandardCharsets.UTF_8)), snapshot);
+                    sha256(snapshot.getBytes(StandardCharsets.UTF_8)), snapshot);
         } catch (Error fatal) {
             throw fatal;
         } catch (RuntimeException failure) {
@@ -230,9 +233,9 @@ public final class HostedSubmissionService {
 
     private String mediaType(String value) {
         if (value == null) throw failure();
-        String canonical = value.split(";", 2)[0].strip().toLowerCase(java.util.Locale.ROOT);
+        String canonical = value.split(";", 2)[0].strip().toLowerCase(Locale.ROOT);
         if (canonical.equals("application/json") || canonical.endsWith("+json")
-                || java.util.Set.of("application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml").contains(canonical)
+                || Set.of("application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml").contains(canonical)
                 || canonical.endsWith("+yaml")) return canonical;
         throw failure();
     }

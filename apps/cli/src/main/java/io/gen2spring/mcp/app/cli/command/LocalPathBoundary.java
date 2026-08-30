@@ -24,6 +24,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.UserPrincipal;
 import java.util.EnumSet;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -183,7 +184,7 @@ final class LocalPathBoundary {
             Path copy = directory.resolve("source" + suffix);
             Files.write(copy, bytes, CREATE_NEW, WRITE, NOFOLLOW_LINKS);
             RegularFile staged = regularFile(copy, "Temporary specification");
-            if (!java.util.Arrays.equals(bytes, staged.readBounded(maxBytes))) {
+            if (!Arrays.equals(bytes, staged.readBounded(maxBytes))) {
                 throw failure(Reason.IO, "Temporary specification verification failed", null);
             }
             return new VerifiedCopy(directory, directoryKey, staged);

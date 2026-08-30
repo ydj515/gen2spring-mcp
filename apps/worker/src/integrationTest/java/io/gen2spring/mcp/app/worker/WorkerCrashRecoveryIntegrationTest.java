@@ -19,6 +19,7 @@ import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCo
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
+import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
@@ -89,7 +90,7 @@ class WorkerCrashRecoveryIntegrationTest {
                 "b".repeat(64),
                 "{\"configuration\":{\"targetProfileId\":\"spring-ai-2.0-java21-mvc-streamable\"},"
                         + "\"specificationObjectKey\":\"specifications/" + specification + "\"}",
-                Optional.of(new io.gen2spring.mcp.domain.platform.specification.SpecificationId(specification)),
+                Optional.of(new SpecificationId(specification)),
                 new JobQuota(2, 10)));
 
         JobLease crashed = initialQueue.claim(

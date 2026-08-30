@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Map;
 import javax.sql.DataSource;
@@ -178,7 +179,7 @@ class WorkerConfiguration {
             WorkerProperties properties) {
         WorkerId workerId = new WorkerId(properties.workerId());
         WorkerHeartbeatPublisher heartbeats = new WorkerHeartbeatPublisher(
-                workerHeartbeatStore, workerId, workerClock, java.time.Duration.ofSeconds(10));
+                workerHeartbeatStore, workerId, workerClock, Duration.ofSeconds(10));
         WorkerLeaseService leases = new WorkerLeaseService(
                 jobQueue, workerClock, properties.leaseDuration(), 3);
         return new WorkerLoop(
@@ -186,12 +187,12 @@ class WorkerConfiguration {
                 () -> hostedWorker.pollOnce() != HostedWorker.PollResult.EMPTY,
                 properties.pollInterval(),
                 heartbeats::publishIfDue,
-                java.time.Duration.ofSeconds(10),
+                Duration.ofSeconds(10),
                 () -> {
                     leases.recoverExpired();
                     artifactRetentionService.sweep(100);
                 },
-                java.time.Duration.ofSeconds(10));
+                Duration.ofSeconds(10));
     }
 
     private char[] secret(Path file) {

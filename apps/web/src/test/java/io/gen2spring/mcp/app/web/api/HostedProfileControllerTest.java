@@ -3,6 +3,7 @@ package io.gen2spring.mcp.app.web.api;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.when;
 
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
@@ -26,8 +27,8 @@ class HostedProfileControllerTest {
 
     @Test
     void exposesCanonicalProfilesInHostedMode() throws Exception {
-        org.mockito.Mockito.when(generator.profiles()).thenReturn(CompatibilityProfileRegistry.defaults());
-        org.mockito.Mockito.when(generator.compatibilityCatalog()).thenReturn(CompatibilityCatalog.defaults());
+        when(generator.profiles()).thenReturn(CompatibilityProfileRegistry.defaults());
+        when(generator.compatibilityCatalog()).thenReturn(CompatibilityCatalog.defaults());
 
         mvc.perform(get("/api/profiles"))
                 .andExpect(status().isOk())

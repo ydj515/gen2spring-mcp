@@ -4,6 +4,7 @@ import io.gen2spring.mcp.adapter.provideregress.ProviderEgressCodec;
 import io.gen2spring.mcp.app.provideregress.egress.ProviderEgressFailure;
 import io.gen2spring.mcp.app.provideregress.egress.ProviderEgressService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
 import java.security.cert.X509Certificate;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -36,7 +37,7 @@ final class ProviderEgressController {
             throw failure;
         } catch (Error fatal) {
             throw fatal;
-        } catch (java.io.IOException | RuntimeException failure) {
+        } catch (IOException | RuntimeException failure) {
             throw new ProviderEgressFailure();
         }
     }

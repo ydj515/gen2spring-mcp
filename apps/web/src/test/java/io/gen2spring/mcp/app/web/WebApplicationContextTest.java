@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.app.web.api.SpecificationStore;
 import io.gen2spring.mcp.app.web.job.GenerationJobManager;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,8 +93,8 @@ class WebApplicationContextTest {
                     .map(path -> {
                         try {
                             return Files.readString(path);
-                        } catch (java.io.IOException exception) {
-                            throw new java.io.UncheckedIOException(exception);
+                        } catch (IOException exception) {
+                            throw new UncheckedIOException(exception);
                         }
                     })
                     .toList();

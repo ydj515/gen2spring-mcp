@@ -18,6 +18,7 @@ import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditCurs
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditPage;
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.StoredGrant;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
@@ -37,6 +38,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -118,7 +121,7 @@ class RuntimeBearerFilterTest {
         ManagedRuntimeInstance instance = instance();
         ManagedRuntimeStore store = new ManagedRuntimeStore() {
             @Override public void create(ManagedRuntimeInstance ignored, RuntimeTokenDigest digest,
-                    java.util.Map<String, io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId>
+                    Map<String, ManagedCredentialId>
                             credentialBindings) {}
             @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) {
                 throw new IllegalStateException("private database marker");
@@ -144,8 +147,7 @@ class RuntimeBearerFilterTest {
     @Test
     void invalidatesOnlyInactiveRuntimeHandlesBeforeReturningEquivalentUnauthorized() throws Exception {
         ManagedRuntimeInstance revoked = instance().revokeAt(NOW);
-        java.util.concurrent.atomic.AtomicReference<RuntimeInstanceId> invalidated =
-                new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicReference<RuntimeInstanceId> invalidated = new AtomicReference<>();
         RuntimeBearerFilter filter = new RuntimeBearerFilter(authenticator(
                 store(revoked, new AtomicInteger()), tokens(presented -> true), revoked), invalidated::set);
         MockHttpServletRequest request = new MockHttpServletRequest(
@@ -166,7 +168,7 @@ class RuntimeBearerFilterTest {
     private ManagedRuntimeStore store(ManagedRuntimeInstance instance, AtomicInteger lookups) {
         return new ManagedRuntimeStore() {
             @Override public void create(ManagedRuntimeInstance ignored, RuntimeTokenDigest digest,
-                    java.util.Map<String, io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId>
+                    Map<String, ManagedCredentialId>
                             credentialBindings) {}
             @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) {
                 lookups.incrementAndGet();
@@ -178,7 +180,7 @@ class RuntimeBearerFilterTest {
         };
     }
 
-    private RuntimeTokenCodec tokens(java.util.function.Predicate<String> matches) {
+    private RuntimeTokenCodec tokens(Predicate<String> matches) {
         return new RuntimeTokenCodec() {
             @Override public IssuedRuntimeToken issue() { throw new UnsupportedOperationException(); }
             @Override public boolean matches(String presented, RuntimeTokenDigest digest) {

@@ -15,6 +15,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -36,14 +37,18 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -997,7 +1002,7 @@ class P1GenerationIntegrationTest {
         return report.path("stages").findValuesAsText("stage");
     }
 
-    private List<String> iterable(java.util.Iterator<String> values) {
+    private List<String> iterable(Iterator<String> values) {
         List<String> result = new ArrayList<>();
         values.forEachRemaining(result::add);
         return result;
@@ -1115,7 +1120,7 @@ class P1GenerationIntegrationTest {
         assertFalse(scrape.contains("gen2spring_runtime_provider_request_active"), scrape);
         String custom = scrape.lines()
                 .filter(line -> line.contains("gen2spring_runtime_"))
-                .collect(java.util.stream.Collectors.joining("\n"));
+                .collect(Collectors.joining("\n"));
         assertFalse(custom.contains("error=\""), custom);
         assertFalse(custom.contains(LIVE_QUERY_SECRET), custom);
         assertFalse(custom.contains(LIVE_HEADER_SECRET), custom);
@@ -1187,7 +1192,7 @@ class P1GenerationIntegrationTest {
     }
 
     private boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).startsWith("windows");
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows");
     }
 
     private void awaitApplication(ObservedProcess application, int port) throws Exception {
@@ -1429,7 +1434,7 @@ class P1GenerationIntegrationTest {
                 digest.update(content);
             }
         }
-        return java.util.HexFormat.of().formatHex(digest.digest());
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     private byte[] normalizeLineEndings(byte[] input) {
@@ -1484,7 +1489,7 @@ class P1GenerationIntegrationTest {
     }
 
     private String sha256(byte[] bytes) {
-        return java.util.HexFormat.of().formatHex(sha256Digest().digest(bytes));
+        return HexFormat.of().formatHex(sha256Digest().digest(bytes));
     }
 
     private MessageDigest sha256Digest() {
@@ -1627,7 +1632,7 @@ class P1GenerationIntegrationTest {
 
         private JsonNode responseJson(HttpResponse<byte[]> response) throws IOException {
             String contentType = response.headers().firstValue("Content-Type").orElse("")
-                    .split(";", 2)[0].trim().toLowerCase(java.util.Locale.ROOT);
+                    .split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
             String payload;
             if ("application/json".equals(contentType)) {
                 payload = new String(response.body(), UTF_8);
@@ -1746,7 +1751,7 @@ class P1GenerationIntegrationTest {
         private Set<String> propagationHeaders(HttpExchange exchange) {
             Set<String> result = new TreeSet<>();
             exchange.getRequestHeaders().keySet().stream()
-                    .map(name -> name.toLowerCase(java.util.Locale.ROOT))
+                    .map(name -> name.toLowerCase(Locale.ROOT))
                     .filter(name -> name.equals("traceparent")
                             || name.equals("tracestate")
                             || name.equals("baggage")
@@ -1879,11 +1884,11 @@ class P1GenerationIntegrationTest {
             return process.isAlive();
         }
 
-        private java.io.InputStream stdout() {
+        private InputStream stdout() {
             return process.getInputStream();
         }
 
-        private java.io.InputStream stderr() {
+        private InputStream stderr() {
             return process.getErrorStream();
         }
 

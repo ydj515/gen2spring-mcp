@@ -22,6 +22,7 @@ import io.gen2spring.mcp.application.managed.execution.ProviderCallClient;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.runtime.IssuedRuntimeToken;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
@@ -34,6 +35,7 @@ import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCo
 import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataDocumentFactory;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
@@ -314,7 +316,7 @@ class ManagedRuntimeJourneyIntegrationTest {
         }, 8, Clock.fixed(NOW, ZoneOffset.UTC));
         ManagedRuntimeStore store = new ManagedRuntimeStore() {
             @Override public void create(ManagedRuntimeInstance ignored, RuntimeTokenDigest digest,
-                    Map<String, io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId>
+                    Map<String, ManagedCredentialId>
                             credentialBindings) {}
             @Override public Optional<StoredRuntime> find(RuntimeInstanceId id) {
                 return id.equals(instance.id())
@@ -324,7 +326,7 @@ class ManagedRuntimeJourneyIntegrationTest {
             @Override public boolean revoke(AccountId owner, RuntimeInstanceId id, Instant at) { return false; }
         };
         RuntimeTokenCodec tokens = new RuntimeTokenCodec() {
-            @Override public io.gen2spring.mcp.application.managed.runtime.IssuedRuntimeToken issue() {
+            @Override public IssuedRuntimeToken issue() {
                 throw new UnsupportedOperationException();
             }
             @Override public boolean matches(String presented, RuntimeTokenDigest digest) {

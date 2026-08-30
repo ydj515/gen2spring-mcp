@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class WorkerHeartbeatPublisherTest {
@@ -25,7 +26,7 @@ class WorkerHeartbeatPublisherTest {
         clock.value = Instant.EPOCH.plusSeconds(10);
         publisher.publishIfDue();
 
-        assertEquals(java.util.List.of(Instant.EPOCH, Instant.EPOCH.plusSeconds(10)), values);
+        assertEquals(List.of(Instant.EPOCH, Instant.EPOCH.plusSeconds(10)), values);
     }
 
     private record RecordingStore(ArrayList<Instant> values) implements WorkerHeartbeatStore {

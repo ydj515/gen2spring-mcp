@@ -3,6 +3,7 @@ package io.gen2spring.mcp.app.web.security;
 import java.util.Objects;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
 import io.gen2spring.mcp.app.web.error.WebErrorResponseWriter;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -14,7 +15,7 @@ import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 
 @Configuration(proxyBeanMethods = false)
-@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+@ConditionalOnProperty(
         name = "gen2spring.mode", havingValue = "local", matchIfMissing = true)
 public class WebSecurityConfiguration {
     public static final String CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; "

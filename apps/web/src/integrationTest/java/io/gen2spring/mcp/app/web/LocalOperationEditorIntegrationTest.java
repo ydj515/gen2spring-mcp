@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -509,7 +510,7 @@ class LocalOperationEditorIntegrationTest {
             Path stdout = temporaryRoot.resolve("installed-editor.stdout");
             Path stderr = temporaryRoot.resolve("installed-editor.stderr");
             Path runtimeTemp = Files.createDirectory(temporaryRoot.resolve("installed-editor-tmp"));
-            String executableName = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT)
+            String executableName = System.getProperty("os.name").toLowerCase(Locale.ROOT)
                     .contains("win") ? "java.exe" : "java";
             Path java = Path.of(java21Home, "bin", executableName);
             if (!Files.isRegularFile(java)) {

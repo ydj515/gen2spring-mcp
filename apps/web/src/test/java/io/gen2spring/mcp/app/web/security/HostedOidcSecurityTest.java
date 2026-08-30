@@ -10,7 +10,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.oauth2.core.oidc.OidcIdToken;
@@ -55,7 +57,7 @@ class HostedOidcSecurityTest {
         claims.put("sub", subject);
         claims.put("email", email);
         OidcIdToken token = new OidcIdToken("token", NOW.minusSeconds(1), NOW.plusSeconds(60), claims);
-        return new TestingAuthenticationToken(new DefaultOidcUser(java.util.List.of(), token), null, "ROLE_USER");
+        return new TestingAuthenticationToken(new DefaultOidcUser(List.of(), token), null, "ROLE_USER");
     }
 
     private static final class StubAccounts implements AccountStore {
@@ -63,7 +65,7 @@ class HostedOidcSecurityTest {
 
         @Override
         public AccountId findOrCreate(String issuer, String subject, Instant observedAt) {
-            return values.computeIfAbsent(issuer + "\n" + subject, ignored -> new AccountId(java.util.UUID.randomUUID()));
+            return values.computeIfAbsent(issuer + "\n" + subject, ignored -> new AccountId(UUID.randomUUID()));
         }
     }
 }

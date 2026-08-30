@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -259,7 +260,7 @@ class WebMvcContractTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition",
                         "attachment; filename=\"" + jobId + ".zip\""))
-                .andExpect(content().bytes("zip".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                .andExpect(content().bytes("zip".getBytes(StandardCharsets.UTF_8)));
 
         mockMvc.perform(delete("/api/jobs/{id}", jobId)
                         .with(localRequest())
@@ -351,7 +352,7 @@ class WebMvcContractTest {
                 .andExpect(jsonPath("$.file.name").value(fileName))
                 .andExpect(jsonPath("$.file.byteSize").value(source.length))
                 .andReturn().getResponse().getContentAsByteArray());
-        JsonNode customers = java.util.stream.StreamSupport.stream(
+        JsonNode customers = StreamSupport.stream(
                         analysis.path("operations").spliterator(), false)
                 .filter(operation -> operation.path("operationId").asText().equals("getCustomers"))
                 .findFirst().orElseThrow();
@@ -368,7 +369,7 @@ class WebMvcContractTest {
     }
 
     private void assertOperationDecision(JsonNode analysis, String operationId, String status, String issueCode) {
-        JsonNode operation = java.util.stream.StreamSupport.stream(
+        JsonNode operation = StreamSupport.stream(
                         analysis.path("operations").spliterator(), false)
                 .filter(candidate -> candidate.path("operationId").asText().equals(operationId))
                 .findFirst().orElseThrow();

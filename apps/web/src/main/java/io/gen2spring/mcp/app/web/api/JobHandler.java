@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.app.web.api;
 
 import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -28,7 +29,7 @@ public final class JobHandler {
         this.jobs = Objects.requireNonNull(jobs, "jobs");
         this.json = Objects.requireNonNull(json, "json");
         this.configurationReader = new BoundedBodyReader(
-                io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser.MAX_BYTES);
+                GenerationConfigurationParser.MAX_BYTES);
     }
 
     ObjectNode start(String specificationId, InputStream body) {

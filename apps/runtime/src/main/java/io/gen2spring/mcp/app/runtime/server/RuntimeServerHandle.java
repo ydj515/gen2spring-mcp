@@ -5,6 +5,7 @@ import io.modelcontextprotocol.server.McpStatelessSyncServer;
 import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
@@ -25,7 +26,7 @@ final class RuntimeServerHandle implements AutoCloseable {
     }
 
     static RuntimeServerHandle testing(ManagedRuntimeInstance instance, Runnable closeAction) {
-        return new RuntimeServerHandle(instance, request -> java.util.Optional.empty(), closeAction);
+        return new RuntimeServerHandle(instance, request -> Optional.empty(), closeAction);
     }
 
     static RuntimeServerHandle stateless(

@@ -3,6 +3,7 @@ package io.gen2spring.mcp.app.runtime.server;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -12,8 +13,10 @@ import io.gen2spring.mcp.app.runtime.security.RuntimeBearerFilter;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
+import io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,10 +25,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class RuntimeServerHandleRegistryTest {
     private static final Instant NOW = Instant.parse("2026-08-21T00:00:00Z");
@@ -69,7 +74,7 @@ class RuntimeServerHandleRegistryTest {
         registry.get(access(instance(1), "a".repeat(64), "owner"));
         RuntimeAccess second = access(instance(2), "a".repeat(64), "owner");
 
-        org.springframework.test.web.servlet.setup.MockMvcBuilders
+        MockMvcBuilders
                 .routerFunctions(new ManagedMcpRouter(registry))
                 .build()
                 .perform(get("/mcp/" + second.instance().id().value())
@@ -159,11 +164,11 @@ class RuntimeServerHandleRegistryTest {
 
         try (var pool = Executors.newFixedThreadPool(2)) {
             var invalidation = pool.submit(() -> registry.invalidate(first.instance().id()));
-            org.junit.jupiter.api.Assertions.assertTrue(closeEntered.await(1, TimeUnit.SECONDS));
+            assertTrue(closeEntered.await(1, TimeUnit.SECONDS));
             var lookup = pool.submit(() -> registry.get(second));
             assertSame(lookup.get(1, TimeUnit.SECONDS), registry.get(second));
             releaseClose.countDown();
-            assertThrows(java.util.concurrent.ExecutionException.class,
+            assertThrows(ExecutionException.class,
                     () -> invalidation.get(1, TimeUnit.SECONDS));
         } finally {
             releaseClose.countDown();
@@ -207,7 +212,7 @@ class RuntimeServerHandleRegistryTest {
         return new RuntimeAccess(
                 instance,
                 "owner".equals(principal) ? Optional.empty() : Optional.of(
-                        new io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId(UUID.randomUUID())),
+                        new RuntimeGrantId(UUID.randomUUID())),
                 principal, Set.of("managed_tool"), 5, "owner".equals(principal), policyChecksum, validUntil);
     }
 
@@ -232,12 +237,12 @@ class RuntimeServerHandleRegistryTest {
         }
 
         @Override
-        public java.time.ZoneId getZone() {
+        public ZoneId getZone() {
             return ZoneOffset.UTC;
         }
 
         @Override
-        public Clock withZone(java.time.ZoneId zone) {
+        public Clock withZone(ZoneId zone) {
             return this;
         }
 

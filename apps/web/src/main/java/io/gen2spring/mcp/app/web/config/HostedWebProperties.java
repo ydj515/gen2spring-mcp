@@ -4,6 +4,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -41,7 +42,7 @@ public record HostedWebProperties(
             Path secretKeyFile,
             long maxObjectBytes) {
         public Storage {
-            if (endpoint == null || !java.util.Set.of("http", "https").contains(endpoint.getScheme())
+            if (endpoint == null || !Set.of("http", "https").contains(endpoint.getScheme())
                     || endpoint.getHost() == null || endpoint.getRawUserInfo() != null
                     || endpoint.getRawQuery() != null || endpoint.getRawFragment() != null
                     || !ID.matcher(region == null ? "" : region).matches()

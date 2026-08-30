@@ -3,11 +3,14 @@ package io.gen2spring.mcp.app.web.api;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
+import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.application.validation.ValidationStatus;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.app.web.job.GenerationJobManager;
@@ -49,16 +52,16 @@ class JobHandlerTest {
             assertFalse(status.has("arguments"));
 
             handler.delete(id);
-            org.junit.jupiter.api.Assertions.assertThrows(
+            assertThrows(
                     GenerationJobManager.JobNotFoundException.class, () -> handler.status(id));
         }
     }
 
     private GenerationOutcome unverified(
             Path specification,
-            io.gen2spring.mcp.application.command.GenerationCommand request,
+            GenerationCommand request,
             Path output,
-            io.gen2spring.mcp.application.usecase.GenerationProgressListener progress)
+            GenerationProgressListener progress)
             throws Exception {
         Files.createDirectory(output);
         Files.writeString(output.resolve("GENERATION_MANIFEST.json"), "{}");

@@ -11,6 +11,8 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.SecureRandom;
+import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -160,7 +162,7 @@ public final class SpecificationStore implements AutoCloseable {
         String candidate;
         do {
             RANDOM.nextBytes(bytes);
-            candidate = java.util.HexFormat.of().formatHex(bytes);
+            candidate = HexFormat.of().formatHex(bytes);
         } while (specifications.containsKey(candidate));
         return candidate;
     }
@@ -171,7 +173,7 @@ public final class SpecificationStore implements AutoCloseable {
         }
         Map.Entry<String, StoredEntry> oldest = specifications.entrySet().stream()
                 .filter(entry -> entry.getValue().pins == 0)
-                .min(java.util.Comparator.comparingLong(entry -> entry.getValue().lastAccess))
+                .min(Comparator.comparingLong(entry -> entry.getValue().lastAccess))
                 .orElseThrow(() -> WebErrorMapper.failure(
                         429, "SPECIFICATION_CAPACITY_EXCEEDED", "SPEC_STORE",
                         "The specification capacity is exhausted"));

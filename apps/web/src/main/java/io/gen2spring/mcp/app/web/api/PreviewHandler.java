@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.app.web.api;
 
 import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,7 +30,7 @@ public final class PreviewHandler {
         this.analysisPresenter = new SpecificationAnalysisPresenter(this.json);
         this.previewPresenter = new GenerationPreviewPresenter(this.json);
         this.configurationReader = new BoundedBodyReader(
-                io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser.MAX_BYTES);
+                GenerationConfigurationParser.MAX_BYTES);
     }
 
     ObjectNode upload(String specificationName, InputStream body) {
