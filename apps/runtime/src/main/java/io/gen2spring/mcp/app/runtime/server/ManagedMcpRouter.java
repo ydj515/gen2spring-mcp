@@ -1,5 +1,6 @@
-package io.gen2spring.mcp.app.runtime;
+package io.gen2spring.mcp.app.runtime.server;
 
+import io.gen2spring.mcp.app.runtime.security.RuntimeBearerFilter;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import java.util.Objects;
 import java.util.Optional;

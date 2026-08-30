@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.worker;
+package io.gen2spring.mcp.app.worker.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,14 +9,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.gen2spring.mcp.adapter.container.DockerCommandRunner;
+import io.gen2spring.mcp.app.worker.execution.WorkerReadiness;
+import io.gen2spring.mcp.app.worker.execution.WorkerStartupFailure;
 import java.net.URI;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.CountDownLatch;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -26,7 +26,7 @@ import software.amazon.awssdk.services.s3.model.GetBucketAclRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
 
-class WorkerApplicationTest {
+class WorkerConfigurationTest {
     private static final String PINNED = "registry.example/gen2spring/runner@sha256:" + "a".repeat(64);
 
     @Test
@@ -65,114 +65,6 @@ class WorkerApplicationTest {
 
         assertEquals("Hosted worker configuration is invalid", failure.getMessage());
         assertFalse(failure.toString().contains("private-marker"));
-    }
-
-    @Test
-    void readinessRunsEveryDependencyProbeAndFailsClosed() {
-        AtomicInteger calls = new AtomicInteger();
-        WorkerReadiness ready = new WorkerReadiness(List.of(
-                calls::incrementAndGet,
-                calls::incrementAndGet,
-                calls::incrementAndGet));
-        ready.verify();
-        assertEquals(3, calls.get());
-
-        WorkerReadiness failed = new WorkerReadiness(List.of(
-                calls::incrementAndGet,
-                () -> { throw new IllegalStateException("private-marker"); },
-                calls::incrementAndGet));
-        WorkerStartupFailure failure = assertThrows(WorkerStartupFailure.class, failed::verify);
-        assertEquals("Hosted worker dependencies are unavailable", failure.getMessage());
-        assertFalse(failure.toString().contains("private-marker"));
-    }
-
-    @Test
-    void pollingStartsOnlyAfterReadinessAndStopsWithinTheBound() throws Exception {
-        AtomicInteger readinessCalls = new AtomicInteger();
-        AtomicInteger pollCalls = new AtomicInteger();
-        WorkerLoop loop = new WorkerLoop(
-                new WorkerReadiness(List.of(readinessCalls::incrementAndGet)),
-                () -> {
-                    pollCalls.incrementAndGet();
-                    return false;
-                },
-                Duration.ofMillis(10));
-
-        loop.start();
-        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-        while (pollCalls.get() < 2 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
-        }
-        loop.close();
-
-        assertEquals(1, readinessCalls.get());
-        assertTrue(pollCalls.get() >= 2);
-        assertFalse(loop.running());
-
-        WorkerLoop rejected = new WorkerLoop(
-                new WorkerReadiness(List.of(() -> { throw new IllegalStateException("private-marker"); })),
-                () -> { throw new AssertionError("polling started before readiness"); },
-                Duration.ofMillis(10));
-        assertThrows(WorkerStartupFailure.class, rejected::start);
-        assertFalse(rejected.running());
-    }
-
-    @Test
-    void heartbeatContinuesWhileJobPollingIsBlocked() throws Exception {
-        CountDownLatch polling = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        AtomicInteger maintenanceCalls = new AtomicInteger();
-        WorkerLoop loop = new WorkerLoop(
-                new WorkerReadiness(List.of(() -> {})),
-                () -> {
-                    polling.countDown();
-                    release.await();
-                    return true;
-                },
-                Duration.ofMillis(10),
-                maintenanceCalls::incrementAndGet,
-                Duration.ofMillis(10));
-
-        loop.start();
-        assertTrue(polling.await(1, java.util.concurrent.TimeUnit.SECONDS));
-        long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
-        while (maintenanceCalls.get() < 2 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
-        }
-        release.countDown();
-        loop.close();
-
-        assertTrue(maintenanceCalls.get() >= 2);
-    }
-
-    @Test
-    void heartbeatContinuesWhileRetentionMaintenanceIsBlocked() throws Exception {
-        CountDownLatch maintenanceStarted = new CountDownLatch(1);
-        CountDownLatch releaseMaintenance = new CountDownLatch(1);
-        AtomicInteger heartbeatCalls = new AtomicInteger();
-        WorkerLoop loop = new WorkerLoop(
-                new WorkerReadiness(List.of(() -> {})),
-                () -> false,
-                Duration.ofMillis(10),
-                heartbeatCalls::incrementAndGet,
-                Duration.ofMillis(10),
-                () -> {
-                    maintenanceStarted.countDown();
-                    try { releaseMaintenance.await(); }
-                    catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
-                },
-                Duration.ofMillis(10));
-
-        loop.start();
-        assertTrue(maintenanceStarted.await(1, java.util.concurrent.TimeUnit.SECONDS));
-        long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
-        while (heartbeatCalls.get() < 2 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
-        }
-        releaseMaintenance.countDown();
-        loop.close();
-
-        assertTrue(heartbeatCalls.get() >= 2);
     }
 
     @Test

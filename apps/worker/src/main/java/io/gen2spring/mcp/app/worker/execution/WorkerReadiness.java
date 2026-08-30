@@ -1,19 +1,19 @@
-package io.gen2spring.mcp.app.worker;
+package io.gen2spring.mcp.app.worker.execution;
 
 import java.util.List;
 import java.util.Objects;
 
-final class WorkerReadiness {
+public final class WorkerReadiness {
     private final List<Probe> probes;
 
-    WorkerReadiness(List<Probe> probes) {
+    public WorkerReadiness(List<Probe> probes) {
         this.probes = List.copyOf(Objects.requireNonNull(probes, "probes"));
         if (this.probes.isEmpty() || this.probes.stream().anyMatch(Objects::isNull)) {
             throw new IllegalArgumentException("Hosted worker configuration is invalid");
         }
     }
 
-    void verify() {
+    public void verify() {
         try {
             for (Probe probe : probes) {
                 probe.verify();
@@ -26,7 +26,7 @@ final class WorkerReadiness {
     }
 
     @FunctionalInterface
-    interface Probe {
+    public interface Probe {
         void verify() throws Exception;
     }
 }

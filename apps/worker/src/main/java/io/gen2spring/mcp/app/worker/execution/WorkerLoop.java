@@ -1,10 +1,10 @@
-package io.gen2spring.mcp.app.worker;
+package io.gen2spring.mcp.app.worker.execution;
 
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-final class WorkerLoop implements AutoCloseable {
+public final class WorkerLoop implements AutoCloseable {
     private static final Duration CLOSE_TIMEOUT = Duration.ofSeconds(5);
 
     private final WorkerReadiness readiness;
@@ -19,11 +19,11 @@ final class WorkerLoop implements AutoCloseable {
     private volatile Thread heartbeatThread;
     private volatile Thread maintenanceThread;
 
-    WorkerLoop(WorkerReadiness readiness, Poller poller, Duration idleDelay) {
+    public WorkerLoop(WorkerReadiness readiness, Poller poller, Duration idleDelay) {
         this(readiness, poller, idleDelay, () -> {}, Duration.ofSeconds(10), () -> {}, Duration.ofSeconds(10));
     }
 
-    WorkerLoop(
+    public WorkerLoop(
             WorkerReadiness readiness,
             Poller poller,
             Duration idleDelay,
@@ -32,7 +32,7 @@ final class WorkerLoop implements AutoCloseable {
         this(readiness, poller, idleDelay, heartbeat, heartbeatInterval, () -> {}, Duration.ofSeconds(10));
     }
 
-    WorkerLoop(
+    public WorkerLoop(
             WorkerReadiness readiness,
             Poller poller,
             Duration idleDelay,
@@ -60,7 +60,7 @@ final class WorkerLoop implements AutoCloseable {
         }
     }
 
-    synchronized void start() {
+    public synchronized void start() {
         if (running.get()) {
             return;
         }
@@ -78,7 +78,7 @@ final class WorkerLoop implements AutoCloseable {
         maintenanceThread.start();
     }
 
-    boolean running() {
+    public boolean running() {
         Thread poll = pollThread;
         Thread pulse = heartbeatThread;
         Thread upkeep = maintenanceThread;
@@ -190,7 +190,7 @@ final class WorkerLoop implements AutoCloseable {
     }
 
     @FunctionalInterface
-    interface Poller {
+    public interface Poller {
         boolean poll() throws InterruptedException;
     }
 }

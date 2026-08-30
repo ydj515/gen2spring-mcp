@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime;
+package io.gen2spring.mcp.app.runtime.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -13,6 +13,7 @@ import io.gen2spring.mcp.adapter.persistence.PostgresRuntimePolicyStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresRuntimeCatalogTransitionStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresToolCatalogStore;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
+import io.gen2spring.mcp.app.runtime.security.RuntimeBearerFilter;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService;
 import io.gen2spring.mcp.application.managed.credential.CredentialProtector;
 import io.gen2spring.mcp.application.managed.credential.CredentialSecret;

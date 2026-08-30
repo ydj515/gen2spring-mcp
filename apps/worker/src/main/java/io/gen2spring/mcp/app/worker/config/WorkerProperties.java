@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.worker;
+package io.gen2spring.mcp.app.worker.config;
 
 import io.gen2spring.mcp.application.hosted.worker.SandboxLimits;
 import java.net.URI;

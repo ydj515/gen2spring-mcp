@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime;
+package io.gen2spring.mcp.app.runtime.server;
 
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.modelcontextprotocol.server.McpStatelessSyncServer;

@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime;
+package io.gen2spring.mcp.app.runtime.security;
 
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
@@ -14,8 +14,8 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-final class RuntimeBearerFilter extends OncePerRequestFilter {
-    static final String RUNTIME_ACCESS = RuntimeBearerFilter.class.getName() + ".access";
+public final class RuntimeBearerFilter extends OncePerRequestFilter {
+    public static final String RUNTIME_ACCESS = RuntimeBearerFilter.class.getName() + ".access";
     private static final byte[] UNAUTHORIZED = ("{\"code\":\"UNAUTHORIZED\","
             + "\"message\":\"Managed runtime authentication failed\"}").getBytes(StandardCharsets.UTF_8);
     private static final byte[] UNAVAILABLE = ("{\"code\":\"RUNTIME_UNAVAILABLE\","
@@ -23,11 +23,11 @@ final class RuntimeBearerFilter extends OncePerRequestFilter {
     private final RuntimeAccessAuthenticator authenticator;
     private final Consumer<RuntimeInstanceId> inactiveRuntime;
 
-    RuntimeBearerFilter(RuntimeAccessAuthenticator authenticator) {
+    public RuntimeBearerFilter(RuntimeAccessAuthenticator authenticator) {
         this(authenticator, ignored -> {});
     }
 
-    RuntimeBearerFilter(
+    public RuntimeBearerFilter(
             RuntimeAccessAuthenticator authenticator,
             Consumer<RuntimeInstanceId> inactiveRuntime) {
         this.authenticator = Objects.requireNonNull(authenticator, "authenticator");

@@ -1,11 +1,9 @@
-package io.gen2spring.mcp.app.runtime;
+package io.gen2spring.mcp.app.runtime.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.gen2spring.mcp.adapter.cryptography.AesGcmCredentialProtector;
 import io.gen2spring.mcp.adapter.cryptography.HmacRuntimeTokenCodec;
-import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
 import io.gen2spring.mcp.adapter.persistence.PostgresManagedCredentialStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresManagedRuntimeStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresRuntimePolicyStore;
@@ -17,17 +15,12 @@ import io.gen2spring.mcp.application.managed.credential.CredentialProtector;
 import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore;
 import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver;
 import io.gen2spring.mcp.application.managed.execution.ManagedExecutionLimits;
-import io.gen2spring.mcp.application.managed.execution.ManagedExecutionContext;
-import io.gen2spring.mcp.application.managed.execution.ManagedRuntimeBinding;
 import io.gen2spring.mcp.application.managed.execution.ManagedToolExecutor;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallClient;
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
-import io.modelcontextprotocol.server.McpServer;
-import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -43,13 +36,6 @@ import org.flywaydb.core.Flyway;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
-import org.springframework.web.servlet.function.RouterFunction;
-import org.springframework.web.servlet.function.ServerResponse;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(RuntimeProperties.class)
@@ -140,58 +126,6 @@ class RuntimeConfiguration {
         return new ManagedToolExecutor(
                 client, new ManagedExecutionLimits(Duration.ofSeconds(30), 16, 64),
                 policies, clock, java.util.UUID::randomUUID);
-    }
-
-    @Bean(destroyMethod = "close")
-    RuntimeServerHandleRegistry runtimeServerHandleRegistry(
-            ToolCatalogService catalogs,
-            ManagedToolExecutor executor,
-            RuntimeCredentialResolver credentials,
-            RuntimeProperties properties,
-            Clock clock) {
-        McpJavaSdkEmitter emitter = new McpJavaSdkEmitter();
-        ObjectMapper json = new ObjectMapper();
-        JacksonMcpJsonMapper mapper = new JacksonMcpJsonMapper(json);
-        return new RuntimeServerHandleRegistry(access -> {
-            var instance = access.instance();
-            var catalog = catalogs.require(instance.owner(), instance.catalogId());
-            ManagedRuntimeBinding binding = new ManagedRuntimeBinding(instance, catalog.metadata());
-            ManagedExecutionContext context = new ManagedExecutionContext(access, binding, credentials);
-            var tools = catalog.metadata().document().tools().stream()
-                    .filter(tool -> access.allowedTools().contains(tool.name())).toList();
-            var specifications = emitter.emitStateless(tools,
-                    (toolName, arguments) -> executor.call(context, toolName, arguments));
-            String endpoint = "/mcp/" + instance.id().value();
-            var transport = WebMvcStatelessServerTransport.builder()
-                    .jsonMapper(mapper).messageEndpoint(endpoint).build();
-            var server = McpServer.sync(transport)
-                    .jsonMapper(mapper)
-                    .serverInfo("gen2spring-managed-runtime", "1.0")
-                    .requestTimeout(Duration.ofSeconds(30))
-                    .tools(specifications)
-                    .build();
-            return RuntimeServerHandle.stateless(instance, transport, server);
-        }, properties.cacheSize(), clock);
-    }
-
-    @Bean RouterFunction<ServerResponse> managedMcpRouter(RuntimeServerHandleRegistry handles) {
-        return new ManagedMcpRouter(handles);
-    }
-
-    @Bean RuntimeBearerFilter runtimeBearerFilter(
-            RuntimeAccessAuthenticator authenticator,
-            RuntimeServerHandleRegistry handles) {
-        return new RuntimeBearerFilter(authenticator, handles::invalidate);
-    }
-
-    @Bean SecurityFilterChain runtimeSecurity(HttpSecurity http, RuntimeBearerFilter filter) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(requests -> requests
-                        .requestMatchers("/mcp/**", "/actuator/health/**").permitAll()
-                        .anyRequest().denyAll())
-                .addFilterBefore(filter, AnonymousAuthenticationFilter.class);
-        return http.build();
     }
 
     private SSLContext sslContext(RuntimeProperties.Tls properties) {

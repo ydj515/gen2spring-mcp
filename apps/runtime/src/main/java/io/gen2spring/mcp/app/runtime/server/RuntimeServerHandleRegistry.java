@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime;
+package io.gen2spring.mcp.app.runtime.server;
 
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance.RuntimeState;
@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 
-final class RuntimeServerHandleRegistry implements AutoCloseable {
+public final class RuntimeServerHandleRegistry implements AutoCloseable {
     private final HandleFactory factory;
     private final int maximumSize;
     private final Clock clock;
@@ -57,7 +57,7 @@ final class RuntimeServerHandleRegistry implements AutoCloseable {
         return created;
     }
 
-    void invalidate(RuntimeInstanceId id) {
+    public void invalidate(RuntimeInstanceId id) {
         List<RuntimeServerHandle> removed = new ArrayList<>();
         synchronized (this) {
             var iterator = handles.entrySet().iterator();

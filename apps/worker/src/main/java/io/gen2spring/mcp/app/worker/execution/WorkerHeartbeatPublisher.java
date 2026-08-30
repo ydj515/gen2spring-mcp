@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.worker;
+package io.gen2spring.mcp.app.worker.execution;
 
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
 import io.gen2spring.mcp.application.hosted.worker.WorkerHeartbeatStore;
@@ -7,14 +7,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 
-final class WorkerHeartbeatPublisher {
+public final class WorkerHeartbeatPublisher {
     private final WorkerHeartbeatStore store;
     private final WorkerId worker;
     private final Clock clock;
     private final Duration interval;
     private Instant lastPublished;
 
-    WorkerHeartbeatPublisher(WorkerHeartbeatStore store, WorkerId worker, Clock clock, Duration interval) {
+    public WorkerHeartbeatPublisher(WorkerHeartbeatStore store, WorkerId worker, Clock clock, Duration interval) {
         this.store = Objects.requireNonNull(store, "store");
         this.worker = Objects.requireNonNull(worker, "worker");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -24,7 +24,7 @@ final class WorkerHeartbeatPublisher {
         }
     }
 
-    synchronized void publishIfDue() {
+    public synchronized void publishIfDue() {
         Instant now = clock.instant();
         if (lastPublished != null && now.isBefore(lastPublished.plus(interval))) return;
         store.beat(worker, now);

@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime;
+package io.gen2spring.mcp.app.runtime.config;
 
 import java.net.URI;
 import java.nio.file.Path;
