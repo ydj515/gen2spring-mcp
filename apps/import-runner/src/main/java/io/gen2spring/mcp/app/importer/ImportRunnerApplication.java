@@ -2,6 +2,10 @@ package io.gen2spring.mcp.app.importer;
 
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.adapter.urlfetch.GatewayUrlFetchClient;
+import io.gen2spring.mcp.app.importer.job.ImportGatewayClient;
+import io.gen2spring.mcp.app.importer.job.ImportJobProtocol;
+import io.gen2spring.mcp.app.importer.job.ImportRunner;
+import io.gen2spring.mcp.app.importer.job.ImportRunnerFailure;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
