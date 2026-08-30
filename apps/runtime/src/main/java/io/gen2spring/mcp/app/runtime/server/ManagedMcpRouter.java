@@ -26,7 +26,7 @@ final class ManagedMcpRouter implements RouterFunction<ServerResponse> {
         }
         try {
             return handles.get(access).router().route(request);
-        } catch (RuntimeServerHandleRegistry.RuntimeCapacityExceeded exhausted) {
+        } catch (RuntimeServerHandleRegistry.RuntimeCapacityExceeded | IllegalStateException unavailable) {
             return Optional.of(ignored -> ServerResponse.status(503)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body("{\"error\":\"MANAGED_RUNTIME_CAPACITY_EXHAUSTED\"}"));

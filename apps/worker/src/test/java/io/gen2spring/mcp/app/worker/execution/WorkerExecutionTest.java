@@ -44,12 +44,15 @@ final class WorkerExecutionTest {
                 },
                 Duration.ofMillis(10));
 
-        loop.start();
-        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-        while (pollCalls.get() < 2 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
+        try {
+            loop.start();
+            long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            while (pollCalls.get() < 2 && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+        } finally {
+            loop.close();
         }
-        loop.close();
 
         assertEquals(1, readinessCalls.get());
         assertTrue(pollCalls.get() >= 2);
@@ -59,7 +62,11 @@ final class WorkerExecutionTest {
                 new WorkerReadiness(List.of(() -> { throw new IllegalStateException("private-marker"); })),
                 () -> { throw new AssertionError("polling started before readiness"); },
                 Duration.ofMillis(10));
-        assertThrows(WorkerStartupFailure.class, rejected::start);
+        try {
+            assertThrows(WorkerStartupFailure.class, rejected::start);
+        } finally {
+            rejected.close();
+        }
         assertFalse(rejected.running());
     }
 
@@ -79,16 +86,18 @@ final class WorkerExecutionTest {
                 heartbeatCalls::incrementAndGet,
                 Duration.ofMillis(10));
 
-        loop.start();
-        assertTrue(polling.await(1, TimeUnit.SECONDS));
-        long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
-        while (heartbeatCalls.get() < 2 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
+        try {
+            loop.start();
+            assertTrue(polling.await(1, TimeUnit.SECONDS));
+            long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
+            while (heartbeatCalls.get() < 2 && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            assertTrue(heartbeatCalls.get() >= 2);
+        } finally {
+            release.countDown();
+            loop.close();
         }
-        release.countDown();
-        loop.close();
-
-        assertTrue(heartbeatCalls.get() >= 2);
     }
 
     @Test
@@ -112,15 +121,17 @@ final class WorkerExecutionTest {
                 },
                 Duration.ofMillis(10));
 
-        loop.start();
-        assertTrue(maintenanceStarted.await(1, TimeUnit.SECONDS));
-        long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
-        while (heartbeatCalls.get() < 2 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
+        try {
+            loop.start();
+            assertTrue(maintenanceStarted.await(1, TimeUnit.SECONDS));
+            long deadline = System.nanoTime() + Duration.ofSeconds(1).toNanos();
+            while (heartbeatCalls.get() < 2 && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            assertTrue(heartbeatCalls.get() >= 2);
+        } finally {
+            releaseMaintenance.countDown();
+            loop.close();
         }
-        releaseMaintenance.countDown();
-        loop.close();
-
-        assertTrue(heartbeatCalls.get() >= 2);
     }
 }

@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.gen2spring.mcp.app.fetch.fetching.BoundedFetcher;
 import io.gen2spring.mcp.app.fetch.fetching.FetchFailure;
@@ -12,8 +15,21 @@ import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 final class FetchControllerTest {
+    @Test
+    void mapsAMissingRequestBodyToTheFixedRejectedResponse() throws Exception {
+        FetchController controller = new FetchController(mock(BoundedFetcher.class));
+
+        MockMvcBuilders.standaloneSetup(controller)
+                .build()
+                .perform(post("/internal/fetch").contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("FETCH_REJECTED"));
+    }
+
     @Test
     void requiresAContainerVerifiedClientCertificate() {
         BoundedFetcher fetcher = mock(BoundedFetcher.class);

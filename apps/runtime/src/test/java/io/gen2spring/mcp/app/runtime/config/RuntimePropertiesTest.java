@@ -5,10 +5,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RuntimePropertiesTest {
+    @Test
+    void rejectsNullEncryptionEntriesWithTheFixedConfigurationFailure() {
+        Map<String, Path> keyFiles = new LinkedHashMap<>();
+        keyFiles.put("key-1", null);
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> new RuntimeProperties.Encryption("key-1", keyFiles));
+
+        assertEquals("Managed runtime encryption configuration is invalid", failure.getMessage());
+    }
+
     @Test
     void requiresAnAbsoluteHttpsProviderEgressEndpoint() {
         for (String endpoint : new String[] {

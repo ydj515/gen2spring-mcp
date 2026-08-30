@@ -31,15 +31,16 @@ public record RuntimeProperties(
         private static final Pattern ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
 
         public Encryption {
-            keyFiles = keyFiles == null ? Map.of() : Map.copyOf(keyFiles);
+            Map<String, Path> source = keyFiles == null ? Map.of() : keyFiles;
             if (!ID.matcher(activeKeyId == null ? "" : activeKeyId).matches()
-                    || !keyFiles.containsKey(activeKeyId)
-                    || keyFiles.entrySet().stream().anyMatch(entry ->
-                            !ID.matcher(entry.getKey()).matches()
+                    || !source.containsKey(activeKeyId)
+                    || source.entrySet().stream().anyMatch(entry ->
+                            entry.getKey() == null || !ID.matcher(entry.getKey()).matches()
                                     || entry.getValue() == null || !entry.getValue().isAbsolute()
                                     || !entry.getValue().normalize().equals(entry.getValue()))) {
                 throw new IllegalArgumentException("Managed runtime encryption configuration is invalid");
             }
+            keyFiles = Map.copyOf(source);
         }
     }
 

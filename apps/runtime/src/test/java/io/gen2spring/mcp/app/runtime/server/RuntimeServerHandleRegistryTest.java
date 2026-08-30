@@ -29,6 +29,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -79,6 +80,29 @@ class RuntimeServerHandleRegistryTest {
                 .build()
                 .perform(get("/mcp/" + second.instance().id().value())
                         .requestAttr(RuntimeBearerFilter.RUNTIME_ACCESS, second))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentType("application/json"))
+                .andExpect(content().json("{\"error\":\"MANAGED_RUNTIME_CAPACITY_EXHAUSTED\"}", true));
+        registry.close();
+    }
+
+    @Test
+    void mapsAClosedCachedHandleToTheFixedServiceUnavailableResponse() throws Exception {
+        AtomicReference<RuntimeServerHandle> created = new AtomicReference<>();
+        RuntimeServerHandleRegistry registry = new RuntimeServerHandleRegistry(access -> {
+            RuntimeServerHandle handle = RuntimeServerHandle.testing(access.instance(), () -> {});
+            created.set(handle);
+            return handle;
+        }, 1, Clock.fixed(NOW, ZoneOffset.UTC));
+        RuntimeAccess access = access(instance(1), "a".repeat(64), "owner");
+        registry.get(access);
+        created.get().close();
+
+        MockMvcBuilders
+                .routerFunctions(new ManagedMcpRouter(registry))
+                .build()
+                .perform(get("/mcp/" + access.instance().id().value())
+                        .requestAttr(RuntimeBearerFilter.RUNTIME_ACCESS, access))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(content().contentType("application/json"))
                 .andExpect(content().json("{\"error\":\"MANAGED_RUNTIME_CAPACITY_EXHAUSTED\"}", true));

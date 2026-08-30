@@ -24,7 +24,9 @@ public final class FetchController {
     }
 
     @PostMapping(path = "/internal/fetch", consumes = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<byte[]> fetch(@RequestBody FetchRequest request, HttpServletRequest servletRequest) {
+    ResponseEntity<byte[]> fetch(
+            @RequestBody(required = false) FetchRequest request,
+            HttpServletRequest servletRequest) {
         if (request == null) {
             throw new FetchFailure();
         }

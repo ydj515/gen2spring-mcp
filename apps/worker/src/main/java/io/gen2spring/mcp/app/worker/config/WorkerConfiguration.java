@@ -73,9 +73,11 @@ class WorkerConfiguration {
 
     @Bean(destroyMethod = "close")
     S3Client workerS3Client(WorkerProperties properties) {
-        char[] accessKey = secret(properties.storage().accessKeyFile());
-        char[] secretKey = secret(properties.storage().secretKeyFile());
+        char[] accessKey = null;
+        char[] secretKey = null;
         try {
+            accessKey = secret(properties.storage().accessKeyFile());
+            secretKey = secret(properties.storage().secretKeyFile());
             return S3Client.builder()
                     .endpointOverride(properties.storage().endpoint())
                     .region(Region.of(properties.storage().region()))
@@ -88,8 +90,8 @@ class WorkerConfiguration {
         } catch (RuntimeException failure) {
             throw invalid();
         } finally {
-            Arrays.fill(accessKey, '\0');
-            Arrays.fill(secretKey, '\0');
+            if (accessKey != null) Arrays.fill(accessKey, '\0');
+            if (secretKey != null) Arrays.fill(secretKey, '\0');
         }
     }
 
