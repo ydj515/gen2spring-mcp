@@ -647,7 +647,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 throw new IllegalArgumentException("Validation workspace is not a physical directory");
             }
             StablePathIdentity rootIdentity = StablePathIdentity.capture(root);
-            BasicFileAttributes original = regularFileAttributes(wrapper);
+            regularFileAttributes(wrapper);
             originalIdentity = StablePathIdentity.capture(wrapper);
             if (platform.requiresOwnerExecutable()) {
                 requireOwnerExecutable(wrapper);

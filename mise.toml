@@ -1,6 +1,16 @@
 [tools]
 java = "21.0.2"
 
+[tasks.lint]
+description = "Run Java import policy and PMD across production and test sources"
+run = "./gradlew verifyJavaQuality --no-daemon --non-interactive"
+run_windows = ".\\gradlew.bat verifyJavaQuality --no-daemon --non-interactive"
+
+[tasks."architecture:test"]
+description = "Check bytecode architecture and declared production module dependencies"
+run = "./gradlew architectureTest --no-daemon --non-interactive"
+run_windows = ".\\gradlew.bat architectureTest --no-daemon --non-interactive"
+
 [tasks."lint:imports"]
 description = "Reject fully qualified annotations and avoidable app FQCN usage"
 run = "./gradlew verifyJavaImportStyle --no-daemon --non-interactive"

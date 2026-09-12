@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<ruleset name="Gen2Spring Java correctness"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.github.io/schema/ruleset_2_0_0.xsd">
+    <description>
+        Focus on concrete correctness defects. Import policy belongs to verifyJavaImportStyle;
+        architecture belongs to ArchUnit. Do not impose bulk formatting or complexity baselines
+        on source renderers and intentional failure-handling boundaries.
+    </description>
+    <rule ref="category/java/errorprone.xml/BrokenNullCheck" />
+    <rule ref="category/java/errorprone.xml/ComparisonWithNaN" />
+    <rule ref="category/java/errorprone.xml/DontUseFloatTypeForLoopIndices" />
+    <rule ref="category/java/errorprone.xml/EqualsNull" />
+    <rule ref="category/java/errorprone.xml/IdempotentOperations" />
+    <rule ref="category/java/errorprone.xml/ImplicitSwitchFallThrough" />
+    <rule ref="category/java/errorprone.xml/JumbledIncrementer" />
+    <rule ref="category/java/errorprone.xml/MisplacedNullCheck" />
+    <rule ref="category/java/errorprone.xml/ReturnFromFinallyBlock" />
+    <rule ref="category/java/errorprone.xml/SuspiciousEqualsMethodName" />
+    <rule ref="category/java/errorprone.xml/SuspiciousHashcodeMethodName" />
+    <rule ref="category/java/multithreading.xml/UnsynchronizedStaticFormatter" />
+    <!-- Parser cursors and bounded stream reads deliberately advance classic for-loop variables. -->
+    <rule ref="category/java/bestpractices.xml/AvoidReassigningLoopVariables">
+        <properties>
+            <property name="forReassign" value="allow" />
+            <property name="foreachReassign" value="deny" />
+        </properties>
+    </rule>
+    <rule ref="category/java/bestpractices.xml/UnusedLocalVariable" />
+    <rule ref="category/java/bestpractices.xml/UnusedPrivateField" />
+</ruleset>

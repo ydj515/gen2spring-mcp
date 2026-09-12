@@ -179,7 +179,7 @@ final class LocalPathBoundary {
                 throw failure(Reason.INVALID, "Temporary input directory is unsafe", null);
             }
             directory = Files.createTempDirectory(physicalTemp, ".openapi-mcp-input-");
-            BasicFileAttributes directoryAttributes = attributes(directory, "Temporary input directory");
+            attributes(directory, "Temporary input directory");
             directoryKey = StablePathIdentity.capture(directory);
             Path copy = directory.resolve("source" + suffix);
             Files.write(copy, bytes, CREATE_NEW, WRITE, NOFOLLOW_LINKS);

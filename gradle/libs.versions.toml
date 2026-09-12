@@ -1,4 +1,6 @@
 [versions]
+archunit = "1.5.0"
+pmd = "7.27.0"
 swagger-parser = "2.1.40"
 jackson = "2.22.0"
 junit = "5.13.4"
@@ -10,6 +12,8 @@ bootstrap = "5.3.8"
 bootstrap-icons = "1.13.1"
 
 [libraries]
+pmd-java = { module = "net.sourceforge.pmd:pmd-java", version.ref = "pmd" }
+archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
 swagger-parser = { module = "io.swagger.parser.v3:swagger-parser", version.ref = "swagger-parser" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 jackson-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }

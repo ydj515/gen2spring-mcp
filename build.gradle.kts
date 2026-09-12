@@ -1,6 +1,19 @@
+import org.gradle.api.services.BuildService
+import org.gradle.api.services.BuildServiceParameters
+import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.plugins.quality.Pmd
+import org.gradle.api.plugins.quality.PmdExtension
+import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.toolchain.JavaLanguageVersion
+
+plugins {
+    java
+    pmd
+}
+
+abstract class PmdExecutionLimit : BuildService<BuildServiceParameters.None>
 
 private val JAVA_CODE = 0
 private val JAVA_LINE_COMMENT = 1
@@ -115,6 +128,104 @@ version = "0.1.0"
 val junitBom = libs.junit.bom
 val junitJupiter = libs.junit.jupiter
 val junitPlatformLauncher = libs.junit.platform.launcher
+
+repositories { mavenCentral() }
+
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+
+dependencies {
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.archunit)
+    testImplementation(libs.pmd.java)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+val productionClasses = files()
+val productionProjects = subprojects.filter { it.buildFile.exists() }
+val productionModuleGraph = providers.provider {
+    productionProjects.sortedBy { it.path }.joinToString("\n") { module ->
+        val targets = listOf("compileClasspath", "runtimeClasspath").flatMap { name ->
+            module.configurations.getByName(name).allDependencies.withType(ProjectDependency::class.java)
+                .map { it.path }
+        }.distinct().sorted()
+        "${module.path}=${targets.joinToString(",")}"
+    }
+}
+val pmdVersion = libs.versions.pmd.get()
+val pmdRules = layout.projectDirectory.file("config/pmd/ruleset.xml")
+
+val pmdExecutionLimit = gradle.sharedServices.registerIfAbsent("pmdExecutionLimit", PmdExecutionLimit::class) {
+    maxParallelUsages.set(2)
+}
+
+val verifyPmdRules = tasks.register<JavaExec>("verifyPmdRules") {
+    group = "verification"
+    description = "Fail on invalid or empty PMD configuration before analysis"
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("io.gen2spring.mcp.architecture.PmdRuleSetVerifier")
+    args(pmdRules.asFile.absolutePath)
+    inputs.file(pmdRules)
+}
+
+val verifyJavaQuality = tasks.register("verifyJavaQuality") {
+    group = "verification"
+    description = "Run Java import policy and PMD across production and test source sets"
+    dependsOn("verifyJavaImportStyle")
+}
+
+val architectureTest = tasks.register("architectureTest") {
+    group = "verification"
+    description = "Check compiled dependency directions and declared production module edges"
+    dependsOn(tasks.test)
+}
+
+tasks.test {
+    useJUnitPlatform()
+    dependsOn(verifyJavaQuality)
+    dependsOn(productionClasses)
+    classpath += productionClasses
+    inputs.files(productionClasses)
+    inputs.property("architecture.moduleGraph", productionModuleGraph)
+    inputs.files(productionProjects.map { it.buildFile }, file("settings.gradle.kts"))
+    systemProperty("quality.pmdRules", pmdRules.asFile.absolutePath)
+    inputs.file(pmdRules)
+    doFirst {
+        systemProperty("architecture.productionDirectories",
+            productionClasses.files.sortedBy { it.path }.joinToString("\n") { it.absolutePath })
+        systemProperty("architecture.moduleGraph", productionModuleGraph.get())
+    }
+}
+
+tasks.check { dependsOn(verifyJavaQuality, architectureTest) }
+
+allprojects {
+    if (this != rootProject && !buildFile.exists()) return@allprojects
+    apply(plugin = "pmd")
+    extensions.configure<PmdExtension> {
+        toolVersion = pmdVersion
+        ruleSets = emptyList()
+        ruleSetFiles = files(pmdRules)
+        isIgnoreFailures = false
+        isConsoleOutput = true
+    }
+    val pmdTasks = tasks.withType<Pmd>()
+    pmdTasks.configureEach {
+        dependsOn(rootProject.tasks.named("verifyPmdRules"))
+        usesService(pmdExecutionLimit)
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+        }
+        doLast {
+            val report = reports.xml.outputLocation.get().asFile.readText()
+            check(!Regex("<(?:(?:[A-Za-z]+):)?(?:error|configerror)\\b").containsMatchIn(report)) {
+                "PMD processing/configuration errors in ${reports.xml.outputLocation.get().asFile}"
+            }
+        }
+    }
+    rootProject.tasks.named("verifyJavaQuality") { dependsOn(pmdTasks) }
+}
 
 val javaImportStyleSources = fileTree(rootDir) {
     include("**/*.java")
@@ -239,6 +350,7 @@ subprojects {
     }
 
     apply(plugin = "java-library")
+    productionClasses.from(extensions.getByType<SourceSetContainer>().named("main").map { it.output.classesDirs })
 
     extensions.configure<JavaPluginExtension> {
         toolchain {
@@ -257,7 +369,7 @@ subprojects {
     }
 
     tasks.withType<Test>().configureEach {
-        dependsOn(rootProject.tasks.named("verifyJavaImportStyle"))
+        dependsOn(rootProject.tasks.named("architectureTest"))
         useJUnitPlatform()
     }
 }

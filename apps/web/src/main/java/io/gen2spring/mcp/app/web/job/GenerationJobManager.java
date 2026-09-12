@@ -66,7 +66,7 @@ public final class GenerationJobManager implements AutoCloseable {
             thread.setDaemon(true);
             thread.setUncaughtExceptionHandler((ignored, failure) -> {
                 if (failure instanceof Error fatal) {
-                    fatalSink.accept(fatal);
+                    this.fatalSink.accept(fatal);
                 }
             });
             return thread;
