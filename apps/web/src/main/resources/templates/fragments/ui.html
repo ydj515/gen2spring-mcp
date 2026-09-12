@@ -30,15 +30,15 @@
 
   <nav th:fragment="wizard-progress" class="wizard-progress" aria-label="생성 단계">
     <ol class="wizard-steps" id="wizard-steps">
-      <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark">1</span> OpenAPI 파일</button></li>
+      <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark"><span class="wizard-chip-number">01</span><i class="bi bi-check-lg wizard-chip-check" aria-hidden="true"></i></span><span class="wizard-chip-label">파일 가져오기<small class="wizard-chip-status">현재 단계</small></span></button></li>
       <li class="wizard-step-connector" aria-hidden="true"></li>
-      <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark">2</span> Endpoint 선택</button></li>
+      <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark"><span class="wizard-chip-number">02</span><i class="bi bi-check-lg wizard-chip-check" aria-hidden="true"></i></span><span class="wizard-chip-label">Endpoint 선택<small class="wizard-chip-status">대기</small></span></button></li>
       <li class="wizard-step-connector" aria-hidden="true"></li>
-      <li><button type="button" class="wizard-chip" data-step="3" disabled><span class="wizard-chip-mark">3</span> 생성 설정</button></li>
+      <li><button type="button" class="wizard-chip" data-step="3" disabled><span class="wizard-chip-mark"><span class="wizard-chip-number">03</span><i class="bi bi-check-lg wizard-chip-check" aria-hidden="true"></i></span><span class="wizard-chip-label">생성 설정<small class="wizard-chip-status">대기</small></span></button></li>
       <li class="wizard-step-connector" aria-hidden="true"></li>
-      <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark">4</span> 설정 검증 및 프로젝트 생성</button></li>
+      <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark"><span class="wizard-chip-number">04</span><i class="bi bi-check-lg wizard-chip-check" aria-hidden="true"></i></span><span class="wizard-chip-label">설정 검증<small class="wizard-chip-status">대기</small></span></button></li>
       <li class="wizard-step-connector" aria-hidden="true"></li>
-      <li><button type="button" class="wizard-chip" data-step="5" disabled><span class="wizard-chip-mark">5</span> 생성 진행</button></li>
+      <li><button type="button" class="wizard-chip" data-step="5" disabled><span class="wizard-chip-mark"><span class="wizard-chip-number">05</span><i class="bi bi-check-lg wizard-chip-check" aria-hidden="true"></i></span><span class="wizard-chip-label">생성 결과<small class="wizard-chip-status">대기</small></span></button></li>
     </ol>
   </nav>
 </body>

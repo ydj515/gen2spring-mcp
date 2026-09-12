@@ -22,6 +22,7 @@ async function editor() {
     async fire(name, event = {}) {
       for (const handler of this.handlers.get(name) ?? []) await handler(event);
     }
+    dispatchEvent(event) { return this.fire(event.type, event); }
     append(...nodes) { this.children.push(...nodes); }
     replaceChildren(...nodes) { this.children = nodes; }
     setAttribute(name, value) { this.attributes[name] = value; }
@@ -33,7 +34,12 @@ async function editor() {
     if (!elements.has(id)) elements.set(id, new Element());
     return elements.get(id);
   };
-  document = {querySelector: selector => element(selector.slice(1)), createElement: () => new Element(), activeElement: null};
+  const implementationButtons = [element('implementation-annotations'), element('implementation-sdk')];
+  implementationButtons[0].dataset.implementation = 'SPRING_AI_ANNOTATIONS';
+  implementationButtons[1].dataset.implementation = 'MCP_JAVA_SDK';
+  document = {querySelector: selector => element(selector.slice(1)),
+    querySelectorAll: selector => selector === '[data-implementation]' ? implementationButtons : [],
+    createElement: () => new Element(), activeElement: null};
   element('validation-operation').value = 'representative';
   let state = {
     specificationId: 'spec', analysis: {openApiVersion: '3.1.2'}, profiles: [], jobId: null, preview: null,
@@ -53,7 +59,8 @@ async function editor() {
     './wizard.js': {initializeWizard: () => ({syncGate() {}, goToStep() {}})},
     './progress.js': {clearProgress() {}, renderProgress() {}, stateLabel: value => value}
   };
-  const context = createContext({document, window: {location: {search: ''}}, setTimeout, clearTimeout, URLSearchParams});
+  const context = createContext({document, window: {location: {search: ''}}, setTimeout, clearTimeout, URLSearchParams,
+    Event: class { constructor(type) { this.type = type; } }});
   const app = new SourceTextModule(source, {context});
   await app.link(specifier => {
     const exports = modules[specifier];
@@ -65,6 +72,20 @@ async function editor() {
   return {element, requests, jobs, activeElement: () => document.activeElement, state: () => state, failConfiguration: () => {configurationError = new Error('Invalid JSON');}};
 }
 const preview = {tools: [{operationId: 'representative', name: 'representative', inputSchema: {properties: {}}}]};
+
+test('MCP choice buttons synchronize the control and invalidate a verified configuration', async () => {
+  const app = await editor();
+  await validate(app);
+  await app.element('implementation-sdk').fire('click');
+  assert.equal(app.element('mcp-implementation').value, 'MCP_JAVA_SDK');
+  assert.equal(app.element('implementation-sdk').attributes['aria-pressed'], 'true');
+  assert.equal(app.element('implementation-annotations').attributes['aria-pressed'], 'false');
+  assert.equal(app.element('generate-button').disabled, true);
+  app.element('mcp-implementation').value = 'SPRING_AI_ANNOTATIONS';
+  await app.element('mcp-implementation').fire('change');
+  assert.equal(app.element('implementation-sdk').attributes['aria-pressed'], 'false');
+  assert.equal(app.element('implementation-annotations').attributes['aria-pressed'], 'true');
+});
 async function validate(app) {
   const pending = app.element('preview-button').fire('click');
   app.requests.at(-1).resolve(preview);

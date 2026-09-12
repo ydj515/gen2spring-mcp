@@ -62,7 +62,7 @@ class WebMvcContractTest {
             mockMvc.perform(get(route).with(localRequest()))
                 .andExpect(status().isOk())
                 .andExpect(view().name("editor"))
-                .andExpect(content().string(containsString(">OpenAPI 파일</h2>")))
+                .andExpect(content().string(containsString(">API를 MCP 도구로 바꾸세요.</h2>")))
                 .andExpect(content().string(containsString("id=\"step-next-1\" type=\"button\" disabled")))
                 .andExpect(content().string(containsString("id=\"step-hint-1\"")))
                 .andExpect(content().string(containsString(">API endpoint 선택</h2>")))
@@ -132,7 +132,7 @@ class WebMvcContractTest {
         mockMvc.perform(get("/editor").with(localRequest()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString(
-                        "id=\"policy-retry-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\" type=\"button\" aria-label=\"Retry 상세 설정\" aria-expanded=\"true\"")))
+                        "id=\"policy-retry-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\" type=\"button\" aria-label=\"Retry 상세 설정\" aria-expanded=\"false\"")))
                 .andExpect(content().string(containsString(
                         "id=\"policy-pagination-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\" type=\"button\" aria-label=\"Pagination 상세 설정\" aria-expanded=\"false\"")))
                 .andExpect(content().string(containsString(
@@ -168,7 +168,7 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString(
                         "id=\"job-current-task\"")))
                 .andExpect(content().string(containsString(
-                        "class=\"progress-details-title\">상세 진행</h3>")));
+                        "class=\"progress-details-title\">상세 진행</summary>")));
     }
 
     @Test

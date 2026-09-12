@@ -3,7 +3,7 @@
 <head th:replace="~{fragments/ui :: head-assets('Gen2Spring MCP Endpoint Editor')}">
   <title>Gen2Spring MCP Endpoint Editor</title>
 </head>
-<body class="app-shell">
+<body class="app-shell wizard-editor">
   <header th:replace="~{fragments/ui :: app-header(${appMode})}" class="app-header">
     <div>
       <p class="eyebrow">OpenAPI to MCP</p>
@@ -52,8 +52,8 @@
 
     <section id="specification-step" class="workflow-step wizard-panel" data-step="1" aria-labelledby="specification-title">
       <div class="section-heading">
-        <div><p class="step-kicker">STEP 1</p><h2 id="specification-title" tabindex="-1">OpenAPI 파일</h2></div>
-        <p>YAML, YML, JSON · 최대 10MB</p>
+        <div><p class="step-kicker">STEP 1</p><h2 id="specification-title" tabindex="-1">API를 MCP 도구로 바꾸세요.</h2></div>
+        <p>OpenAPI 명세를 가져오면 생성 가능한 Endpoint를 정리해 드립니다.</p>
       </div>
       <div id="upload-surface" class="upload-surface" data-upload-state="idle">
         <input id="specification-file" class="visually-hidden" type="file" accept=".yaml,.yml,.json">
@@ -140,25 +140,14 @@
       </div>
 
       <div class="generation-main">
-        <div class="step3-section">
-          <div class="step3-section-heading">
-            <i class="bi bi-gear step3-section-icon" aria-hidden="true"></i>
-            <h3>프로젝트 설정</h3>
-          </div>
+        <details id="project-settings" class="step3-section project-settings">
+          <summary><span><strong id="project-settings-name">openapi-mcp-server</strong><span id="project-settings-profile" class="project-settings-profile"></span></span><span class="project-settings-action">프로젝트 설정 <i class="bi bi-chevron-down" aria-hidden="true"></i></span></summary>
           <div class="field-grid project-settings-grid row g-3">
             <div class="field col-12 col-sm-6 col-lg-4 col-xl-2"><label for="group-id">Group ID</label><input id="group-id" class="form-control" value="com.example" required></div>
             <div class="field col-12 col-sm-6 col-lg-4 col-xl-2"><label for="artifact-id">Artifact ID</label><input id="artifact-id" class="form-control" value="openapi-mcp-server" required></div>
             <div class="field col-12 col-sm-6 col-lg-4 col-xl-2"><label for="package-name">패키지 이름</label><input id="package-name" class="form-control" value="com.example.mcp" required></div>
             <div class="field col-12 col-sm-6 col-lg-4 col-xl-2"><label for="provider-name">Provider 이름</label><input id="provider-name" class="form-control" value="provider" required></div>
             <div class="field col-12 col-sm-6 col-lg-4 col-xl-2"><label for="domain-name">도메인 이름</label><input id="domain-name" class="form-control" value="api" required></div>
-            <div class="field col-12 col-sm-6 col-lg-4">
-              <label for="mcp-implementation">MCP 구현 방식</label>
-              <select id="mcp-implementation" class="form-select" aria-describedby="mcp-implementation-description" required>
-                <option value="SPRING_AI_ANNOTATIONS" selected>Spring AI 애노테이션</option>
-                <option value="MCP_JAVA_SDK">MCP Java SDK</option>
-              </select>
-              <p id="mcp-implementation-description" class="field-hint" aria-live="polite">@McpTool 애노테이션과 Spring AI를 사용합니다.</p>
-            </div>
             <div class="field profile-field col-12 col-sm-6 col-lg-4 col-xl-2">
               <div class="field-label-row">
                 <label for="target-profile">생성 프로필</label>
@@ -176,7 +165,20 @@
             </div>
           </div>
           <p id="profile-description" class="status" aria-live="polite">호환 프로필을 불러오는 중입니다.</p>
-        </div>
+        </details>
+
+            <div class="field implementation-choice">
+              <label for="mcp-implementation">MCP 구현 방식</label>
+              <select id="mcp-implementation" class="form-select" aria-describedby="mcp-implementation-description" required hidden>
+                <option value="SPRING_AI_ANNOTATIONS" selected>Spring AI 애노테이션</option>
+                <option value="MCP_JAVA_SDK">MCP Java SDK</option>
+              </select>
+              <div class="implementation-options" role="group" aria-label="MCP 구현 방식 선택">
+                <button type="button" data-implementation="SPRING_AI_ANNOTATIONS" aria-pressed="true">Spring AI 애노테이션</button>
+                <button type="button" data-implementation="MCP_JAVA_SDK" aria-pressed="false">MCP Java SDK · Spring AI 미사용</button>
+              </div>
+              <p id="mcp-implementation-description" class="field-hint" aria-live="polite">@McpTool 애노테이션과 Spring AI를 사용합니다.</p>
+            </div>
 
         <div class="step3-section selected-tools-section">
           <div class="step3-section-heading">
@@ -189,9 +191,9 @@
           <div class="tool-workspace row g-0">
             <div id="selected-tool-list-container" class="tool-table-panel col-12 col-xl-7">
               <div class="tool-table-header" aria-hidden="true">
-                <span>생성</span><span>Endpoint</span><span>Operation ID</span><span>Tool Name</span><span>상태</span>
+                <span>생성</span><span>Tool · Endpoint</span>
               </div>
-              <div id="selected-tool-list" class="tool-table" role="table" aria-label="MCP Tool 생성 설정" aria-live="polite"></div>
+              <div id="selected-tool-list" class="tool-table" role="table" aria-label="MCP Tool 생성 설정"></div>
               <p id="selected-tool-empty" class="empty-state">설정할 수 있는 endpoint가 없습니다.</p>
             </div>
 
@@ -202,6 +204,7 @@
                   <span><span id="tool-editor-title" class="tool-editor-heading__label" role="heading" aria-level="3">Tool 세부 설정</span><span class="tool-editor-heading__description">이름과 실행 정책을 편집합니다.</span></span>
                 </span>
                 <span class="tool-editor-heading__context">
+                  <span id="tool-edit-status" class="tool-edit-status" role="status"></span>
                   <span id="tool-editor-target" class="tool-editor-target">왼쪽에서 Tool을 선택하세요.</span>
                   <span class="tool-editor-heading__affordance" aria-hidden="true">
                     <span class="tool-editor-heading__when-open">접기</span>
@@ -227,7 +230,7 @@
                         <span id="policy-retry-status" class="policy-status">사용 안 함</span>
                         <input id="retry-enabled" class="policy-switch" type="checkbox" role="switch" aria-label="Bounded retry 사용" aria-describedby="policy-retry-description">
                       </label>
-                      <button id="policy-retry-toggle" class="policy-section__toggle policy-section__toggle--icon" type="button" aria-label="Retry 상세 설정" aria-expanded="true" aria-controls="policy-retry-panel"><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></button>
+                      <button id="policy-retry-toggle" class="policy-section__toggle policy-section__toggle--icon" type="button" aria-label="Retry 상세 설정" aria-expanded="false" aria-controls="policy-retry-panel"><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></button>
                       <span class="policy-help-anchor">
                         <button id="policy-retry-help-button" class="policy-help-button" type="button" aria-label="Retry 설정 도움말" aria-expanded="false" aria-controls="policy-retry-help"><i class="bi bi-info-circle" aria-hidden="true"></i></button>
                         <div id="policy-retry-help" class="policy-help" role="tooltip" hidden>
@@ -237,7 +240,7 @@
                         </div>
                       </span>
                     </div>
-                    <div id="policy-retry-panel" class="policy-section__body">
+                    <div id="policy-retry-panel" class="policy-section__body" hidden>
                       <p id="policy-retry-description" class="policy-section__description">정해진 횟수와 대기 시간 안에서만 재시도합니다.</p>
                       <div id="retry-fields" class="field-grid policy-fields policy-fields--retry" hidden>
                         <div class="field"><label for="retry-status-codes">재시도할 HTTP 상태 코드</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
@@ -343,7 +346,7 @@
         <div><p class="step-kicker">STEP 4</p><h2 id="generation-run-title" tabindex="-1">설정 검증 및 프로젝트 생성</h2>
           <p>설정을 검증한 뒤 프로젝트를 생성합니다.</p></div>
       </div>
-      <ol class="validation-stages" aria-label="검증 및 생성 순서">
+      <ol class="validation-stages visually-hidden" aria-label="검증 및 생성 순서">
         <li id="validation-stage" aria-current="step"><span class="validation-stage-mark" aria-hidden="true">1</span><span id="validation-stage-label">설정 검증</span></li>
         <li aria-hidden="true"><i class="bi bi-chevron-right"></i></li>
         <li id="generation-stage"><span class="validation-stage-mark" aria-hidden="true">2</span><span>프로젝트 생성</span></li>
@@ -389,7 +392,7 @@
     <section id="generation-job-step" class="workflow-step wizard-panel" data-step="5" aria-labelledby="generation-job-title" hidden>
       <div class="section-heading">
         <div><p class="step-kicker">STEP 5</p><h2 id="generation-job-title" tabindex="-1">생성 진행</h2></div>
-        <p>생성과 검증이 끝나면 산출물을 내려받을 수 있습니다.</p>
+        <p id="generation-job-description">생성과 검증이 끝나면 산출물을 내려받을 수 있습니다.</p>
       </div>
 
       <p id="job-status" class="status" aria-live="polite">아직 생성 작업을 시작하지 않았습니다.</p>
@@ -418,22 +421,22 @@
           </div>
         </div>
         <div class="pipeline-panel">
-          <div id="job-progress-details" class="progress-details">
-            <h3 class="progress-details-title">상세 진행</h3>
+          <details id="job-progress-details" class="progress-details">
+            <summary class="progress-details-title">상세 진행</summary>
             <div class="progress-list-heading" aria-hidden="true"><span></span><span>단계</span><span>작업</span><span>상태</span></div>
             <ol id="progress-list" class="progress-list"></ol>
-          </div>
+          </details>
           <details id="job-error-details" class="job-error-details" hidden>
             <summary>상세 로그 보기</summary>
             <pre id="job-error-detail"></pre>
           </details>
         </div>
       </div>
-      <div class="artifact-section">
+      <div id="artifact-section" class="artifact-section">
         <div class="artifact-section__heading">
           <div>
             <h3>생성 산출물</h3>
-            <p>생성과 검증이 완료되면 다운로드할 수 있습니다.</p>
+            <p id="artifact-description">생성과 검증이 완료되면 다운로드할 수 있습니다.</p>
           </div>
           <span id="artifact-status" class="artifact-status" hidden><i class="bi bi-check-lg" aria-hidden="true"></i>검증 완료</span>
         </div>
@@ -444,6 +447,7 @@
         </ul>
         <ul id="downloads" class="downloads artifact-list" aria-label="생성 산출물" hidden></ul>
       </div>
+      <p id="download-status" class="status" role="status"></p>
       <div class="button-row job-actions">
         <button id="delete-job-button" class="secondary" type="button" disabled>작업 삭제</button>
       </div>

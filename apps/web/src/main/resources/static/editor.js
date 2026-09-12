@@ -23,6 +23,11 @@ export function initializeEditor(onDirty) {
     elements[id].addEventListener('change', () => {
       saveSelectedOperation();
       updateToolSummary(getState().selectedOperationId);
+      const status = document.querySelector('#tool-edit-status');
+      if (status) status.textContent = '변경사항 반영됨';
+      if (id === 'retry-enabled' || id === 'pagination-enabled') {
+        setPolicySectionOpen(elements[id].closest('.policy-section'), elements[id].checked);
+      }
       onDirty();
     });
   }
@@ -91,6 +96,11 @@ export function selectOperation(operationId) {
   updateState({selectedOperationId: operationId});
   elements['tool-editor-panel'].open = true;
   renderToolRows();
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    elements['operation-editor'].animate?.([
+      {opacity: 0.5, transform: 'translateY(4px)'}, {opacity: 1, transform: 'translateY(0)'}
+    ], {duration: 180, easing: 'ease-out'});
+  }
   elements['operation-editor'].querySelector('input, textarea, select')?.focus();
 }
 
@@ -141,9 +151,6 @@ function toolRow(operation, selectedOperationId) {
   const path = document.createElement('code');
   path.textContent = operation.path;
   identity.append(method, path);
-  const operationId = document.createElement('span');
-  operationId.className = 'tool-row-operation-id';
-  operationId.textContent = operation.operationId;
   const tool = document.createElement('span');
   tool.className = 'tool-row-name';
   tool.textContent = operation.toolName;
@@ -151,7 +158,9 @@ function toolRow(operation, selectedOperationId) {
   configuration.className = 'configuration-state';
   configuration.dataset.role = 'configuration-state';
   configuration.textContent = hasOverrides(operation) ? '사용자 설정' : '기본값';
-  select.append(identity, operationId, tool, configuration);
+  // Keep one name and endpoint in the navigator; the operation ID remains available on focus/hover.
+  select.title = operation.operationId;
+  select.append(tool, identity, configuration);
   row.append(enabledLabel, select);
   return row;
 }
@@ -180,6 +189,8 @@ function hasOverrides(operation) {
 
 function renderSelectedOperation() {
   const operation = selectedOperation();
+  const editStatus = document.querySelector('#tool-edit-status');
+  if (editStatus) editStatus.textContent = '';
   elements['operation-editor'].disabled = !operation;
   elements['tool-editor-target'].textContent = operation
     ? `${operation.method} ${operation.path}`
@@ -207,6 +218,8 @@ function renderSelectedOperation() {
   elements['pagination-max-items'].value = operation.pagination.maxItems;
   setPolicyControls('retry', operation.retry.enabled);
   setPolicyControls('pagination', operation.pagination.enabled);
+  setPolicySectionOpen(elements['retry-enabled'].closest('.policy-section'), operation.retry.enabled);
+  setPolicySectionOpen(elements['pagination-enabled'].closest('.policy-section'), operation.pagination.enabled);
   elements['data-path'].value = operation.responseNormalization.dataPath;
   elements['success-code-path'].value = operation.responseNormalization.successCodePath;
   elements['success-values'].value = operation.responseNormalization.successValuesText;

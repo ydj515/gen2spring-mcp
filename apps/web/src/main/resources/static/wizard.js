@@ -67,6 +67,7 @@ export function initializeWizard() {
   const stepper = document.querySelector('#wizard-steps');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let visibleStep;
+  let furthestVisited = getState().currentStep;
 
   const highestReachable = () => {
     let reachable = 1;
@@ -97,12 +98,17 @@ export function initializeWizard() {
 
   const render = (forceStepVisibility = false) => {
     const current = getState().currentStep;
+    if (!getState().analysis && !getState().jobId) furthestVisited = 1;
     for (const step of STEPS) {
       panels.get(step).hidden = step !== current;
       const chip = chips.get(step);
       chip.disabled = !isReachable(step, getState());
       if (step === current) chip.setAttribute('aria-current', 'step');
       else chip.removeAttribute('aria-current');
+      const complete = step < Math.min(furthestVisited, highestReachable()) && step !== current;
+      chip.dataset.complete = String(complete);
+      const status = chip.querySelector('.wizard-chip-status');
+      if (status) status.textContent = step === current ? '현재 단계' : complete ? '완료' : '대기';
       const next = document.querySelector(`#step-next-${step}`);
       if (next) next.disabled = !canAdvance(step, getState());
       const hint = document.querySelector(`#step-hint-${step}`);
@@ -115,7 +121,11 @@ export function initializeWizard() {
     for (const id of REQUIRED_PROJECT_FIELDS) {
       const field = document.querySelector(`#${id}`);
       if (!field) continue;
-      if (current === 3 && !filled(id)) field.setAttribute('aria-invalid', 'true');
+      if (current === 3 && !filled(id)) {
+        field.setAttribute('aria-invalid', 'true');
+        const settings = field.closest('details');
+        if (settings && getState().analysis) settings.open = true;
+      }
       else field.removeAttribute('aria-invalid');
     }
   };
@@ -128,7 +138,14 @@ export function initializeWizard() {
   } = {}) => {
     const bounded = Math.min(Math.max(step, 1), LAST_STEP);
     const target = clamp && !isReachable(bounded, getState()) ? highestReachable() : bounded;
-    if (target !== getState().currentStep) updateState({currentStep: target});
+    furthestVisited = Math.max(furthestVisited, target);
+    if (target !== getState().currentStep) {
+      updateState({currentStep: target});
+      if (!reducedMotion.matches) panels.get(target).animate?.([
+        {opacity: 0.5, transform: 'translateY(6px)'},
+        {opacity: 1, transform: 'translateY(0)'}
+      ], {duration: 180, easing: 'ease-out'});
+    }
     else render(forceStepVisibility);
     // Assigning the hash re-enters through hashchange; skip the write when it
     // already matches so the announcement and focus move do not run twice.

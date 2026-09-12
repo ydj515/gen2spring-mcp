@@ -186,7 +186,7 @@ class StaticAssetContractTest {
         String styles = applicationStyles();
 
         assertTrue(index.contains("<html lang=\"ko\""));
-        assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">OpenAPI 파일</h2>"));
+        assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">API를 MCP 도구로 바꾸세요.</h2>"));
         assertTrue(index.contains("<h2 id=\"operations-title\" tabindex=\"-1\">API endpoint 선택</h2>"));
         assertTrue(index.contains("<h2 id=\"generation-title\" tabindex=\"-1\">생성 설정</h2>"));
         assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">설정 검증 및 프로젝트 생성</h2>"));
@@ -387,7 +387,8 @@ class StaticAssetContractTest {
         assertTrue(compactStyles.contains(".progress-overview { grid-template-columns: 1fr;"));
         assertTrue(compactStyles.contains(".artifact-placeholder-list li { grid-template-columns: minmax(0, 1fr) auto;"));
         assertTrue(compactStyles.contains(".endpoint-toolbar__meta { align-items: flex-start;"));
-        assertTrue(editorStyles.contains(".endpoint-toolbar {\n  position: sticky;"));
+        assertTrue(editorStyles.contains(".endpoint-toolbar {\n  position: relative;"));
+        assertFalse(editorStyles.contains(".endpoint-toolbar {\n  position: sticky;"));
         assertTrue(editorStyles.contains("outline: 3px solid var(--app-primary);"));
         assertTrue(legacyStyles.contains("overflow-x: clip;"));
         assertFalse(legacyStyles.contains("overflow-x: hidden;"));
@@ -442,8 +443,8 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"job-progress-details\""));
         assertTrue(index.contains("id=\"progress-list\""));
         assertTrue(index.contains("id=\"progress-overview\""));
-        assertTrue(index.contains("class=\"progress-details-title\">상세 진행</h3>"));
-        assertFalse(index.contains("<details id=\"job-progress-details\""));
+        assertTrue(index.contains("class=\"progress-details-title\">상세 진행</summary>"));
+        assertTrue(index.contains("<details id=\"job-progress-details\""));
         assertFalse(index.contains("<summary>상세 보기</summary>"));
 
         assertTrue(progress.contains("export function renderProgress(snapshot)"));
@@ -477,7 +478,7 @@ class StaticAssetContractTest {
         assertTrue(app.contains("ui['artifact-status'].hidden = downloads.length === 0;"));
         assertTrue(app.contains("label.textContent = '다운로드';"));
         assertTrue(app.contains("button.setAttribute('aria-label', `${artifactTitle(name)} 다운로드`);"));
-        assertFalse(app.contains("artifact-description"));
+        assertTrue(app.contains("name === 'archive' ? 'artifact-download-primary' : 'secondary'"));
         assertFalse(app.contains("생성 및 검증이 완료된 산출물입니다."));
         assertTrue(app.contains("프로젝트 아카이브"));
         assertTrue(app.contains("검증 리포트"));
@@ -529,7 +530,7 @@ class StaticAssetContractTest {
 
         assertTrue(index.contains("data-policy-section=\"retry\""));
         assertTrue(index.contains("id=\"policy-retry-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\""));
-        assertTrue(index.contains("aria-expanded=\"true\" aria-controls=\"policy-retry-panel\""));
+        assertTrue(index.contains("aria-expanded=\"false\" aria-controls=\"policy-retry-panel\""));
         assertTrue(index.contains("class=\"bi bi-chevron-down policy-section__chevron\""));
         assertTrue(styles.contains(".policy-section__summary"));
         assertTrue(styles.contains(".policy-section__chevron"));
@@ -548,10 +549,12 @@ class StaticAssetContractTest {
         assertTrue(progress.contains("if (status === 'RUNNING') return 'bi bi-arrow-clockwise pipeline-spinner';"));
         assertTrue(styles.contains(".pipeline-spinner {"));
         assertTrue(styles.contains(".pipeline-spinner::before {\n"
-                + "  display: grid;\n"
+                + "  content: '';\n"
+                + "  display: block;\n"
                 + "  width: 100%;\n"
                 + "  height: 100%;\n"
-                + "  place-items: center;"));
+                + "  background: currentColor;"));
+        assertTrue(styles.contains("mask: url('/webjars/bootstrap-icons/1.13.1/icons/arrow-clockwise.svg') center / contain no-repeat;"));
         assertTrue(styles.contains("transform-origin: 50% 50%;"));
         assertTrue(styles.contains("animation: pipeline-spin 1s linear infinite;"));
         assertTrue(styles.contains("@media (prefers-reduced-motion: reduce)"));

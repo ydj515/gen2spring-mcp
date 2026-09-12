@@ -1,3 +1,74 @@
+# Wizard workspace design QA
+
+Date: 2026-09-12
+
+## Target and scope
+
+Implement the selected five-step wizard mockup in the existing Spring MVC application. Preserve the generator, validation API, compatibility profiles, policy controls, and hosted routes. The mockup's simulated uploads, verification delays, and download responses are not product behavior.
+
+Source visual truth:
+`/Users/dongjin/.codex/visualizations/2026/09/12/01a09353-c5b8-7901-af22-235f95887bf4/step-wizard-refined.html`
+
+Evidence directory:
+`/Users/dongjin/.codex/visualizations/2026/09/12/01a09353-c5b8-7901-af22-235f95887bf4/`
+
+## Comparison evidence
+
+- Desktop source: `reference-step3.png`, `reference-step4.png` (1024 × 900).
+- Desktop implementation: `implemented-step1-final.png`, `implemented-step3-final.png` (1024 × 900).
+- Completed result comparison: `reference-step5.png` and `implemented-step5-final.png`, inspected together at 1024 × 900 with both pages at the top. The final implementation exposes downloads before history, and the history has no surrounding card.
+- Mobile implementation: `implemented-step3-mobile-final.png`, `implemented-step4-mobile-final.png` (390 × 844).
+- Compare the source and final step 3 captures together in one image inspection. Both show the Spring AI selection, collapsed project settings, and an open Tool editor. The source uses five illustrative endpoints; the real uploaded specification has 38 endpoints, 34 supported. Counts, generated names, and descriptions therefore differ intentionally.
+- CSS viewport and final PNG dimensions agree; no image resampling is used for the comparison. Earlier transient viewport captures are excluded. Source has a 16px mock frame; the application uses full-width browser chrome, so compare app content rather than the outer frame.
+- Full-size 1024px images make typography, the stepper, form controls, and policy labels readable without a separate magnified crop.
+
+## Findings and iteration history
+
+1. P2: Valid default fields marked unvisited steps complete. Track visited progress separately from step eligibility. Add regression coverage for back navigation, reset, and restored jobs.
+2. P2: Long Tool lists pushed actions far below the editor. Bound the navigator height while preserving the complete list, readable wrapping, selection, and keyboard access. The final desktop and mobile captures show the adjusted layout.
+3. P2: Restoring a page before analysis/profile loading opened project settings unnecessarily. Open missing project fields only after analysis exists; cover the loading state in a regression test. Final step 3 starts collapsed.
+4. P2: Summary and Tool section headers repeated context and delayed the editor. Remove the duplicate project summary, secondary Tool heading, and navigator column header; retain accessible labels and actual project controls. Compare `implemented-step3-before.png` with `implemented-step3-final.png`.
+5. P2: The legacy job-progress container retained a nested surface around collapsed history. Remove the outer background, border, padding, and summary padding. Keep detailed stages and failure logs accessible.
+
+## Required fidelity surfaces
+
+- Typography: retain the existing system-font stack and Bootstrap controls; soften field labels and endpoint paths, maintain distinct page headings, and allow long names to wrap. The production multiline description field intentionally remains larger than the mock's short input.
+- Spacing/layout: preserve horizontal numbered steps, connectors, active/completed states, one compact context strip, collapsible project settings, and a wider Tool editor. Mobile stacks the navigator/editor and wraps stage labels without horizontal page overflow.
+- Colors/tokens: scope the neutral surfaces and purple action/selection tokens to `.wizard-editor`; avoid changing hosted dashboard styling. Preserve semantic success/error colors.
+- Assets: reuse the installed Bootstrap Icons and existing brand. No raster assets are required by this reference; no icon package or external font dependency is added.
+- Copy/content: retain actual profile names, API descriptions, generator counts, error messages, and validation semantics. No mock-only instructions or fabricated success states enter the product.
+
+## Interaction and verification
+
+- Upload the repository's `swagger-3.1.yml`; analyze 38 endpoints, select 34 supported endpoints.
+- Search/filter endpoints, toggle selection, navigate forward/back, and observe actual eligibility/completion states.
+- Open/close project settings; switch between Spring AI annotations and MCP Java SDK and verify profile/description synchronization.
+- Enable Retry, expand its fields, change a value, switch Tools and return; disable Retry again. Confirm the same disclosure works at 390px.
+- Run real configuration validation, generate the project, observe stage events, and download the ZIP. Generation reaches validated completion.
+- Inspect browser error logs: no JavaScript errors during the main flow. Restarting the local preview intentionally removes its old in-memory job; that expected stale-job response is excluded from application-regression results.
+- `./gradlew :apps:web:test :apps:web:bootJar --no-daemon --non-interactive`: pass, 108 tests.
+- `node --experimental-vm-modules --test apps/web/src/test/js/*.test.mjs`: pass, 15 tests.
+- `git diff --check`: pass.
+- CodeRabbit: two review passes; minor implementation-choice synchronization and redundant layout declaration feedback addressed. The second pass includes the new CSS and regression test files.
+
+## Intentional differences and remaining limits
+
+- Preserve all existing advanced policy fields, multiline descriptions, real validation facts, and file replacement/removal. These are richer than the illustrative mock.
+- Keep the actual supported profile restrictions. No generator or backend security changes are part of this implementation.
+- Keep separate, labeled manifest/report download rows instead of the mock's text links. The project archive alone uses the primary action color. This preserves the existing artifact contract and accessible artifact names.
+- Mobile and desktop checks cover the local wizard. Hosted dashboards and full assistive-technology certification are outside this visual pass.
+- P3: Long endpoint names make individual navigator rows taller than the short names in the mock; wrapping preserves the full identifiers.
+
+## Final result
+
+final result: passed
+
+The final comparison confirms the history-surface correction and result-first layout. No actionable P0/P1/P2 findings remain within the approved scope; the P3 long-name density difference is documented above.
+
+---
+
+# Previous QA records
+
 # Upload and policy UX refinement QA — 2026-08-25
 
 ## Evidence

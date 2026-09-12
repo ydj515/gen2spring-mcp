@@ -54,6 +54,14 @@ ui['generate-button'].addEventListener('click', event => {
 });
 ui['delete-job-button'].addEventListener('click', removeJob);
 initializeProfileHelp();
+document.querySelectorAll('[data-implementation]').forEach(button => {
+  button.addEventListener('click', () => {
+    if (ui['mcp-implementation'].value === button.dataset.implementation) return;
+    ui['mcp-implementation'].value = button.dataset.implementation;
+    ui['mcp-implementation'].dispatchEvent(new Event('change', {bubbles: true}));
+  });
+});
+ui['mcp-implementation'].addEventListener('change', renderImplementationChoice);
 if (api.hostedMode) ui['delete-job-button'].textContent = '작업 취소';
 for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name',
   'target-profile', 'mcp-implementation', 'validation-operation', 'validation-arguments']) {
@@ -89,6 +97,7 @@ async function loadProfiles() {
 }
 
 function renderImplementationProfiles() {
+  renderImplementationChoice();
   const implementation = ui['mcp-implementation'].value;
   const sdk = implementation === 'MCP_JAVA_SDK';
   const previous = ui['target-profile'].value;
@@ -109,6 +118,12 @@ function renderImplementationProfiles() {
   renderCompatibilityNotices(sdk ? [] : getState().compatibilityNotices);
   describeProfile();
   renderGenerationSummary();
+}
+
+function renderImplementationChoice() {
+  document.querySelectorAll('[data-implementation]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.implementation === ui['mcp-implementation'].value));
+  });
 }
 
 async function resumeRetainedJob() {
@@ -436,6 +451,10 @@ function resetSpecificationPresentation() {
   renderParameterSummary();
   clearProgress();
   renderArtifacts({id: '', downloads: []});
+  const jobPanel = byId('generation-job-step');
+  if (jobPanel) jobPanel.dataset.result = 'pending';
+  const jobHeading = byId('generation-job-title');
+  if (jobHeading) jobHeading.textContent = '생성 진행';
   ui['job-status'].textContent = '아직 생성 작업을 시작하지 않았습니다.';
   ui['delete-job-button'].disabled = true;
   invalidatePreview();
@@ -456,6 +475,10 @@ function renderGenerationSummary() {
   const selectedProfile = getState().profiles.find(profile => profile.id === ui['target-profile'].value);
   const profile = selectedProfile ? formatProfileLabel(selectedProfile) : '';
   ui['summary-profile'].textContent = artifactId && profile ? `${artifactId} · ${profile}` : profile || artifactId || '—';
+  const projectName = byId('project-settings-name');
+  const projectProfile = byId('project-settings-profile');
+  if (projectName) projectName.textContent = artifactId || '프로젝트 설정';
+  if (projectProfile) projectProfile.textContent = profile ? ` · ${profile}` : '';
 }
 
 function updatePreviewGate() {
@@ -642,6 +665,23 @@ function renderJob(snapshot) {
     ? `${stateLabel(snapshot.state)} ${snapshot.error.message}`
     : stateLabel(snapshot.state);
   renderProgress(snapshot);
+  const hasArchive = (snapshot.downloads ?? []).some(artifact =>
+    (typeof artifact === 'string' ? artifact : artifact.name) === 'archive');
+  const panel = byId('generation-job-step');
+  if (panel) panel.dataset.result = hasArchive ? 'available' : 'pending';
+  const heading = byId('generation-job-title');
+  if (heading) heading.textContent = hasArchive ? '프로젝트가 준비되었습니다.' : '생성 진행';
+  const subtitle = byId('generation-job-description');
+  if (subtitle) subtitle.textContent = hasArchive
+    ? '프로젝트 소스와 실행 가이드, 검증 결과를 확인하세요.'
+    : '생성과 검증이 끝나면 산출물을 내려받을 수 있습니다.';
+  // Keep keyboard and screen-reader order aligned with the result-first layout.
+  if (panel?.insertBefore) {
+    if (hasArchive) panel.insertBefore(byId('artifact-section'), byId('job-progress'));
+    else panel.insertBefore(byId('job-progress'), byId('artifact-section'));
+  }
+  const history = byId('job-progress-details');
+  if (history && snapshot.error) history.open = true;
   const detail = snapshot.error?.message ?? '';
   ui['job-error-details'].hidden = detail === '';
   ui['job-error-detail'].textContent = detail;
@@ -652,10 +692,17 @@ function renderArtifacts(snapshot) {
   const downloads = snapshot.downloads ?? [];
   ui['artifact-placeholder-list'].hidden = downloads.length > 0;
   ui['artifact-status'].hidden = downloads.length === 0;
+  const verified = ['VALIDATED', 'SUCCEEDED'].includes(snapshot.state);
+  ui['artifact-status'].textContent = verified ? '검증 완료' : '산출물 제공';
+  const description = byId('artifact-description');
+  if (description) description.textContent = downloads.length
+    ? '프로젝트 소스와 검증 결과를 내려받으세요.'
+    : '생성과 검증이 완료되면 다운로드할 수 있습니다.';
   ui['downloads'].hidden = downloads.length === 0;
   ui['downloads'].replaceChildren(...downloads.map(artifact => {
     const name = typeof artifact === 'string' ? artifact : artifact.name;
     const item = document.createElement('li');
+    item.dataset.artifact = name;
     const metadata = document.createElement('span');
     metadata.className = 'artifact-meta';
     const artifactIcon = document.createElement('i');
@@ -666,9 +713,7 @@ function renderArtifacts(snapshot) {
     metadata.append(artifactIcon, artifactName);
     const button = document.createElement('button');
     button.type = 'button';
-    // Collecting a result is not the primary action on this step, so these stay
-    // at secondary weight rather than competing with 프로젝트 생성.
-    button.className = 'secondary';
+    button.className = name === 'archive' ? 'artifact-download-primary' : 'secondary';
     const icon = document.createElement('i');
     icon.className = 'bi bi-download';
     icon.setAttribute('aria-hidden', 'true');
@@ -676,7 +721,15 @@ function renderArtifacts(snapshot) {
     label.textContent = '다운로드';
     button.setAttribute('aria-label', `${artifactTitle(name)} 다운로드`);
     button.append(icon, label);
-    button.addEventListener('click', () => downloadArtifact(snapshot.id, artifact));
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      label.textContent = '다운로드 중…';
+      const success = await downloadArtifact(snapshot.id, artifact);
+      button.disabled = false;
+      label.textContent = '다운로드';
+      const status = byId('download-status');
+      if (status) status.textContent = success ? `${artifactTitle(name)} 다운로드를 시작했습니다.` : '다운로드하지 못했습니다. 다시 시도해 주세요.';
+    });
     item.append(metadata, button);
     return item;
   }));
@@ -702,8 +755,10 @@ async function downloadArtifact(jobId, artifact) {
     link.download = filename(response, `${jobId}-${name}`);
     link.click();
     URL.revokeObjectURL(blobUrl);
+    return true;
   } catch (failure) {
     showFailure(failure);
+    return false;
   }
 }
 
