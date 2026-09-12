@@ -1,5 +1,7 @@
 # Wizard workspace design QA
 
+> Historical QA evidence: captures and test results below describe their original review runs, not a fresh verification. Current interaction contracts are maintained in [User flows](docs/user-flows.md); reference images are preserved under `docs/assets`.
+
 Date: 2026-09-12
 
 ## Target and scope
@@ -73,10 +75,10 @@ The final comparison confirms the history-surface correction and result-first la
 
 ## Evidence
 
-- Source visual truth: `docs/superpowers/specs/2026-08-25-upload-policy-ux-refinement-design.md` for the approved Step 1 replacement behavior and `docs/superpowers/specs/assets/upload-policy-ux-refinement/qa/source-step-3.png` for the Step 3 policy issue.
-- Desktop implementation: `docs/superpowers/specs/assets/upload-policy-ux-refinement/qa/implemented-step-1-completed.png`, `implemented-step-3-final.png`, and `implemented-step-3-retry-help.png`.
-- Mobile implementation: `docs/superpowers/specs/assets/upload-policy-ux-refinement/qa/implemented-step-1-mobile.png` and `implemented-step-3-mobile.png`.
-- Focused comparison: `docs/superpowers/specs/assets/upload-policy-ux-refinement/qa/comparison-step-3.png`; source is left and implementation is right.
+- Source visual truth: `docs/user-flows.md` for the approved Step 1 replacement behavior and `docs/assets/upload-policy-ux-refinement/qa/source-step-3.png` for the Step 3 policy issue.
+- Desktop implementation: `docs/assets/upload-policy-ux-refinement/qa/implemented-step-1-completed.png`, `implemented-step-3-final.png`, and `implemented-step-3-retry-help.png`.
+- Mobile implementation: `docs/assets/upload-policy-ux-refinement/qa/implemented-step-1-mobile.png` and `implemented-step-3-mobile.png`.
+- Focused comparison: `docs/assets/upload-policy-ux-refinement/qa/comparison-step-3.png`; source is left and implementation is right.
 - Source Step 3 pixels: `461 x 612`. Step 1 desktop pixels and CSS viewport: `1226 x 794`. Step 3 desktop pixels and CSS viewport: `1440 x 1200`. Mobile pixels and CSS viewport: `400 x 900`. Device pixel ratio: `1`.
 - State: `swagger-3.1.yml` analyzed with 38 endpoints, the first Tool selected, and Retry enabled. The help-open state was captured separately.
 
@@ -122,7 +124,7 @@ final result: passed
 
 ## Evidence
 
-- Source visual truth: the approved full-width mock recorded by `docs/superpowers/specs/2026-08-24-ui-ux-redesign-design.md`; the original task attachment is intentionally not committed.
+- Source visual truth: the approved full-width mock recorded by `docs/design-decisions.md`; the original task attachment is intentionally not committed.
 - Desktop implementation capture: `gen2spring-ui-step2-1440-final-v2.png` (current-task QA artifact, not committed)
 - Tablet implementation capture: `gen2spring-ui-step2-768.png` (current-task QA artifact, not committed)
 - Mobile implementation capture: `gen2spring-ui-step2-400-final.png` (current-task QA artifact, not committed)
@@ -203,9 +205,9 @@ final result: passed
 
 ## Evidence
 
-- Source visual truth: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/source-step-5-progress-complete.png` plus the user's explicit request to remove the completed-marker circles and match the progress-bar color; `docs/superpowers/specs/assets/wizard-flow-refinement/qa/source-step-5-artifacts.png` plus the approved compact-list direction.
-- Implementation captures: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-5-progress-final-967.png`, `implemented-step-5-artifact-section-final-967.png`, and `implemented-step-5-artifacts-mobile.png`.
-- Side-by-side comparison inputs: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-5-progress-minimal-checks.png` and `comparison-step-5-artifact-list-redesign.png`; source is left and implementation is right.
+- Source visual truth: `docs/assets/wizard-flow-refinement/qa/source-step-5-progress-complete.png` plus the user's explicit request to remove the completed-marker circles and match the progress-bar color; `docs/assets/wizard-flow-refinement/qa/source-step-5-artifacts.png` plus the approved compact-list direction.
+- Implementation captures: `docs/assets/wizard-flow-refinement/qa/implemented-step-5-progress-final-967.png`, `implemented-step-5-artifact-section-final-967.png`, and `implemented-step-5-artifacts-mobile.png`.
+- Side-by-side comparison inputs: `docs/assets/wizard-flow-refinement/qa/comparison-step-5-progress-minimal-checks.png` and `comparison-step-5-artifact-list-redesign.png`; source is left and implementation is right.
 - Desktop viewport: `967 x 935`; mobile viewport: `390 x 844`; device pixel ratio: `1`.
 - Source pixels: progress `961 x 935`, artifacts `967 x 295`. Implementation component pixels: progress `840 x 915`, artifacts `840 x 276`. Comparisons normalize both sides to an `840 px` component width while preserving aspect ratio.
 - State: real local generation completed at `100%`, `5 / 5 단계`, all eight detailed tasks complete, and three artifacts available.
@@ -253,9 +255,9 @@ final result: passed
 ## Evidence
 
 - Source visual truth: user-provided Step 3 interaction and Step 5 progress captures reviewed during implementation; temporary local capture paths are intentionally excluded from repository documentation.
-- Desktop implementation: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-3-row-hover-disclosure.png` and `implemented-step-5-connected.png`.
-- Mobile implementation: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-3-row-hover-disclosure-mobile.png` and `implemented-step-5-connected-mobile.png`.
-- Side-by-side comparison input: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-5-connected.png`; source is left and implementation is right.
+- Desktop implementation: `docs/assets/wizard-flow-refinement/qa/implemented-step-3-row-hover-disclosure.png` and `implemented-step-5-connected.png`.
+- Mobile implementation: `docs/assets/wizard-flow-refinement/qa/implemented-step-3-row-hover-disclosure-mobile.png` and `implemented-step-5-connected-mobile.png`.
+- Side-by-side comparison input: `docs/assets/wizard-flow-refinement/qa/comparison-step-5-connected.png`; source is left and implementation is right.
 - Step 5 source pixels, implementation pixels, and CSS viewport: `1290 x 834`; device pixel ratio: `1`. No density normalization was required.
 - States: Step 3 with the first Tool selected and the editor open; Step 5 while MCP validation is running at `50%`, with `3 / 5 단계` complete.
 
@@ -302,11 +304,11 @@ final result: passed
 
 ## Evidence
 
-- Source visual truth: `docs/superpowers/specs/assets/wizard-flow-refinement/step-2-endpoint-selection.png`, `step-3-generation-settings.png`, and `step-4-preview-generation.png`.
-- Desktop implementation: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-2-harmonized.png`, `implemented-step-3-harmonized.png`, and `implemented-step-4-harmonized.png`.
-- Focused interaction capture: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-3-profile-help.png`.
-- Mobile implementation: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-2-mobile.png`, `implemented-step-3-mobile.png`, and `implemented-step-4-mobile.png`.
-- Side-by-side comparison input: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-2-harmonized.png` through `comparison-step-4-harmonized.png`; source is left and implementation is right.
+- Source visual truth: `docs/assets/wizard-flow-refinement/step-2-endpoint-selection.png`, `step-3-generation-settings.png`, and `step-4-preview-generation.png`.
+- Desktop implementation: `docs/assets/wizard-flow-refinement/qa/implemented-step-2-harmonized.png`, `implemented-step-3-harmonized.png`, and `implemented-step-4-harmonized.png`.
+- Focused interaction capture: `docs/assets/wizard-flow-refinement/qa/implemented-step-3-profile-help.png`.
+- Mobile implementation: `docs/assets/wizard-flow-refinement/qa/implemented-step-2-mobile.png`, `implemented-step-3-mobile.png`, and `implemented-step-4-mobile.png`.
+- Side-by-side comparison input: `docs/assets/wizard-flow-refinement/qa/comparison-step-2-harmonized.png` through `comparison-step-4-harmonized.png`; source is left and implementation is right.
 - Source pixels: `1487 x 1058`; desktop implementation pixels and CSS viewport: `1440 x 1024`; mobile implementation pixels and CSS viewport: `390 x 844`; device pixel ratio: `1`.
 - Normalization: each source was resized to `1440 x 1024` and composed beside the corresponding `1440 x 1024` implementation capture. Repository fixture content remains authoritative, so comparison judges hierarchy, spacing, control treatment, and interaction state rather than literal endpoint rows.
 - States: Step 2 with 34 selected endpoints, Step 3 with the first Tool selected, Profile help open for the focused comparison, and Step 4 after all four validation checks succeeded.
@@ -356,10 +358,10 @@ final result: passed
 
 ## Evidence
 
-- Approved references: `docs/superpowers/specs/assets/wizard-flow-refinement/step-1-openapi-file.png` through `step-5-generation-progress.png`
-- Implementation captures: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/implemented-step-1.png` through `implemented-step-5.png`
-- Side-by-side comparisons: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-1.png` through `comparison-step-5.png`
-- Manual-next Step 1 comparison: `docs/superpowers/specs/assets/wizard-flow-refinement/qa/comparison-step-1-manual-next.png`
+- Approved references: `docs/assets/wizard-flow-refinement/step-1-openapi-file.png` through `step-5-generation-progress.png`
+- Implementation captures: `docs/assets/wizard-flow-refinement/qa/implemented-step-1.png` through `implemented-step-5.png`
+- Side-by-side comparisons: `docs/assets/wizard-flow-refinement/qa/comparison-step-1.png` through `comparison-step-5.png`
+- Manual-next Step 1 comparison: `docs/assets/wizard-flow-refinement/qa/comparison-step-1-manual-next.png`
 - Reference size: `1487 x 1058`; implementation viewport and capture: `1440 x 1024`; mobile verification viewport: `400 x 900`
 - States: Step 1 analyzed, Step 2 selected, Step 3 configured, Step 4 validated, Step 5 completed.
 

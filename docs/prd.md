@@ -2,9 +2,13 @@
 
 - 문서 버전: v0.1
 - 작성일: 2026-08-07
-- 제품 상태: Draft
+- 문서 성격: 초기 제품 요구사항과 단계별 구현 이력
 - 제품명: OpenAPI MCP Server Generator
 - 대상 독자: Product Owner, Backend Engineer, Platform Engineer, DevOps Engineer, QA Engineer
+
+> 현재 구조·사용법·지원 범위는 [문서 안내](README.md)와 [사용자 가이드](user-guide.md)를 기준으로 한다.
+> 아래 MVP/P0/P1 비목표와 완료 표시는 단계별 기록이며 이후 확장으로 대체된 항목이 있다.
+> 현재 결정과 변경 이유는 [설계와 의사결정](design-decisions.md)에서 확인한다.
 
 ---
 
@@ -2052,7 +2056,7 @@ WebFlux+Async 보류 사유를 간략히 설명한다. 문구는 client에 별�
 canonical compatibility notice를 사용한다.
 
 세부 설계는
-[생성 대상 확장 설계](superpowers/specs/2026-08-23-generation-target-expansion-design.md)를 따른다.
+[생성 방식과 호환성](design-decisions.md#생성-방식과-호환성)를 따른다.
 
 ---
 

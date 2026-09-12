@@ -72,10 +72,11 @@ GEN2SPRING_UI_PORT=0 mise exec -- java -jar apps/web/build/libs/web.jar
 binding은 `numeric loopback only`다. 기본 local mode는 public multi-user service가 아니다.
 remote address, 잘못된 `Host`·`Origin`, forwarded header를 거부하고 Spring Security session CSRF를 사용한다.
 
-UI 작업 흐름은 OpenAPI 파일, API endpoint 선택, 생성 설정의 세 단계다. 파일 input과 drag-and-drop은
+UI는 OpenAPI 파일, Endpoint 선택, 생성 설정, 설정 검증 및 프로젝트 생성, 생성 진행의 5단계다.
+단계 이동과 SSE 진행 표시의 상세 계약은 [사용자 흐름](user-flows.md)을 따른다. 파일 input과 drag-and-drop은
 업로드·분석·완료·오류 상태를 표시하고, 파일을 교체하거나 제거하면 선택·override·preview·job 상태를 초기화한다.
 모든 endpoint를 보여 주되 지원 불가 항목은 이유와 함께 비활성화하고, 경고 포함 지원 항목은 선택할 수 있다.
-전체 선택은 선택 가능한 endpoint에만 적용하며, 선택한 endpoint별 Tool 설정을 접어서 편집한다.
+전체 선택은 선택 가능한 endpoint에만 적용하며, 선택한 endpoint별 Tool 목록과 편집 영역에서 정책을 수정한다.
 입력 경계는 `local files only; no URL import`이며 OpenAPI는 10 MiB, configuration은 1 MiB로 제한한다.
 capacity는 `one running plus one queued job`이고 세 번째 active job을 거부한다. terminal job은 마지막
 접근 후 한 시간이 지나면 정리한다. ZIP은 `VALIDATED` 결과에만 제공한다.
@@ -293,7 +294,7 @@ secret 값은 Tool schema, source, manifest, report와 ZIP에 저장하지 않�
 
 ## Runtime metrics와 OpenTelemetry
 
-네 profile은 runtime `0.3.0`에서 같은 telemetry 계약을 사용한다.
+생성 runtime은 profile 간 같은 metric 이름과 민감 정보 제거 계약을 사용한다.
 
 - `gen2spring.runtime.mcp.tool.call`
 - `gen2spring.runtime.provider.request`
@@ -339,7 +340,7 @@ max backoff 10000ms 이하이며 total timeout 안에서만 적용한다. GET op
 
 생성 과정은 다음 단계를 순서대로 실행한다.
 
-1. `COMPILE`: target JDK로 `classes test bootJar`
+1. `COMPILE`: target JDK와 선택한 build tool로 compile/test/package (Gradle은 `classes test bootJar`)
 2. `APPLICATION_CONTEXT`: target JDK로 executable JAR 기동
 3. `MCP_INITIALIZE`: `/mcp` initialize와 initialized notification
 4. `MCP_TOOLS_LIST`: Tool name, description, input schema exact comparison
@@ -360,7 +361,7 @@ max backoff 10000ms 이하이며 total timeout 안에서만 적용한다. GET op
 ## 생성 산출물
 
 성공한 output에는 선택한 Gradle 또는 Maven project, generated source/test, `application.yml`, generated `README.md`,
-`Dockerfile`, `.dockerignore`, 원본 OpenAPI, `GENERATION_MANIFEST.json`, `VALIDATION_REPORT.json`과
+`Dockerfile`, `.dockerignore`, 원본 OpenAPI, `GENERATION_MANIFEST.json`, `RUNTIME_METADATA.json`, `VALIDATION_REPORT.json`과
 sibling ZIP이 생긴다.
 
 ZIP entry는 path order, timestamp와 file mode를 결정적으로 기록한다. 같은 input/profile은 report를

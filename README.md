@@ -46,7 +46,7 @@ mise run ui:build
 java -jar apps/web/build/libs/web.jar
 ```
 
-현재 UI는 파일 업로드, API endpoint 선택, 생성 설정의 세 단계로 동작한다. 지원하지 않는 endpoint도
+현재 UI는 파일 업로드, API endpoint 선택, 생성 설정, 설정 검증 및 프로젝트 생성, 생성 진행의 5단계로 동작한다. 지원하지 않는 endpoint도
 이유와 함께 표시하지만 preview와 generation에는 선택 가능한 endpoint만 전달한다. local UI 입력 경계는
 `local files only; no URL import`, capacity는 `one running plus one queued job`이다.
 
@@ -187,8 +187,10 @@ mise run generator:acceptance
 - [Hosted 플랫폼 구조도](docs/architecture/hosted-generation-platform.html): 배포·데이터 흐름 시각화
 - [Managed Runtime 구조도](docs/architecture/managed-mcp-runtime.html): 제어·실행·egress 격리 시각화
 - [Hosted 배포 가이드](deploy/hosted/README.md): 구성, 기동, 백업·복구
-- [설계 기록](docs/superpowers/specs/): 승인된 기능 설계
-- [구현 계획](docs/superpowers/plans/): 단계별 검증 계획
+- [문서 안내](docs/README.md): 주제별 문서와 읽기 순서
+- [설계와 의사결정](docs/design-decisions.md): 현재 계약, 선택 이유와 과거 설계 통합
+- [프로젝트 구조](docs/project-structure.md) · [아키텍처 경계](docs/architecture-boundaries.md)
+- [개발 및 검증](docs/development-guide.md): 로컬 검사와 전체 acceptance 범위
 
 ## 지원 범위 요약
 
