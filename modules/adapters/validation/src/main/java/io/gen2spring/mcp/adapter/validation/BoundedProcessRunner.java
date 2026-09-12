@@ -329,7 +329,7 @@ public final class BoundedProcessRunner {
             List<ProcessHandle> survivors = handles.stream().filter(ProcessHandle::isAlive).toList();
             survivors.reversed().stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
             waitForTree(survivors, CLEANUP_TIMEOUT);
-            if (handles.stream().anyMatch(ProcessHandle::isAlive)) {
+            if (process.isAlive() || handles.stream().anyMatch(ProcessHandle::isAlive)) {
                 throw new IOException("Process tree did not terminate within the cleanup bound");
             }
         }
@@ -364,11 +364,13 @@ public final class BoundedProcessRunner {
             }
         }
 
-        private static void waitForTree(List<ProcessHandle> handles, Duration timeout) {
+        private void waitForTree(List<ProcessHandle> handles, Duration timeout) {
             boolean interrupted = Thread.interrupted();
             long deadline = deadline(timeout);
             try {
-                while (handles.stream().anyMatch(ProcessHandle::isAlive) && System.nanoTime() < deadline) {
+                // ProcessHandle exit can precede the Process reaper updating its exit state.
+                while ((process.isAlive() || handles.stream().anyMatch(ProcessHandle::isAlive))
+                        && System.nanoTime() < deadline) {
                     try {
                         NANOSECONDS.sleep(Math.min(POLL_NANOS, Math.max(1, deadline - System.nanoTime())));
                     } catch (InterruptedException exception) {

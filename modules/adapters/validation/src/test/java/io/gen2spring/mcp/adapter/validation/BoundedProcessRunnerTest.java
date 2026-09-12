@@ -25,6 +25,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,7 +35,7 @@ class BoundedProcessRunnerTest {
 
     private final BoundedProcessRunner runner = new BoundedProcessRunner();
 
-    @Test
+    @RepeatedTest(10)
     void terminatesAProcessAndItsDescendantAfterTheConfiguredTimeout() throws Exception {
         Path childPid = tempDir.resolve("child.pid");
         BoundedProcessRunner.RunningProcess process = runner.start(
@@ -50,6 +51,7 @@ class BoundedProcessRunnerTest {
 
         assertTrue(result.timedOut());
         assertFalse(result.processAlive());
+        assertTrue(result.exitCode() != -1, "cleanup must observe the root process exit code");
         assertTrue(waitUntilDead(pid), "descendant must not survive timeout cleanup");
     }
 
