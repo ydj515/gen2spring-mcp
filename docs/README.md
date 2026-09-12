@@ -25,7 +25,7 @@
 | [Hosted 배포 가이드](../deploy/hosted/README.md) | secret 준비, Linux Compose, 백업·복구·운영 절차 |
 | [Hosted 구조도](architecture/hosted-generation-platform.html) | 생성 플랫폼 배포 및 데이터 흐름 |
 | [Managed Runtime 구조도](architecture/managed-mcp-runtime.html) | 제어·실행·provider egress 분리 |
-| [화면 QA 기록](../design-qa.md) | 과거 화면 검토와 보존한 이미지 증거 |
+| [화면 회귀 QA 기준](user-flows.md#화면-회귀-qa-체크리스트) | 화면·상태·접근성 검증과 증거 관리 |
 | [OpenAPI 3.0 fixture](../swagger-3.0.yml), [3.1 fixture](../swagger-3.1.yml) | 분석·생성의 재현 입력. 이 서비스 자체의 REST API 명세가 아님 |
 
 ## 문서 관리 원칙
