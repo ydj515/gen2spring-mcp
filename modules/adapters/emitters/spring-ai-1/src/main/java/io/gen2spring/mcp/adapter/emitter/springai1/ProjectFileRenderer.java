@@ -17,6 +17,7 @@ import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinate
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.usecase.GenerationContext;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
@@ -87,6 +88,10 @@ public final class ProjectFileRenderer {
         root.put("spring", spring);
         root.put("logging", Map.of(
                 "level", Map.of("org.springframework.ai.tool.method.MethodToolCallback", "ERROR")));
+        if (context.request().mcpImplementation() == McpImplementation.MCP_JAVA_SDK) {
+            spring.remove("ai");
+            root.remove("logging");
+        }
         root.put("management", managementConfiguration());
 
         Map<String, Object> provider = new LinkedHashMap<>();
@@ -204,7 +209,7 @@ public final class ProjectFileRenderer {
                 coordinates.packageName(),
                 JavaSourceRenderer.upperCamel(context.request().domain()) + "McpApplication",
                 profile,
-                dependencies(),
+                dependencies(context.request().mcpImplementation()),
                 applicationYaml(context),
                 new ProjectDocumentation(
                         PROJECT_SUMMARY,
@@ -213,6 +218,17 @@ public final class ProjectFileRenderer {
                         renderedTools(context.tools()),
                         renderedObservability(),
                         renderedResponseHandling(context.tools())));
+    }
+
+    private List<Dependency> dependencies(McpImplementation implementation) {
+        if (implementation != McpImplementation.MCP_JAVA_SDK) {
+            return dependencies();
+        }
+        List<Dependency> result = new java.util.ArrayList<>(dependencies().stream()
+                .filter(dependency -> !dependency.groupId().equals("org.springframework.ai")).toList());
+        result.add(new Dependency("io.modelcontextprotocol.sdk", "mcp", Scope.IMPLEMENTATION, "0.18.3"));
+        result.add(new Dependency("io.modelcontextprotocol.sdk", "mcp-json-jackson2", Scope.IMPLEMENTATION, "0.18.3"));
+        return List.copyOf(result);
     }
 
     private List<Dependency> dependencies() {

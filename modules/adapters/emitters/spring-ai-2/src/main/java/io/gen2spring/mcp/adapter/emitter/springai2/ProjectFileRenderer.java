@@ -237,6 +237,9 @@ public final class ProjectFileRenderer {
             dependencies.add(new Dependency(
                     "io.projectreactor", "reactor-test", Scope.TEST_IMPLEMENTATION));
         }
+        if (reactive) {
+            dependencies.add(implementation("org.springframework.boot", "spring-boot-webclient"));
+        }
         return List.copyOf(dependencies);
     }
 

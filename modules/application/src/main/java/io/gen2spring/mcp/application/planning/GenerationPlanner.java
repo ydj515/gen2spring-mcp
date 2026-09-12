@@ -50,6 +50,10 @@ public final class GenerationPlanner {
                         TARGET_PROFILE_NOT_FOUND,
                         "TARGET_VALIDATE",
                         "The requested compatibility profile is unavailable"));
+        if (!request.mcpImplementation().supports(profile)) {
+            throw GeneratorException.user(TARGET_COMBINATION_UNSUPPORTED, "TARGET_VALIDATE",
+                    "MCP Java SDK generation requires a Spring Boot 3 MVC Sync profile");
+        }
         ProjectGenerator projectGenerator = projectGenerators.require(profile);
         if (request.project() == null || request.validationLevel() == null) {
             throw GeneratorException.user(

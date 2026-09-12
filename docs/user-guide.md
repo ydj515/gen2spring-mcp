@@ -453,3 +453,40 @@ limit을 적용한다.
   전용 Jackson mapper의 null 직렬화·응답 정규화 계약도 호스트 mapper 설정과 별도로 유지한다.
 - Web의 전역 오류 처리는 페이지를 포함해 민감 정보를 제거한 고정 JSON 응답을 제공한다.
   mTLS의 `client-auth: NEED`, 워커의 bounded queue·종료 처리, JDBC의 명시적 트랜잭션 경계는 유지한다.
+
+## MCP 구현 방식 선택
+
+생성 설정 화면에서 **MCP 구현 방식**을 선택한다. 두 방식 모두 Spring Boot를 사용한다.
+
+| 방식 | 도구 등록 | 지원 대상 |
+| --- | --- | --- |
+| Spring AI 애노테이션 | `@McpTool`을 Spring AI annotation provider가 탐색 | Spring AI 1.1 MVC와 Spring AI 2.0 MVC·WebFlux, Java 17·21, Gradle·Maven |
+| MCP Java SDK | SDK 0.18.3으로 서버와 도구를 직접 등록 | Spring Boot 3.5 MVC Sync, Java 17·21, Gradle·Maven |
+
+SDK를 선택하면 지원되는 프로필만 표시하며 Spring AI 버전은 표시하지 않는다. 생성 프로젝트에서
+Spring AI BOM, starter, import를 제외한다. manifest도 `springAiVersion` 대신 `mcpJavaSdkVersion`을 기록한다.
+`targetProfileId`는 Java·Spring Boot·빌드 도구의 기존 호환 기준을 가리키며, 실제 등록 방식은
+`mcpImplementation`으로 구분한다. SDK의 WebFlux·Spring Boot 4 조합은 현재 지원하지 않으며 API와 CLI도
+해당 조합을 생성 전에 거부한다.
+
+CLI 설정 파일에도 다음 필드를 지정할 수 있다. 나머지 프로젝트·operation·검증 설정은 동일하다.
+
+```yaml
+mcpImplementation: SPRING_AI_ANNOTATIONS
+```
+
+SDK 생성 시에는 Spring Boot 3 MVC 기준 프로필을 선택한다.
+
+```yaml
+mcpImplementation: MCP_JAVA_SDK
+targetProfileId: spring-ai-1.1-java21-mvc-streamable
+```
+
+화면의 기본값은 `SPRING_AI_ANNOTATIONS`이다. 기존 설정 파일에서 필드를 생략하면
+`SPRING_AI_EXPLICIT`로 처리하여 기존 Spring AI 명시적 등록 방식을 유지한다. 이 호환 값은 CLI/API에서
+명시할 수도 있지만 화면의 새 생성 선택지에는 표시하지 않는다.
+
+애노테이션 방식의 생성 메서드는 `CallToolRequest`를 받아 원본 인수를 유지한다. annotation provider로
+`@McpTool`을 실제 탐색하고, 생성된 등록 설정이 OpenAPI 입력 스키마를 보존한다. 전역 scanner는 중복 등록을
+막기 위해 꺼 둔다. 두 방식 모두 공통 `GeneratedToolCalls`에서 입력 검증, 안전한 provider 오류 변환,
+단일 종료 관측성을 적용한다. JSON 속성명과 Java 식별자가 다른 입력도 원본 스키마대로 처리한다.

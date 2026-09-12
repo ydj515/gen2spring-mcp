@@ -38,6 +38,101 @@ class GeneratedRuntimeRegressionTest {
     Path tempDir;
 
     @Test
+    void generatedImplementationModesBuildAndStart() throws Exception {
+        for (String mode : List.of("SPRING_AI_ANNOTATIONS", "MCP_JAVA_SDK")) {
+            var original = JavaSourceRendererTest.contextWithWeatherTool();
+            var request = original.request();
+            var selected = new io.gen2spring.mcp.application.command.GenerationCommand(
+                    request.project(), request.provider(), request.domain(), request.targetProfileId(),
+                    request.validationLevel(), request.validation(), request.operations(),
+                    io.gen2spring.mcp.domain.profile.McpImplementation.valueOf(mode));
+            var context = new io.gen2spring.mcp.application.usecase.GenerationContext(
+                    original.document(), original.tools(), selected, original.profile(), original.originalSpecification());
+            var files = new SpringAi1ProjectGenerator().generate(context).files();
+            if (mode.equals("MCP_JAVA_SDK")) {
+                for (var entry : files.entrySet()) {
+                    if (entry.getKey().endsWith(".java") || entry.getKey().endsWith(".kts")
+                            || entry.getKey().endsWith(".yml")) {
+                        assertFalse(new String(entry.getValue(), java.nio.charset.StandardCharsets.UTF_8)
+                                .contains("org.springframework.ai"), entry.getKey());
+                    }
+                }
+            }
+            var testedFiles = new java.util.LinkedHashMap<>(files);
+            testedFiles.put("src/test/java/com/example/weather/application/GeneratedModeCallsTest.java",
+                    modeCallsTest().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertProjectBuilds(tempDir.resolve(mode.toLowerCase(java.util.Locale.ROOT)), testedFiles);
+        }
+    }
+
+    private String modeCallsTest() {
+        return """
+                package com.example.weather.application;
+
+                import static org.junit.jupiter.api.Assertions.*;
+                import static org.mockito.ArgumentMatchers.*;
+                import static org.mockito.Mockito.*;
+                import com.example.weather.generated.tool.GeneratedToolCalls;
+                import com.example.weather.runtime.OpenApiOperationExecutor;
+                import com.example.weather.runtime.ProviderError;
+                import com.example.weather.runtime.ProviderErrorException;
+                import com.example.weather.runtime.RuntimeTelemetry;
+                import com.fasterxml.jackson.databind.ObjectMapper;
+                import io.modelcontextprotocol.spec.McpSchema;
+                import java.util.Map;
+                import org.junit.jupiter.api.Test;
+
+                class GeneratedModeCallsTest {
+                    private final OpenApiOperationExecutor executor = mock(OpenApiOperationExecutor.class);
+                    private final RuntimeTelemetry telemetry = mock(RuntimeTelemetry.class);
+                    private final RuntimeTelemetry.Call span = mock(RuntimeTelemetry.Call.class);
+                    private final ObjectMapper json = new ObjectMapper();
+                    private final String tool = "kma_weather_get_forecast";
+                    private final Map<String, Object> input = Map.of("nx", 60, "ny", 127);
+
+                    private GeneratedToolCalls calls() {
+                        when(telemetry.startToolCall(anyString(), anyString())).thenReturn(span);
+                        return new GeneratedToolCalls(executor, json, telemetry);
+                    }
+
+                    @Test
+                    void returnsExpectedProviderPayloadAndCompletesOnce() {
+                        var error = json.createObjectNode().put("code", "UPSTREAM_UNAVAILABLE");
+                        when(executor.execute(any(), anyMap())).thenThrow(new ProviderErrorException(new ProviderError(error)));
+                        var result = calls().call(tool, input);
+                        assertTrue(result.isError());
+                        assertEquals(error.toString(), ((McpSchema.TextContent) result.content().get(0)).text());
+                        verify(span).complete(eq(RuntimeTelemetry.Outcome.EXPECTED_ERROR), any(), any());
+                        verify(span, times(1)).complete(any(), any(), any());
+                    }
+
+                    @Test
+                    void hidesInternalDetailsAndValidatesBeforeExecution() {
+                        var calls = calls();
+                        var invalid = assertThrows(IllegalStateException.class, () -> calls.call(tool, Map.of()));
+                        assertEquals("Generated Tool execution failed", invalid.getMessage());
+                        assertNull(invalid.getCause());
+                        verifyNoInteractions(executor);
+                        when(executor.execute(any(), anyMap())).thenThrow(new IllegalArgumentException("private-marker"));
+                        var failure = assertThrows(IllegalStateException.class, () -> calls.call(tool, input));
+                        assertEquals("Generated Tool execution failed", failure.getMessage());
+                        assertNull(failure.getCause());
+                        verify(span, times(2)).complete(eq(RuntimeTelemetry.Outcome.INTERNAL_ERROR), any(), any());
+                    }
+
+                    @Test
+                    void propagatesFatalErrorsUnchanged() {
+                        var fatal = new AssertionError("private-marker");
+                        when(executor.execute(any(), anyMap())).thenThrow(fatal);
+                        var calls = calls();
+                        assertSame(fatal, assertThrows(AssertionError.class, () -> calls.call(tool, input)));
+                        verify(span).complete(eq(RuntimeTelemetry.Outcome.FATAL), any(), any());
+                    }
+                }
+                """;
+    }
+
+    @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedMcpAdapterSeparatesExpectedAndInternalFailures() throws Exception {
         ApiSchema city = new ApiSchema(

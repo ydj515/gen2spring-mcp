@@ -20,6 +20,19 @@ class GenerationConfigurationParserTest {
             new GenerationConfigurationParser(CompatibilityProfileRegistry.defaults());
 
     @Test
+    void defaultsLegacyRequestsAndParsesBothImplementationChoices() {
+        assertEquals("SPRING_AI_EXPLICIT", parser.parseYaml(validYaml().getBytes(UTF_8)).mcpImplementation().name());
+        for (String mode : java.util.List.of("SPRING_AI_ANNOTATIONS", "MCP_JAVA_SDK")) {
+            var yaml = parser.parseYaml(("mcpImplementation: " + mode + "\n" + validYaml()).getBytes(UTF_8));
+            var json = parser.parseJson(validJson().replaceFirst("\\{", "{\"mcpImplementation\":\"" + mode + "\",").getBytes(UTF_8));
+            assertEquals(yaml, json);
+            assertEquals(mode, yaml.mcpImplementation().name());
+        }
+        assertInvalidJson(validJson().replaceFirst("\\{", "{\"mcpImplementation\":null,"));
+        assertInvalidJson(validJson().replaceFirst("\\{", "{\"mcpImplementation\":\"UNKNOWN\","));
+    }
+
+    @Test
     void parsesEquivalentYamlAndJsonIntoTheSameRequest() {
         var yaml = parser.parseYaml(validYaml().getBytes(UTF_8));
         var json = parser.parseJson(validJson().getBytes(UTF_8));

@@ -67,7 +67,7 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString("id=\"step-hint-1\"")))
                 .andExpect(content().string(containsString(">API endpoint 선택</h2>")))
                 .andExpect(content().string(containsString(">생성 설정</h2>")))
-                .andExpect(content().string(containsString(">미리보기와 생성</h2>")))
+                .andExpect(content().string(containsString(">설정 검증 및 프로젝트 생성</h2>")))
                 .andExpect(content().string(containsString(">생성 진행</h2>")))
                 .andExpect(content().string(containsString("id=\"selected-tool-list\"")))
                 .andExpect(content().string(containsString("id=\"generation-summary\"")))
@@ -132,9 +132,9 @@ class WebMvcContractTest {
         mockMvc.perform(get("/editor").with(localRequest()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString(
-                        "id=\"policy-retry-toggle\" class=\"policy-section__toggle\" type=\"button\" aria-expanded=\"true\"")))
+                        "id=\"policy-retry-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\" type=\"button\" aria-label=\"Retry 상세 설정\" aria-expanded=\"true\"")))
                 .andExpect(content().string(containsString(
-                        "id=\"policy-pagination-toggle\" class=\"policy-section__toggle\" type=\"button\" aria-expanded=\"false\"")))
+                        "id=\"policy-pagination-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\" type=\"button\" aria-label=\"Pagination 상세 설정\" aria-expanded=\"false\"")))
                 .andExpect(content().string(containsString(
                         "id=\"policy-retry-help-button\"")))
                 .andExpect(content().string(containsString(
@@ -142,9 +142,9 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString("id=\"policy-retry-status\"")))
                 .andExpect(content().string(containsString("id=\"policy-parameters-status\"")))
                 .andExpect(content().string(containsString(
-                        "id=\"retry-enabled\" class=\"policy-enable-checkbox\" type=\"checkbox\"")))
+                        "id=\"retry-enabled\" class=\"policy-switch\" type=\"checkbox\" role=\"switch\"")))
                 .andExpect(content().string(containsString(
-                        "id=\"retry-fields\" class=\"field-grid policy-fields\" hidden")))
+                        "id=\"retry-fields\" class=\"field-grid policy-fields policy-fields--retry\" hidden")))
                 .andExpect(content().string(containsString(
                         "id=\"pagination-fields\" class=\"field-grid policy-fields\" hidden")));
     }

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.profile.CompatibilityNotice;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.AnalysisWarning;
 import java.util.List;
@@ -20,7 +21,13 @@ public final class GenerationPreviewPresenter {
     public ObjectNode present(GenerationPreview preview) {
         Objects.requireNonNull(preview, "preview");
         ObjectNode root = json.createObjectNode();
-        root.set("profile", profile(preview.profile()));
+        ObjectNode selectedProfile = profile(preview.profile());
+        if (preview.mcpImplementation() == McpImplementation.MCP_JAVA_SDK) {
+            selectedProfile.remove("springAiVersion");
+            selectedProfile.put("mcpJavaSdkVersion", "0.18.3");
+        }
+        root.set("profile", selectedProfile);
+        root.put("mcpImplementation", preview.mcpImplementation().name());
         ArrayNode tools = root.putArray("tools");
         preview.tools().forEach(tool -> tools.add(tool(tool)));
         ArrayNode environment = root.putArray("secretEnvironmentVariables");
@@ -34,6 +41,12 @@ public final class GenerationPreviewPresenter {
     ObjectNode profile(CompatibilityProfile profile) {
         ObjectNode node = json.createObjectNode();
         node.put("id", profile.id());
+        ArrayNode implementations = node.putArray("mcpImplementations");
+        for (McpImplementation implementation : McpImplementation.values()) {
+            if (implementation.supports(profile)) {
+                implementations.add(implementation.name());
+            }
+        }
         node.put("javaVersion", profile.target().javaVersion());
         node.put("springBootVersion", profile.target().springBootVersion());
         node.put("springAiVersion", profile.target().springAiVersion());

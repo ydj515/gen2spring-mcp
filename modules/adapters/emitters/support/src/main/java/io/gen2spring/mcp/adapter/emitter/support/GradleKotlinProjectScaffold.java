@@ -48,7 +48,7 @@ public final class GradleKotlinProjectScaffold implements BuildProjectScaffold {
                 .map(dependency -> dependency.scope().gradleConfiguration()
                         + "(\"" + dependency.coordinate() + "\")")
                 .collect(Collectors.joining("\n    "));
-        return """
+        String source = """
                 plugins {
                     java
                     id("org.springframework.boot") version "%s"
@@ -92,6 +92,11 @@ public final class GradleKotlinProjectScaffold implements BuildProjectScaffold {
                 target.springAiVersion(),
                 dependencies,
                 artifactId);
+        if (projectDependencies.stream().anyMatch(dependency -> dependency.groupId().equals("io.modelcontextprotocol.sdk"))) {
+            source = source.replace("    implementation(platform(\"org.springframework.ai:spring-ai-bom:"
+                    + target.springAiVersion() + "\"))\n", "");
+        }
+        return source;
     }
 
     public String settingsGradle(String artifactId) {

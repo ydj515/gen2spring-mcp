@@ -17,7 +17,7 @@
       <li><button type="button" class="wizard-chip" data-step="1" aria-current="step"><span class="wizard-chip-mark">1</span> OpenAPI 파일</button></li>
       <li><button type="button" class="wizard-chip" data-step="2" disabled><span class="wizard-chip-mark">2</span> Endpoint 선택</button></li>
       <li><button type="button" class="wizard-chip" data-step="3" disabled><span class="wizard-chip-mark">3</span> 생성 설정</button></li>
-      <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark">4</span> 미리보기와 생성</button></li>
+      <li><button type="button" class="wizard-chip" data-step="4" disabled><span class="wizard-chip-mark">4</span> 설정 검증 및 프로젝트 생성</button></li>
       <li><button type="button" class="wizard-chip" data-step="5" disabled><span class="wizard-chip-mark">5</span> 생성 진행</button></li>
     </ol>
   </nav>
@@ -151,6 +151,14 @@
             <div class="field col-12 col-sm-6 col-lg-4 col-xl-2"><label for="package-name">패키지 이름</label><input id="package-name" class="form-control" value="com.example.mcp" required></div>
             <div class="field col-12 col-sm-6 col-lg-4 col-xl-2"><label for="provider-name">Provider 이름</label><input id="provider-name" class="form-control" value="provider" required></div>
             <div class="field col-12 col-sm-6 col-lg-4 col-xl-2"><label for="domain-name">도메인 이름</label><input id="domain-name" class="form-control" value="api" required></div>
+            <div class="field col-12 col-sm-6 col-lg-4">
+              <label for="mcp-implementation">MCP 구현 방식</label>
+              <select id="mcp-implementation" class="form-select" aria-describedby="mcp-implementation-description" required>
+                <option value="SPRING_AI_ANNOTATIONS" selected>Spring AI 애노테이션</option>
+                <option value="MCP_JAVA_SDK">MCP Java SDK</option>
+              </select>
+              <p id="mcp-implementation-description" class="field-hint" aria-live="polite">@McpTool 애노테이션과 Spring AI를 사용합니다.</p>
+            </div>
             <div class="field profile-field col-12 col-sm-6 col-lg-4 col-xl-2">
               <div class="field-label-row">
                 <label for="target-profile">생성 프로필</label>
@@ -214,10 +222,12 @@
                 <div class="tool-policy-accordion" aria-label="고급 Tool 정책">
                   <section class="policy-section" data-policy-section="retry">
                     <div class="policy-section__header">
-                      <button id="policy-retry-toggle" class="policy-section__toggle" type="button" aria-expanded="true" aria-controls="policy-retry-panel">
-                        <span class="policy-section__identity"><i class="bi bi-arrow-repeat" aria-hidden="true"></i><span><strong>Retry</strong><small>일시적 오류 재시도</small></span></span>
-                        <span class="policy-section__summary"><span id="policy-retry-status" class="policy-status">사용 안 함</span><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
-                      </button>
+                      <span class="policy-section__identity"><i class="bi bi-arrow-repeat" aria-hidden="true"></i><span><strong>Retry</strong><small>일시적 오류 재시도</small></span></span>
+                      <label class="policy-header-switch" for="retry-enabled">
+                        <span id="policy-retry-status" class="policy-status">사용 안 함</span>
+                        <input id="retry-enabled" class="policy-switch" type="checkbox" role="switch" aria-label="Bounded retry 사용" aria-describedby="policy-retry-description">
+                      </label>
+                      <button id="policy-retry-toggle" class="policy-section__toggle policy-section__toggle--icon" type="button" aria-label="Retry 상세 설정" aria-expanded="true" aria-controls="policy-retry-panel"><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></button>
                       <span class="policy-help-anchor">
                         <button id="policy-retry-help-button" class="policy-help-button" type="button" aria-label="Retry 설정 도움말" aria-expanded="false" aria-controls="policy-retry-help"><i class="bi bi-info-circle" aria-hidden="true"></i></button>
                         <div id="policy-retry-help" class="policy-help" role="tooltip" hidden>
@@ -228,23 +238,25 @@
                       </span>
                     </div>
                     <div id="policy-retry-panel" class="policy-section__body">
-                      <label class="policy-enable-row" for="retry-enabled"><span><strong>Bounded retry 사용</strong><small>정해진 횟수와 대기 시간 안에서만 재시도합니다.</small></span><input id="retry-enabled" class="policy-enable-checkbox" type="checkbox"></label>
-                      <div id="retry-fields" class="field-grid policy-fields" hidden>
+                      <p id="policy-retry-description" class="policy-section__description">정해진 횟수와 대기 시간 안에서만 재시도합니다.</p>
+                      <div id="retry-fields" class="field-grid policy-fields policy-fields--retry" hidden>
                         <div class="field"><label for="retry-status-codes">재시도할 HTTP 상태 코드</label><input id="retry-status-codes" type="text" placeholder="429, 503"></div>
-                        <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> 네트워크 오류도 재시도</label>
                         <div class="field"><label for="retry-max-retries">최대 재시도 횟수</label><input id="retry-max-retries" type="number" min="1" max="3" value="1"></div>
                         <div class="field"><label for="retry-initial-backoff">최초 대기 시간 (ms)</label><input id="retry-initial-backoff" type="number" min="1" max="5000" value="100"></div>
                         <div class="field"><label for="retry-max-backoff">최대 대기 시간 (ms)</label><input id="retry-max-backoff" type="number" min="1" max="10000" value="1000"></div>
+                        <label class="checkbox" for="retry-network-errors"><input id="retry-network-errors" type="checkbox"> 네트워크 오류도 재시도</label>
                         <label class="checkbox" for="retry-respect-retry-after"><input id="retry-respect-retry-after" type="checkbox" checked> Retry-After 응답 반영</label>
                       </div>
                     </div>
                   </section>
                   <section class="policy-section" data-policy-section="pagination">
                     <div class="policy-section__header">
-                      <button id="policy-pagination-toggle" class="policy-section__toggle" type="button" aria-expanded="false" aria-controls="policy-pagination-panel">
-                        <span class="policy-section__identity"><i class="bi bi-list-ol" aria-hidden="true"></i><span><strong>Pagination</strong><small>cursor 기반 반복 호출</small></span></span>
-                        <span class="policy-section__summary"><span id="policy-pagination-status" class="policy-status">사용 안 함</span><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></span>
-                      </button>
+                      <span class="policy-section__identity"><i class="bi bi-list-ol" aria-hidden="true"></i><span><strong>Pagination</strong><small>cursor 기반 반복 호출</small></span></span>
+                      <label class="policy-header-switch" for="pagination-enabled">
+                        <span id="policy-pagination-status" class="policy-status">사용 안 함</span>
+                        <input id="pagination-enabled" class="policy-switch" type="checkbox" role="switch" aria-label="Cursor pagination 사용" aria-describedby="policy-pagination-description">
+                      </label>
+                      <button id="policy-pagination-toggle" class="policy-section__toggle policy-section__toggle--icon" type="button" aria-label="Pagination 상세 설정" aria-expanded="false" aria-controls="policy-pagination-panel"><i class="bi bi-chevron-down policy-section__chevron" aria-hidden="true"></i></button>
                       <span class="policy-help-anchor">
                         <button id="policy-pagination-help-button" class="policy-help-button" type="button" aria-label="Pagination 설정 도움말" aria-expanded="false" aria-controls="policy-pagination-help"><i class="bi bi-info-circle" aria-hidden="true"></i></button>
                         <div id="policy-pagination-help" class="policy-help" role="tooltip" hidden>
@@ -255,7 +267,7 @@
                       </span>
                     </div>
                     <div id="policy-pagination-panel" class="policy-section__body" hidden>
-                      <label class="policy-enable-row" for="pagination-enabled"><span><strong>Cursor pagination 사용</strong><small>다음 cursor가 있는 동안 후속 페이지를 요청합니다.</small></span><input id="pagination-enabled" class="policy-enable-checkbox" type="checkbox"></label>
+                      <p id="policy-pagination-description" class="policy-section__description">다음 cursor가 있는 동안 후속 페이지를 요청합니다.</p>
                       <div id="pagination-fields" class="field-grid policy-fields" hidden>
                         <div class="field"><label for="pagination-request-parameter">Cursor query parameter</label><input id="pagination-request-parameter" type="text" maxlength="128"></div>
                         <div class="field"><label for="pagination-initial-value">초기 cursor 값 (JSON 문자열 또는 정수)</label><textarea id="pagination-initial-value" rows="2"></textarea></div>
@@ -322,60 +334,55 @@
       <div class="wizard-nav">
         <button id="step-back-3" class="secondary" type="button">이전: Endpoint 선택</button>
         <p id="step-hint-3" class="wizard-hint" role="status" aria-live="polite"></p>
-        <button id="step-next-3" type="button" disabled>다음: 미리보기와 생성 &rarr;</button>
+        <button id="step-next-3" type="button" disabled>다음: 설정 검증 및 프로젝트 생성 &rarr;</button>
       </div>
     </section>
 
     <section id="generation-run-step" class="workflow-step wizard-panel" data-step="4" aria-labelledby="generation-run-title" hidden>
-      <div class="section-heading">
-        <div><p class="step-kicker">STEP 4</p><h2 id="generation-run-title" tabindex="-1">미리보기와 생성</h2></div>
-        <p>대표 호출로 설정을 검증한 뒤 프로젝트를 생성합니다.</p>
+      <div class="section-heading validation-heading">
+        <div><p class="step-kicker">STEP 4</p><h2 id="generation-run-title" tabindex="-1">설정 검증 및 프로젝트 생성</h2>
+          <p>설정을 검증한 뒤 프로젝트를 생성합니다.</p></div>
       </div>
-
+      <ol class="validation-stages" aria-label="검증 및 생성 순서">
+        <li id="validation-stage" aria-current="step"><span class="validation-stage-mark" aria-hidden="true">1</span><span id="validation-stage-label">설정 검증</span></li>
+        <li aria-hidden="true"><i class="bi bi-chevron-right"></i></li>
+        <li id="generation-stage"><span class="validation-stage-mark" aria-hidden="true">2</span><span>프로젝트 생성</span></li>
+      </ol>
       <div class="preview-workspace row g-4">
         <div class="preview-input surface-subtle col-12 col-xl-5">
-          <div class="subsection-heading"><p class="section-kicker">VALIDATION TASK</p><h3>대표 Tool 검증</h3><p>아래 세 가지를 순서대로 확인하세요.</p></div>
-          <ol class="validation-task-list">
-            <li>
-              <span class="validation-task-number" aria-hidden="true">1</span>
-              <div class="validation-task-content field"><label for="validation-operation">대표 Tool 선택</label><select id="validation-operation"></select></div>
-            </li>
-            <li>
-              <span class="validation-task-number" aria-hidden="true">2</span>
-              <div class="validation-task-content">
-                <strong>테스트 입력 확인</strong>
-                <div id="validation-parameter-summary" class="validation-parameter-summary"></div>
-                <details id="validation-arguments-details" class="validation-arguments-details">
-                  <summary>테스트 입력 수정</summary>
-                  <div class="field"><label for="validation-arguments">호출 인자 JSON object</label><textarea id="validation-arguments" rows="6">{}</textarea></div>
-                </details>
-              </div>
-            </li>
-            <li>
-              <span class="validation-task-number" aria-hidden="true">3</span>
-              <div class="validation-task-content">
-                <strong>설정 검증</strong>
-                <p>분석 결과와 Tool 구성을 서버에서 다시 확인합니다.</p>
-                <button id="preview-button" type="button" disabled class="secondary"><i class="bi bi-check2-circle" aria-hidden="true"></i> 설정 검증하기</button>
-                <p id="preview-status" class="status" aria-live="polite">생성 전 설정 검증이 필요합니다.</p>
-              </div>
-            </li>
-          </ol>
+          <div class="subsection-heading"><h3>검증에 사용할 입력</h3></div>
+          <div class="validation-input-field field"><label for="validation-operation">대표 Tool</label><select id="validation-operation"></select></div>
+          <div class="validation-input-field">
+            <strong>테스트 입력</strong>
+            <div id="validation-parameter-summary" class="validation-parameter-summary"></div>
+            <details id="validation-arguments-details" class="validation-arguments-details">
+              <summary>테스트 입력 수정</summary>
+              <div class="field"><label for="validation-arguments">호출 인자 JSON object</label><textarea id="validation-arguments" rows="6">{}</textarea></div>
+            </details>
+            <p class="validation-input-hint">입력을 변경하면 다시 검증해야 합니다.</p>
+          </div>
         </div>
         <div class="preview-result surface-subtle col-12 col-xl-7">
-          <div class="subsection-heading"><p class="section-kicker">VALIDATION RESULT</p><h3>검증 결과</h3><p>생성 전에 확인해야 할 핵심 사실을 보여줍니다.</p></div>
+          <div class="subsection-heading validation-result-heading"><h3>설정 검증 결과</h3><span id="validation-overall" class="validation-badge" data-status="idle">검증 전</span></div>
           <ul id="validation-checklist" class="validation-checklist" aria-label="설정 검증 항목"></ul>
           <div id="preview-output" class="preview-output">
-            <p class="empty-state">설정을 검증하면 대표 Tool 정보가 표시됩니다.</p>
+            <p class="empty-state">설정을 검증하면 결과가 표시됩니다. 아래 설정 검증하기 버튼을 눌러 주세요.</p>
           </div>
         </div>
       </div>
-      <div class="generation-primary-action">
-        <div><strong>설정을 모두 확인했나요?</strong><p>프로젝트 생성과 런타임 검증을 시작합니다.</p></div>
-        <button id="generate-button" type="button" disabled><i class="bi bi-play-fill" aria-hidden="true"></i> 프로젝트 생성</button>
+      <div id="validation-action" class="generation-primary-action" data-status="idle">
+        <div id="validation-announcement" role="status" aria-live="polite" aria-atomic="true">
+          <strong id="validation-action-title">프로젝트 생성 전, 설정 검증이 필요합니다.</strong>
+          <p id="preview-status">검증을 완료하면 프로젝트를 생성할 수 있습니다.</p>
+        </div>
+        <div class="validation-actions">
+          <button id="preview-button" type="button" disabled aria-describedby="preview-status"><i class="bi bi-check2-circle" aria-hidden="true"></i> <span id="preview-button-label">설정 검증하기</span></button>
+          <button id="generate-button" type="button" disabled hidden aria-describedby="preview-status"><i class="bi bi-play-fill" aria-hidden="true"></i> <span id="generate-button-label">프로젝트 생성</span></button>
+        </div>
       </div>
-      <div class="wizard-nav">
+      <div class="wizard-nav validation-footer">
         <button id="step-back-4" class="secondary" type="button">이전: 생성 설정</button>
+        <p>런타임 검증은 프로젝트 생성 후 실행됩니다.</p>
       </div>
     </section>
 

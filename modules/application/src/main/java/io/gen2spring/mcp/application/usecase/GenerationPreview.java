@@ -8,6 +8,7 @@ import io.gen2spring.mcp.application.validation.ExpectedTool;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.AnalysisWarning;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.OutputKind;
@@ -25,11 +26,19 @@ public record GenerationPreview(
         List<Tool> tools,
         List<String> secretEnvironmentVariables,
         List<AnalysisWarning> warnings,
-        List<String> generatedFilePaths) {
+        List<String> generatedFilePaths,
+        McpImplementation mcpImplementation) {
+    public GenerationPreview(CompatibilityProfile profile, List<Tool> tools,
+                             List<String> secretEnvironmentVariables, List<AnalysisWarning> warnings,
+                             List<String> generatedFilePaths) {
+        this(profile, tools, secretEnvironmentVariables, warnings, generatedFilePaths,
+                McpImplementation.SPRING_AI_EXPLICIT);
+    }
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public GenerationPreview {
         Objects.requireNonNull(profile, "profile");
+        Objects.requireNonNull(mcpImplementation, "mcpImplementation");
         tools = List.copyOf(tools);
         secretEnvironmentVariables = List.copyOf(secretEnvironmentVariables);
         warnings = List.copyOf(warnings);

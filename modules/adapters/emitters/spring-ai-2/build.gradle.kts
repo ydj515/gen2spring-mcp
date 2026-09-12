@@ -5,6 +5,7 @@ dependencies {
     implementation(project(":modules:domain"))
     implementation(project(":modules:application"))
     implementation(project(":modules:adapters:emitters:support"))
+    implementation(project(":modules:adapters:emitters:mcp-runtime"))
     implementation(libs.bundles.jackson)
 }
 

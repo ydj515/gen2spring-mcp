@@ -34,7 +34,7 @@ public final class MavenProjectScaffold implements BuildProjectScaffold {
         String dependencies = model.dependencies().stream()
                 .map(this::dependency)
                 .collect(Collectors.joining("\n"));
-        return """
+        String source = """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <project xmlns="http://maven.apache.org/POM/4.0.0"
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -109,6 +109,13 @@ public final class MavenProjectScaffold implements BuildProjectScaffold {
                 dependencies,
                 model.packageName(),
                 model.applicationClassName());
+        if (model.dependencies().stream().anyMatch(dependency -> dependency.groupId().equals("io.modelcontextprotocol.sdk"))) {
+            source = source.replace("    <spring-ai.version>" + target.springAiVersion() + "</spring-ai.version>\n", "");
+            int start = source.indexOf("  <dependencyManagement>");
+            int end = source.indexOf("  </dependencyManagement>", start) + "  </dependencyManagement>\n".length();
+            source = source.substring(0, start) + source.substring(end);
+        }
+        return source;
     }
 
     private String dependency(ProjectScaffoldModel.Dependency dependency) {
@@ -122,7 +129,8 @@ public final class MavenProjectScaffold implements BuildProjectScaffold {
                       <groupId>%s</groupId>
                       <artifactId>%s</artifactId>%s
                     </dependency>""".formatted(
-                dependency.groupId(), dependency.artifactId(), scope);
+                dependency.groupId(), dependency.artifactId(),
+                (dependency.version() == null ? "" : "\n      <version>" + dependency.version() + "</version>") + scope);
     }
 
     private String readme(ProjectScaffoldModel model) {

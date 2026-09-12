@@ -9,8 +9,11 @@ import {clearProgress, renderProgress, stateLabel} from './progress.js';
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
   'error-summary', 'error-message', 'analysis-summary', 'target-profile', 'profile-description',
+  'mcp-implementation', 'mcp-implementation-description',
   'profile-help-button', 'profile-help', 'profile-notice-list',
-  'preview-button', 'preview-status',
+  'preview-button', 'preview-status', 'preview-button-label', 'generate-button-label',
+  'validation-action', 'validation-action-title', 'validation-overall',
+  'validation-stage', 'generation-stage', 'validation-stage-label',
   'preview-output', 'generate-button', 'delete-job-button', 'job-status', 'downloads',
   'summary-version', 'summary-selected', 'summary-excluded',
   'summary-profile', 'validation-operation', 'validation-parameter-summary', 'validation-checklist',
@@ -18,6 +21,8 @@ const ui = Object.fromEntries([
 ].map(id => [id, byId(id)]));
 const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
 let previewRequestVersion = 0;
+let validationStatus = 'idle';
+let generationPending = false;
 
 const wizard = initializeWizard();
 initializeEditor(() => {
@@ -43,12 +48,16 @@ const upload = initializeUpload({
   onFailure: showFailure
 });
 ui['preview-button'].addEventListener('click', runPreview);
-ui['generate-button'].addEventListener('click', startGeneration);
+ui['generate-button'].addEventListener('click', event => {
+  if (event.detail > 1) return;
+  startGeneration();
+});
 ui['delete-job-button'].addEventListener('click', removeJob);
 initializeProfileHelp();
 if (api.hostedMode) ui['delete-job-button'].textContent = '작업 취소';
 for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name',
-  'target-profile', 'validation-operation', 'validation-arguments']) {
+  'target-profile', 'mcp-implementation', 'validation-operation', 'validation-arguments']) {
+  byId(id).addEventListener('input', invalidatePreview);
   byId(id).addEventListener('change', invalidatePreview);
 }
 ui['validation-operation'].addEventListener('change', renderParameterSummary);
@@ -66,21 +75,40 @@ async function loadProfiles() {
       profiles: payload.profiles,
       compatibilityNotices: payload.compatibilityNotices ?? []
     });
-    ui['target-profile'].replaceChildren(...payload.profiles.map(profile => {
-      const option = document.createElement('option');
-      option.value = profile.id;
-      option.textContent = formatProfileLabel(profile);
-      return option;
-    }));
     renderCompatibilityNotices(payload.compatibilityNotices ?? []);
-    const preferred = payload.profiles.find(profile => profile.id === 'spring-ai-2.0-java21-mvc-streamable');
-    if (preferred) ui['target-profile'].value = preferred.id;
-    describeProfile();
-    renderGenerationSummary();
+    renderImplementationProfiles();
+    ui['mcp-implementation'].addEventListener('change', () => {
+      renderImplementationProfiles();
+      invalidatePreview();
+      wizard.syncGate();
+    });
     ui['target-profile'].addEventListener('change', describeProfile);
   } catch (failure) {
     showFailure(failure);
   }
+}
+
+function renderImplementationProfiles() {
+  const implementation = ui['mcp-implementation'].value;
+  const sdk = implementation === 'MCP_JAVA_SDK';
+  const previous = ui['target-profile'].value;
+  const profiles = getState().profiles.filter(profile => profile.mcpImplementations?.includes(implementation));
+  ui['target-profile'].replaceChildren(...profiles.map(profile => {
+    const option = document.createElement('option');
+    option.value = profile.id;
+    option.textContent = formatProfileLabel(profile);
+    return option;
+  }));
+  const preferredId = sdk ? 'spring-ai-1.1-java21-mvc-streamable' : 'spring-ai-2.0-java21-mvc-streamable';
+  const selection = profiles.find(profile => profile.id === previous)
+    ?? profiles.find(profile => profile.id === preferredId) ?? profiles[0];
+  if (selection) ui['target-profile'].value = selection.id;
+  ui['mcp-implementation-description'].textContent = sdk
+    ? 'Spring AI 의존성 없이 생성합니다. Spring Boot 3 · MVC를 지원합니다.'
+    : '@McpTool 애노테이션과 Spring AI를 사용합니다.';
+  renderCompatibilityNotices(sdk ? [] : getState().compatibilityNotices);
+  describeProfile();
+  renderGenerationSummary();
 }
 
 async function resumeRetainedJob() {
@@ -109,40 +137,54 @@ async function resumeRetainedSpecification() {
 }
 
 async function runPreview() {
+  if (validationStatus === 'validating' || generationPending) return;
   clearFailure();
   const requestVersion = ++previewRequestVersion;
+  const initiatedFromButton = document.activeElement === ui['preview-button'];
   try {
     const configuration = buildConfiguration();
     updateState({preview: null});
     ui['preview-button'].disabled = true;
     ui['generate-button'].disabled = true;
-    ui['preview-status'].textContent = '미리보기를 생성하고 있습니다.';
+    setValidationStatus('validating');
     renderValidationChecklist();
     renderPreviewEmpty('설정을 검증하고 있습니다.');
     const preview = await api.preview(getState().specificationId, configuration);
     if (requestVersion !== previewRequestVersion) return;
-    updateState({preview});
     renderPreview(preview);
-    ui['preview-status'].textContent = `설정 검증을 완료했습니다. ${preview.tools.length}개 Tool을 생성할 수 있습니다.`;
-    ui['generate-button'].disabled = false;
+    if (!preview.tools.some(tool => tool.operationId === ui['validation-operation'].value)) {
+      setValidationStatus('failed', '대표 Tool이 생성 대상에 없습니다. Tool 선택을 확인한 뒤 다시 검증해 주세요.');
+      return;
+    }
+    updateState({preview});
+    setValidationStatus('ready');
+    if (initiatedFromButton && document.activeElement === document.body) {
+      ui['generate-button'].focus({preventScroll: true});
+    }
   } catch (failure) {
     if (requestVersion !== previewRequestVersion) return;
-    invalidatePreview();
-    showFailure(failure);
+    updateState({preview: null});
+    const message = failure?.message === 'Representative arguments must be one valid JSON object.'
+      ? '테스트 입력은 올바른 JSON 객체여야 합니다.' : failure?.message;
+    setValidationStatus('failed', message);
+    renderPreviewEmpty('설정 검증에 실패했습니다. 오류를 수정한 뒤 다시 검증해 주세요.');
+    showFailure({...failure, message});
   } finally {
     if (requestVersion === previewRequestVersion) updatePreviewGate();
   }
 }
 
 async function startGeneration() {
+  if (generationPending) return;
   clearFailure();
   if (!getState().preview) {
-    showFailure({message: '프로젝트 생성 전에 미리보기를 완료해 주세요.'});
+    showFailure({message: '프로젝트 생성 전에 설정 검증을 완료해 주세요.'});
     return;
   }
   try {
     const configuration = buildConfiguration();
-    ui['generate-button'].disabled = true;
+    generationPending = true;
+    setValidationStatus('generating');
     const accepted = await api.startJob(getState().specificationId, configuration);
     updateState({jobId: accepted.id, job: accepted});
     ui['delete-job-button'].disabled = !api.hostedMode;
@@ -151,7 +193,10 @@ async function startGeneration() {
     await followJob(accepted.id);
   } catch (failure) {
     showFailure(failure);
-    ui['generate-button'].disabled = false;
+  } finally {
+    generationPending = false;
+    setValidationStatus(getState().preview ? 'ready' : 'changed');
+    updatePreviewGate();
   }
 }
 
@@ -239,15 +284,48 @@ async function removeJob() {
 }
 
 function invalidatePreview() {
+  const changed = validationStatus !== 'idle';
   previewRequestVersion += 1;
   updateState({preview: null});
   ui['generate-button'].disabled = true;
-  ui['preview-status'].textContent = '생성 전 설정 검증이 필요합니다.';
+  setValidationStatus(changed ? 'changed' : 'idle');
   renderValidationChecklist();
   renderPreviewEmpty();
   renderGenerationSummary();
   updatePreviewGate();
   wizard.syncGate();
+}
+
+function setValidationStatus(status, errorMessage) {
+  validationStatus = status;
+  const ready = status === 'ready' || status === 'generating';
+  const messages = {
+    idle: ['검증 전', '프로젝트 생성 전, 설정 검증이 필요합니다.', '검증을 완료하면 프로젝트를 생성할 수 있습니다.', '설정 검증하기'],
+    validating: ['검증 중', '설정을 검증하고 있습니다.', '분석 결과와 Tool 구성을 확인하고 있습니다.', '설정 검증 중…'],
+    ready: ['검증 완료', '설정 검증 완료. 프로젝트를 생성할 수 있습니다.', `${getState().preview?.tools.length ?? 0}개 Tool을 포함한 프로젝트를 생성합니다.`, '설정 검증하기'],
+    failed: ['수정 필요', '설정 검증에 실패했습니다.', errorMessage || '오류를 수정한 뒤 다시 검증해 주세요.', '다시 검증하기'],
+    changed: ['재검증 필요', '설정이 변경되어 다시 검증해야 합니다.', '변경한 설정을 검증하면 프로젝트를 생성할 수 있습니다.', '변경한 설정 검증하기'],
+    generating: ['검증 완료', '프로젝트 생성을 시작하고 있습니다.', '생성 요청을 처리하고 있습니다.', '설정 검증하기']
+  };
+  const [badge, title, detail, action] = messages[status];
+  const transferFocus = ready && document.activeElement === ui['preview-button'];
+  ui['validation-overall'].textContent = badge;
+  ui['validation-overall'].dataset.status = status;
+  ui['validation-action'].dataset.status = status;
+  ui['validation-action-title'].textContent = title;
+  ui['preview-status'].textContent = detail;
+  ui['preview-button-label'].textContent = action;
+  ui['preview-button'].hidden = ready;
+  ui['generate-button'].hidden = !ready;
+  ui['generate-button'].disabled = !ready || generationPending;
+  ui['generate-button-label'].textContent = generationPending ? '생성 요청 중…' : '프로젝트 생성';
+  ui['validation-stage-label'].textContent = ready ? '설정 검증 완료' : '설정 검증';
+  ui['validation-stage'].dataset.complete = String(ready);
+  ui['validation-stage'].toggleAttribute('aria-current', !ready);
+  ui['generation-stage'].toggleAttribute('aria-current', ready);
+  (ready ? ui['generation-stage'] : ui['validation-stage']).setAttribute('aria-current', 'step');
+  ui['preview-output'].setAttribute('aria-busy', String(status === 'validating'));
+  if (transferFocus) ui['generate-button'].focus({preventScroll: true});
 }
 
 function describeProfile() {
@@ -264,7 +342,9 @@ function formatProfileLabel(profile) {
   const runtime = profile.webStack === 'WEBFLUX'
     ? `WebFlux ${profile.programmingModel === 'ASYNC' ? 'Async' : profile.programmingModel}`
     : 'MVC';
-  return `Spring AI ${springAi} · Java ${profile.javaVersion} · ${buildTool} · ${runtime}`;
+  const framework = ui['mcp-implementation'].value === 'MCP_JAVA_SDK'
+    ? 'MCP Java SDK' : `Spring AI ${springAi}`;
+  return `${framework} · Java ${profile.javaVersion} · ${buildTool} · ${runtime}`;
 }
 
 function initializeProfileHelp() {
@@ -348,6 +428,7 @@ function renderAnalysis(analysis) {
 
 function resetSpecificationPresentation() {
   ui['preview-button'].disabled = true;
+  validationStatus = 'idle';
   clearFailure();
   ui['analysis-summary'].replaceChildren();
   renderPreviewEmpty();
@@ -372,14 +453,15 @@ function renderGenerationSummary() {
   ui['summary-selected'].textContent = String(selectedEndpoints.length);
   ui['summary-excluded'].textContent = String(generatedTools.length);
   const artifactId = byId('artifact-id').value.trim();
-  const profile = ui['target-profile'].value;
+  const selectedProfile = getState().profiles.find(profile => profile.id === ui['target-profile'].value);
+  const profile = selectedProfile ? formatProfileLabel(selectedProfile) : '';
   ui['summary-profile'].textContent = artifactId && profile ? `${artifactId} · ${profile}` : profile || artifactId || '—';
 }
 
 function updatePreviewGate() {
-  const required = ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name', 'target-profile'];
+  const required = ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name', 'target-profile', 'mcp-implementation'];
   const state = getState();
-  ui['preview-button'].disabled = !state.specificationId
+  ui['preview-button'].disabled = validationStatus === 'validating' || generationPending || !state.specificationId
     || !state.operations.some(operation => operation.enabled)
     || !ui['validation-operation'].value
     || required.some(id => !byId(id).value.trim());
@@ -409,7 +491,10 @@ function renderParameterSummary() {
     const name = document.createElement('strong');
     name.textContent = parameter.name;
     const meta = document.createElement('span');
-    meta.textContent = `${parameter.location} · ${parameter.type}${parameter.required ? ' · 필수' : ' · 선택'}`;
+    const location = {QUERY: '쿼리', PATH: '경로', HEADER: '헤더', COOKIE: '쿠키', BODY: '본문'}[parameter.location] ?? parameter.location;
+    const schemaType = parameter.schema?.type;
+    const type = Array.isArray(schemaType) ? schemaType.join(' / ') : schemaType;
+    meta.textContent = `${location} · ${type || '타입 정보 없음'}${parameter.required ? ' · 필수' : ' · 선택'}`;
     item.append(name, meta);
     list.append(item);
   });
@@ -429,17 +514,17 @@ function renderValidationChecklist(preview = null) {
       status: state.analysis ? 'SUCCESS' : 'PENDING'
     },
     {
-      label: '생성 Tool',
+      label: '생성 대상 Tool',
       detail: enabledCount > 0 ? `${enabledCount}개 Tool 선택` : 'Tool 선택 대기',
       status: enabledCount > 0 ? 'SUCCESS' : 'PENDING'
     },
     {
-      label: '미리보기 결과',
+      label: 'Tool 구성 검증',
       detail: preview ? `${previewCount}개 Tool 확인` : '설정 검증 대기',
       status: preview ? 'SUCCESS' : 'PENDING'
     },
     {
-      label: '대표 Tool 포함',
+      label: '대표 Tool 포함 여부',
       detail: preview ? (representativeIncluded ? representativeId : '대표 Tool 누락') : '설정 검증 대기',
       status: preview ? (representativeIncluded ? 'SUCCESS' : 'FAILED') : 'PENDING'
     }
@@ -457,12 +542,15 @@ function renderValidationChecklist(preview = null) {
     const detail = document.createElement('small');
     detail.textContent = check.detail;
     content.append(label, detail);
-    item.append(icon, content);
+    const badge = document.createElement('span');
+    badge.className = 'validation-badge';
+    badge.textContent = check.status === 'SUCCESS' ? '완료' : check.status === 'FAILED' ? '수정 필요' : '검증 대기';
+    item.append(icon, content, badge);
     return item;
   }));
 }
 
-function renderPreviewEmpty(message = '설정을 검증하면 대표 Tool 정보가 표시됩니다.') {
+function renderPreviewEmpty(message = '설정을 검증하면 결과가 표시됩니다. 아래 설정 검증하기 버튼을 눌러 주세요.') {
   const empty = document.createElement('p');
   empty.className = 'empty-state';
   empty.textContent = message;
@@ -475,7 +563,7 @@ function renderPreview(preview) {
   const tool = preview.tools.find(candidate => candidate.operationId === representativeId);
   const operation = getState().operations.find(candidate => candidate.operationId === representativeId);
   if (!tool || !operation) {
-    renderPreviewEmpty('대표 Tool을 미리보기 결과에서 확인하지 못했습니다.');
+    renderPreviewEmpty('대표 Tool을 설정 검증 결과에서 확인하지 못했습니다.');
     return;
   }
   const result = document.createElement('article');
@@ -487,7 +575,7 @@ function renderPreview(preview) {
   icon.setAttribute('aria-hidden', 'true');
   const title = document.createElement('div');
   const kicker = document.createElement('span');
-  kicker.textContent = '검증 완료';
+  kicker.textContent = '대표 Tool 확인 결과';
   const name = document.createElement('h3');
   name.textContent = tool.name;
   title.append(kicker, name);
@@ -536,7 +624,14 @@ function renderPreview(preview) {
     ...(tool.responseNormalization ? {responseNormalization: tool.responseNormalization} : {})
   }, null, 2);
   disclosure.append(disclosureTitle, schema);
-  result.append(heading, description, facts, inputsTitle, inputs, disclosure);
+  const included = document.createElement('p');
+  included.className = 'representative-tool-included';
+  included.textContent = '생성 대상에 포함되어 있습니다.';
+  const details = document.createElement('details');
+  const detailsTitle = document.createElement('summary');
+  detailsTitle.textContent = '대표 Tool 상세 보기';
+  details.append(detailsTitle, description, facts, inputsTitle, inputs, disclosure);
+  result.append(heading, included, details);
   ui['preview-output'].replaceChildren(result);
 }
 

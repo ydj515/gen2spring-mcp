@@ -294,6 +294,46 @@ class P1GenerationIntegrationTest {
     Path tempDir;
 
     @Test
+    void selectedMcpImplementationsValidateAcrossProfiles() throws Exception {
+        targetJavaHomes();
+        Path specification = resource("openapi/weather-api.yaml");
+        List<ProfileCase> profiles = new ArrayList<>();
+        profiles.addAll(PROFILE_CASES);
+        profiles.addAll(MAVEN_PROFILE_CASES);
+        profiles.addAll(WEBFLUX_PROFILE_CASES);
+        for (ProfileCase profile : profiles) {
+            for (String implementation : List.of("SPRING_AI_ANNOTATIONS", "MCP_JAVA_SDK")) {
+                if (implementation.equals("MCP_JAVA_SDK") && !profile.id().startsWith("spring-ai-1.1")) {
+                    continue;
+                }
+                Path base = configurationFor(profile);
+                Path configuration = Files.writeString(tempDir.resolve(profile.id() + "-" + implementation + ".yaml"),
+                        "mcpImplementation: " + implementation + "\n" + Files.readString(base, UTF_8), UTF_8);
+                GenerationResult result = generate(specification, configuration,
+                        tempDir.resolve(profile.id() + "-" + implementation));
+                assertEquals(implementation, result.manifest().path("mcpImplementation").asText());
+                for (var entry : result.archiveEntries().entrySet()) {
+                    String source = new String(entry.getValue(), UTF_8);
+                    if (entry.getKey().endsWith(".java")) {
+                        assertFalse(source.contains("import io.gen2spring.mcp."), entry.getKey());
+                    }
+                    if (implementation.equals("MCP_JAVA_SDK")
+                            && (entry.getKey().endsWith(".java") || entry.getKey().endsWith(".kts")
+                                || entry.getKey().endsWith("pom.xml") || entry.getKey().endsWith(".yml"))) {
+                        assertFalse(source.contains("org.springframework.ai"), entry.getKey());
+                        assertFalse(source.contains("org.springaicommunity"), entry.getKey());
+                        assertFalse(source.contains("spring-ai-bom"), entry.getKey());
+                    }
+                }
+                if (implementation.equals("MCP_JAVA_SDK")) {
+                    assertFalse(result.manifest().has("springAiVersion"));
+                    assertEquals("0.18.3", result.manifest().path("mcpJavaSdkVersion").asText());
+                }
+            }
+        }
+    }
+
+    @Test
     void installedCliValidatesTheJavaProfileMatrixDeterministically() throws Exception {
         Path specification = resource("openapi/weather-api.yaml");
         TargetJavaHomes targetJavaHomes = targetJavaHomes();

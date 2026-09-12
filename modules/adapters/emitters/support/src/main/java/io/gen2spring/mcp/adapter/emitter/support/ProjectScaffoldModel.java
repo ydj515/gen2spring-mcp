@@ -24,7 +24,10 @@ public record ProjectScaffoldModel(
         Objects.requireNonNull(projectDescription, "projectDescription");
     }
 
-    public record Dependency(String groupId, String artifactId, Scope scope) {
+    public record Dependency(String groupId, String artifactId, Scope scope, String version) {
+        public Dependency(String groupId, String artifactId, Scope scope) {
+            this(groupId, artifactId, scope, null);
+        }
         public Dependency {
             Objects.requireNonNull(groupId, "groupId");
             Objects.requireNonNull(artifactId, "artifactId");
@@ -32,7 +35,7 @@ public record ProjectScaffoldModel(
         }
 
         public String coordinate() {
-            return groupId + ":" + artifactId;
+            return groupId + ":" + artifactId + (version == null ? "" : ":" + version);
         }
     }
 

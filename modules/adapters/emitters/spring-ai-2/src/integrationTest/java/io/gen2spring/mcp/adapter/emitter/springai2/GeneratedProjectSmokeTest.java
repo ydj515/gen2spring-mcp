@@ -39,6 +39,22 @@ class GeneratedProjectSmokeTest {
     Path tempDir;
 
     @Test
+    void generatedImplementationModesBuildAndStart() throws Exception {
+        for (String mode : List.of("SPRING_AI_ANNOTATIONS")) {
+            var original = JavaSourceRendererTest.contextWithWeatherTool();
+            var request = original.request();
+            var selected = new io.gen2spring.mcp.application.command.GenerationCommand(
+                    request.project(), request.provider(), request.domain(), request.targetProfileId(),
+                    request.validationLevel(), request.validation(), request.operations(),
+                    io.gen2spring.mcp.domain.profile.McpImplementation.valueOf(mode));
+            var context = new io.gen2spring.mcp.application.usecase.GenerationContext(
+                    original.document(), original.tools(), selected, original.profile(), original.originalSpecification());
+            var files = new SpringAi2ProjectGenerator().generate(context).files();
+            assertProjectBuilds(tempDir.resolve(mode.toLowerCase(java.util.Locale.ROOT)), files);
+        }
+    }
+
+    @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedWeatherProjectResolvesCompilesAndStartsItsContext() throws Exception {
         var generated = new SpringAi2ProjectGenerator()

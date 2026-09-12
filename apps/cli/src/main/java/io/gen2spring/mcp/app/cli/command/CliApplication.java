@@ -23,6 +23,7 @@ import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 import java.io.IOException;
@@ -169,6 +170,10 @@ public final class CliApplication {
         for (CompatibilityProfile profile : profiles.profiles()) {
             ObjectNode item = items.addObject();
             item.put("id", profile.id());
+            var implementations = item.putArray("mcpImplementations");
+            for (McpImplementation implementation : McpImplementation.values()) {
+                if (implementation.supports(profile)) implementations.add(implementation.name());
+            }
             item.put("generatorModule", profile.generatorModule());
             item.put("templateVersion", profile.templateVersion());
             item.put("runtimeVersion", profile.runtimeVersion());

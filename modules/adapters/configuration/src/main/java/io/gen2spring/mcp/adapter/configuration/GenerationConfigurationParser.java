@@ -20,6 +20,7 @@ import io.gen2spring.mcp.application.command.GenerationCommand.ToolCallValidatio
 import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfiguration;
 import io.gen2spring.mcp.application.command.GenerationCommand.ValidationLevel;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.tool.ParameterSource;
@@ -70,6 +71,9 @@ public final class GenerationConfigurationParser {
     private static final int MAX_ARGUMENT_STRING_CHARACTERS = 2_048;
     private static final Set<String> ROOT_FIELDS = Set.of(
             "project", "provider", "domain", "targetProfileId", "validationLevel", "validation", "operations");
+    private static final Set<String> ALLOWED_ROOT_FIELDS = java.util.stream.Stream.concat(
+            ROOT_FIELDS.stream(), java.util.stream.Stream.of("mcpImplementation"))
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
     private static final Set<String> PROJECT_FIELDS = Set.of("groupId", "artifactId", "packageName");
     private static final Set<String> VALIDATION_FIELDS = Set.of("toolCall");
     private static final Set<String> TOOL_CALL_FIELDS = Set.of("operationId", "arguments");
@@ -301,7 +305,7 @@ public final class GenerationConfigurationParser {
 
     private void validateTokenTypes(JsonNode root) {
         requireObject(root, "Generation configuration");
-        requireFields(root, ROOT_FIELDS, ROOT_FIELDS, "Generation configuration");
+        requireFields(root, ALLOWED_ROOT_FIELDS, ROOT_FIELDS, "Generation configuration");
         JsonNode project = root.get("project");
         requireObject(project, "Project");
         requireFields(project, PROJECT_FIELDS, PROJECT_FIELDS, "Project");
@@ -311,6 +315,9 @@ public final class GenerationConfigurationParser {
         requireString(root, "provider", "Provider");
         requireString(root, "domain", "Domain");
         requireString(root, "targetProfileId", "Target profile");
+        if (root.has("mcpImplementation")) {
+            requireString(root, "mcpImplementation", "MCP implementation");
+        }
         requireString(root, "validationLevel", "Validation level");
 
         JsonNode validation = root.get("validation");
@@ -483,7 +490,8 @@ public final class GenerationConfigurationParser {
         ValidationConfiguration validation = validation(raw.validation());
         List<OperationSelection> operations = operations(raw.operations());
         return new GenerationCommand(new ProjectCoordinates(groupId, artifactId, packageName), provider, domain,
-                raw.targetProfileId(), raw.validationLevel(), validation, operations);
+                raw.targetProfileId(), raw.validationLevel(), validation, operations,
+                raw.mcpImplementation() == null ? McpImplementation.SPRING_AI_EXPLICIT : raw.mcpImplementation());
     }
 
     private ValidationConfiguration validation(RawValidation rawValidation) {
@@ -735,7 +743,8 @@ public final class GenerationConfigurationParser {
             String targetProfileId,
             ValidationLevel validationLevel,
             RawValidation validation,
-            List<RawOperation> operations) {}
+            List<RawOperation> operations,
+            McpImplementation mcpImplementation) {}
 
     private record RawValidation(RawToolCall toolCall) {}
 

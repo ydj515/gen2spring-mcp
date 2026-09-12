@@ -197,7 +197,7 @@ public final class GenerationPipeline {
         Path projectRoot = projectWorkspace.write(requestedRoot, completeProject);
         SourceSnapshot sourceSnapshot = sourceSnapshotter.snapshot(projectRoot);
         String sourceChecksum = sourceSnapshot.checksum();
-        manifestWriter.write(projectRoot, plan.profile(), analysis.document(), sourceChecksum, tools);
+        manifestWriter.write(projectRoot, plan.profile(), analysis.document(), sourceChecksum, tools, request.mcpImplementation());
         progress.succeed("GENERATE");
 
         ValidationReport report;
@@ -265,7 +265,7 @@ public final class GenerationPipeline {
                 tools,
                 plan.secretEnvironmentVariables(),
                 analysis.document().warnings(),
-                List.copyOf(paths));
+                List.copyOf(paths), request.mcpImplementation());
     }
 
     private GeneratedProjectFiles includeOriginalSpecification(

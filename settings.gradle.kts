@@ -15,6 +15,7 @@ include(
     ":modules:adapters:url-fetch",
     ":modules:bootstrap",
     ":modules:adapters:emitters:support",
+    ":modules:adapters:emitters:mcp-runtime",
     ":modules:adapters:emitters:spring-ai-1",
     ":modules:adapters:emitters:spring-ai-2",
     ":modules:adapters:validation",

@@ -145,7 +145,7 @@ class StaticAssetContractTest {
         assertFalse(index.contains(">?</button>"));
         assertFalse(index.contains("<svg"));
         assertTrue(app.contains("document.createElement('li')"));
-        assertTrue(app.contains("미리보기를 생성하고 있습니다."));
+        assertTrue(app.contains("설정을 검증하고 있습니다."));
         assertTrue(progress.contains("#job-progress-percent"));
         assertTrue(progress.contains("document.createElement('i')"));
         assertTrue(editorStyles.contains(".project-settings-grid"));
@@ -189,7 +189,7 @@ class StaticAssetContractTest {
         assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">OpenAPI 파일</h2>"));
         assertTrue(index.contains("<h2 id=\"operations-title\" tabindex=\"-1\">API endpoint 선택</h2>"));
         assertTrue(index.contains("<h2 id=\"generation-title\" tabindex=\"-1\">생성 설정</h2>"));
-        assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">미리보기와 생성</h2>"));
+        assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">설정 검증 및 프로젝트 생성</h2>"));
         assertTrue(index.contains("<h2 id=\"generation-job-title\" tabindex=\"-1\">생성 진행</h2>"));
         assertFalse(index.contains("<h2>6."));
 
@@ -398,7 +398,8 @@ class StaticAssetContractTest {
         String app = resource("/static/app.js");
 
         assertTrue(app.contains("formatProfileLabel(profile)"));
-        assertTrue(app.contains("return `Spring AI ${springAi} · Java ${profile.javaVersion}"));
+        assertTrue(app.contains("return `${framework} · Java ${profile.javaVersion}"));
+        assertTrue(app.contains("profile.mcpImplementations?.includes(implementation)"));
         assertTrue(app.contains("payload.compatibilityNotices"));
         assertTrue(app.contains("renderCompatibilityNotices"));
         assertTrue(app.contains("document.createElement('li')"));
@@ -527,13 +528,13 @@ class StaticAssetContractTest {
         String styles = resource("/static/editor.css");
 
         assertTrue(index.contains("data-policy-section=\"retry\""));
-        assertTrue(index.contains("id=\"policy-retry-toggle\" class=\"policy-section__toggle\""));
+        assertTrue(index.contains("id=\"policy-retry-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\""));
         assertTrue(index.contains("aria-expanded=\"true\" aria-controls=\"policy-retry-panel\""));
         assertTrue(index.contains("class=\"bi bi-chevron-down policy-section__chevron\""));
         assertTrue(styles.contains(".policy-section__summary"));
         assertTrue(styles.contains(".policy-section__chevron"));
         assertTrue(styles.contains(".policy-section.is-open .policy-section__chevron"));
-        assertTrue(index.contains("id=\"retry-enabled\" class=\"policy-enable-checkbox\" type=\"checkbox\""));
+        assertTrue(index.contains("id=\"retry-enabled\" class=\"policy-switch\" type=\"checkbox\" role=\"switch\""));
         assertTrue(styles.contains(".policy-enable-checkbox"));
         assertTrue(styles.contains("width: 1.25rem;\n  height: 1.25rem;\n  min-height: 0;"));
     }

@@ -14,6 +14,7 @@ import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import java.io.IOException;
@@ -44,6 +45,12 @@ public final class GenerationManifestWriter implements ManifestWriter {
             OpenApiDocument document,
             String sourceChecksum,
             List<ToolDefinition> tools) {
+        return write(projectRoot, profile, document, sourceChecksum, tools, McpImplementation.SPRING_AI_EXPLICIT);
+    }
+
+    @Override
+    public Path write(Path projectRoot, CompatibilityProfile profile, OpenApiDocument document,
+                      String sourceChecksum, List<ToolDefinition> tools, McpImplementation implementation) {
         requireInputs(profile, document, sourceChecksum, tools);
         Path target = outputPath(projectRoot);
         ObjectNode manifest = objectMapper.createObjectNode();
@@ -52,7 +59,14 @@ public final class GenerationManifestWriter implements ManifestWriter {
         manifest.put("runtimeVersion", profile.runtimeVersion());
         manifest.put("targetProfileId", profile.id());
         manifest.put("springBootVersion", profile.target().springBootVersion());
-        manifest.put("springAiVersion", profile.target().springAiVersion());
+        if (implementation != McpImplementation.SPRING_AI_EXPLICIT) {
+            manifest.put("mcpImplementation", implementation.name());
+        }
+        if (implementation == McpImplementation.MCP_JAVA_SDK) {
+            manifest.put("mcpJavaSdkVersion", "0.18.3");
+        } else {
+            manifest.put("springAiVersion", profile.target().springAiVersion());
+        }
         manifest.put("javaVersion", profile.target().javaVersion());
         ObjectNode buildTool = manifest.putObject("buildTool");
         buildTool.put("type", profile.target().buildTool());

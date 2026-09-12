@@ -6,11 +6,11 @@ const TITLES = {
   1: 'OpenAPI 파일',
   2: 'Endpoint 선택',
   3: '생성 설정',
-  4: '미리보기와 생성',
+  4: '설정 검증 및 프로젝트 생성',
   5: '생성 진행'
 };
 const REQUIRED_PROJECT_FIELDS = [
-  'group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name', 'target-profile'
+  'group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name', 'target-profile', 'mcp-implementation'
 ];
 const FIELD_LABELS = {
   'group-id': 'Group ID',
@@ -18,7 +18,8 @@ const FIELD_LABELS = {
   'package-name': 'Package name',
   'provider-name': 'Provider',
   'domain-name': 'Domain',
-  'target-profile': 'Compatibility profile'
+  'target-profile': 'Compatibility profile',
+  'mcp-implementation': 'MCP 구현 방식'
 };
 
 const filled = id => (document.querySelector(`#${id}`)?.value ?? '').trim() !== '';

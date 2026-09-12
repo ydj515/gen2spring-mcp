@@ -221,7 +221,12 @@ function parameterRow(parameter) {
   row.className = 'parameter-row';
   const name = document.createElement('div');
   name.className = 'parameter-name';
-  name.textContent = `${parameter.name} (${parameter.location}, ${parameter.type})`;
+  const title = document.createElement('strong');
+  title.textContent = parameter.name;
+  const metadata = document.createElement('span');
+  metadata.className = 'parameter-meta';
+  metadata.textContent = [parameter.location, parameter.schema?.type].filter(Boolean).join(' · ');
+  name.append(title, metadata);
   const sourceField = document.createElement('div');
   const sourceLabel = document.createElement('label');
   sourceLabel.textContent = 'Source';
@@ -325,6 +330,7 @@ function saveSelectedOperation() {
 function setPolicyControls(prefix, enabled) {
   const fields = document.querySelector(`#${prefix}-fields`);
   if (!fields) return;
+  fields.closest('.policy-section').classList.toggle('is-enabled', enabled);
   fields.hidden = !enabled;
   fields.querySelectorAll(`[id^="${prefix}-"]`).forEach(control => {
     control.disabled = !enabled;
@@ -432,6 +438,7 @@ export function buildConfiguration() {
   return {
     project: {groupId: value('group-id'), artifactId: value('artifact-id'), packageName: value('package-name')},
     provider: value('provider-name'), domain: value('domain-name'), targetProfileId: value('target-profile'),
+    mcpImplementation: value('mcp-implementation'),
     validationLevel: 'MCP_PROTOCOL', validation: {toolCall: {operationId: validationOperation, arguments: argumentsValue}},
     operations: enabled.map(operation => operationConfiguration(operation))
   };

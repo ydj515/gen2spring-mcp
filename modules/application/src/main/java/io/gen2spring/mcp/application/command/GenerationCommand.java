@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.application.command;
 
+import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
@@ -19,7 +20,20 @@ public record GenerationCommand(
         String targetProfileId,
         ValidationLevel validationLevel,
         ValidationConfiguration validation,
-        List<OperationSelection> operations) {
+        List<OperationSelection> operations,
+        McpImplementation mcpImplementation) {
+    public GenerationCommand {
+        Objects.requireNonNull(mcpImplementation, "mcpImplementation");
+    }
+
+    public GenerationCommand(
+            ProjectCoordinates project, String provider, String domain, String targetProfileId,
+            ValidationLevel validationLevel, ValidationConfiguration validation,
+            List<OperationSelection> operations) {
+        this(project, provider, domain, targetProfileId, validationLevel, validation, operations,
+                McpImplementation.SPRING_AI_EXPLICIT);
+    }
+
     public enum ValidationLevel { MCP_PROTOCOL }
 
     public record ValidationConfiguration(ToolCallValidation toolCall) {}
