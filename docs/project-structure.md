@@ -66,3 +66,9 @@ modules/
 
 `src/test`는 모듈 단위 계약, `src/integrationTest`는 해당 모듈이 정의한 실행 통합 검증을 담는다.
 생성 프로젝트의 디렉터리 구조는 [사용자 가이드](user-guide.md#생성-프로젝트-소스-구조)를 따른다.
+
+## 저장소 전체 검증 harness
+
+루트 [src/test/java](../src/test/java)는 ArchUnit과 PMD 설정 회귀 테스트를 소유한다.
+루트에 제품 Java 소스를 추가하지 않으며, 테스트용 역방향 참조 fixture는 production class import에서 제외한다.
+아키텍처 검사 때문에 별도 제품 모듈이나 앱 간 runtime 의존을 추가하지 않는다.

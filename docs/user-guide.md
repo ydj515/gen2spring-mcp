@@ -216,10 +216,13 @@ digest로 고정하고 `USER 10001:10001`로 실행한다. `.dockerignore`는 Do
 
 ### OpenAPI 분석
 
+명령은 저장소 루트에서 실행하며, 출력은 Git 추적에서 제외된 `out/`에 저장한다.
+
 ```bash
+mkdir -p out
 "$OPENAPI_MCP" inspect \
   --spec apps/cli/src/integrationTest/resources/openapi/weather-api.yaml \
-  --output /private/tmp/gen2spring-weather-analysis.json
+  --output out/gen2spring-weather-analysis.json
 ```
 
 분석 결과에는 원본 checksum, OpenAPI version, operation별 status·typed issue, security scheme과 warning이 담긴다.
@@ -228,10 +231,11 @@ digest로 고정하고 `USER 10001:10001`로 실행한다. `.dockerignore`는 Do
 ### 프로젝트 생성
 
 ```bash
+mkdir -p out
 "$OPENAPI_MCP" generate \
   --spec apps/cli/src/integrationTest/resources/openapi/weather-api.yaml \
   --config apps/cli/src/integrationTest/resources/config/weather-generation.yaml \
-  --output /private/tmp/gen2spring-weather-mcp
+  --output out/gen2spring-weather-mcp
 ```
 
 기존 output directory나 같은 이름의 sibling ZIP은 덮어쓰지 않는다. 검증 실패 시 생성 directory와
@@ -285,7 +289,7 @@ parameter source는 `USER_INPUT`과 `SERVER_SECRET`만 지원한다. secret 값�
 ```bash
 export KMA_SERVICE_KEY='replace-with-local-secret'
 export PROVIDER_BASE_URL='https://provider.example.test'
-cd /private/tmp/gen2spring-weather-mcp
+cd out/gen2spring-weather-mcp
 ./gradlew bootRun
 ```
 

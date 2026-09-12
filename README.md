@@ -52,7 +52,10 @@ java -jar apps/web/build/libs/web.jar
 
 ### CLI
 
+명령은 저장소 루트에서 실행하며, 출력은 Git 추적에서 제외된 `out/`에 저장한다.
+
 ```bash
+mkdir -p out
 export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
 mise exec -- ./gradlew :apps:cli:installDist --no-daemon --non-interactive
 
@@ -60,11 +63,11 @@ OPENAPI_MCP=apps/cli/build/install/openapi-mcp/bin/openapi-mcp
 "$OPENAPI_MCP" profiles
 "$OPENAPI_MCP" inspect \
   --spec apps/cli/src/integrationTest/resources/openapi/weather-api.yaml \
-  --output /private/tmp/gen2spring-weather-analysis.json
+  --output out/gen2spring-weather-analysis.json
 "$OPENAPI_MCP" generate \
   --spec apps/cli/src/integrationTest/resources/openapi/weather-api.yaml \
   --config apps/cli/src/integrationTest/resources/config/weather-generation.yaml \
-  --output /private/tmp/gen2spring-weather-mcp
+  --output out/gen2spring-weather-mcp
 ```
 
 CLI 설정, 검증 단계, 종료 코드, 생성 산출물과 runtime 계약은
@@ -169,6 +172,15 @@ docs/                         사용자·제품·아키텍처 문서
 
 ## 개발과 검증
 
+Java 정적 분석과 의존 방향을 로컬·CI에서 검사한다. 모든 테스트는 이 검사를 선행한다.
+
+```bash
+mise run lint
+mise run architecture:test
+```
+
+PMD는 실제 Java 소스를, ArchUnit은 production 바이트코드와 Gradle 모듈 의존을 검사한다.
+세부 범위는 [개발 및 검증](docs/development-guide.md)을 따른다.
 빠른 생성기 계약 검증과 실제 생성 프로젝트 전체 검증은 분리한다.
 
 ```bash

@@ -48,3 +48,30 @@ URL import의 fetch gateway와 실행 중 provider egress는 서로 다른 책�
 패키지 이동은 모든 source set, Spring 설정, Gradle main class, 서비스 로더 리소스를 함께 확인한다.
 Java import 검사는 [루트 빌드](../build.gradle.kts)의 `verifyJavaImportStyle`이 담당하고 test task에도 연결된다.
 프로토콜 문자열, 이름 충돌, 검증 대상 문자열은 단순 치환하지 않는다.
+
+## 자동 의존 방향 검사
+
+[ArchUnit 규칙](../src/test/java/io/gen2spring/mcp/architecture/ArchitectureRules.java)은 production 바이트코드를
+검사한다. 기존 앱별 `*PackageArchitectureTest`의 클래스 위치 검사와 함께 유지한다.
+
+| 출발 계층 | 허용·금지 경계 |
+| --- | --- |
+| Domain | domain·JDK만 허용하고 SQL API는 금지 |
+| Application | application·domain·JDK·`javax.lang.model`·기존 Jackson만 허용 |
+| Adapter | bootstrap·app 참조와 다른 adapter 직접 참조 금지. 공유 emitter 예외만 허용 |
+| Bootstrap | 앱을 참조하지 않고 생성기 객체 그래프 조립 |
+| App | 서로 다른 앱을 직접 참조하지 않음 |
+| Controller | concrete persistence/storage adapter, SQL·Spring JDBC/repository, jOOQ·MyBatis 직접 참조 금지 |
+
+공유 emitter의 허용 방향은 `springai1/springai2 → mcpruntime/support`, `mcpruntime → support`다.
+계열 간 직접 참조와 공유 코드에서 계열 코드로 향하는 역방향은 금지한다. Application의 Jackson 사용은
+현재 canonical JSON 모델 계약으로 명시적으로 허용한다. JDBC adapter는 transaction을 소유한다.
+
+[모듈 규칙](../src/test/java/io/gen2spring/mcp/architecture/ModuleDependencyRules.java)은 Gradle에 선언했지만
+아직 코드에서 쓰지 않는 역방향 의존도 잡는다. Domain은 다른 모듈에 의존하지 않고 application은 domain에만,
+일반 adapter는 domain/application에만 의존한다. Emitter support는 domain, MCP runtime은 domain/support,
+계열 emitter는 domain/application/support/MCP runtime을 허용한다. Bootstrap은 중심 계층·adapter,
+앱은 중심 계층·adapter·bootstrap을 허용한다. 테스트 전용 의존은 이 production 정책과 구분한다.
+
+실행 명령은 `mise run architecture:test`다. 모든 모듈의 `test`·`fastTest`·`integrationTest`와 루트 `check`에
+연결되어 별도 명령을 잊어도 실행된다. PMD·import 검사와 검증 범위는 [개발 및 검증](development-guide.md)을 따른다.
