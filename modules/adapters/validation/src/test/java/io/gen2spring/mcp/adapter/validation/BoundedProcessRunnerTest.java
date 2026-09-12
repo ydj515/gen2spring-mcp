@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.stream.Stream;
@@ -77,8 +78,12 @@ class BoundedProcessRunnerTest {
     void collectorFailureTerminatesTheProcess() throws Exception {
         Path pidFile = tempDir.resolve("collector.pid");
         IOException collectorFailure = new IOException("synthetic collector failure");
+        CountDownLatch collectorsReady = new CountDownLatch(2);
         var failing = new BoundedProcessRunner((input, limit) -> {
-            waitForPid(pidFile);
+            // Inject failure only after the helper closes its PID file, including on Windows.
+            assertEquals('R', input.read(), "helper must signal readiness before collector failure");
+            collectorsReady.countDown();
+            assertTrue(collectorsReady.await(3, SECONDS), "both collectors must receive readiness");
             throw collectorFailure;
         });
 

@@ -31,6 +31,10 @@ public final class SleepingProcess {
         }
         if (args.length > 1 && "pid".equals(args[0])) {
             Files.writeString(Path.of(args[1]), Long.toString(ProcessHandle.current().pid()));
+            System.out.println("READY");
+            System.out.flush();
+            System.err.println("READY");
+            System.err.flush();
         }
         Thread.sleep(60_000);
     }
