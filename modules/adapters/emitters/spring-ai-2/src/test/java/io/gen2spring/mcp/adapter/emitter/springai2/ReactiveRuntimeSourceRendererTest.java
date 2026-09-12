@@ -29,7 +29,10 @@ class ReactiveRuntimeSourceRendererTest {
         String executor = sources.get(
                 "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java");
 
-        assertTrue(executor.contains("WebClient"), executor);
+        assertTrue(executor.contains("@Autowired\n    public OpenApiOperationExecutor(\n"
+                + "            WebClient.Builder builder,"), executor);
+        assertTrue(executor.contains("this.webClient = builder.clone()"), executor);
+        assertFalse(executor.contains("WebClient.builder()"), executor);
         assertTrue(executor.contains("ConnectionProvider"), executor);
         assertTrue(executor.contains("Mono<"), executor);
         assertTrue(executor.contains("Mono.deferContextual"), executor);

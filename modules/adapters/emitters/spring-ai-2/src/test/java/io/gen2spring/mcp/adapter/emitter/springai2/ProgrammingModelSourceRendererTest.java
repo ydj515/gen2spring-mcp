@@ -38,8 +38,8 @@ class ProgrammingModelSourceRendererTest {
 
     @Test
     void preservesTheExactSyncSourceContractForJava17AndJava21() {
-        assertContract(17, "a25227ec9a60f0ec0133284d08572819a4200092a6ed6845bc94b7d407661b1c");
-        assertContract(21, "52e430a5da5a40db4503abbcb52aefca71f5a453e225f5367c096ac07e7bff09");
+        assertContract(17, "cd99e088a59a80372b030b714838998936b70c7a5972d5c0566afd187e22d51a");
+        assertContract(21, "c32c90ac932f6f3586a4cf4a81776b86ac0fa8323a70228720bfffbbd16e0a6b");
     }
 
     private void assertContract(int javaVersion, String expectedDigest) {

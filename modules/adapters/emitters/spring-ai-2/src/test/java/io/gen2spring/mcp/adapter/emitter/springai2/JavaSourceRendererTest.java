@@ -253,7 +253,7 @@ class JavaSourceRendererTest {
         assertTrue(callbacks.contains("RuntimeTelemetry.Outcome.FATAL"));
 
         assertTrue(runtime.contains("ContextExecutorService.wrap(rawRequestExecutor)"));
-        assertTrue(runtime.contains("builder.requestFactory(requestFactory)"));
+        assertTrue(runtime.contains("builder.clone().requestFactory(requestFactory)"));
         assertTrue(runtime.contains(".observationRegistry(ObservationRegistry.NOOP)"));
         assertTrue(runtime.contains("runtimeTelemetry.registerExecutor(rawRequestExecutor)"));
         assertTrue(runtime.contains("runtimeTelemetry.startProviderCall(operation.operationId(), operation.method())"));

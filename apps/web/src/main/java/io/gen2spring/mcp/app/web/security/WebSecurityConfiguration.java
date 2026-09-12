@@ -4,6 +4,7 @@ import java.util.Objects;
 import io.gen2spring.mcp.app.web.error.WebErrorMapper;
 import io.gen2spring.mcp.app.web.error.WebErrorResponseWriter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -21,6 +22,13 @@ public class WebSecurityConfiguration {
     public static final String CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; "
             + "style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; "
             + "form-action 'none'; frame-ancestors 'none'";
+
+    @Bean
+    FilterRegistrationBean<LocalRequestSecurityFilter> localRequestSecurityFilterRegistration(LocalRequestSecurityFilter filter) {
+        FilterRegistrationBean<LocalRequestSecurityFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
 
     @Bean
     SecurityFilterChain localSecurity(

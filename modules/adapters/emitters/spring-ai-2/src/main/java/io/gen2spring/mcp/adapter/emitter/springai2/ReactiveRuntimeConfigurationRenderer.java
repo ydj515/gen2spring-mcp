@@ -31,7 +31,7 @@ final class ReactiveRuntimeConfigurationRenderer {
                         HttpClient httpClient = HttpClient.create(connectionProvider)
                                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(connectTimeoutMillis))
                                 .responseTimeout(Duration.ofMillis(readTimeoutMillis));
-                        this.webClient = builder
+                        this.webClient = builder.clone()
                                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                                 .codecs(configurer ->
                                         configurer.defaultCodecs().maxInMemorySize(responseMaxBytes))

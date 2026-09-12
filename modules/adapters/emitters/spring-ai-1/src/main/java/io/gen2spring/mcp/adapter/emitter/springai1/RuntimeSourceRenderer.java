@@ -620,7 +620,7 @@ final class RuntimeSourceRenderer {
                                 .connectTimeout(Duration.ofMillis(connectTimeoutMillis))
                                 .build());
                         requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMillis));
-                        this.restClient = builder.requestFactory(requestFactory)
+                        this.restClient = builder.clone().requestFactory(requestFactory)
                                 .observationRegistry(ObservationRegistry.NOOP)
                                 .build();
                         this.rawRequestExecutor = new ThreadPoolExecutor(

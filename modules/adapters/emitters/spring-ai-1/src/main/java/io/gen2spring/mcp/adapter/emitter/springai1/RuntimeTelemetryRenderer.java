@@ -108,6 +108,8 @@ final class RuntimeTelemetryRenderer {
                         this.meterRegistry = java.util.Objects.requireNonNull(meterRegistry);
                         this.tracer = java.util.Objects.requireNonNull(tracer);
                         java.util.Objects.requireNonNull(observationRegistry);
+                        // Completion owns timer recording; Boot's meter handler would record it again.
+                        // Keep generated observations isolated while using the managed tracer and meters.
                         this.observationRegistry = ObservationRegistry.create();
                         this.observationRegistry.observationConfig()
                                 .observationHandler(new DefaultTracingObservationHandler(this.tracer));

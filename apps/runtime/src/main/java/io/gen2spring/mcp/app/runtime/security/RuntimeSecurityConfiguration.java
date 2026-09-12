@@ -2,6 +2,7 @@ package io.gen2spring.mcp.app.runtime.security;
 
 import io.gen2spring.mcp.app.runtime.server.RuntimeServerHandleRegistry;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,6 +18,13 @@ final class RuntimeSecurityConfiguration {
             RuntimeAccessAuthenticator authenticator,
             RuntimeServerHandleRegistry handles) {
         return new RuntimeBearerFilter(authenticator, handles::invalidate);
+    }
+
+    @Bean
+    FilterRegistrationBean<RuntimeBearerFilter> runtimeBearerFilterRegistration(RuntimeBearerFilter filter) {
+        FilterRegistrationBean<RuntimeBearerFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

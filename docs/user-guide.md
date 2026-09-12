@@ -438,3 +438,18 @@ Windows validation host는 repository `gradlew.bat`와 trusted `cmd.exe`, verifi
 CLI와 local UI의 process isolation은 전용 workspace, timeout과 bounded output에 한정된다.
 Hosted mode만 rootless OCI sandbox에 network-none, read-only rootfs, non-root identity와 resource
 limit을 적용한다.
+
+## Spring 조립 경계
+
+- Local Web과 Managed Runtime의 보안 필터는 `FilterRegistrationBean`의 servlet 자동 등록을 끄고
+  `SecurityFilterChain`에서만 실행한다.
+- 생성된 MVC·WebFlux executor는 Spring이 주입한 `RestClient.Builder`·`WebClient.Builder`를 복제해
+  공통 필터와 설정을 보존한다. 공급자 전용 transport, timeout, 응답 크기 제한은 복제본에 적용한다.
+- 자동 HTTP observation의 `NOOP` 설정은 원본 URL·쿼리·예외 유출 방지 계약이다.
+  `RuntimeTelemetry`는 관리되는 `Tracer`·`MeterRegistry`를 사용하지만 observation registry는 격리한다.
+  공용 registry로 바꾸려면 수동 타이머와 Boot meter handler의 중복 기록부터 해소해야 한다.
+- 공급자 설정은 현재 시작 시 URI·timeout·응답 크기·동시 실행 한도를 검증한다. 설정 바인딩을
+  `@ConfigurationProperties`로 옮길 때도 동적 secret binding과 기존 오류 코드를 유지해야 한다.
+  전용 Jackson mapper의 null 직렬화·응답 정규화 계약도 호스트 mapper 설정과 별도로 유지한다.
+- Web의 전역 오류 처리는 페이지를 포함해 민감 정보를 제거한 고정 JSON 응답을 제공한다.
+  mTLS의 `client-auth: NEED`, 워커의 bounded queue·종료 처리, JDBC의 명시적 트랜잭션 경계는 유지한다.

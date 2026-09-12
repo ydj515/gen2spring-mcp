@@ -413,6 +413,11 @@ class ReactiveGeneratedRuntimeTest {
                 import org.junit.jupiter.api.AfterEach;
                 import org.junit.jupiter.api.BeforeAll;
                 import org.junit.jupiter.api.Test;
+                import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+                import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+                import io.micrometer.observation.ObservationRegistry;
+                import io.micrometer.tracing.Tracer;
+                import org.springframework.web.reactive.function.client.ClientRequest;
                 import org.springframework.core.env.MapPropertySource;
                 import org.springframework.core.env.StandardEnvironment;
                 import org.springframework.http.MediaType;
@@ -460,6 +465,25 @@ class ReactiveGeneratedRuntimeTest {
                     void disposeExecutor() {
                         if (executor != null) {
                             executor.shutdown();
+                        }
+                    }
+
+                    @Test
+                    void springInjectionPreservesTheManagedBuilderFilters() {
+                        WebClient.Builder builder = WebClient.builder().filter((request, next) ->
+                                next.exchange(ClientRequest.from(request)
+                                        .header("X-Mode", "managed-builder").build()));
+                        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+                            context.setEnvironment(environment(Map.of()));
+                            context.registerBean(WebClient.Builder.class, () -> builder);
+                            context.registerBean(RuntimeTelemetry.class, () -> new RuntimeTelemetry(
+                                    ObservationRegistry.NOOP, new SimpleMeterRegistry(), Tracer.NOOP));
+                            context.register(OpenApiOperationExecutor.class);
+                            context.refresh();
+                            OpenApiOperationExecutor managed = context.getBean(OpenApiOperationExecutor.class);
+                            StepVerifier.create(managed.execute(operation("GET", "/get"), Map.of()))
+                                    .assertNext(result -> assertEquals("managed-builder", result.get("header").stringValue()))
+                                    .verifyComplete();
                         }
                     }
 
@@ -540,6 +564,10 @@ class ReactiveGeneratedRuntimeTest {
                     }
 
                     private OpenApiOperationExecutor executor(Map<String, Object> overrides) {
+                        return new OpenApiOperationExecutor(WebClient.builder(), environment(overrides));
+                    }
+
+                    private StandardEnvironment environment(Map<String, Object> overrides) {
                         Map<String, Object> properties = new LinkedHashMap<>();
                         properties.put("provider.base-url",
                                 "http://127.0.0.1:" + server.getAddress().getPort());
@@ -552,7 +580,7 @@ class ReactiveGeneratedRuntimeTest {
                         properties.putAll(overrides);
                         StandardEnvironment environment = new StandardEnvironment();
                         environment.getPropertySources().addFirst(new MapPropertySource("test", properties));
-                        return new OpenApiOperationExecutor(WebClient.builder(), environment);
+                        return environment;
                     }
 
                     private OperationDefinition operation(String method, String path) {
