@@ -1,7 +1,7 @@
 # OpenAPI MCP Generator 사용자 가이드
 
 이 문서는 설치, CLI와 local UI 사용법, 생성 설정, runtime 계약, 검증 단계와 지원 경계를 설명한다.
-프로젝트 개요와 가장 짧은 시작 방법은 [루트 README](../README.md)를 먼저 참고한다.
+프로젝트 개요는 [루트 README](../README.md)를 참고한다.
 
 ## 요구 환경
 
