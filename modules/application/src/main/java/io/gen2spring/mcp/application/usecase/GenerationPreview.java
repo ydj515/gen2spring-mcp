@@ -1,6 +1,5 @@
 package io.gen2spring.mcp.application.usecase;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

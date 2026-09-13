@@ -37,7 +37,6 @@ import io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator;
 import io.gen2spring.mcp.application.validation.ObservedTool;
 import io.gen2spring.mcp.application.port.outbound.ProjectGenerator;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
 import io.gen2spring.mcp.application.usecase.GenerationPipeline;
 import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.application.usecase.GenerationProgress;

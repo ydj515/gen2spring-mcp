@@ -7,10 +7,6 @@ import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfigu
 import io.gen2spring.mcp.application.toolmodel.schema.SchemaValueValidator;
 import io.gen2spring.mcp.application.toolmodel.schema.SchemaPatternMatcher;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.validation.ExpectedToolCall;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamInteraction;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.ToolInput;

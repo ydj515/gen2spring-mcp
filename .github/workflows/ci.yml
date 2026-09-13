@@ -48,13 +48,9 @@ jobs:
           :apps:cli:fastTest
           :apps:cli:installDist
           --no-daemon --non-interactive --rerun-tasks
-      - name: Test Linux Web profile contracts
+      - name: Verify Linux coverage thresholds and Web contracts
         run: >-
-          ./gradlew :apps:web:test
-          --tests '*WebMvcContractTest.preservesTheProfilesUploadAndPreviewApi'
-          --tests '*HostedProfileControllerTest.exposesCanonicalProfilesInHostedMode'
-          --tests '*StaticAssetContractTest'
-          --no-daemon --non-interactive --rerun-tasks
+          ./gradlew coverageVerification --no-daemon --non-interactive
 
   windows:
     runs-on: windows-latest
@@ -97,11 +93,7 @@ jobs:
           :apps:cli:fastTest
           :apps:cli:installDist
           --no-daemon --non-interactive --rerun-tasks
-      - name: Test Windows Web profile contracts
+      - name: Verify Windows coverage thresholds and Web contracts
         shell: pwsh
         run: >-
-          .\gradlew.bat :apps:web:test
-          --tests '*WebMvcContractTest.preservesTheProfilesUploadAndPreviewApi'
-          --tests '*HostedProfileControllerTest.exposesCanonicalProfilesInHostedMode'
-          --tests '*StaticAssetContractTest'
-          --no-daemon --non-interactive --rerun-tasks
+          .\gradlew.bat coverageVerification --no-daemon --non-interactive

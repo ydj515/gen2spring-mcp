@@ -1,8 +1,5 @@
 package io.gen2spring.mcp.application.validation;
 
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamResponse;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamInteraction;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;

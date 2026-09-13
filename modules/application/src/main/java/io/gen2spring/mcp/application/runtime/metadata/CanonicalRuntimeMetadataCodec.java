@@ -1,7 +1,6 @@
 package io.gen2spring.mcp.application.runtime.metadata;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.RUNTIME_METADATA_INVALID;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;

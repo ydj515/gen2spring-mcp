@@ -3,7 +3,6 @@ package io.gen2spring.mcp.application.validation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.toolmodel.schema.SchemaPatternMatcher;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
-import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;

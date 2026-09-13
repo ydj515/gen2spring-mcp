@@ -1,9 +1,7 @@
 package io.gen2spring.mcp.app.web.api;
 
-import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
 import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;

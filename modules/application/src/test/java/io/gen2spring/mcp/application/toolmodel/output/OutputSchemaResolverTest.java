@@ -1,6 +1,5 @@
 package io.gen2spring.mcp.application.toolmodel.output;
 
-import io.gen2spring.mcp.domain.tool.OutputKind;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.OPERATION_UNSUPPORTED;
 import static io.gen2spring.mcp.domain.tool.OutputKind.GENERIC_JSON;

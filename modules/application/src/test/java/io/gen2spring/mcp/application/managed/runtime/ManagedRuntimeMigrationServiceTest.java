@@ -7,7 +7,6 @@ import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogDetails;

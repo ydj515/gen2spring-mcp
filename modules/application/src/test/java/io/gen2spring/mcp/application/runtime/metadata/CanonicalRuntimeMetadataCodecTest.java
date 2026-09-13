@@ -20,7 +20,6 @@ import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeCredentia
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
-import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;

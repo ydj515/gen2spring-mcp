@@ -3,7 +3,6 @@ package io.gen2spring.mcp.application.managed.runtime;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import java.lang.reflect.Modifier;
 import java.util.Map;

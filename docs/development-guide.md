@@ -20,7 +20,8 @@ Web의 `READY` JSON에 있는 URL로 접속한다. CLI 설치와 실제 입력 �
 | 명령 | 검증하는 것 | 포함하지 않는 것 |
 | --- | --- | --- |
 | `mise run lint:imports` | Java import 정적 정책 | 실행 동작 |
-| `mise run lint` | import 검사와 PMD, production/test/integrationTest Java 소스 | Kotlin 빌드 스크립트, 생성 템플릿 문자열 내부 Java의 분석 |
+| `mise run lint` | import 검사와 Checkstyle·PMD, production/test/integrationTest Java 소스 | Kotlin 빌드 스크립트, 생성 템플릿 문자열 내부 Java의 분석 |
+| `mise run coverage:check` | 고정 12개 suite, 전체 production 라인 65%·브랜치 55% 하한 | 컨테이너·생성 프로젝트 acceptance 실행 |
 | `mise run architecture:test` | 모든 production 모듈의 ArchUnit·Gradle 의존 방향과 검사 자체의 회귀 테스트 | 컨테이너 실행·생성 프로젝트의 runtime 검증 |
 | `mise run generator:test` | 주요 생성기 계약, emitter/validator fastTest, 선택 Web 계약 | 생성 프로젝트 내부 빌드와 전체 hosted 검증 |
 | `mise run ui:test` | Web 모듈 unit/계약 테스트 | 실제 브라우저 시각·키보드 검증 |
@@ -52,9 +53,35 @@ Hosted 검증은 Docker 및 테스트별 외부 실행 전제가 필요하다. �
 
 ## Java 품질과 의존 방향 검사
 
-Java 정적 분석에는 PMD 7.27.0, 의존 방향 검사에는 ArchUnit 1.5.0을 사용한다.
+Java 스타일 검사에는 Checkstyle 10.21.4, 정적 분석에는 PMD 7.27.0,
+커버리지에는 JaCoCo 0.8.13, 의존 방향 검사에는 ArchUnit 1.5.0을 사용한다.
 버전은 [version catalog](../gradle/libs.versions.toml)에서 관리한다.
-Checkstyle을 추가로 도입하지 않고 기존 `verifyJavaImportStyle`이 FQCN 정책을 계속 담당한다.
+Kotlin 소스가 없는 Java 프로젝트이므로 Kover·ktlint·detekt는 적용하지 않는다.
+기존 `verifyJavaImportStyle`이 FQCN 정책을 계속 담당한다.
+
+[Checkstyle 규칙](../config/checkstyle/checkstyle.xml)은 wildcard·중복·미사용 import,
+파일명과 최상위 타입명 일치, modifier 순서, 파일 끝 개행을 검사한다.
+production·test·integrationTest 소스를 `verifyJavaQuality`와 기존 CI에서 검사하며,
+위반은 빌드를 실패시킨다. 보고서는 모듈별 `build/reports/checkstyle`에 생성한다.
+
+[Gradle JaCoCo 플러그인](https://docs.gradle.org/current/userguide/jacoco_plugin.html)으로
+각 `Test` 태스크에 계측과 보고서를 연결한다. `test`·`fastTest`·`integrationTest` 실행 후
+모듈별 `build/reports/jacoco/<태스크명>/coverage.xml`과 `html/index.html`을 생성한다.
+`jacocoTestReport`·`jacocoFastTestReport`·`jacocoIntegrationTestReport`를 직접 실행하면
+해당 테스트도 실행한다. 실행 데이터는 각 Test 태스크의 JaCoCo 설정에서 가져오므로 서로 섞이지 않는다.
+보고서는 해당 모듈 production 클래스와 실행한 테스트만 대상으로 하며, 필터 실행이나 fast suite 결과는
+전체 테스트 커버리지가 아니다. 별도 JVM으로 실행한 생성 프로젝트·서버는 계측하지 않는다.
+`mise run coverage:check` (`./gradlew coverageVerification`)는 **전체 production 클래스 합산 라인 65%,
+브랜치 55%**를 하한으로 검사한다. 루트 `check`와 Linux·Windows CI에 연결되어 하한 미달이면 실패한다.
+초기 측정은 라인 69.45%, 브랜치 56.28%였다. 미실행 production 코드도 분모에 포함하며 클래스 제외는 없다.
+
+측정 테스트는 domain·application·configuration·openapi·filesystem·emitters/support·bootstrap·web의
+`test`와 spring-ai-1·spring-ai-2·validation·cli의 `fastTest`, 총 12개 suite로 고정한다.
+Web은 필터 없이 전체 단위 테스트를 실행한다. 기존 fastTest의 생성 프로젝트 실행 제외는 유지한다.
+컨테이너 기반 hosted acceptance와 생성 프로젝트 acceptance는 이 하한의 실행 범위에 포함하지 않는다.
+각 suite를 먼저 실행하고 `JacocoTaskExtension.destinationFile`의 데이터가 모두 존재하는지 확인한다.
+필수 파일 누락·빈 파일은 보고서 생성 전에 실패하며, 과거 integrationTest나 다른 임의 exec 파일은 합산하지 않는다.
+합산 보고서는 `build/reports/jacoco/coverageReport`에 XML·HTML로 생성한다.
 
 [PMD 규칙](../config/pmd/ruleset.xml)은 null 비교·finally 반환·switch fall-through·미사용 값 등
 15개 규칙에 집중한다. Parser의 byte/codepoint cursor와 bounded stream read는 classic for 변수의 수동
@@ -63,7 +90,7 @@ Checkstyle을 추가로 도입하지 않고 기존 `verifyJavaImportStyle`이 FQ
 Java는 기존 생성 프로젝트 검증으로 확인한다.
 
 `verifyPmdRules`는 잘못된 규칙 이름·비어 있는 ruleset을 분석 전에 거부한다. PMD violation과 보고서의
-processing/configuration error도 빌드를 실패시킨다. PMD 실행은 shared build service로 동시에 2개까지
+processing/configuration error도 빌드를 실패시킨다. Checkstyle·PMD 실행은 shared build service로 합쳐서 동시에 2개까지
 허용하며, 보고서는 모듈별 `build/reports/pmd`에 XML·HTML로 기록한다.
 
 루트 `src/test/java`는 제품 모듈에 포함되지 않는 검증 harness다. `architectureTest`는 루트 `test`를 실행하고

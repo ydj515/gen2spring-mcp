@@ -2,9 +2,14 @@
 java = "21.0.2"
 
 [tasks.lint]
-description = "Run Java import policy and PMD across production and test sources"
+description = "Run Java import policy, Checkstyle and PMD across production and test sources"
 run = "./gradlew verifyJavaQuality --no-daemon --non-interactive"
 run_windows = ".\\gradlew.bat verifyJavaQuality --no-daemon --non-interactive"
+
+[tasks."coverage:check"]
+description = "Require 65% line and 55% branch coverage across all production classes"
+run = "./gradlew coverageVerification --no-daemon --non-interactive"
+run_windows = ".\\gradlew.bat coverageVerification --no-daemon --non-interactive"
 
 [tasks."architecture:test"]
 description = "Check bytecode architecture and declared production module dependencies"

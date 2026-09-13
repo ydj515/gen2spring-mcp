@@ -1,6 +1,12 @@
 import org.gradle.api.services.BuildService
 import org.gradle.api.services.BuildServiceParameters
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.plugins.quality.Checkstyle
+import org.gradle.api.plugins.quality.CheckstyleExtension
+import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.gradle.api.plugins.quality.Pmd
 import org.gradle.api.plugins.quality.PmdExtension
 import org.gradle.api.tasks.SourceSetContainer
@@ -11,9 +17,11 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 plugins {
     java
     pmd
+    checkstyle
+    jacoco
 }
 
-abstract class PmdExecutionLimit : BuildService<BuildServiceParameters.None>
+abstract class StaticAnalysisExecutionLimit : BuildService<BuildServiceParameters.None>
 
 private val JAVA_CODE = 0
 private val JAVA_LINE_COMMENT = 1
@@ -152,10 +160,13 @@ val productionModuleGraph = providers.provider {
         "${module.path}=${targets.joinToString(",")}"
     }
 }
+val checkstyleVersion = libs.versions.checkstyle.get()
+val jacocoVersion = libs.versions.jacoco.get()
+val checkstyleRules = layout.projectDirectory.file("config/checkstyle/checkstyle.xml")
 val pmdVersion = libs.versions.pmd.get()
 val pmdRules = layout.projectDirectory.file("config/pmd/ruleset.xml")
 
-val pmdExecutionLimit = gradle.sharedServices.registerIfAbsent("pmdExecutionLimit", PmdExecutionLimit::class) {
+val staticAnalysisExecutionLimit = gradle.sharedServices.registerIfAbsent("staticAnalysisExecutionLimit", StaticAnalysisExecutionLimit::class) {
     maxParallelUsages.set(2)
 }
 
@@ -170,7 +181,7 @@ val verifyPmdRules = tasks.register<JavaExec>("verifyPmdRules") {
 
 val verifyJavaQuality = tasks.register("verifyJavaQuality") {
     group = "verification"
-    description = "Run Java import policy and PMD across production and test source sets"
+    description = "Run Java import policy, Checkstyle and PMD across production and test source sets"
     dependsOn("verifyJavaImportStyle")
 }
 
@@ -202,6 +213,50 @@ tasks.check { dependsOn(verifyJavaQuality, architectureTest) }
 allprojects {
     if (this != rootProject && !buildFile.exists()) return@allprojects
     apply(plugin = "pmd")
+    apply(plugin = "checkstyle")
+    apply(plugin = "jacoco")
+    extensions.configure<CheckstyleExtension> {
+        toolVersion = checkstyleVersion
+        configFile = checkstyleRules.asFile
+        isIgnoreFailures = false
+        maxWarnings = 0
+    }
+    tasks.withType<Checkstyle>().configureEach {
+        usesService(staticAnalysisExecutionLimit)
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+        }
+    }
+    rootProject.tasks.named("verifyJavaQuality") { dependsOn(tasks.withType<Checkstyle>()) }
+    extensions.configure<JacocoPluginExtension> { toolVersion = jacocoVersion }
+    plugins.withId("java") {
+        val mainSources = extensions.getByType<SourceSetContainer>().named("main")
+        // Each suite owns its execution data and report; running fastTest must not start test.
+        tasks.withType<Test>().all {
+            val suite = this
+            val reportName = "jacoco${name.replaceFirstChar { it.uppercaseChar() }}Report"
+            val coverageReport = if (name == "test") {
+                tasks.named<JacocoReport>(reportName)
+            } else {
+                tasks.register<JacocoReport>(reportName)
+            }
+            coverageReport.configure {
+                group = "verification"
+                description = "Generate coverage for ${suite.path}"
+                dependsOn(suite)
+                executionData(suite)
+                sourceSets(mainSources.get())
+                reports {
+                    xml.required.set(true)
+                    html.required.set(true)
+                    xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/${suite.name}/coverage.xml"))
+                    html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/${suite.name}/html"))
+                }
+            }
+            finalizedBy(coverageReport)
+        }
+    }
     extensions.configure<PmdExtension> {
         toolVersion = pmdVersion
         ruleSets = emptyList()
@@ -212,7 +267,7 @@ allprojects {
     val pmdTasks = tasks.withType<Pmd>()
     pmdTasks.configureEach {
         dependsOn(rootProject.tasks.named("verifyPmdRules"))
-        usesService(pmdExecutionLimit)
+        usesService(staticAnalysisExecutionLimit)
         reports {
             xml.required.set(true)
             html.required.set(true)
@@ -373,3 +428,79 @@ subprojects {
         useJUnitPlatform()
     }
 }
+
+// Keep the coverage population stable across local runs and both CI platforms.
+val coverageSuitePaths = listOf(
+    ":modules:domain:test",
+    ":modules:application:test",
+    ":modules:adapters:configuration:test",
+    ":modules:adapters:openapi:test",
+    ":modules:adapters:filesystem:test",
+    ":modules:adapters:emitters:support:test",
+    ":modules:adapters:emitters:spring-ai-1:fastTest",
+    ":modules:adapters:emitters:spring-ai-2:fastTest",
+    ":modules:adapters:validation:fastTest",
+    ":modules:bootstrap:test",
+    ":apps:cli:fastTest",
+    ":apps:web:test",
+)
+val coverageExecutionData = files(providers.provider {
+    coverageSuitePaths.map { taskPath ->
+        val suite = project(taskPath.substringBeforeLast(':')).tasks
+            .named<Test>(taskPath.substringAfterLast(':')).get()
+        require(suite.filter.includePatterns.isEmpty() && suite.filter.excludePatterns.isEmpty()) {
+            "Coverage verification requires the complete suite: $taskPath"
+        }
+        requireNotNull(suite.extensions.getByType<JacocoTaskExtension>().destinationFile) {
+            "Missing JaCoCo destination for $taskPath"
+        }
+    }
+})
+val verifyCoverageInputs = tasks.register("verifyCoverageInputs") {
+    group = "verification"
+    description = "Require execution data from every configured coverage suite"
+    dependsOn(coverageSuitePaths)
+    doLast {
+        coverageExecutionData.files.forEach { executionFile ->
+            check(executionFile.isFile && executionFile.length() > 0) {
+                "Missing coverage execution data: $executionFile"
+            }
+        }
+    }
+}
+val coverageReport = tasks.register<JacocoReport>("coverageReport") {
+    group = "verification"
+    description = "Report all production classes against the fixed CI coverage suites"
+    dependsOn(verifyCoverageInputs)
+    executionData(coverageExecutionData)
+    classDirectories.from(productionClasses)
+    sourceDirectories.from(productionProjects.map { it.file("src/main/java") })
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+
+val coverageVerification = tasks.register<JacocoCoverageVerification>("coverageVerification") {
+    group = "verification"
+    description = "Require at least 65% line and 55% branch coverage across all production classes"
+    dependsOn(coverageReport)
+    executionData(coverageExecutionData)
+    classDirectories.from(productionClasses)
+    sourceDirectories.from(productionProjects.map { it.file("src/main/java") })
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.65".toBigDecimal()
+            }
+            limit {
+                counter = "BRANCH"
+                value = "COVEREDRATIO"
+                minimum = "0.55".toBigDecimal()
+            }
+        }
+    }
+}
+tasks.check { dependsOn(coverageVerification) }
