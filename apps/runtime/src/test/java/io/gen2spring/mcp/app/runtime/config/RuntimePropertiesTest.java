@@ -8,8 +8,18 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class RuntimePropertiesTest {
+    @TempDir
+    Path secrets;
+
+    @Test
+    void acceptsAnAbsoluteHttpsProviderEgressEndpoint() {
+        URI endpoint = URI.create("https://provider-egress:9443/internal/provider-call");
+        assertEquals(endpoint, properties(endpoint).providerEgressEndpoint());
+    }
+
     @Test
     void rejectsNullEncryptionEntriesWithTheFixedConfigurationFailure() {
         Map<String, Path> keyFiles = new LinkedHashMap<>();
@@ -39,15 +49,15 @@ class RuntimePropertiesTest {
     private RuntimeProperties properties(URI endpoint) {
         return new RuntimeProperties(
                 8,
-                Path.of("/run/secrets/token-pepper"),
+                secrets.resolve("token-pepper"),
                 new RuntimeProperties.Encryption(
-                        "key-1", Map.of("key-1", Path.of("/run/secrets/credential-key"))),
+                        "key-1", Map.of("key-1", secrets.resolve("credential-key"))),
                 endpoint,
                 new RuntimeProperties.Tls(
-                        Path.of("/run/secrets/client.p12"), Path.of("/run/secrets/client-password"),
-                        Path.of("/run/secrets/trust.p12"), Path.of("/run/secrets/trust-password")),
+                        secrets.resolve("client.p12"), secrets.resolve("client-password"),
+                        secrets.resolve("trust.p12"), secrets.resolve("trust-password")),
                 new RuntimeProperties.Database(
                         "jdbc:postgresql://postgres/gen2spring", "gen2spring",
-                        Path.of("/run/secrets/postgres-password")));
+                        secrets.resolve("postgres-password")));
     }
 }

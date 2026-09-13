@@ -21,7 +21,7 @@ Web의 `READY` JSON에 있는 URL로 접속한다. CLI 설치와 실제 입력 �
 | --- | --- | --- |
 | `mise run lint:imports` | Java import 정적 정책 | 실행 동작 |
 | `mise run lint` | import 검사와 Checkstyle·PMD, production/test/integrationTest Java 소스 | Kotlin 빌드 스크립트, 생성 템플릿 문자열 내부 Java의 분석 |
-| `mise run coverage:check` | 고정 12개 suite, 전체 production 라인 65%·브랜치 55% 하한 | 컨테이너·생성 프로젝트 acceptance 실행 |
+| `mise run coverage:check` | 고정 15개 suite, 전체 production 라인 65%·브랜치 55% 하한 | 컨테이너·생성 프로젝트 acceptance 실행 |
 | `mise run architecture:test` | 모든 production 모듈의 ArchUnit·Gradle 의존 방향과 검사 자체의 회귀 테스트 | 컨테이너 실행·생성 프로젝트의 runtime 검증 |
 | `mise run generator:test` | 주요 생성기 계약, emitter/validator fastTest, 선택 Web 계약 | 생성 프로젝트 내부 빌드와 전체 hosted 검증 |
 | `mise run ui:test` | Web 모듈 unit/계약 테스트 | 실제 브라우저 시각·키보드 검증 |
@@ -73,10 +73,13 @@ production·test·integrationTest 소스를 `verifyJavaQuality`와 기존 CI에�
 전체 테스트 커버리지가 아니다. 별도 JVM으로 실행한 생성 프로젝트·서버는 계측하지 않는다.
 `mise run coverage:check` (`./gradlew coverageVerification`)는 **전체 production 클래스 합산 라인 65%,
 브랜치 55%**를 하한으로 검사한다. 루트 `check`와 Linux·Windows CI에 연결되어 하한 미달이면 실패한다.
-초기 측정은 라인 69.45%, 브랜치 56.28%였다. 미실행 production 코드도 분모에 포함하며 클래스 제외는 없다.
+미실행 production 코드도 분모에 포함하며 클래스 제외는 없다.
+POSIX 전용 테스트는 Windows에서 건너뛰므로 플랫폼별 커버리지는 다를 수 있지만 하한은 동일하다.
 
 측정 테스트는 domain·application·configuration·openapi·filesystem·emitters/support·bootstrap·web의
-`test`와 spring-ai-1·spring-ai-2·validation·cli의 `fastTest`, 총 12개 suite로 고정한다.
+`test`, runtime·fetch-gateway·provider-egress 앱의 `test`와
+spring-ai-1·spring-ai-2·validation·cli의 `fastTest`, 총 15개 suite로 고정한다.
+세 hosted 앱의 단위 테스트는 컨테이너 없이 보안·요청 처리·런타임 동작을 검증하며 양쪽 CI에서 실행한다.
 Web은 필터 없이 전체 단위 테스트를 실행한다. 기존 fastTest의 생성 프로젝트 실행 제외는 유지한다.
 컨테이너 기반 hosted acceptance와 생성 프로젝트 acceptance는 이 하한의 실행 범위에 포함하지 않는다.
 각 suite를 먼저 실행하고 `JacocoTaskExtension.destinationFile`의 데이터가 모두 존재하는지 확인한다.

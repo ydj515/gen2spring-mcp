@@ -443,6 +443,9 @@ val coverageSuitePaths = listOf(
     ":modules:bootstrap:test",
     ":apps:cli:fastTest",
     ":apps:web:test",
+    ":apps:runtime:test",
+    ":apps:fetch-gateway:test",
+    ":apps:provider-egress:test",
 )
 val coverageExecutionData = files(providers.provider {
     coverageSuitePaths.map { taskPath ->
