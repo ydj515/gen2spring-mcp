@@ -1,0 +1,166 @@
+package io.gen2spring.mcp.adapter.validation.project;
+
+import static io.gen2spring.mcp.application.generation.command.GenerationCommand.ValidationLevel.MCP_PROTOCOL;
+import static io.gen2spring.mcp.application.generation.validation.StageStatus.SUCCESS;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.ARRAY;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.INTEGER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.OBJECT;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.STRING;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.gen2spring.mcp.adapter.emitter.springai2.SpringAi2ProjectGenerator;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ProjectCoordinates;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolSchemaFactory;
+import io.gen2spring.mcp.application.generation.validation.ValidationRequest;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.OutputKind;
+import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolInput;
+import java.math.BigDecimal;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
+
+class GeneratedWeatherValidationSmokeTest {
+    private static final String TOOL_NAME = "kma_weather_get_forecast";
+    private static final String TOOL_DESCRIPTION = "Get the public weather forecast for a grid location.";
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void validatesTheActualSpringAiToolsListSchemaForAGeneratedWeatherProject() throws Exception {
+        Path root = tempDir.toRealPath();
+        ToolDefinition tool = weatherTool();
+        var coordinates = new ProjectCoordinates(
+                "com.example", "weather-mcp-server", "com.example.weather");
+        var generationRequest = new GenerationCommand(
+                coordinates, "kma", "weather", CompatibilityProfile.p0().id(), MCP_PROTOCOL,
+                new GenerationCommand.ValidationConfiguration(new GenerationCommand.ToolCallValidation(
+                        "getForecast", weatherArguments())),
+                List.of());
+        var files = new SpringAi2ProjectGenerator().generate(new GenerationContext(
+                null, List.of(tool), generationRequest, CompatibilityProfile.p0(), new byte[0]));
+        assertTrue(files.files().containsKey(
+                "src/main/java/com/example/weather/generated/tool/WeatherMcpToolCallbacks.java"));
+        for (var entry : files.files().entrySet()) {
+            Path target = root.resolve(entry.getKey()).normalize();
+            assertTrue(target.startsWith(root));
+            Files.createDirectories(target.getParent());
+            Files.write(target, entry.getValue());
+        }
+        ValidationHostPlatform platform = ValidationHostPlatform.current();
+        if (platform.requiresOwnerExecutable()) {
+            assertTrue(root.resolve(platform.wrapperFileName()).toFile().setExecutable(true));
+        }
+        var expectedTools = new ExpectedToolSchemaFactory().create(List.of(tool));
+        Map<String, Object> expectedSchema = expectedTools.get(TOOL_NAME).inputSchema();
+        Map<?, ?> inputs = assertInstanceOf(Map.class, expectedSchema.get("properties"));
+        Map<?, ?> nx = assertInstanceOf(Map.class, inputs.get("nx"));
+        Map<?, ?> options = assertInstanceOf(Map.class, inputs.get("options"));
+        Map<?, ?> optionProperties = assertInstanceOf(Map.class, options.get("properties"));
+        Map<?, ?> region = assertInstanceOf(Map.class, optionProperties.get("region"));
+        assertEquals(java.util.Set.of("nx", "ny", "options", "mode", "tags"), inputs.keySet());
+        assertEquals(List.of("region"), options.get("required"));
+        assertEquals(java.util.Set.of("region", "filter"), optionProperties.keySet());
+        assertEquals(BigDecimal.ZERO, nx.get("minimum"));
+        assertEquals(BigDecimal.valueOf(1000), nx.get("maximum"));
+        assertEquals(3, region.get("minLength"));
+        assertEquals(8, region.get("maxLength"));
+        assertEquals("[a-z]+", region.get("pattern"));
+
+        AtomicReference<List<String>> applicationCommand = new AtomicReference<>();
+        var validator = new GradleMcpProjectValidator(
+                Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofMillis(100), 64 * 1024,
+                GradleMcpProjectValidator.WrapperSnapshotHook.NOOP,
+                command -> applicationCommand.set(List.copyOf(command)));
+        var report = validator.validate(new ValidationRequest(
+                root, coordinates.artifactId(), MCP_PROTOCOL, expectedTools,
+                new ExpectedToolCall(tool, weatherArguments()), CompatibilityProfile.p0()));
+
+        assertEquals(VALIDATED, report.status(), report.toString());
+        assertEquals(
+                platform.javaExecutable(Path.of(System.getProperty("java.home")))
+                        .toAbsolutePath().normalize().toString(),
+                applicationCommand.get().getFirst());
+        assertEquals(List.of("COMPILE", "APPLICATION_CONTEXT", "MCP_INITIALIZE", "MCP_TOOLS_LIST", "MCP_TOOL_CALL"),
+                report.stages().stream().map(stage -> stage.stage()).toList());
+        assertTrue(report.stages().stream().allMatch(stage -> stage.status() == SUCCESS));
+        assertTrue(report.stages().get(4).summary().contains("mock upstream contract"));
+        assertTrue(report.stages().get(4).summary().chars().noneMatch(Character::isDigit));
+        assertTrue(report.stages().stream().noneMatch(stage -> stage.summary().contains("seoul")));
+        assertTrue(report.stages().stream().noneMatch(stage -> stage.summary().contains("mcp-validation-secret")));
+        assertEquals(List.of(TOOL_NAME), report.tools().stream().map(toolResult -> toolResult.name()).toList());
+    }
+
+    private ToolDefinition weatherTool() {
+        ApiSchema integer = new ApiSchema(
+                INTEGER, "int32", false, List.of(), BigDecimal.ZERO, BigDecimal.valueOf(1000),
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema constrainedString = new ApiSchema(
+                STRING, null, false, List.of(), null, null, 3, 8, "[a-z]+",
+                null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema options = new ApiSchema(
+                OBJECT, null, false, List.of(), null, null, null, null, null,
+                null,
+                Map.of("region", constrainedString, "filter", constrainedString),
+                List.of("region"), null, true, List.of());
+        ApiSchema mode = new ApiSchema(
+                STRING, null, false, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema tags = new ApiSchema(
+                ARRAY, null, false, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), constrainedString, true, List.of());
+        List<ToolInput> inputs = List.of(
+                new ToolInput("nx", "nx", "Grid x coordinate", true, integer),
+                new ToolInput("ny", "ny", "Grid y coordinate", true, integer),
+                new ToolInput("options", "options", "Forecast options", true, options),
+                new ToolInput("mode", "mode", "Forecast mode", false, mode),
+                new ToolInput("tags", "tags", "Forecast tags", false, tags));
+        return new ToolDefinition(
+                "getForecast", TOOL_NAME, TOOL_DESCRIPTION, inputs,
+                new HttpExecution(
+                        GET, URI.create("https://api.example.test"), "/forecast",
+                        List.of(
+                                new ParameterBinding("nx", QUERY, "nx"),
+                                new ParameterBinding("ny", QUERY, "ny"),
+                                new ParameterBinding("mode", QUERY, "mode"),
+                                new ParameterBinding("tags", QUERY, "tags"))),
+                List.of(
+                        new SecretBinding("KMA_SERVICE_KEY", "service-key", QUERY, "serviceKey", true),
+                        new SecretBinding("KMA_HEADER_KEY", "header-key", HEADER, "X-Weather-Key", true)),
+                OutputKind.GENERIC_JSON);
+    }
+
+    private Map<String, Object> weatherArguments() {
+        return Map.of(
+                "nx", 60,
+                "ny", 127,
+                "options", Map.of("region", "seoul"),
+                "mode", "brief",
+                "tags", List.of("public", "forecast"));
+    }
+
+}
