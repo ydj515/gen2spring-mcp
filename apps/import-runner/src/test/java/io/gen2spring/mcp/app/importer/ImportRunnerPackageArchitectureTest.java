@@ -8,10 +8,12 @@ import org.junit.jupiter.api.Test;
 final class ImportRunnerPackageArchitectureTest {
     @Test
     void separatesImportJobResponsibilitiesFromTheEntrypoint() {
-        assertLoadable("io.gen2spring.mcp.app.importer.job.ImportRunner");
-        assertLoadable("io.gen2spring.mcp.app.importer.job.ImportJobProtocol");
-        assertLoadable("io.gen2spring.mcp.app.importer.job.ImportGatewayClient");
-        assertLoadable("io.gen2spring.mcp.app.importer.job.ImportRunnerFailure");
+        assertLoadable("io.gen2spring.mcp.app.importer.application.imports.ImportRunner");
+        assertLoadable("io.gen2spring.mcp.app.importer.application.imports.port.out.ImportGatewayClient");
+        assertLoadable("io.gen2spring.mcp.app.importer.presentation.job.ImportJobProtocol");
+        assertLoadable("io.gen2spring.mcp.app.importer.infrastructure.client.fetch.GatewayImportClientAdapter");
+        assertLoadable("io.gen2spring.mcp.app.importer.config.ImportRunnerConfiguration");
+        assertLoadable("io.gen2spring.mcp.app.importer.application.imports.ImportRunnerFailure");
 
         assertNotLoadable("io.gen2spring.mcp.app.importer.ImportRunner");
     }

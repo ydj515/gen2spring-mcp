@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.importer.job;
+package io.gen2spring.mcp.app.importer.application.imports.port.out;
 
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.util.Arrays;
@@ -25,10 +25,6 @@ public interface ImportGatewayClient {
         @Override
         public byte[] source() {
             return Arrays.copyOf(source, source.length);
-        }
-
-        String extension() {
-            return json(mediaType) ? "json" : "yaml";
         }
 
         private static boolean json(String mediaType) {

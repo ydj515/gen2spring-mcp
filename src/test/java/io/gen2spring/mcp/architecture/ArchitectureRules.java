@@ -69,6 +69,23 @@ final class ArchitectureRules {
             .should().dependOnClassesThat().resideInAnyPackage(
                     ROOT + "app.provideregress.presentation..", ROOT + "app.provideregress.config..");
 
+    static final ArchRule IMPORT_RUNNER_APPLICATION_POINTS_INWARD = noClasses()
+            .that().resideInAPackage(ROOT + "app.importer.application..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.importer.presentation..", ROOT + "app.importer.infrastructure..",
+                    ROOT + "app.importer.config..", ROOT + "adapter..");
+
+    static final ArchRule IMPORT_RUNNER_PRESENTATION_DOES_NOT_USE_INFRASTRUCTURE = noClasses()
+            .that().resideInAPackage(ROOT + "app.importer.presentation..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.importer.infrastructure..", ROOT + "app.importer.config..",
+                    ROOT + "adapter..");
+
+    static final ArchRule IMPORT_RUNNER_INFRASTRUCTURE_DOES_NOT_USE_DELIVERY = noClasses()
+            .that().resideInAPackage(ROOT + "app.importer.infrastructure..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.importer.presentation..", ROOT + "app.importer.config..");
+
     static final ArchRule ADAPTERS_POINT_INWARD = noClasses().that().resideInAPackage(ADAPTER + ".")
             .should().dependOnClassesThat().resideInAnyPackage(ROOT + "bootstrap..", ROOT + "app..");
 

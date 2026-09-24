@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.importer.job;
+package io.gen2spring.mcp.app.importer.application.imports;
 
 public final class ImportRunnerFailure extends RuntimeException {
     public ImportRunnerFailure() {

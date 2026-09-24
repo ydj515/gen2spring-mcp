@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.app.importer.job.ImportRunnerFailure;
+import io.gen2spring.mcp.app.importer.application.imports.ImportRunnerFailure;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
