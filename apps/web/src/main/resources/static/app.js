@@ -23,6 +23,8 @@ const TERMINAL_STATES = ['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANC
 let previewRequestVersion = 0;
 let validationStatus = 'idle';
 let generationPending = false;
+let renderedImplementation = null;
+const selectedProfileByImplementation = new Map();
 
 const wizard = initializeWizard();
 initializeEditor(() => {
@@ -90,7 +92,10 @@ async function loadProfiles() {
       invalidatePreview();
       wizard.syncGate();
     });
-    ui['target-profile'].addEventListener('change', describeProfile);
+    ui['target-profile'].addEventListener('change', () => {
+      selectedProfileByImplementation.set(ui['mcp-implementation'].value, ui['target-profile'].value);
+      describeProfile();
+    });
   } catch (failure) {
     showFailure(failure);
   }
@@ -101,6 +106,9 @@ function renderImplementationProfiles() {
   const implementation = ui['mcp-implementation'].value;
   const sdk = implementation === 'MCP_JAVA_SDK';
   const previous = ui['target-profile'].value;
+  if (renderedImplementation && previous) {
+    selectedProfileByImplementation.set(renderedImplementation, previous);
+  }
   const profiles = getState().profiles.filter(profile => profile.mcpImplementations?.includes(implementation));
   ui['target-profile'].replaceChildren(...profiles.map(profile => {
     const option = document.createElement('option');
@@ -109,9 +117,12 @@ function renderImplementationProfiles() {
     return option;
   }));
   const preferredId = sdk ? 'spring-ai-1.1-java21-mvc-streamable' : 'spring-ai-2.0-java21-mvc-streamable';
-  const selection = profiles.find(profile => profile.id === previous)
+  const remembered = selectedProfileByImplementation.get(implementation);
+  const selection = profiles.find(profile => profile.id === remembered)
+    ?? profiles.find(profile => profile.id === previous)
     ?? profiles.find(profile => profile.id === preferredId) ?? profiles[0];
   if (selection) ui['target-profile'].value = selection.id;
+  renderedImplementation = implementation;
   ui['mcp-implementation-description'].textContent = sdk
     ? 'Spring AI 의존성 없이 생성합니다. Spring Boot 3 · MVC를 지원합니다.'
     : '@McpTool 애노테이션과 Spring AI를 사용합니다.';

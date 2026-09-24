@@ -110,9 +110,9 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString(
                         "id=\"operation-filter\" class=\"form-select\"")))
                 .andExpect(content().string(containsString(
-                        "class=\"field-grid project-settings-grid row g-3\"")))
+                        "class=\"field-grid project-settings-grid\"")))
                 .andExpect(content().string(containsString(
-                        "class=\"field col-12 col-sm-6 col-lg-4 col-xl-2\"")))
+                        "class=\"field profile-field\"")))
                 .andExpect(content().string(containsString("class=\"profile-help-anchor\"")))
                 .andExpect(content().string(containsString(
                         "id=\"profile-help\" class=\"profile-help\" role=\"tooltip\"")))

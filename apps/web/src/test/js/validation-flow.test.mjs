@@ -46,10 +46,10 @@ async function editor() {
     operations: [{operationId: 'representative', enabled: true, endpointSelected: true, method: 'GET', path: '/items',
       parameters: [{name: 'limit', location: 'QUERY', source: 'USER_INPUT', schema: {type: 'integer'}}]}]
   };
-  const requests = [], jobs = [];
+  const requests = [], jobs = [], profileRequest = deferred();
   let configurationError;
   const modules = {
-    './api.js': {hostedMode: false, profiles: () => new Promise(() => {}),
+    './api.js': {hostedMode: false, profiles: () => profileRequest.promise,
       preview: () => {const request = deferred(); requests.push(request); return request.promise;},
       startJob: () => {const job = deferred(); jobs.push(job); return job.promise;}},
     './state.js': {getState: () => state, updateState: patch => {state = {...state, ...patch}; return state;}},
@@ -69,9 +69,43 @@ async function editor() {
     }, {context});
   });
   await app.evaluate();
-  return {element, requests, jobs, activeElement: () => document.activeElement, state: () => state, failConfiguration: () => {configurationError = new Error('Invalid JSON');}};
+  return {element, requests, jobs, profileRequest, activeElement: () => document.activeElement,
+    state: () => state, failConfiguration: () => {configurationError = new Error('Invalid JSON');}};
 }
 const preview = {tools: [{operationId: 'representative', name: 'representative', inputSchema: {properties: {}}}]};
+
+test('each MCP implementation keeps its selected generation profile when switching tabs', async () => {
+  const app = await editor();
+  const annotations = 'SPRING_AI_ANNOTATIONS';
+  const sdk = 'MCP_JAVA_SDK';
+  const profile = (id, implementations, version, javaVersion) => ({
+    id, mcpImplementations: implementations, springAiVersion: version, javaVersion,
+    springBootVersion: version === '1.1.8' ? '3.5.16' : '4.1.0',
+    buildTool: {type: 'GRADLE'}, webStack: 'MVC', programmingModel: 'SYNC'
+  });
+  app.element('mcp-implementation').value = annotations;
+  app.profileRequest.resolve({profiles: [
+    profile('spring-ai-2.0-java21-mvc-streamable', [annotations], '2.0.0', 21),
+    profile('spring-ai-2.0-java17-mvc-streamable', [annotations], '2.0.0', 17),
+    profile('spring-ai-1.1-java21-mvc-streamable', [annotations, sdk], '1.1.8', 21),
+    profile('spring-ai-1.1-java17-mvc-streamable', [annotations, sdk], '1.1.8', 17)
+  ]});
+  await new Promise(resolve => setImmediate(resolve));
+
+  app.element('target-profile').value = 'spring-ai-2.0-java17-mvc-streamable';
+  await app.element('target-profile').fire('change');
+  app.element('mcp-implementation').value = sdk;
+  await app.element('mcp-implementation').fire('change');
+  app.element('target-profile').value = 'spring-ai-1.1-java17-mvc-streamable';
+  await app.element('target-profile').fire('change');
+
+  app.element('mcp-implementation').value = annotations;
+  await app.element('mcp-implementation').fire('change');
+  assert.equal(app.element('target-profile').value, 'spring-ai-2.0-java17-mvc-streamable');
+  app.element('mcp-implementation').value = sdk;
+  await app.element('mcp-implementation').fire('change');
+  assert.equal(app.element('target-profile').value, 'spring-ai-1.1-java17-mvc-streamable');
+});
 
 test('MCP choice buttons synchronize the control and invalidate a verified configuration', async () => {
   const app = await editor();

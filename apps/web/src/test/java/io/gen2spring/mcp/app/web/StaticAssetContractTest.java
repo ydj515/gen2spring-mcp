@@ -130,7 +130,7 @@ class StaticAssetContractTest {
         String editorStyles = resource("/static/editor.css");
 
         assertTrue(index.contains("class=\"uploaded-file file-state-card\""));
-        assertTrue(index.contains("class=\"field-grid project-settings-grid row g-3\""));
+        assertTrue(index.contains("class=\"field-grid project-settings-grid\""));
         assertTrue(index.contains("class=\"preview-workspace\""));
         assertTrue(index.contains("class=\"preview-input\""));
         assertTrue(index.contains("class=\"preview-result\""));
@@ -149,8 +149,8 @@ class StaticAssetContractTest {
         assertTrue(progress.contains("#job-progress-percent"));
         assertTrue(progress.contains("document.createElement('i')"));
         assertTrue(editorStyles.contains(".project-settings-grid"));
-        assertTrue(index.contains("col-12 col-sm-6 col-lg-4 col-xl-2"));
-        assertTrue(editorStyles.contains("@media (min-width: 1200px)"));
+        assertFalse(index.contains("col-12 col-sm-6 col-lg-4 col-xl-2"));
+        assertFalse(editorStyles.contains(".project-settings-grid > .field:not(.profile-field)"));
         assertTrue(editorStyles.contains(".preview-workspace"));
         assertTrue(editorStyles.contains(".job-progress-hero"));
         assertFalse(app.contains("innerHTML"));
