@@ -19,6 +19,7 @@ dependencies {
     implementation(platform(libs.aws.sdk.bom))
     implementation(project(":modules:bootstrap"))
     implementation(project(":modules:application"))
+    implementation(project(":modules:adapters:configuration"))
     implementation(project(":modules:adapters:persistence-postgres"))
     implementation(project(":modules:adapters:object-storage-s3"))
     implementation(project(":modules:adapters:cryptography"))
@@ -40,6 +41,7 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)
     testImplementation(libs.archunit)
+    testImplementation(project(":modules:adapters:openapi"))
 }
 
 springBoot {

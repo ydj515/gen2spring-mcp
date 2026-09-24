@@ -15,9 +15,12 @@ plugins {
 
 dependencies {
     implementation(project(":modules:bootstrap"))
+    implementation(project(":modules:adapters:configuration"))
+    implementation(project(":modules:adapters:filesystem"))
     implementation(libs.bundles.jackson)
     compileOnly(libs.slf4j.api)
     testImplementation(libs.archunit)
+    testImplementation(project(":modules:adapters:openapi"))
     testCompileOnly(libs.slf4j.api)
 }
 
