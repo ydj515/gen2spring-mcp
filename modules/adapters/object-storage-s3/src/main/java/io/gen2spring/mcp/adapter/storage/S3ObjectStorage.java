@@ -1,10 +1,10 @@
 package io.gen2spring.mcp.adapter.storage;
 
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
-import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
-import io.gen2spring.mcp.application.hosted.storage.ObjectStorageFailure;
 import io.gen2spring.mcp.application.hosted.storage.StoredObject;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
+import io.gen2spring.mcp.application.hosted.storage.ObjectStorageFailure;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;

@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
-import io.gen2spring.mcp.application.managed.execution.ProviderCallClient;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
+import io.gen2spring.mcp.application.managed.execution.port.out.ProviderCallClient;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;

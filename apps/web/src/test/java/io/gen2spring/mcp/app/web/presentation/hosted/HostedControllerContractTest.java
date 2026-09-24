@@ -1,36 +1,36 @@
 package io.gen2spring.mcp.app.web.presentation.hosted;
 
-import io.gen2spring.mcp.app.web.infrastructure.hosted.submission.HostedSubmissionService;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
-import io.gen2spring.mcp.application.hosted.job.HostedJobService;
-import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
-import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
-import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
-import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
-import io.gen2spring.mcp.app.web.presentation.stream.JobEventStream;
+import io.gen2spring.mcp.app.web.infrastructure.hosted.submission.HostedSubmissionService;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountPrincipal;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
+import io.gen2spring.mcp.app.web.presentation.stream.JobEventStream;
+import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.hosted.job.HostedJobService;
+import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
+import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
+import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
+import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;
 import io.gen2spring.mcp.domain.platform.job.JobStatus;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
-import io.gen2spring.mcp.application.usecase.GenerationPreview;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -40,13 +40,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.io.ByteArrayInputStream;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.core.Authentication;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.core.Authentication;
 
 class HostedControllerContractTest {
     private static final AccountId OWNER = new AccountId(UUID.fromString("41dd3b69-589c-4466-a78e-d448407d17b9"));

@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.application.hosted.worker;
 
-import io.gen2spring.mcp.application.hosted.storage.ArtifactRetentionStore;
-import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ArtifactRetentionStore;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;

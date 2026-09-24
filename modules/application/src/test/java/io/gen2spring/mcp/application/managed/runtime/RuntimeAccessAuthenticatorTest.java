@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
-import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
-import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditPage;
-import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.StoredGrant;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.AuditPage;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.StoredGrant;
+import io.gen2spring.mcp.application.managed.runtime.port.out.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeTokenCodec;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;

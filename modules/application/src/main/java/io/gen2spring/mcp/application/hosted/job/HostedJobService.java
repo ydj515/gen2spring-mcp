@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.application.hosted.job;
 
-import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
+import io.gen2spring.mcp.application.hosted.job.port.out.JobQueue;
+import io.gen2spring.mcp.application.hosted.specification.port.out.SpecificationCatalog;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.job.JobKind;

@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.adapter.provideregress;
 
-import io.gen2spring.mcp.application.managed.execution.ProviderCallClient;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
+import io.gen2spring.mcp.application.managed.execution.port.out.ProviderCallClient;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;

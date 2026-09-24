@@ -1,9 +1,10 @@
 package io.gen2spring.mcp.application.managed.policy;
 
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.runtime.IssuedRuntimeToken;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeTokenCodec;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;

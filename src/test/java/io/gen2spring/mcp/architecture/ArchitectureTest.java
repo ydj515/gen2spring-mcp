@@ -52,6 +52,11 @@ final class ArchitectureTest {
     @Test void domainDoesNotUseSql() { ArchitectureRules.DOMAIN_HAS_NO_SQL.check(production); }
     @Test void controllersDoNotUsePersistenceImplementations() { ArchitectureRules.CONTROLLERS_USE_APPLICATION_PORTS.check(production); }
     @Test void applicationUsesDomainAndApprovedJsonModel() { ArchitectureRules.APPLICATION.check(production); }
+    @Test void applicationPortsExposeOnlyInnerContracts() { ArchitectureRules.APPLICATION_PORTS.check(production); }
+    @Test void persistenceAdaptersAreGroupedByFeature() {
+        assertTrue(production.stream().noneMatch(type -> type.getPackageName()
+                .equals("io.gen2spring.mcp.adapter.persistence")));
+    }
     @Test void fetchGatewayLayersPointInward() {
         ArchitectureRules.FETCH_APPLICATION_POINTS_INWARD.check(production);
         ArchitectureRules.FETCH_PRESENTATION_DOES_NOT_USE_INFRASTRUCTURE.check(production);

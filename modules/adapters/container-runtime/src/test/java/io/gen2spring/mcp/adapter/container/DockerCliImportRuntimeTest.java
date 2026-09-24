@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
-import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
+import io.gen2spring.mcp.application.hosted.imports.port.out.ImportTargetProtector;
 import io.gen2spring.mcp.application.hosted.job.JobLease;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
 import io.gen2spring.mcp.application.hosted.worker.SandboxLimits;

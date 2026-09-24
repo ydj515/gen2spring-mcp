@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.app.web.presentation.page;
 
-import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
 import io.gen2spring.mcp.app.web.presentation.hosted.HostedJobController;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
+import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Objects;

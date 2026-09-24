@@ -1,23 +1,25 @@
 package io.gen2spring.mcp.application.managed.runtime;
 
-import static io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionKind.MIGRATION;
-import static io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionOutcome.APPLIED;
-import static io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionOutcome.BLOCKED;
+import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionKind.MIGRATION;
+import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionOutcome.APPLIED;
+import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionOutcome.BLOCKED;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogDetails;
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogSummary;
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogVersion;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.MigrationCommand;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.RuntimeCatalogTransition;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionKind;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionOutcome;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionPage;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeCatalogTransitionStore.TransitionResult;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogDetails;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogSummary;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogVersion;
+import io.gen2spring.mcp.application.managed.runtime.port.out.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.MigrationCommand;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.RuntimeCatalogTransition;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionKind;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionOutcome;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionPage;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionResult;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;

@@ -1,27 +1,27 @@
 package io.gen2spring.mcp.app.web.presentation.local;
 
-import io.gen2spring.mcp.app.web.application.local.exception.LocalJobFailure;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
 
+import io.gen2spring.mcp.app.web.application.local.exception.LocalJobFailure;
+import io.gen2spring.mcp.app.web.application.local.port.out.GenerationConfigurationDecoder;
+import io.gen2spring.mcp.app.web.application.local.port.out.SpecificationStorage;
+import io.gen2spring.mcp.app.web.application.local.service.LocalGenerationService;
+import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
+import io.gen2spring.mcp.app.web.infrastructure.local.job.JobWorkspace;
 import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
 import io.gen2spring.mcp.application.command.GenerationCommand.ToolCallValidation;
 import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfiguration;
+import io.gen2spring.mcp.application.port.outbound.GenerationProgressListener;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
-import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
-import io.gen2spring.mcp.application.validation.ValidationStatus;
-import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
-import io.gen2spring.mcp.app.web.infrastructure.local.job.JobWorkspace;
-import io.gen2spring.mcp.app.web.application.local.service.LocalGenerationService;
-import io.gen2spring.mcp.app.web.application.local.port.out.SpecificationStorage;
 import io.gen2spring.mcp.application.usecase.GenerationPipeline;
-import io.gen2spring.mcp.app.web.application.local.port.out.GenerationConfigurationDecoder;
-import static org.mockito.Mockito.mock;
+import io.gen2spring.mcp.application.validation.ValidationStatus;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;

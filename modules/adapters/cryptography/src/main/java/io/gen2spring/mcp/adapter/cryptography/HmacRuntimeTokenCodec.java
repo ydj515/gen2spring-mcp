@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.adapter.cryptography;
 
 import io.gen2spring.mcp.application.managed.runtime.IssuedRuntimeToken;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenCodec;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
+import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeTokenCodec;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;

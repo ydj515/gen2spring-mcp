@@ -7,9 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore.StoredCredential;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.credential.port.out.CredentialProtector;
+import io.gen2spring.mcp.application.managed.credential.port.out.ManagedCredentialStore;
+import io.gen2spring.mcp.application.managed.credential.port.out.ManagedCredentialStore.StoredCredential;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
+import io.gen2spring.mcp.application.managed.runtime.port.out.ManagedRuntimeStore;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredential;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialKind;

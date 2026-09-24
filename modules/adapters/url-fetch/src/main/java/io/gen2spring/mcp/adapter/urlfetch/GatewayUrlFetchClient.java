@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.adapter.urlfetch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.application.hosted.imports.UrlFetchClient;
+import io.gen2spring.mcp.application.hosted.imports.port.out.UrlFetchClient;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;

@@ -8,18 +8,18 @@ import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFI
 import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import io.gen2spring.mcp.adapter.validation.ApplicationRuntimeValidator.Readiness;
+import io.gen2spring.mcp.adapter.validation.ApplicationRuntimeValidator.ReadinessResult;
+import io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator;
+import io.gen2spring.mcp.application.port.outbound.GenerationProgressListener;
+import io.gen2spring.mcp.application.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.usecase.ProgressStatus;
 import io.gen2spring.mcp.application.validation.ExpectedTool;
 import io.gen2spring.mcp.application.validation.ExpectedToolCall;
-import io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator;
-import io.gen2spring.mcp.application.usecase.GenerationProgress;
-import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
 import io.gen2spring.mcp.application.validation.ObservedTool;
-import io.gen2spring.mcp.application.usecase.ProgressStatus;
 import io.gen2spring.mcp.application.validation.ValidationReport;
 import io.gen2spring.mcp.application.validation.ValidationRequest;
 import io.gen2spring.mcp.application.validation.ValidationStageResult;
-import io.gen2spring.mcp.adapter.validation.ApplicationRuntimeValidator.Readiness;
-import io.gen2spring.mcp.adapter.validation.ApplicationRuntimeValidator.ReadinessResult;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.io.IOException;
 import java.net.URI;

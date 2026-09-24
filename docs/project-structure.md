@@ -40,6 +40,11 @@ modules/
 `modules/adapters/mcp-java-sdk`는 Managed Runtime 어댑터다. 다운로드 프로젝트의 SDK 생성 옵션은
 공유 emitter와 Spring AI 1 계열 scaffold 경로도 사용한다. 이름만 보고 두 책임을 같은 것으로 보지 않는다.
 
+`modules/application`은 hosted·managed 기능 아래에서 외부 저장소·client 계약을 `port/out`에,
+delivery가 호출하는 계약을 필요한 경우 `port/in`에 둔다. 업무 흐름과 결과 모델은 해당 기능 패키지에 남는다.
+`modules/adapters/persistence-postgres`는 account·job·catalog·runtime 등 기능 패키지에서 이 포트를 구현한다.
+runtime telemetry 계약은 업무 domain 모델이 아닌 application의 toolmodel 아래에 둔다.
+
 ## 앱별 패키지
 
 | 앱 | 책임 패키지 |

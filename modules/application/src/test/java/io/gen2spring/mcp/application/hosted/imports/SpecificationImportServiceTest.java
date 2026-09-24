@@ -6,11 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.application.hosted.specification.SpecificationCatalog;
+import io.gen2spring.mcp.application.hosted.imports.port.out.UrlFetchClient;
+import io.gen2spring.mcp.application.hosted.specification.port.out.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
-import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.storage.StoredObject;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
 import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;

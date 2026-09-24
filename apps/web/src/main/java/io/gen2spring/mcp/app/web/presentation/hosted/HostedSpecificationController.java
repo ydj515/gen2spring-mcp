@@ -1,13 +1,12 @@
 package io.gen2spring.mcp.app.web.presentation.hosted;
 
-import io.gen2spring.mcp.app.web.application.hosted.port.in.HostedSubmissionUseCase;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
+import io.gen2spring.mcp.app.web.application.hosted.port.in.HostedSubmissionUseCase;
 import io.gen2spring.mcp.app.web.presentation.local.GenerationPreviewPresenter;
 import io.gen2spring.mcp.app.web.presentation.local.SpecificationAnalysisPresenter;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
+import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
@@ -20,12 +19,12 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @ConditionalOnProperty(name = "gen2spring.mode", havingValue = "hosted")

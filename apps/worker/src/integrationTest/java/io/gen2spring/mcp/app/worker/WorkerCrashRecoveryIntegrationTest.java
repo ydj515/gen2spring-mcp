@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.adapter.persistence.PostgresAccountStore;
-import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
+import io.gen2spring.mcp.adapter.persistence.account.PostgresAccountStore;
+import io.gen2spring.mcp.adapter.persistence.job.PostgresJobQueue;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogPublication;
 import io.gen2spring.mcp.application.hosted.job.CreateJob;
 import io.gen2spring.mcp.application.hosted.job.JobArtifact;

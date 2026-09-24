@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.gen2spring.mcp.application.managed.credential.port.out.CredentialProtector;
+import io.gen2spring.mcp.application.managed.credential.port.out.ManagedCredentialStore;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredential;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;

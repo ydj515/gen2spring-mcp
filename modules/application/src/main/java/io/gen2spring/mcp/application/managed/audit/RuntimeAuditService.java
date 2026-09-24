@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.application.managed.audit;
 
-import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
-import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditCursor;
-import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore.AuditPage;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.AuditCursor;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.AuditPage;
 import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;

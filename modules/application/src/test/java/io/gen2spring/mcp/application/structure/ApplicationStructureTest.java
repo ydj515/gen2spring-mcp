@@ -16,9 +16,16 @@ class ApplicationStructureTest {
         assertPresent("io.gen2spring.mcp.application.port.outbound.ProjectGenerator");
         assertPresent("io.gen2spring.mcp.application.port.outbound.ToolEmitter");
         assertPresent("io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator");
+        assertPresent("io.gen2spring.mcp.application.hosted.job.port.out.JobQueue");
+        assertPresent("io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage");
+        assertPresent("io.gen2spring.mcp.application.managed.runtime.port.out.ManagedRuntimeStore");
+        assertPresent("io.gen2spring.mcp.application.managed.execution.port.in.ManagedToolCallHandler");
+        assertPresent("io.gen2spring.mcp.application.toolmodel.observability.RuntimeObservabilityContract");
 
         assertAbsent("io.gen2spring.mcp.adapter.filesystem.GenerationPipeline");
         assertAbsent("io.gen2spring.mcp.policy.ToolModelFactory");
+        assertAbsent("io.gen2spring.mcp.application.hosted.job.JobQueue");
+        assertAbsent("io.gen2spring.mcp.domain.observability.RuntimeObservabilityContract");
     }
 
     private void assertPresent(String type) {

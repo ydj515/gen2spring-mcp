@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.application.hosted.account.AccountStore;
+import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import java.time.Clock;
 import java.time.Instant;

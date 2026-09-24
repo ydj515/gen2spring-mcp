@@ -36,6 +36,10 @@ final class ArchitectureRules {
                     ROOT + "application..", ROOT + "domain..", "java..", "javax.lang.model..",
                     "com.fasterxml.jackson..");
 
+    static final ArchRule APPLICATION_PORTS = classes().that().resideInAPackage(ROOT + "application..port..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage(
+                    ROOT + "application..", ROOT + "domain..", "java..");
+
     static final ArchRule FETCH_APPLICATION_POINTS_INWARD = noClasses()
             .that().resideInAPackage(ROOT + "app.fetch.application..")
             .should().dependOnClassesThat().resideInAnyPackage(

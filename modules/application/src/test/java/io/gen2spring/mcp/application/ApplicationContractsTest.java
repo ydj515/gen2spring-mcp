@@ -6,10 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.application.usecase.GenerationProgress;
-import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
-import io.gen2spring.mcp.application.port.outbound.GeneratedToolSources;
 import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.port.outbound.GeneratedToolSources;
+import io.gen2spring.mcp.application.port.outbound.GenerationProgressListener;
+import io.gen2spring.mcp.application.usecase.GenerationProgress;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

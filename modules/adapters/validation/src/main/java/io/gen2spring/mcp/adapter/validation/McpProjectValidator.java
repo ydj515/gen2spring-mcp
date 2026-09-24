@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.adapter.validation;
 
 import io.gen2spring.mcp.application.port.outbound.GeneratedProjectValidator;
-import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
+import io.gen2spring.mcp.application.port.outbound.GenerationProgressListener;
 import io.gen2spring.mcp.application.validation.ValidationReport;
 import io.gen2spring.mcp.application.validation.ValidationRequest;
 import java.util.Objects;

@@ -1,7 +1,9 @@
 package io.gen2spring.mcp.application.managed.credential;
 
-import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore.StoredCredential;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeStore;
+import io.gen2spring.mcp.application.managed.credential.port.out.CredentialProtector;
+import io.gen2spring.mcp.application.managed.credential.port.out.ManagedCredentialStore;
+import io.gen2spring.mcp.application.managed.credential.port.out.ManagedCredentialStore.StoredCredential;
+import io.gen2spring.mcp.application.managed.runtime.port.out.ManagedRuntimeStore;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredential.CredentialState;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialKind;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;

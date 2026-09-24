@@ -2,11 +2,11 @@ package io.gen2spring.mcp.application.hosted.worker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import io.gen2spring.mcp.application.hosted.storage.ArtifactRetentionStore;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
-import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.storage.StoredObject;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ArtifactRetentionStore;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
 import java.io.InputStream;
 import java.time.Clock;
 import java.time.Instant;

@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.application.hosted.job;
 
+import io.gen2spring.mcp.application.hosted.job.port.out.JobQueue;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;

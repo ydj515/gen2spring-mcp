@@ -10,26 +10,25 @@ import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelectio
 import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
 import io.gen2spring.mcp.application.toolmodel.description.ToolDescriptionPolicy;
 import io.gen2spring.mcp.application.toolmodel.naming.ToolNamingPolicy;
+import io.gen2spring.mcp.application.toolmodel.observability.RuntimeObservabilityContract;
 import io.gen2spring.mcp.application.toolmodel.output.OutputSchemaResolver;
-import io.gen2spring.mcp.application.toolmodel.security.SecretParameterPolicy;
 import io.gen2spring.mcp.application.toolmodel.schema.SchemaPatternMatcher;
+import io.gen2spring.mcp.application.toolmodel.security.SecretParameterPolicy;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiParameter;
-import io.gen2spring.mcp.domain.observability.RuntimeObservabilityContract;
-import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
-import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
-import io.gen2spring.mcp.domain.tool.ToolInput;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.ParameterSource;
 import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolInput;
 import io.gen2spring.mcp.domain.tool.ToolOutput;
-import javax.lang.model.SourceVersion;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -40,6 +39,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import javax.lang.model.SourceVersion;
 
 public final class ToolModelFactory {
     private static final String RESTRICTED_HEADER_MESSAGE =

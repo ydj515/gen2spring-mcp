@@ -17,7 +17,8 @@ domain <- application <- adapters
 이 그림은 생성기 조립의 기본 방향이다. Worker·Runtime·egress 앱은 자신의 config에서 필요한 adapter를
 직접 조립한다. bootstrap을 요청마다 거치는 서비스 계층으로 사용하지 않는다.
 현재 [application 빌드](../modules/application/build.gradle.kts)는 domain 외에 Jackson Databind에도
-의존한다. 따라서 application 전체를 외부 라이브러리가 없는 계층으로 설명하지 않는다.
+의존한다. 따라서 application 전체를 외부 라이브러리가 없는 계층으로 설명하지 않는다. 다만
+`application/**/port/in`과 `application/**/port/out`의 계약은 Jackson을 노출하지 않는다.
 
 ## 생성 대상 분리
 
@@ -58,6 +59,7 @@ Java import 검사는 [루트 빌드](../build.gradle.kts)의 `verifyJavaImportS
 | --- | --- |
 | Domain | domain·JDK만 허용하고 SQL API는 금지 |
 | Application | application·domain·JDK·`javax.lang.model`·기존 Jackson만 허용 |
+| Application port | application·domain·JDK만 허용 |
 | Adapter | bootstrap·app 참조와 다른 adapter 직접 참조 금지. 공유 emitter 예외만 허용 |
 | Bootstrap | 앱을 참조하지 않고 생성기 객체 그래프 조립 |
 | App | 서로 다른 앱을 직접 참조하지 않음 |

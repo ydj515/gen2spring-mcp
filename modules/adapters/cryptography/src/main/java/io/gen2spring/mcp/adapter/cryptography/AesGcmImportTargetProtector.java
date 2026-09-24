@@ -2,7 +2,7 @@ package io.gen2spring.mcp.adapter.cryptography;
 
 import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
 import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtectionFailure;
-import io.gen2spring.mcp.application.hosted.imports.ImportTargetProtector;
+import io.gen2spring.mcp.application.hosted.imports.port.out.ImportTargetProtector;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;

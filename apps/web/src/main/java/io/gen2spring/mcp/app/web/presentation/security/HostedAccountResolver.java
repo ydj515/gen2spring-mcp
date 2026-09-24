@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.app.web.presentation.security;
 
-import io.gen2spring.mcp.application.hosted.account.AccountStore;
+import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
 import java.time.Clock;
 import java.util.Objects;
 import org.springframework.security.core.Authentication;

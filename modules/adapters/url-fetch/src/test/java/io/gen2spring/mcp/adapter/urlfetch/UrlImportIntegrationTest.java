@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
-import io.gen2spring.mcp.application.hosted.imports.UrlFetchClient;
+import io.gen2spring.mcp.application.hosted.imports.port.out.UrlFetchClient;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.io.InputStream;
 import java.net.InetSocketAddress;

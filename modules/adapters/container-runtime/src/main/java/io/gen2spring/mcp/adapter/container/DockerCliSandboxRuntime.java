@@ -5,12 +5,12 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.gen2spring.mcp.application.hosted.job.JobLease;
-import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.worker.SandboxInput;
 import io.gen2spring.mcp.application.hosted.worker.SandboxLimits;
 import io.gen2spring.mcp.application.hosted.worker.SandboxResult;
-import io.gen2spring.mcp.application.hosted.worker.SandboxRuntime;
+import io.gen2spring.mcp.application.hosted.worker.port.out.SandboxRuntime;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;

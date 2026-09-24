@@ -1,10 +1,11 @@
 package io.gen2spring.mcp.application.hosted.catalog;
 
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogCursor;
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogDetails;
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogPage;
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.CatalogSummary;
-import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore.ToolDetails;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogCursor;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogDetails;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogPage;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogSummary;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.ToolDetails;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import java.util.List;
 import java.util.Objects;

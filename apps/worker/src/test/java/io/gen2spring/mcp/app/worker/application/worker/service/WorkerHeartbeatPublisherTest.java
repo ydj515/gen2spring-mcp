@@ -3,7 +3,7 @@ package io.gen2spring.mcp.app.worker.application.worker.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
-import io.gen2spring.mcp.application.hosted.worker.WorkerHeartbeatStore;
+import io.gen2spring.mcp.application.hosted.worker.port.out.WorkerHeartbeatStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;

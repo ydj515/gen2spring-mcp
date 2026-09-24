@@ -1,14 +1,14 @@
 package io.gen2spring.mcp.app.web.presentation.hosted;
 
-import io.gen2spring.mcp.application.hosted.query.HostedResourceStore;
-import io.gen2spring.mcp.application.hosted.storage.ObjectStorage;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
+import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
+import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.security.MessageDigest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Objects;

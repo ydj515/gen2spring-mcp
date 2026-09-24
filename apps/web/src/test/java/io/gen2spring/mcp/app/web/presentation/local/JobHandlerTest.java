@@ -1,11 +1,5 @@
 package io.gen2spring.mcp.app.web.presentation.local;
 
-import io.gen2spring.mcp.app.web.application.local.exception.LocalJobFailure;
-import io.gen2spring.mcp.app.web.infrastructure.local.specification.SpecificationStore;
-import io.gen2spring.mcp.app.web.application.local.service.LocalGenerationService;
-import io.gen2spring.mcp.app.web.infrastructure.local.configuration.GenerationConfigurationAdapter;
-import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
-
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -13,13 +7,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
-import io.gen2spring.mcp.application.usecase.GenerationProgressListener;
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.validation.ValidationStatus;
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.app.web.application.local.exception.LocalJobFailure;
+import io.gen2spring.mcp.app.web.application.local.service.LocalGenerationService;
+import io.gen2spring.mcp.app.web.infrastructure.local.configuration.GenerationConfigurationAdapter;
 import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
+import io.gen2spring.mcp.app.web.infrastructure.local.specification.SpecificationStore;
+import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.port.outbound.GenerationProgressListener;
+import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.validation.ValidationStatus;
+import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
