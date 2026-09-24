@@ -33,6 +33,8 @@ Local Web은 loopback 단일 사용자 실행과 메모리 작업 관리에 맞�
 내구성 작업 접수에 집중하며 Docker socket을 갖지 않는다. Worker가 격리 프로세스를 실행한다.
 Managed Runtime은 플랫폼 저장소에 접근하지만 provider HTTP는 mTLS egress 서비스에 위임한다.
 URL import의 fetch gateway와 실행 중 provider egress는 서로 다른 책임이다.
+Hosted 제출의 업로드·분석·작업 접수 순서는 Web application의 `HostedSubmissionService`가 소유한다.
+임시 파일을 통한 생성기 실행과 요청 snapshot 직렬화는 Web infrastructure adapter가 처리한다.
 
 ## Spring 조립과 오류
 

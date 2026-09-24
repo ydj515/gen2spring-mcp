@@ -94,7 +94,7 @@ public final class MockUpstreamServer implements AutoCloseable {
                 .toList();
         this.configuredResponses = this.expectations.stream()
                 .map(expectation -> expectation.outcome()
-                        == io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome.RESPONSE
+                        == io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamOutcome.RESPONSE
                         ? configuredResponse(expectation.responseBody())
                         : null)
                 .toList();
@@ -206,7 +206,7 @@ public final class MockUpstreamServer implements AutoCloseable {
                 }
                 verifyRequest(expectation, expectedBodies.get(admission.index()), exchange, body);
                 if (expectation.outcome()
-                        == io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome.DISCONNECT) {
+                        == io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamOutcome.DISCONNECT) {
                     exchange.getResponseHeaders().set("Content-Type", "application/json");
                     exchange.sendResponseHeaders(200, 8);
                     exchange.getResponseBody().write('{');

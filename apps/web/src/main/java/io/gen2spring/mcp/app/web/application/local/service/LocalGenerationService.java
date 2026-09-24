@@ -7,9 +7,9 @@ import io.gen2spring.mcp.app.web.application.local.port.out.GenerationConfigurat
 import io.gen2spring.mcp.app.web.application.local.result.ArtifactDownload;
 import io.gen2spring.mcp.app.web.application.local.result.StoredSpecification;
 import io.gen2spring.mcp.app.web.application.local.result.VersionedJobSnapshot;
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.usecase.GenerationPipeline;
-import io.gen2spring.mcp.application.usecase.GenerationPreview;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.usecase.GenerationPipeline;
+import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.Objects;

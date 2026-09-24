@@ -6,10 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.OperationSelection;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
-import io.gen2spring.mcp.application.validation.ExpectedToolSchemaFactory;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.specification.OperationSupport.Status;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;

@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.app.web.application.local.job;
 
-import io.gen2spring.mcp.application.usecase.ProgressStatus;
-import io.gen2spring.mcp.application.validation.ValidationStatus;
+import io.gen2spring.mcp.application.generation.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
 import java.util.List;
 
 public record JobSnapshot(

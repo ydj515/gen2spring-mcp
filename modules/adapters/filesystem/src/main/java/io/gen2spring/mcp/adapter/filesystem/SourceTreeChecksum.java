@@ -6,10 +6,10 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardOpenOption.READ;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
-import io.gen2spring.mcp.application.port.outbound.SourceSnapshot;
-import io.gen2spring.mcp.application.port.outbound.SourceSnapshot.EntryFingerprint;
-import io.gen2spring.mcp.application.port.outbound.SourceSnapshotter;
+import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.generation.port.out.SourceSnapshot;
+import io.gen2spring.mcp.application.generation.port.out.SourceSnapshot.EntryFingerprint;
+import io.gen2spring.mcp.application.generation.port.out.SourceSnapshotter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;

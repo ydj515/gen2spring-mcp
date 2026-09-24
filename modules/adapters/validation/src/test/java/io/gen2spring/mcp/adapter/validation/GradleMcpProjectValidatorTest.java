@@ -2,12 +2,12 @@ package io.gen2spring.mcp.adapter.validation;
 
 import io.gen2spring.mcp.domain.tool.OutputKind;
 
-import static io.gen2spring.mcp.application.command.GenerationCommand.ValidationLevel.MCP_PROTOCOL;
-import static io.gen2spring.mcp.application.validation.StageStatus.FAILED;
-import static io.gen2spring.mcp.application.validation.StageStatus.SKIPPED;
-import static io.gen2spring.mcp.application.validation.StageStatus.SUCCESS;
-import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFIED;
-import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.application.generation.command.GenerationCommand.ValidationLevel.MCP_PROTOCOL;
+import static io.gen2spring.mcp.application.generation.validation.StageStatus.FAILED;
+import static io.gen2spring.mcp.application.generation.validation.StageStatus.SKIPPED;
+import static io.gen2spring.mcp.application.generation.validation.StageStatus.SUCCESS;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -17,14 +17,14 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.application.validation.ExpectedTool;
-import io.gen2spring.mcp.application.validation.ExpectedToolCall;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamInteraction;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamResponse;
-import io.gen2spring.mcp.application.usecase.GenerationProgress;
-import io.gen2spring.mcp.application.usecase.ProgressStatus;
-import io.gen2spring.mcp.application.validation.ValidationRequest;
+import io.gen2spring.mcp.application.generation.validation.ExpectedTool;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.application.generation.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.generation.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.generation.validation.ValidationRequest;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
@@ -743,7 +743,7 @@ class GradleMcpProjectValidatorTest {
         Path root = runnableProject("");
         TrackingMockFactory mocks = new TrackingMockFactory(
                 false, new RuntimeException("interrupted-secret-like-value"), true, null, true);
-        io.gen2spring.mcp.application.validation.ValidationReport report;
+        io.gen2spring.mcp.application.generation.validation.ValidationReport report;
 
         try {
             report = validator(mocks).validate(request(root, EXPECTED));
@@ -1136,7 +1136,7 @@ class GradleMcpProjectValidatorTest {
     private record RuntimeFixture(Path home, Path executable) {}
 
     private void assertCallFailureAndCleanup(
-            io.gen2spring.mcp.application.validation.ValidationReport report,
+            io.gen2spring.mcp.application.generation.validation.ValidationReport report,
             Path root,
             TrackingMockFactory mocks) throws Exception {
         assertEquals(UNVERIFIED, report.status(), report.toString());
@@ -1151,7 +1151,7 @@ class GradleMcpProjectValidatorTest {
     }
 
     private void assertSummariesExclude(
-            io.gen2spring.mcp.application.validation.ValidationReport report,
+            io.gen2spring.mcp.application.generation.validation.ValidationReport report,
             String... values) {
         for (var stage : report.stages()) {
             for (String value : values) {

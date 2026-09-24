@@ -5,9 +5,9 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SECRET_EXPOSURE_
 import static io.gen2spring.mcp.domain.tool.ParameterSource.SERVER_SECRET;
 import static io.gen2spring.mcp.domain.tool.ParameterSource.USER_INPUT;
 
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
-import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ParameterOverride;
 import io.gen2spring.mcp.application.toolmodel.description.ToolDescriptionPolicy;
 import io.gen2spring.mcp.application.toolmodel.naming.ToolNamingPolicy;
 import io.gen2spring.mcp.application.toolmodel.observability.RuntimeObservabilityContract;

@@ -17,7 +17,11 @@ import io.gen2spring.mcp.adapter.persistence.specification.PostgresSpecification
 import io.gen2spring.mcp.adapter.persistence.worker.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3BucketReadinessProbe;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
-import io.gen2spring.mcp.app.web.infrastructure.hosted.submission.HostedSubmissionService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedSubmissionService;
+import io.gen2spring.mcp.app.web.application.hosted.port.out.HostedSpecificationProcessor;
+import io.gen2spring.mcp.app.web.application.hosted.port.out.HostedSubmissionSnapshotCodec;
+import io.gen2spring.mcp.app.web.infrastructure.hosted.submission.GeneratorHostedSpecificationProcessor;
+import io.gen2spring.mcp.app.web.infrastructure.hosted.submission.JacksonHostedSubmissionSnapshotCodec;
 import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
 import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
@@ -299,19 +303,32 @@ public class HostedWebConfiguration {
     }
 
     @Bean
-    HostedSubmissionService hostedSubmissionService(
+    HostedSpecificationProcessor hostedSpecificationProcessor(
             GeneratorRuntime hostedGeneratorRuntime,
+            HostedWebProperties properties) {
+        return new GeneratorHostedSpecificationProcessor(hostedGeneratorRuntime, properties.workRoot());
+    }
+
+    @Bean
+    HostedSubmissionSnapshotCodec hostedSubmissionSnapshotCodec() {
+        return new JacksonHostedSubmissionSnapshotCodec();
+    }
+
+    @Bean
+    HostedSubmissionService hostedSubmissionService(
+            HostedSpecificationProcessor hostedSpecificationProcessor,
+            HostedSubmissionSnapshotCodec hostedSubmissionSnapshotCodec,
             ObjectStorage hostedObjectStorage,
             SpecificationCatalog hostedSpecificationCatalog,
             HostedResourceStore hostedResourceStore,
             HostedJobService hostedJobService,
             ImportTargetProtector hostedImportTargetProtector,
-            HostedWebProperties properties,
             Clock hostedClock) {
         return new HostedSubmissionService(
-                hostedGeneratorRuntime, hostedObjectStorage, hostedSpecificationCatalog,
+                hostedSpecificationProcessor, hostedSubmissionSnapshotCodec,
+                hostedObjectStorage, hostedSpecificationCatalog,
                 hostedResourceStore, hostedJobService, hostedImportTargetProtector,
-                properties.workRoot(), hostedClock);
+                hostedClock);
     }
 
     private char[] secret(Path path) {

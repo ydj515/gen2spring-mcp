@@ -4,7 +4,7 @@ import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
 import io.gen2spring.mcp.app.web.application.local.exception.LocalConfigurationFailure;
 import io.gen2spring.mcp.app.web.application.local.port.out.GenerationConfigurationDecoder;
-import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import java.util.Objects;
 
 public final class GenerationConfigurationAdapter implements GenerationConfigurationDecoder {

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.application.command.GenerationCommand.OutputSelection;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.OutputSelection;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;

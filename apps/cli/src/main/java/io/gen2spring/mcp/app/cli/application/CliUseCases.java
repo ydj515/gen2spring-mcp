@@ -1,15 +1,15 @@
 package io.gen2spring.mcp.app.cli.application;
 
-import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFIED;
-import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
 
 import io.gen2spring.mcp.app.cli.application.port.out.CliFilePort;
 import io.gen2spring.mcp.app.cli.application.port.out.ConfigurationPort;
-import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;

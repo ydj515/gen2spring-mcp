@@ -1,11 +1,11 @@
 package io.gen2spring.mcp.app.web.infrastructure.local.job;
 
-import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;

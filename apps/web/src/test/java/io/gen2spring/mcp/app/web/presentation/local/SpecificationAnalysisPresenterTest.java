@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiOperation;
 import io.gen2spring.mcp.domain.specification.OperationSupport;

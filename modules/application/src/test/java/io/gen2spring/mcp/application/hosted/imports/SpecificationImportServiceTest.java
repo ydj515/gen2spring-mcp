@@ -12,7 +12,7 @@ import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.application.hosted.storage.StoredObject;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
 import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
-import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;

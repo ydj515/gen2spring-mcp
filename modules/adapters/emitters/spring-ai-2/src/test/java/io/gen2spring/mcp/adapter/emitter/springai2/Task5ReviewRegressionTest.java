@@ -25,7 +25,7 @@ class Task5ReviewRegressionTest {
     @Test
     void importsThePinnedSpringBootBomForVersionlessBootDependencies() {
         String build = projectRenderer.buildGradle(
-                new io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates(
+                new io.gen2spring.mcp.application.generation.command.GenerationCommand.ProjectCoordinates(
                         "com.example", "weather-mcp-server", "com.example.weather"));
 
         assertTrue(build.contains(
@@ -35,7 +35,7 @@ class Task5ReviewRegressionTest {
     @Test
     void includesTheBootRestClientAutoConfigurationModule() {
         String build = projectRenderer.buildGradle(
-                new io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates(
+                new io.gen2spring.mcp.application.generation.command.GenerationCommand.ProjectCoordinates(
                         "com.example", "weather-mcp-server", "com.example.weather"));
 
         assertTrue(build.contains("implementation(\"org.springframework.boot:spring-boot-restclient\")"));

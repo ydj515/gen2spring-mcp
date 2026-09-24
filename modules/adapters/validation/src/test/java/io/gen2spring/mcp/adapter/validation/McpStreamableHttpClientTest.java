@@ -10,9 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.application.validation.ExpectedTool;
-import io.gen2spring.mcp.application.validation.ExpectedToolCall;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.application.generation.validation.ExpectedTool;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.adapter.validation.McpStreamableHttpClient.McpStage;
 import io.gen2spring.mcp.adapter.validation.support.McpTestServer;

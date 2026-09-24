@@ -7,12 +7,12 @@ import io.gen2spring.mcp.app.web.application.local.exception.LocalJobFailure;
 import io.gen2spring.mcp.app.web.application.local.io.BoundedBodyReader;
 import io.gen2spring.mcp.app.web.application.local.port.out.GenerationJobs;
 
-import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
-import io.gen2spring.mcp.application.usecase.GenerationProgress;
-import io.gen2spring.mcp.application.usecase.ProgressStatus;
-import io.gen2spring.mcp.application.validation.ValidationStatus;
+import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.generation.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.io.IOException;

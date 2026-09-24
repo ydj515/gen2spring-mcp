@@ -4,8 +4,8 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
-import io.gen2spring.mcp.application.port.outbound.ProjectWorkspace;
+import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.generation.port.out.ProjectWorkspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

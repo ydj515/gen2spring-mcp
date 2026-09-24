@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.app.cli.application.port.out;
 
-import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
 import java.nio.file.Path;
 
 public interface CliFilePort {

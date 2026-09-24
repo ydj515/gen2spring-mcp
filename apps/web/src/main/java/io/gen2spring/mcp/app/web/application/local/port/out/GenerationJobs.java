@@ -3,7 +3,7 @@ package io.gen2spring.mcp.app.web.application.local.port.out;
 import io.gen2spring.mcp.app.web.application.local.job.JobSnapshot;
 import io.gen2spring.mcp.app.web.application.local.result.ArtifactDownload;
 import io.gen2spring.mcp.app.web.application.local.result.VersionedJobSnapshot;
-import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;

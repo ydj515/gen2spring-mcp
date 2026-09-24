@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.app.web.infrastructure.local.specification;
 
 import io.gen2spring.mcp.app.web.application.local.result.StoredSpecification;
-import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
 import io.gen2spring.mcp.app.web.application.local.io.BoundedBodyReader;
 import io.gen2spring.mcp.app.web.application.local.exception.LocalSpecificationFailure;
 import io.gen2spring.mcp.app.web.application.local.port.out.SpecificationStorage;

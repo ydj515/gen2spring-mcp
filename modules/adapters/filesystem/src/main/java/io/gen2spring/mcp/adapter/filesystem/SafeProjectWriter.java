@@ -6,8 +6,8 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
-import io.gen2spring.mcp.application.port.outbound.ProjectWorkspace;
+import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.generation.port.out.ProjectWorkspace;
 import java.io.IOException;
 import java.nio.file.FileStore;
 import java.nio.file.Files;

@@ -2,8 +2,8 @@ package io.gen2spring.mcp.app.web.infrastructure.local.job;
 
 import io.gen2spring.mcp.app.web.application.local.exception.LocalJobFailure;
 
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
-import io.gen2spring.mcp.application.validation.ValidationStatus;
+import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;

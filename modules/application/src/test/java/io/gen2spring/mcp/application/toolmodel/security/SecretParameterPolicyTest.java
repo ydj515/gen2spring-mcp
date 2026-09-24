@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import java.util.List;

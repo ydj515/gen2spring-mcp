@@ -7,9 +7,9 @@ import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
 
-import io.gen2spring.mcp.application.port.outbound.ArtifactPackager;
-import io.gen2spring.mcp.application.port.outbound.SourceSnapshot;
-import io.gen2spring.mcp.application.port.outbound.SourceSnapshot.EntryFingerprint;
+import io.gen2spring.mcp.application.generation.port.out.ArtifactPackager;
+import io.gen2spring.mcp.application.generation.port.out.SourceSnapshot;
+import io.gen2spring.mcp.application.generation.port.out.SourceSnapshot.EntryFingerprint;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import java.io.IOException;
 import java.io.InputStream;

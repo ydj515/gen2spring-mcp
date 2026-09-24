@@ -3,7 +3,7 @@ package io.gen2spring.mcp.app.web.presentation.local;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.gen2spring.mcp.application.usecase.GenerationPreview;
+import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.profile.CompatibilityNotice;

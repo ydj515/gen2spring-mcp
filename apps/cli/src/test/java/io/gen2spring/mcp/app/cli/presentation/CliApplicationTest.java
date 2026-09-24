@@ -4,8 +4,8 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.ARTIFACT_PACKAGE
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.COMPILE_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_PARSE_FAILED;
-import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFIED;
-import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -18,11 +18,11 @@ import io.gen2spring.mcp.app.cli.infrastructure.file.GenerationConfigurationRead
 import io.gen2spring.mcp.app.cli.infrastructure.file.LocalCliFiles;
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
-import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

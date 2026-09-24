@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.adapter.openapi.swagger;
 
-import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_REFERENCE_UNRESOLVED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_VERSION_UNSUPPORTED;

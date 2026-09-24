@@ -65,8 +65,11 @@ Worker의 application은 작업 순서를 소유하며 scheduling adapter는 inp
 
 ## 구현 탐색 시작점
 
-- [GenerationPipeline](../modules/application/src/main/java/io/gen2spring/mcp/application/usecase/GenerationPipeline.java): 생성 단계와 검증 후 패키징
-- [GenerationPlanner](../modules/application/src/main/java/io/gen2spring/mcp/application/planning/GenerationPlanner.java): profile·Tool 계획
+생성 전용 command·usecase·planning·validation·port는 `io.gen2spring.mcp.application.generation` 아래에 모은다.
+Hosted·managed 실행과 공유하는 Tool model과 runtime metadata는 기존 application 패키지에 둔다.
+
+- [GenerationPipeline](../modules/application/src/main/java/io/gen2spring/mcp/application/generation/usecase/GenerationPipeline.java): 생성 단계와 검증 후 패키징
+- [GenerationPlanner](../modules/application/src/main/java/io/gen2spring/mcp/application/generation/planning/GenerationPlanner.java): profile·Tool 계획
 - [HostedWorker](../modules/application/src/main/java/io/gen2spring/mcp/application/hosted/worker/HostedWorker.java): 격리 실행과 게시
 - [ManagedRuntimeMigrationService](../modules/application/src/main/java/io/gen2spring/mcp/application/managed/runtime/ManagedRuntimeMigrationService.java): Catalog 전환
 - [editor.html](../apps/web/src/main/resources/templates/editor.html): 화면 구조

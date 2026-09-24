@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.app.cli.application.exception.CliConfigurationException;
 
-import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;

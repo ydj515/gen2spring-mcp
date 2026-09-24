@@ -14,10 +14,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.application.validation.ExpectedToolCall;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamInteraction;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamOutcome;
-import io.gen2spring.mcp.application.validation.ExpectedUpstreamResponse;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamInteraction;
+import io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamOutcome;
+import io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamResponse;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;

@@ -17,7 +17,7 @@ import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.
 import static io.gen2spring.mcp.domain.specification.OperationSupport.IssueCode.SUCCESS_SCHEMA_UNSUPPORTED;
 
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.AnalysisWarning;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiOperation;

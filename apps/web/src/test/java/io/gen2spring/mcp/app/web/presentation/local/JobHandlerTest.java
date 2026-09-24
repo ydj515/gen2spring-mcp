@@ -14,10 +14,10 @@ import io.gen2spring.mcp.app.web.application.local.service.LocalGenerationServic
 import io.gen2spring.mcp.app.web.infrastructure.local.configuration.GenerationConfigurationAdapter;
 import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.infrastructure.local.specification.SpecificationStore;
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.port.outbound.GenerationProgressListener;
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
-import io.gen2spring.mcp.application.validation.ValidationStatus;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.port.out.GenerationProgressListener;
+import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;

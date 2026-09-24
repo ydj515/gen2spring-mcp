@@ -4,7 +4,7 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SECRET_EXPOSURE_
 import static io.gen2spring.mcp.domain.tool.ParameterSource.SERVER_SECRET;
 import static io.gen2spring.mcp.domain.tool.ParameterSource.USER_INPUT;
 
-import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.ParameterSource;

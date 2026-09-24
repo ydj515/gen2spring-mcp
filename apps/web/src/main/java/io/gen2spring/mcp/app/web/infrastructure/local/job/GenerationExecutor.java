@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.app.web.infrastructure.local.job;
 
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.port.outbound.GenerationProgressListener;
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.port.out.GenerationProgressListener;
+import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
 import java.nio.file.Path;
 
 @FunctionalInterface

@@ -2,7 +2,7 @@ package io.gen2spring.mcp.adapter.filesystem;
 
 import io.gen2spring.mcp.domain.tool.OutputKind;
 
-import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
 import static io.gen2spring.mcp.domain.tool.ParameterSource.SERVER_SECRET;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,16 +11,16 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
-import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
-import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
-import io.gen2spring.mcp.application.command.GenerationCommand.ToolCallValidation;
-import io.gen2spring.mcp.application.command.GenerationCommand.ValidationConfiguration;
-import io.gen2spring.mcp.application.port.outbound.GeneratedProjectFiles;
-import io.gen2spring.mcp.application.usecase.GenerationPipeline;
-import io.gen2spring.mcp.application.usecase.GenerationPreview;
-import io.gen2spring.mcp.application.validation.ValidationReport;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ParameterOverride;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ProjectCoordinates;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ToolCallValidation;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ValidationConfiguration;
+import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.generation.usecase.GenerationPipeline;
+import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
+import io.gen2spring.mcp.application.generation.validation.ValidationReport;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
@@ -53,9 +53,9 @@ class GenerationPreviewTest {
     void rendersAnImmutableSortedPreviewWithoutWritingOrLeakingArguments() throws Exception {
         Path specification = Files.writeString(tempDir.resolve("weather.yaml"), specification(), UTF_8);
         Path absentOutput = tempDir.resolve("must-not-exist");
-        AtomicReference<io.gen2spring.mcp.application.usecase.GenerationContext> context =
+        AtomicReference<io.gen2spring.mcp.application.generation.usecase.GenerationContext> context =
                 new AtomicReference<>();
-        var generator = (io.gen2spring.mcp.application.port.outbound.ProjectGenerator) generation -> {
+        var generator = (io.gen2spring.mcp.application.generation.port.out.ProjectGenerator) generation -> {
             context.set(generation);
             return new GeneratedProjectFiles(Map.of(
                     "z.txt", "z".getBytes(UTF_8),

@@ -4,7 +4,7 @@ import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
 import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 import io.gen2spring.mcp.app.cli.application.exception.CliConfigurationException;
 import io.gen2spring.mcp.app.cli.application.port.out.ConfigurationPort;
-import io.gen2spring.mcp.application.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import java.nio.file.Path;
 import java.util.Objects;

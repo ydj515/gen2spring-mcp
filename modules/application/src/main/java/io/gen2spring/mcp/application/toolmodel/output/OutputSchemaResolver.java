@@ -5,7 +5,7 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.OPERATION_UNSUPP
 import static io.gen2spring.mcp.domain.tool.OutputKind.GENERIC_JSON;
 import static io.gen2spring.mcp.domain.tool.OutputKind.TYPED_DTO;
 
-import io.gen2spring.mcp.application.command.GenerationCommand.OutputSelection;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.OutputSelection;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;

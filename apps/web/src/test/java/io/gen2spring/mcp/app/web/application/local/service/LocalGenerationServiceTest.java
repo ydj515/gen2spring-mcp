@@ -12,8 +12,8 @@ import io.gen2spring.mcp.app.web.application.local.port.out.GenerationConfigurat
 import io.gen2spring.mcp.app.web.application.local.port.out.GenerationJobs;
 import io.gen2spring.mcp.app.web.application.local.port.out.SpecificationStorage;
 import io.gen2spring.mcp.app.web.application.local.result.StoredSpecification;
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.usecase.GenerationPipeline;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.usecase.GenerationPipeline;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 

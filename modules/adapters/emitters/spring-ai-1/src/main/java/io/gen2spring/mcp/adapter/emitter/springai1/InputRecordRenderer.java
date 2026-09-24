@@ -2,7 +2,7 @@ package io.gen2spring.mcp.adapter.emitter.springai1;
 
 import io.gen2spring.mcp.adapter.emitter.support.JavaStringLiteral;
 
-import io.gen2spring.mcp.application.validation.ExpectedToolSchemaFactory;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;

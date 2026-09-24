@@ -2,7 +2,7 @@ package io.gen2spring.mcp.app.importer.infrastructure.analysis;
 
 import io.gen2spring.mcp.app.importer.application.imports.ImportRunnerFailure;
 import io.gen2spring.mcp.app.importer.application.imports.port.out.ImportSpecificationAnalyzer;
-import io.gen2spring.mcp.application.port.outbound.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;

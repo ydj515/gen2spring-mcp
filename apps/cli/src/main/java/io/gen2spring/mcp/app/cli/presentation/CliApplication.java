@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.app.cli.presentation;
 
-import static io.gen2spring.mcp.application.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.UNVERIFIED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.app.cli.application.CliUseCases;
 import io.gen2spring.mcp.app.cli.application.exception.CliConfigurationException;
-import io.gen2spring.mcp.application.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.McpImplementation;

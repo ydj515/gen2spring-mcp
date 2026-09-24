@@ -2,12 +2,12 @@
 
 ## 하나의 Tool IR
 
-[GenerationPlanner](../modules/application/src/main/java/io/gen2spring/mcp/application/planning/GenerationPlanner.java)는
+[GenerationPlanner](../modules/application/src/main/java/io/gen2spring/mcp/application/generation/planning/GenerationPlanner.java)는
 호환 profile과 구현 방식을 검증하고 분석 결과에 operation 선택·이름·설명·secret·응답·실행 정책을 적용한다.
 최종 Tool IR을 source generation, MCP input schema, 검증 expectation과 Runtime Metadata의 공통 기준으로 사용한다.
 브라우저나 validator가 별도로 OpenAPI를 해석해 다른 Tool 계약을 만들지 않는다.
 
-[GenerationPipeline](../modules/application/src/main/java/io/gen2spring/mcp/application/usecase/GenerationPipeline.java)의
+[GenerationPipeline](../modules/application/src/main/java/io/gen2spring/mcp/application/generation/usecase/GenerationPipeline.java)의
 흐름은 분석 → 계획·소스/metadata 기록 → 검증 workspace → 보고서 → 성공 시 ZIP이다.
 Preview는 계획과 파일 목록을 제공하며 생성 프로젝트의 compile·기동·MCP 호출·ZIP 생성을 수행하지 않는다.
 따라서 preview 성공은 배포 가능한 프로젝트 검증 성공이 아니다.

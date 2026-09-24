@@ -2,7 +2,7 @@ package io.gen2spring.mcp.app.web.presentation.local;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
 import java.nio.file.Path;
 import java.util.Objects;
 

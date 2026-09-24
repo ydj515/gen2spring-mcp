@@ -10,10 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
-import io.gen2spring.mcp.application.command.GenerationCommand.OutputSelection;
-import io.gen2spring.mcp.application.command.GenerationCommand.ParameterOverride;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.OutputSelection;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ParameterOverride;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;

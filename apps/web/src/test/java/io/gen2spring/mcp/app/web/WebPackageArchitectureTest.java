@@ -15,12 +15,16 @@ final class WebPackageArchitectureTest {
         assertLoadable("io.gen2spring.mcp.app.web.presentation.local.SpecificationController");
         assertLoadable("io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager");
         assertLoadable("io.gen2spring.mcp.app.web.infrastructure.local.job.JobWorkspace");
+        assertLoadable("io.gen2spring.mcp.app.web.application.hosted.service.HostedSubmissionService");
+        assertLoadable("io.gen2spring.mcp.app.web.infrastructure.hosted.submission.GeneratorHostedSpecificationProcessor");
+        assertLoadable("io.gen2spring.mcp.app.web.infrastructure.hosted.submission.JacksonHostedSubmissionSnapshotCodec");
         assertLoadable("io.gen2spring.mcp.app.web.presentation.security.LocalRequestSecurityFilter");
         assertLoadable("io.gen2spring.mcp.app.web.config.WebRuntimeConfiguration");
         assertLoadable("io.gen2spring.mcp.app.web.presentation.error.WebErrorMapper");
 
         assertNotLoadable("io.gen2spring.mcp.app.web.GenerationJobManager");
         assertNotLoadable("io.gen2spring.mcp.app.web.WebErrorMapper");
+        assertNotLoadable("io.gen2spring.mcp.app.web.infrastructure.hosted.submission.HostedSubmissionService");
     }
 
     @Test

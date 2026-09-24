@@ -2,9 +2,9 @@ package io.gen2spring.mcp.adapter.validation;
 
 import io.gen2spring.mcp.domain.tool.OutputKind;
 
-import static io.gen2spring.mcp.application.command.GenerationCommand.ValidationLevel.MCP_PROTOCOL;
-import static io.gen2spring.mcp.application.validation.StageStatus.SUCCESS;
-import static io.gen2spring.mcp.application.validation.ValidationStatus.VALIDATED;
+import static io.gen2spring.mcp.application.generation.command.GenerationCommand.ValidationLevel.MCP_PROTOCOL;
+import static io.gen2spring.mcp.application.generation.validation.StageStatus.SUCCESS;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod.GET;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.HEADER;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation.QUERY;
@@ -17,12 +17,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.application.command.GenerationCommand.ProjectCoordinates;
-import io.gen2spring.mcp.application.usecase.GenerationContext;
-import io.gen2spring.mcp.application.validation.ExpectedToolCall;
-import io.gen2spring.mcp.application.validation.ValidationRequest;
-import io.gen2spring.mcp.application.validation.ExpectedToolSchemaFactory;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand.ProjectCoordinates;
+import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolCall;
+import io.gen2spring.mcp.application.generation.validation.ValidationRequest;
+import io.gen2spring.mcp.application.generation.validation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;

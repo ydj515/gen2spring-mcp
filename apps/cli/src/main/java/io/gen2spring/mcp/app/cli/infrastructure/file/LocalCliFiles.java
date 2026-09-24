@@ -12,7 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.app.cli.application.exception.CliConfigurationException;
 import io.gen2spring.mcp.app.cli.application.port.out.CliFilePort;
-import io.gen2spring.mcp.application.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import java.io.IOException;
