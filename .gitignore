@@ -1,6 +1,8 @@
 .gradle/
 build/
 */build/
+/apps/*/bin/
+/modules/**/bin/
 *.class
 .DS_Store
 out/
