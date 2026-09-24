@@ -97,14 +97,14 @@ run = "deploy/hosted/bin/validate.sh"
 description = "Build hosted Web, Worker, Runtime, and egress images"
 run = '''
 deploy/hosted/bin/validate.sh
-docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml build web worker fetch-gateway runtime provider-egress
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml build web worker fetch-gateway runtime provider-egress garage-init
 '''
 
 [tasks."hosted:deps"]
-description = "Start private PostgreSQL, MinIO, and fetch gateway dependencies"
+description = "Start private PostgreSQL, Garage, and fetch gateway dependencies"
 run = '''
 deploy/hosted/bin/validate.sh
-docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d postgres minio minio-init fetch-gateway
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d postgres garage garage-init fetch-gateway
 '''
 
 [tasks."hosted:up"]
@@ -145,9 +145,9 @@ run = '''
 '''
 
 [tasks."hosted:backup"]
-description = "Create a PostgreSQL backup in a private caller-selected directory"
+description = "Create a PostgreSQL and Garage backup in a private caller-selected directory"
 run = "deploy/hosted/bin/backup.sh"
 
 [tasks."hosted:restore-rehearsal"]
-description = "Verify a hosted PostgreSQL backup in an isolated PostgreSQL 17.9 container"
+description = "Verify hosted PostgreSQL and Garage backups in isolated resources"
 run = "deploy/hosted/bin/restore-rehearsal.sh"

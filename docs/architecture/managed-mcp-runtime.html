@@ -80,8 +80,8 @@
       <h2>4. Trust and network boundaries</h2>
       <table><thead><tr><th>Process</th><th>Can access</th><th>Cannot access</th></tr></thead><tbody>
         <tr><td>apps/web</td><td>OIDC, PostgreSQL, credential/grant control API, credential key ring</td><td>provider egress, runtime token plaintext after response</td></tr>
-        <tr><td>apps/runtime</td><td>PostgreSQL, credential key ring, internal provider-call, proxy ingress</td><td>direct external egress, MinIO, OIDC secret, Docker socket</td></tr>
-        <tr><td>apps/provider-egress</td><td>mTLS request, public network 80/443</td><td>PostgreSQL, Catalog, token, account, MinIO, Docker</td></tr>
+        <tr><td>apps/runtime</td><td>PostgreSQL, credential key ring, internal provider-call, proxy ingress</td><td>direct external egress, Garage, OIDC secret, Docker socket</td></tr>
+        <tr><td>apps/provider-egress</td><td>mTLS request, public network 80/443</td><td>PostgreSQL, Catalog, token, account, Garage, Docker</td></tr>
       </tbody></table>
       <div class="callout warning"><strong>Provider policy:</strong> loopback, private, link-local, multicast, reserved, metadata, mixed DNS answer, redirects, caller Host, hop-by-hop headers와 1 MiB 초과 body를 거부한다.</div>
     </section>

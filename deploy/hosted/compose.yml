@@ -19,41 +19,31 @@ services:
       retries: 20
     security_opt: [no-new-privileges:true]
 
-  minio:
-    image: tobi312/minio:alpine-RELEASE.2025-07-23T15-54-02Z@sha256:d081402f706701b8f6ab6678d481036a673777d58ae7107652632b245b94a9dc
-    command: server /data
+  garage:
+    image: dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
+    command: /garage server --single-node
     restart: unless-stopped
-    environment:
-      MINIO_ROOT_USER_FILE: /run/secrets/minio-root-user
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio-root-password
-    secrets: [minio-root-user, minio-root-password]
+    secrets: [garage-rpc-secret]
     volumes:
-      - minio-data:/data
+      - garage-data:/var/lib/garage
+      - ./garage/garage.toml:/etc/garage.toml:ro
     networks: [platform]
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      test: ["CMD", "/garage", "status"]
       interval: 5s
       timeout: 3s
       retries: 20
     security_opt: [no-new-privileges:true]
 
-  minio-init:
-    image: tobi312/minio:alpine-RELEASE.2025-07-23T15-54-02Z@sha256:d081402f706701b8f6ab6678d481036a673777d58ae7107652632b245b94a9dc
+  garage-init:
+    build:
+      context: ./garage-init
     depends_on:
-      minio: {condition: service_healthy}
-    entrypoint: /bin/sh
-    command:
-      - -euc
-      - |
-        mc alias set local http://minio:9000 "$$(cat /run/secrets/minio-root-user)" "$$(cat /run/secrets/minio-root-password)" >/dev/null
-        mc mb --ignore-existing local/gen2spring-private >/dev/null
-        mc anonymous set none local/gen2spring-private >/dev/null
-        mc admin policy create local gen2spring-private /policy/gen2spring-policy.json >/dev/null
-        mc admin user add local "$$(cat /run/secrets/minio-app-access-key)" "$$(cat /run/secrets/minio-app-secret-key)" >/dev/null 2>&1 || true
-        mc admin policy attach local gen2spring-private --user "$$(cat /run/secrets/minio-app-access-key)" >/dev/null
-    secrets: [minio-root-user, minio-root-password, minio-app-access-key, minio-app-secret-key]
+      garage: {condition: service_healthy}
+    secrets: [garage-rpc-secret, garage-app-access-key, garage-app-secret-key]
     volumes:
-      - ./minio/gen2spring-policy.json:/policy/gen2spring-policy.json:ro
+      - garage-data:/var/lib/garage:ro
+      - ./garage/garage.toml:/etc/garage.toml:ro
     networks: [platform]
     read_only: true
     tmpfs: [/tmp]
@@ -88,7 +78,7 @@ services:
     user: "${GEN2SPRING_ROOTLESS_DOCKER_UID:?set GEN2SPRING_ROOTLESS_DOCKER_UID}:${GEN2SPRING_ROOTLESS_DOCKER_GID:?set GEN2SPRING_ROOTLESS_DOCKER_GID}"
     depends_on:
       postgres: {condition: service_healthy}
-      minio-init: {condition: service_completed_successfully}
+      garage-init: {condition: service_completed_successfully}
       fetch-gateway: {condition: service_started}
     environment:
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
@@ -102,10 +92,11 @@ services:
       GEN2SPRING_IMPORT_NETWORK: gen2spring-fetch
       GEN2SPRING_WORKSPACE_ROOT: ${GEN2SPRING_HOST_WORKSPACE_ROOT:?set GEN2SPRING_HOST_WORKSPACE_ROOT}
       GEN2SPRING_SECRET_ROOT: ${GEN2SPRING_HOST_SANDBOX_SECRET_ROOT:?set GEN2SPRING_HOST_SANDBOX_SECRET_ROOT}
-      GEN2SPRING_S3_ENDPOINT: http://minio:9000
+      GEN2SPRING_S3_ENDPOINT: http://garage:3900
+      GEN2SPRING_S3_REGION: garage
       GEN2SPRING_S3_BUCKET: gen2spring-private
-      GEN2SPRING_S3_ACCESS_KEY_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/minio-app-access-key
-      GEN2SPRING_S3_SECRET_KEY_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/minio-app-secret-key
+      GEN2SPRING_S3_ACCESS_KEY_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/garage-app-access-key
+      GEN2SPRING_S3_SECRET_KEY_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/garage-app-secret-key
       GEN2SPRING_FETCH_GATEWAY_ENDPOINT: https://fetch-gateway:8443/internal/fetch
       GEN2SPRING_FETCH_CLIENT_KEYSTORE: ${GEN2SPRING_HOST_SECRET_DIR}/fetch-client.p12
       GEN2SPRING_FETCH_CLIENT_PASSWORD_FILE: ${GEN2SPRING_HOST_SECRET_DIR}/fetch-client-password
@@ -131,7 +122,7 @@ services:
     restart: on-failure
     depends_on:
       postgres: {condition: service_healthy}
-      minio-init: {condition: service_completed_successfully}
+      garage-init: {condition: service_completed_successfully}
       worker: {condition: service_started}
     environment:
       GEN2SPRING_MODE: hosted
@@ -151,10 +142,11 @@ services:
       GEN2SPRING_POSTGRES_URL: jdbc:postgresql://postgres:5432/gen2spring
       GEN2SPRING_POSTGRES_USER: gen2spring
       GEN2SPRING_POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
-      GEN2SPRING_S3_ENDPOINT: http://minio:9000
+      GEN2SPRING_S3_ENDPOINT: http://garage:3900
+      GEN2SPRING_S3_REGION: garage
       GEN2SPRING_S3_BUCKET: gen2spring-private
-      GEN2SPRING_S3_ACCESS_KEY_FILE: /run/secrets/minio-app-access-key
-      GEN2SPRING_S3_SECRET_KEY_FILE: /run/secrets/minio-app-secret-key
+      GEN2SPRING_S3_ACCESS_KEY_FILE: /run/secrets/garage-app-access-key
+      GEN2SPRING_S3_SECRET_KEY_FILE: /run/secrets/garage-app-secret-key
       GEN2SPRING_IMPORT_KEY_FILE: /run/secrets/import-target-key
       GEN2SPRING_CREDENTIAL_ACTIVE_KEY_ID: ${GEN2SPRING_CREDENTIAL_ACTIVE_KEY_ID:-key-2}
       GEN2SPRING_CREDENTIAL_ACTIVE_KEY_FILE: /run/secrets/credential-key-active
@@ -163,8 +155,8 @@ services:
       GEN2SPRING_RUNTIME_TOKEN_PEPPER_FILE: /run/secrets/runtime-token-pepper
     secrets:
       - postgres-password
-      - minio-app-access-key
-      - minio-app-secret-key
+      - garage-app-access-key
+      - garage-app-secret-key
       - import-target-key
       - credential-key-active
       - credential-key-retired
@@ -283,19 +275,17 @@ networks:
 
 volumes:
   postgres-data: {}
-  minio-data: {}
+  garage-data: {}
 
 secrets:
   postgres-password:
     file: ${GEN2SPRING_SECRET_DIR:-./secrets}/postgres-password
-  minio-root-user:
-    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/minio-root-user
-  minio-root-password:
-    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/minio-root-password
-  minio-app-access-key:
-    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/minio-app-access-key
-  minio-app-secret-key:
-    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/minio-app-secret-key
+  garage-rpc-secret:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/garage-rpc-secret
+  garage-app-access-key:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/garage-app-access-key
+  garage-app-secret-key:
+    file: ${GEN2SPRING_SECRET_DIR:-./secrets}/garage-app-secret-key
   import-target-key:
     file: ${GEN2SPRING_SECRET_DIR:-./secrets}/import-target-key
   credential-key-active:

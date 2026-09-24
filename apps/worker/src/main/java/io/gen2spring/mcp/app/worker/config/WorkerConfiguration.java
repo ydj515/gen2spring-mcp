@@ -86,7 +86,10 @@ class WorkerConfiguration {
                             new String(accessKey),
                             new String(secretKey))))
                     .httpClientBuilder(UrlConnectionHttpClient.builder())
-                    .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                    .serviceConfiguration(S3Configuration.builder()
+                            .pathStyleAccessEnabled(true)
+                            .chunkedEncodingEnabled(false)
+                            .build())
                     .build();
         } catch (RuntimeException failure) {
             throw invalid();

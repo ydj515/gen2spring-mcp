@@ -1,7 +1,7 @@
 # Hosted single-host deployment
 
 This deployment is a fail-closed reference for one Linux host. The only published endpoint is the TLS proxy on
-`GEN2SPRING_HTTPS_BIND:8443`. PostgreSQL, MinIO, Web, Worker, Managed Runtime, and both egress services have no host ports.
+`GEN2SPRING_HTTPS_BIND:8443`. PostgreSQL, Garage, Web, Worker, Managed Runtime, and both egress services have no host ports.
 
 ## Prerequisites
 
@@ -19,9 +19,11 @@ while any stored credential still references its key ID.
 
 Set `GEN2SPRING_RUNTIME_BASE_URI` to the externally reachable HTTPS proxy origin returned to MCP clients.
 
-The `minio` and `minio-init` services use one digest-pinned mirror containing the same July 2025 MinIO server and
-client releases as the original images. Keep the digest fixed when preparing a deployment and rehearse the MinIO
-backup and restore procedure below before changing an existing host.
+Garage uses the official digest-pinned `dxflrs/garage:v2.4.1` image. Create `garage-rpc-secret` with
+`openssl rand -hex 32`, `garage-app-access-key` with `GK$(openssl rand -hex 16)`, and
+`garage-app-secret-key` with `openssl rand -hex 32`. Keep these files in `GEN2SPRING_SECRET_DIR` with mode `0600`.
+The app key has read and write access only to `gen2spring-private`. Garage uses SQLite metadata with metadata and
+data fsync enabled; single-node storage still requires off-host backups.
 
 Managed Runtime tokens use `runtime-token-pepper`. Runtime-to-provider traffic uses a dedicated client/server mTLS
 pair (`provider-egress-client*` and `provider-egress-server*`). Runtime can reach PostgreSQL and the internal
@@ -42,13 +44,13 @@ sticky routing is neither required nor supported.
 ## V7 Catalog version rollout
 
 Before the first V7-capable deployment, pause generation, Runtime migration, grant mutation, and credential mutation,
-then create one consistent PostgreSQL and MinIO backup as described below. V7 backfills every existing Catalog as an
+then create one consistent PostgreSQL and object storage backup as described below. V7 backfills every existing Catalog as an
 independent revision-1 family and creates append-only `managed_runtime_catalog_transition` history. Deploy Web, Worker,
 and Runtime artifacts built from the same commit, allow Flyway to reach V7, and then run `mise run hosted:acceptance`
 before reopening mutations.
 
 Do not down-migrate V7 or manually delete family and transition rows. If rollout verification fails and the previous
-binary must be restored, stop every application process and restore both PostgreSQL and MinIO from the same pre-V7
+binary must be restored, stop every application process and restore both PostgreSQL and object storage from the same pre-V7
 recovery label. A PostgreSQL-only rollback can leave generation artifacts and Catalog state inconsistent.
 
 ```sql
@@ -95,31 +97,29 @@ mise run hosted:config
 mise run hosted:up
 ```
 
-`web` starts only after PostgreSQL migrations, the private MinIO policy, and a recent Worker heartbeat succeed. A
+`web` starts only after PostgreSQL migrations, Garage bucket initialization, and a recent Worker heartbeat succeed. A
 rootless Worker socket is the only Docker socket mounted, and it is never mounted into Web or the proxy. Generation
 containers use `network=none`; import containers join only the internal `gen2spring-fetch` network.
 
 ## Backup and recovery
 
-Pause mutations before a consistent backup. Back up both PostgreSQL and the MinIO data volume under the same recovery
-label; either half alone is insufficient. Store backups outside this host and encrypt them.
+Schedule a maintenance window and stop Web and Worker before the backup. This pauses object reads and mutations while
+Garage is stopped. The backup task refuses to run if either service is still running. Back up both PostgreSQL and the
+Garage data volume under the same recovery label; either half alone is insufficient. Store backups outside this host and
+encrypt them.
 
 ```bash
-mkdir -p private-backups/2026-08-13
-docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml exec -T postgres \
-  sh -c 'PGPASSWORD="$$(cat /run/secrets/postgres-password)" pg_dump -U gen2spring -d gen2spring -Fc' \
-  > private-backups/2026-08-13/postgres.dump
-docker run --rm -v gen2spring-hosted_minio-data:/source:ro \
-  -v "$PWD/private-backups/2026-08-13:/backup" \
-  debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 \
-  tar -C /source -cf /backup/minio-data.tar .
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml stop web worker
+GEN2SPRING_BACKUP_DIRECTORY="$PWD/private-backups/2026-08-13" mise run hosted:backup
+mise run hosted:up
 ```
 
-The backup task writes both `postgres.dump` and `minio-data.tar`. Rehearse both into isolated disposable resources:
+The backup task stops Garage while archiving its data and metadata, then starts it again. It writes both
+`postgres.dump` and `garage-data.tar`. Rehearse both into isolated disposable resources:
 
 ```bash
 GEN2SPRING_POSTGRES_BACKUP="$PWD/private-backups/2026-08-13/postgres.dump" \
-GEN2SPRING_MINIO_BACKUP="$PWD/private-backups/2026-08-13/minio-data.tar" \
+GEN2SPRING_GARAGE_BACKUP="$PWD/private-backups/2026-08-13/garage-data.tar" \
 mise run hosted:restore-rehearsal
 ```
 
@@ -133,3 +133,30 @@ mise run hosted:down
 ```
 
 The stop task does not remove volumes. Volume deletion is deliberately not automated.
+
+## One-time migration from the previous object store
+
+The old object-store volume cannot be mounted as a Garage volume. Before replacing an existing deployment, pause Web
+and Worker writes and take a PostgreSQL plus object-store backup with the previous release. Keep the old object-store
+container running on `gen2spring-hosted_platform`; do not remove its volume. Create the new Garage credential files
+above in the same private secret directory as the old root credential files.
+
+With the new release checked out, start only Garage and its initializer, then copy current objects through the S3
+protocol. The first run requires an empty Garage bucket, copies user metadata, and downloads both sides to compare bytes.
+It never deletes the source. Do not start Web or Worker until the check succeeds.
+
+```bash
+docker compose --env-file deploy/hosted/.env -f deploy/hosted/compose.yml up -d garage garage-init
+GEN2SPRING_MIGRATION_SECRET_DIR=/absolute/private/secrets \
+  deploy/hosted/bin/migrate-object-storage.sh
+mise run hosted:up
+mise run hosted:acceptance
+```
+
+If the old container is no longer running, restore it from the old release and its retained data volume on the
+private Compose network before running the migration script. Keep the old backup and volume until Garage backup and
+restore rehearsal, acceptance checks, and representative artifact downloads have all succeeded. The migration copies
+current object versions only; if the old bucket uses versioning or object lock, plan a separate version-aware transfer.
+If a copy is interrupted, confirm no application wrote to Garage, then rerun with
+`GEN2SPRING_MIGRATION_RESUME=yes`; the final byte comparison must still succeed.
+After those checks, stop the old object-store container. Retain its volume and backup for the rollback period.

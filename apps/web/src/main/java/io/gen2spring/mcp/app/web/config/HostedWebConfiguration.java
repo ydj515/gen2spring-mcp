@@ -13,7 +13,7 @@ import io.gen2spring.mcp.adapter.persistence.PostgresRuntimePolicyStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresToolCatalogStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresSpecificationCatalog;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
-import io.gen2spring.mcp.adapter.storage.MinioPrivateBucketProbe;
+import io.gen2spring.mcp.adapter.storage.S3BucketReadinessProbe;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
 import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
@@ -253,7 +253,10 @@ public class HostedWebConfiguration {
                     .credentialsProvider(StaticCredentialsProvider.create(
                             AwsBasicCredentials.create(new String(access), new String(secret))))
                     .httpClientBuilder(UrlConnectionHttpClient.builder())
-                    .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                    .serviceConfiguration(S3Configuration.builder()
+                            .pathStyleAccessEnabled(true)
+                            .chunkedEncodingEnabled(false)
+                            .build())
                     .build();
         } finally {
             Arrays.fill(access, '\0');
@@ -280,7 +283,7 @@ public class HostedWebConfiguration {
                             hostedClock.instant().minus(properties.workerStaleAfter()))) {
                 throw invalid();
             }
-            MinioPrivateBucketProbe.verify(hostedS3Client, properties.storage().bucket());
+            S3BucketReadinessProbe.verify(hostedS3Client, properties.storage().bucket());
             return new HostedPlatformReadiness();
         } catch (Error fatal) {
             throw fatal;

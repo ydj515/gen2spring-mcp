@@ -3,7 +3,7 @@ package io.gen2spring.mcp.app.worker.infrastructure.readiness;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.adapter.container.DockerCommandRunner;
-import io.gen2spring.mcp.adapter.storage.MinioPrivateBucketProbe;
+import io.gen2spring.mcp.adapter.storage.S3BucketReadinessProbe;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.time.Duration;
@@ -29,7 +29,7 @@ public final class WorkerDependencyProbes {
     }
 
     public static WorkerReadiness.Probe storage(S3Client s3, String bucket) {
-        return () -> MinioPrivateBucketProbe.verify(s3, bucket);
+        return () -> S3BucketReadinessProbe.verify(s3, bucket);
     }
 
     public static WorkerReadiness.Probe docker(

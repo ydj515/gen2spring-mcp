@@ -114,7 +114,7 @@
         <span class="pill">PostgreSQL 17.9 Alpine</span>
         <span class="pill">OIDC</span>
         <span class="pill">Rootless Docker</span>
-        <span class="pill">Private MinIO</span>
+        <span class="pill">Private Garage</span>
       </div>
     </div>
   </header>
@@ -152,7 +152,7 @@
           <div class="zone-note">Docker 권한이 없는 Web</div>
           <div class="node accent-green"><strong>apps/web</strong><span>OIDC, Thymeleaf/API, owner authorization, idempotency</span></div>
           <div class="node accent-blue"><strong>PostgreSQL 17.9 Alpine</strong><span>account, specification, job, event, lease, artifact metadata</span></div>
-          <div class="node accent-blue"><strong>Private MinIO</strong><span>OpenAPI source와 artifact. Public bucket 없음</span></div>
+          <div class="node accent-blue"><strong>Private Garage</strong><span>OpenAPI source와 artifact. Public bucket 없음</span></div>
           <div class="node accent-orange"><strong>URL Fetch Gateway</strong><span>DNS/CIDR/redirect/size 제한을 적용한 유일한 egress</span></div>
           <div class="node accent-green"><strong>Managed Runtime</strong><span>bearer auth, Catalog-pinned SDK handles, session MCP</span></div>
           <div class="node accent-orange"><strong>Provider Egress</strong><span>mTLS, public 80/443 resolve-and-connect only</span></div>
@@ -213,7 +213,7 @@
         <div class="flow">→</div>
         <div class="step"><span class="step-num">3</span><h3>Egress gateway</h3><p>Resolve, CIDR 검사, 검증 IP connect. Redirect마다 반복.</p></div>
         <div class="flow">→</div>
-        <div class="step"><span class="step-num">4</span><h3>Private object</h3><p>Strict JSON/YAML OpenAPI만 MinIO에 저장.</p></div>
+        <div class="step"><span class="step-num">4</span><h3>Private object</h3><p>Strict JSON/YAML OpenAPI만 Garage에 저장.</p></div>
       </div>
       <div class="callout warning"><strong>DNS rebinding 방어:</strong> 사전 resolve 후 hostname으로 다시 접속하지 않는다. Gateway가 resolve한 주소로 직접 연결하고 fetch container의 우회 route를 제거한다.</div>
       <table>
@@ -318,7 +318,7 @@
           <div class="zone-title">Private Compose networks</div>
           <div class="zone-note">platform · proxy · fetch는 internal</div>
           <div class="node accent-green"><strong>Web</strong><span>platform + proxy + OIDC egress; Docker socket 없음</span></div>
-          <div class="node accent-blue"><strong>PostgreSQL + MinIO</strong><span>named volumes, secret files, host port 미공개</span></div>
+          <div class="node accent-blue"><strong>PostgreSQL + Garage</strong><span>named volumes, secret files, host port 미공개</span></div>
           <div class="node accent-orange"><strong>Fetch gateway</strong><span>mTLS, fetch + egress만 연결</span></div>
         </div>
         <div class="flow">→</div>
@@ -344,7 +344,7 @@
       </div>
       <div class="grid grid-4">
         <div class="card"><span class="tag">Implemented</span><h3>Persistence core</h3><p>Migration, ownership, idempotency, lease, fencing.</p></div>
-        <div class="card"><span class="tag">Implemented</span><h3>Storage &amp; import</h3><p>Private MinIO and adversarial URL gateway.</p></div>
+        <div class="card"><span class="tag">Implemented</span><h3>Storage &amp; import</h3><p>Private Garage and adversarial URL gateway.</p></div>
         <div class="card"><span class="tag">Implemented</span><h3>Worker &amp; sandbox</h3><p>Rootless runner, offline build, crash recovery.</p></div>
         <div class="card"><span class="tag">Implemented</span><h3>Hosted Web</h3><p>OIDC, UI/API, startup gates, proxy and Compose definition.</p></div>
       </div>
@@ -353,7 +353,7 @@
         <tbody>
           <tr><td>Unit / contract</td><td>State, fencing, idempotency, CIDR, redaction, owner predicates</td><td>Fast CI</td></tr>
           <tr><td>Persistence</td><td>PostgreSQL 17.9 migration, concurrent claim, expiry, stale-token rejection</td><td>Linux Testcontainers</td></tr>
-          <tr><td>Storage / auth</td><td>Private MinIO, restart persistence, cross-owner 404</td><td>Linux integration</td></tr>
+          <tr><td>Storage / auth</td><td>Private Garage, restart persistence, cross-owner 404</td><td>Linux integration</td></tr>
           <tr><td>URL import</td><td>Redirect-to-private, rebinding, dual stack, oversize, timeout</td><td>Isolated integration</td></tr>
           <tr><td>Sandbox</td><td>No egress, non-root, read-only, limits, offline miss, cleanup</td><td>Rootless Docker acceptance</td></tr>
           <tr><td>Web security</td><td>Real filter chain, OIDC issuer+subject, CSRF, owner-scoped 404</td><td>MockMvc contract</td></tr>
@@ -366,7 +366,7 @@
         <div class="card"><h3>Retention</h3><p>Source/artifact 30 days, job/event metadata 90 days by default.</p></div>
         <div class="card"><h3>Scale transition</h3><p>More than 8 workers or queue p95 over 60 seconds triggers broker/Kubernetes review.</p></div>
       </div>
-      <div class="callout warning"><strong>Deployment boundary:</strong> Compose manages proxy, Web, PostgreSQL 17.9-alpine, MinIO, and the private fetch gateway. Worker uses a dedicated OS user and rootless Docker socket; each import launches a trusted import-runner container on the gateway-only network. Production implementation pins the exact multi-architecture PostgreSQL image digest.</div>
+      <div class="callout warning"><strong>Deployment boundary:</strong> Compose manages proxy, Web, PostgreSQL 17.9-alpine, Garage, and the private fetch gateway. Worker uses a dedicated OS user and rootless Docker socket; each import launches a trusted import-runner container on the gateway-only network. Production implementation pins the exact multi-architecture PostgreSQL image digest.</div>
     </section>
 
     <footer class="footer">

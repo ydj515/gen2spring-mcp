@@ -20,10 +20,7 @@ import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
-import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetBucketPolicyRequest;
-import software.amazon.awssdk.services.s3.model.GetBucketPolicyResponse;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
@@ -79,23 +76,16 @@ class WorkerConfigurationTest {
         when(connection.isValid(2)).thenReturn(true);
         S3Client s3 = mock(S3Client.class);
         when(s3.headBucket(any(HeadBucketRequest.class))).thenReturn(HeadBucketResponse.builder().build());
-        when(s3.getBucketPolicy(any(GetBucketPolicyRequest.class)))
-                .thenThrow(S3Exception.builder().statusCode(404)
-                        .awsErrorDetails(AwsErrorDetails.builder().errorCode("NoSuchBucketPolicy").build())
-                        .build());
         FakeDocker commands = new FakeDocker(properties.docker().generationImage());
 
         WorkerReadiness readiness = new WorkerInfrastructureConfiguration()
                 .workerReadiness(dataSource, s3, commands, properties);
         readiness.verify();
 
-        when(s3.getBucketPolicy(any(GetBucketPolicyRequest.class)))
-                .thenReturn(GetBucketPolicyResponse.builder().policy("{}").build());
+        when(s3.headBucket(any(HeadBucketRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).build());
         assertThrows(WorkerStartupFailure.class, readiness::verify);
-        when(s3.getBucketPolicy(any(GetBucketPolicyRequest.class)))
-                .thenThrow(S3Exception.builder().statusCode(404)
-                        .awsErrorDetails(AwsErrorDetails.builder().errorCode("NoSuchBucketPolicy").build())
-                        .build());
+        when(s3.headBucket(any(HeadBucketRequest.class))).thenReturn(HeadBucketResponse.builder().build());
 
         assertEquals(List.of("info", "image", "image", "image", "image"), commands.operations);
 
@@ -151,11 +141,11 @@ class WorkerConfigurationTest {
                         Path.of("/var/lib/gen2spring/work"),
                         Path.of("/dev/shm/gen2spring")),
                 new WorkerProperties.Storage(
-                        URI.create("http://minio:9000"),
+                        URI.create("http://garage:3900"),
                         "us-east-1",
                         "gen2spring-private",
-                        Path.of("/run/secrets/minio-access-key"),
-                        Path.of("/run/secrets/minio-secret-key"),
+                        Path.of("/run/secrets/garage-app-access-key"),
+                        Path.of("/run/secrets/garage-app-secret-key"),
                         100L * 1024 * 1024),
                 new WorkerProperties.Gateway(
                         URI.create("https://fetch-gateway:8443/internal/fetch"),

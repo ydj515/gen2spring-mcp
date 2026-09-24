@@ -11,18 +11,22 @@ class HostedComposeContractTest {
     private static final Path ROOT = Path.of("..").toAbsolutePath().normalize().getParent().getParent();
 
     @Test
-    void usesPinnedAvailableMinioImageAndSupportedPrivateBucketPolicy() throws Exception {
+    void usesPinnedGarageImageAndScopedPrivateBucketCredentials() throws Exception {
         String compose = Files.readString(ROOT.resolve("deploy/hosted/compose.yml"));
-        String policy = Files.readString(ROOT.resolve("deploy/hosted/minio/gen2spring-policy.json"));
-        String image = "tobi312/minio:alpine-RELEASE.2025-07-23T15-54-02Z"
-                + "@sha256:d081402f706701b8f6ab6678d481036a673777d58ae7107652632b245b94a9dc";
+        String init = Files.readString(ROOT.resolve("deploy/hosted/garage-init/init.sh"));
+        String config = Files.readString(ROOT.resolve("deploy/hosted/garage/garage.toml"));
+        String image = "dxflrs/garage:v2.4.1"
+                + "@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020";
 
-        assertTrue(compose.contains("  minio:\n    image: " + image));
-        assertTrue(compose.contains("  minio-init:\n    image: " + image));
-        assertFalse(compose.contains("image: minio/minio:"));
-        assertFalse(compose.contains("image: minio/mc:"));
-        assertTrue(policy.contains("s3:GetBucketPolicy"));
-        assertFalse(policy.contains("s3:GetBucketAcl"));
+        assertTrue(compose.contains("  garage:\n    image: " + image));
+        assertTrue(compose.contains("  garage-init:\n    build:"));
+        assertTrue(compose.contains("GEN2SPRING_S3_ENDPOINT: http://garage:3900"));
+        assertTrue(compose.contains("garage-rpc-secret"));
+        assertTrue(init.contains("garage bucket allow --read --write"));
+        assertTrue(config.contains("metadata_fsync = true"));
+        assertTrue(config.contains("data_fsync = true"));
+        assertTrue(config.contains("rpc_public_addr = \"garage:3901\""));
+        assertFalse(compose.contains("tobi312/minio"));
     }
 
     @Test
@@ -43,7 +47,7 @@ class HostedComposeContractTest {
         assertTrue(runtimeBlock(compose).contains("provider-egress: {condition: service_healthy}"));
         assertTrue(providerBlock(compose).contains("provider-egress-server-password"));
         assertTrue(providerBlock(compose).contains("provider-egress-server-trust-password"));
-        assertFalse(runtimeBlock(compose).contains("minio"));
+        assertFalse(runtimeBlock(compose).contains("garage"));
         assertFalse(runtimeBlock(compose).contains("docker.sock"));
         assertFalse(providerBlock(compose).contains("postgres-password"));
         assertFalse(providerBlock(compose).contains("OIDC"));
@@ -110,7 +114,7 @@ class HostedComposeContractTest {
         assertTrue(deployment.contains("V7 Catalog version rollout"));
         assertTrue(deployment.contains("managed_runtime_catalog_transition"));
         assertTrue(deployment.contains("Do not down-migrate V7"));
-        assertTrue(deployment.contains("PostgreSQL and MinIO from the same pre-V7"));
+        assertTrue(deployment.contains("PostgreSQL and object storage from the same pre-V7"));
         assertTrue(deployment.contains("sticky routing is neither required nor supported"));
     }
 

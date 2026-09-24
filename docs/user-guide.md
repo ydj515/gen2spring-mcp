@@ -84,10 +84,10 @@ capacity는 `one running plus one queued job`이고 세 번째 active job을 거
 ## Hosted multi-user platform
 
 Hosted mode는 OIDC `(issuer, subject)`를 account UUID에 매핑하고 PostgreSQL 17.9에 작업 상태를,
-private MinIO에 specification과 artifact를 저장한다. URL import는 mTLS fetch gateway와 전용 import
+private Garage에 specification과 artifact를 저장한다. URL import는 mTLS fetch gateway와 전용 import
 runner를 통과하며, Worker는 rootless Docker의 non-root/read-only/network-none sandbox에서 생성한다.
 
-TLS proxy만 host port를 publish한다. Web은 migration, private bucket policy, Worker heartbeat와
+TLS proxy만 host port를 publish한다. Web은 migration, Garage bucket access, Worker heartbeat와
 secure OIDC/session 설정이 유효하지 않으면 시작하지 않는다. 자세한 구성은
 [Hosted 배포 가이드](../deploy/hosted/README.md)를 따른다.
 

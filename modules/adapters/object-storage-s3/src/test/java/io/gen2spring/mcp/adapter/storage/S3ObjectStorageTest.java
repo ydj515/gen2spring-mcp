@@ -20,10 +20,12 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -37,30 +39,53 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.Delete;
-import software.amazon.awssdk.services.s3.model.DeleteBucketPolicyRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
-import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @Testcontainers
 @Timeout(30)
 class S3ObjectStorageTest {
-    private static final String ACCESS_KEY = "test-access-key";
+    private static final String ACCESS_KEY = "GKtestaccesskey0000000000000000000000";
     private static final String SECRET_KEY = "test-secret-key-123456789";
+    private static final String BOOTSTRAP_ACCESS_KEY = "GKbootstrapkey000000000000000000000";
+    private static final String BOOTSTRAP_SECRET_KEY = "bootstrap-secret-key-123456789";
     private static final String BUCKET = "private-hosted-objects";
 
     @Container
-    private static final GenericContainer<?> MINIO = new GenericContainer<>(DockerImageName.parse(
-            "tobi312/minio:alpine-RELEASE.2025-07-23T15-54-02Z"
-                    + "@sha256:d081402f706701b8f6ab6678d481036a673777d58ae7107652632b245b94a9dc"))
-            .withEnv("MINIO_ROOT_USER", ACCESS_KEY)
-            .withEnv("MINIO_ROOT_PASSWORD", SECRET_KEY)
-            .withCommand("server", "/data")
-            .withExposedPorts(9000)
-            .waitingFor(Wait.forHttp("/minio/health/ready").forPort(9000));
+    private static final GenericContainer<?> GARAGE = new GenericContainer<>(DockerImageName.parse(
+            "dxflrs/garage:v2.4.1"
+                    + "@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020"))
+            .withEnv("GARAGE_RPC_SECRET", "a".repeat(64))
+            .withEnv("GARAGE_DEFAULT_ACCESS_KEY", BOOTSTRAP_ACCESS_KEY)
+            .withEnv("GARAGE_DEFAULT_SECRET_KEY", BOOTSTRAP_SECRET_KEY)
+            .withEnv("GARAGE_DEFAULT_BUCKET", BUCKET)
+            .withCopyToContainer(Transferable.of("""
+                    metadata_dir = "/data/meta"
+                    data_dir = "/data/data"
+                    db_engine = "sqlite"
+                    replication_factor = 1
+                    rpc_bind_addr = "0.0.0.0:3901"
+                    [s3_api]
+                    s3_region = "garage"
+                    api_bind_addr = "0.0.0.0:3900"
+                    """), "/etc/garage.toml")
+            .withCommand("/garage", "server", "--single-node", "--default-bucket")
+            .withExposedPorts(3900)
+            .waitingFor(Wait.forHttp("/").forPort(3900).forStatusCode(403));
 
     private S3Client client;
+
+    @BeforeAll
+    static void provisionScopedAppKey() throws Exception {
+        assertEquals(0, GARAGE.execInContainer(
+                "/garage", "key", "import", "--yes", "-n", "test-app", ACCESS_KEY, SECRET_KEY).getExitCode());
+        assertEquals(0, GARAGE.execInContainer(
+                "/garage", "bucket", "allow", "--read", "--write", "--key", ACCESS_KEY, BUCKET).getExitCode());
+        assertEquals(0, GARAGE.execInContainer(
+                "/garage", "bucket", "create", "other-hosted-objects").getExitCode());
+    }
 
     @BeforeEach
     void preparePrivateBucket() {
@@ -166,7 +191,7 @@ class S3ObjectStorageTest {
         storage.put(key, new ByteArrayInputStream(body), body.length, sha256(body), "application/json");
         client.close();
 
-        MINIO.getDockerClient().restartContainerCmd(MINIO.getContainerId()).withTimeout(5).exec();
+        GARAGE.getDockerClient().restartContainerCmd(GARAGE.getContainerId()).withTimeout(5).exec();
         client = awaitClient();
 
         try (StoredObjectContent content = new S3ObjectStorage(client, BUCKET, 1024).get(key)) {
@@ -175,45 +200,28 @@ class S3ObjectStorageTest {
     }
 
     @Test
-    void rejectsAReadableBucketPolicyDuringReadiness() {
-        assertDoesNotThrow(() -> MinioPrivateBucketProbe.verify(client, BUCKET));
-        String policy = """
-                {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*",
-                "Action":"s3:GetObject","Resource":"arn:aws:s3:::%s/*"}]}
-                """.formatted(BUCKET);
-        client.putBucketPolicy(PutBucketPolicyRequest.builder().bucket(BUCKET).policy(policy).build());
-        try {
-            assertThrows(IllegalStateException.class, () -> MinioPrivateBucketProbe.verify(client, BUCKET));
-        } finally {
-            client.deleteBucketPolicy(DeleteBucketPolicyRequest.builder().bucket(BUCKET).build());
-        }
+    void requiresAnAccessibleBucketDuringReadiness() {
+        assertDoesNotThrow(() -> S3BucketReadinessProbe.verify(client, BUCKET));
+        assertThrows(S3Exception.class, () -> S3BucketReadinessProbe.verify(client, "missing-bucket"));
+        assertThrows(S3Exception.class, () -> S3BucketReadinessProbe.verify(client, "other-hosted-objects"));
+        assertThrows(S3Exception.class,
+                () -> client.createBucket(CreateBucketRequest.builder().bucket("other-hosted-objects").build()));
     }
 
     private S3Client awaitClient() throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
-        HttpClient healthClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(1))
-                .build();
         Exception lastFailure = null;
         while (System.nanoTime() < deadline) {
             try {
-                HttpResponse<Void> response = healthClient.send(
-                        HttpRequest.newBuilder(endpoint().resolve("/minio/health/ready"))
-                                .timeout(Duration.ofSeconds(1))
-                                .GET()
-                                .build(),
-                        HttpResponse.BodyHandlers.discarding());
-                if (response.statusCode() == 200) {
-                    S3Client candidate = client();
-                    candidate.headBucket(request -> request.bucket(BUCKET));
-                    return candidate;
-                }
+                S3Client candidate = client();
+                candidate.headBucket(request -> request.bucket(BUCKET));
+                return candidate;
             } catch (Exception failure) {
                 lastFailure = failure;
             }
             Thread.sleep(100);
         }
-        throw new IllegalStateException("MinIO did not become ready after restart", lastFailure);
+        throw new IllegalStateException("Garage did not become ready after restart", lastFailure);
     }
 
     private S3Client client() {
@@ -221,22 +229,25 @@ class S3ObjectStorageTest {
                 .endpointOverride(endpoint())
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
-                .region(Region.US_EAST_1)
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                .region(Region.of("garage"))
+                .serviceConfiguration(S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .chunkedEncodingEnabled(false)
+                        .build())
                 .httpClientBuilder(UrlConnectionHttpClient.builder())
                 .build();
     }
 
     private URI endpoint() {
-        var bindings = MINIO.getDockerClient()
-                .inspectContainerCmd(MINIO.getContainerId())
+        var bindings = GARAGE.getDockerClient()
+                .inspectContainerCmd(GARAGE.getContainerId())
                 .exec()
                 .getNetworkSettings()
                 .getPorts()
                 .getBindings()
-                .get(ExposedPort.tcp(9000));
+                .get(ExposedPort.tcp(3900));
         if (bindings == null) {
-            throw new IllegalStateException("MinIO port binding is unavailable");
+            throw new IllegalStateException("Garage port binding is unavailable");
         }
         String hostPort = null;
         for (var binding : bindings) {
@@ -245,9 +256,9 @@ class S3ObjectStorageTest {
             }
         }
         if (hostPort == null) {
-            throw new IllegalStateException("MinIO port binding is unavailable");
+            throw new IllegalStateException("Garage port binding is unavailable");
         }
-        return URI.create("http://" + MINIO.getHost() + ":" + hostPort);
+        return URI.create("http://" + GARAGE.getHost() + ":" + hostPort);
     }
 
     private String sha256(byte[] value) {

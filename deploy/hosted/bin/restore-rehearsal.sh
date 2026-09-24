@@ -2,7 +2,7 @@
 set -eu
 
 BACKUP="${GEN2SPRING_POSTGRES_BACKUP:?set GEN2SPRING_POSTGRES_BACKUP}"
-MINIO_BACKUP="${GEN2SPRING_MINIO_BACKUP:?set GEN2SPRING_MINIO_BACKUP}"
+GARAGE_BACKUP="${GEN2SPRING_GARAGE_BACKUP:?set GEN2SPRING_GARAGE_BACKUP}"
 case "$BACKUP" in
   /*) ;;
   *) echo "Backup path must be absolute" >&2; exit 2 ;;
@@ -11,12 +11,12 @@ if [ ! -f "$BACKUP" ] || [ ! -s "$BACKUP" ]; then
   echo "Backup is unavailable" >&2
   exit 2
 fi
-if [ ! -f "$MINIO_BACKUP" ] || [ ! -s "$MINIO_BACKUP" ]; then
-  echo "MinIO backup is unavailable" >&2
+if [ ! -f "$GARAGE_BACKUP" ] || [ ! -s "$GARAGE_BACKUP" ]; then
+  echo "Garage backup is unavailable" >&2
   exit 2
 fi
 NAME="gen2spring-restore-$$"
-VOLUME="$NAME-minio"
+VOLUME="$NAME-garage"
 cleanup() {
   docker rm -f "$NAME" >/dev/null 2>&1 || true
   docker volume rm "$VOLUME" >/dev/null 2>&1 || true
@@ -37,8 +37,8 @@ docker exec -e PGPASSWORD=rehearsal-only "$NAME" \
 docker volume create "$VOLUME" >/dev/null
 docker run --rm -i -v "$VOLUME:/restore" \
   debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 \
-  tar -C /restore -xf - < "$MINIO_BACKUP"
+  tar -C /restore -xf - < "$GARAGE_BACKUP"
 docker run --rm -v "$VOLUME:/restore:ro" \
   debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 \
-  test -d /restore/.minio.sys
+  sh -ec 'test -s /restore/meta/db.sqlite && test -d /restore/data'
 echo "Hosted restore rehearsal succeeded"
