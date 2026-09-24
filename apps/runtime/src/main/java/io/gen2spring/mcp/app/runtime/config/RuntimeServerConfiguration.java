@@ -7,8 +7,7 @@ import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandle;
 import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandleRegistry;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.managed.credential.service.RuntimeCredentialResolver;
-import io.gen2spring.mcp.application.managed.execution.ManagedRuntimeBinding;
-import io.gen2spring.mcp.application.managed.execution.service.ManagedExecutionContext;
+import io.gen2spring.mcp.application.managed.execution.service.ManagedToolSessionService;
 import io.gen2spring.mcp.application.managed.execution.service.ManagedToolExecutor;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
@@ -22,11 +21,17 @@ import org.springframework.web.servlet.function.ServerResponse;
 
 @Configuration(proxyBeanMethods = false)
 final class RuntimeServerConfiguration {
-    @Bean(destroyMethod = "close")
-    RuntimeServerHandleRegistry runtimeServerHandleRegistry(
+    @Bean
+    ManagedToolSessionService managedToolSessionService(
             ToolCatalogService catalogs,
             ManagedToolExecutor executor,
-            RuntimeCredentialResolver credentials,
+            RuntimeCredentialResolver credentials) {
+        return new ManagedToolSessionService(catalogs, executor, credentials);
+    }
+
+    @Bean(destroyMethod = "close")
+    RuntimeServerHandleRegistry runtimeServerHandleRegistry(
+            ManagedToolSessionService sessions,
             RuntimeProperties properties,
             Clock clock) {
         McpJavaSdkEmitter emitter = new McpJavaSdkEmitter();
@@ -34,15 +39,8 @@ final class RuntimeServerConfiguration {
         JacksonMcpJsonMapper mapper = new JacksonMcpJsonMapper(json);
         return new RuntimeServerHandleRegistry(access -> {
             var instance = access.instance();
-            var catalog = catalogs.require(instance.owner(), instance.catalogId());
-            ManagedRuntimeBinding binding = new ManagedRuntimeBinding(instance, catalog.metadata());
-            ManagedExecutionContext context = new ManagedExecutionContext(access, binding, credentials);
-            var tools = catalog.metadata().document().tools().stream()
-                    .filter(tool -> access.allowedTools().contains(tool.name()))
-                    .toList();
-            var specifications = emitter.emitStateless(
-                    tools,
-                    (toolName, arguments) -> executor.call(context, toolName, arguments));
+            var session = sessions.open(access);
+            var specifications = emitter.emitStateless(session.tools(), session.handler());
             String endpoint = "/mcp/" + instance.id().value();
             var transport = WebMvcStatelessServerTransport.builder()
                     .jsonMapper(mapper)

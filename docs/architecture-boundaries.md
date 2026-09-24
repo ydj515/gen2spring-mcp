@@ -80,6 +80,8 @@ Gradle 모듈은 배포 단위와 외부 기술 의존성을 나누고, 모듈 �
 - 공유 `SpecificationImportService`는 byte 기반 분석 포트를 호출한다. 임시 파일 생성과 정리는
   filesystem adapter가 소유한다. 이 서비스는 현재 실행 앱에 조립되어 있지 않은 재사용 use case이며,
   실제 import-runner의 격리 workspace 수명은 해당 앱 infrastructure가 계속 소유한다.
+- `ManagedToolSessionService`는 Runtime에 고정된 카탈로그를 조회하고 checksum을 검증한 뒤 허용된 Tool 목록과
+  호출 계약을 반환한다. Runtime config는 이 결과를 MCP SDK에 연결하며 조회·노출 정책을 직접 구현하지 않는다.
 - `ManagedToolExecutor`는 재시도·페이지 처리·전체 제한 시간·결과 변환을 소유하고 `ManagedExecutionTasks`로 비동기 실행을 요청한다.
   Runtime의 `BoundedManagedExecutionTasks`가 제한된 스레드·대기열, 거절, 취소와 종료를 구현한다. 실행 자원은
   하나의 use case 객체가 독점 소유하며, Spring이 use case를 종료하면 포트를 통해 함께 닫는다.

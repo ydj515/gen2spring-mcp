@@ -8,6 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
+import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogCursor;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogDetails;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogSummary;
+import io.gen2spring.mcp.application.hosted.catalog.result.ToolDetails;
+import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.application.managed.audit.result.AuditCursor;
 import io.gen2spring.mcp.application.managed.audit.result.AuditPage;
 import io.gen2spring.mcp.application.managed.credential.CredentialSecret;
@@ -61,6 +68,54 @@ import org.junit.jupiter.api.Test;
 class ManagedToolExecutorTest {
     private static final java.time.Clock TEST_CLOCK = java.time.Clock.fixed(
             Instant.parse("2026-08-21T00:01:00Z"), java.time.ZoneOffset.UTC);
+
+    @Test
+    void opensOnlyAllowedToolsAndKeepsAuditingAndAccessChecksOnInvocation() {
+        RuntimeTool allowed = tool(null);
+        RuntimeTool hidden = new RuntimeTool(
+                "hiddenOperation", "hidden_tool", "Hidden Tool",
+                Map.of("type", "object", "properties", Map.of(), "required", List.of()),
+                "GENERIC_JSON", Map.of(),
+                new RuntimeHttp(GET, "https://api.example", "/hidden", List.of(), false, false),
+                null, null, null, List.of());
+        ManagedRuntimeBinding binding = binding(allowed, hidden);
+        PolicyStore policy = new PolicyStore(true, true);
+        AtomicInteger calls = new AtomicInteger();
+        try (var executor = new ManagedToolExecutor(new TestManagedExecutionTasks(), (request, timeout) -> {
+            calls.incrementAndGet();
+            return response(200, "{}");
+        }, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), policy, TEST_CLOCK, UUID::randomUUID)) {
+            var service = new ManagedToolSessionService(
+                    catalogs(binding, Optional.of(catalogDetails(binding))), executor, resolver(binding.instance()));
+            var session = service.open(access(binding, Set.of(allowed.name())));
+            assertEquals(List.of(allowed), session.tools());
+            assertThrows(UnsupportedOperationException.class, () -> session.tools().clear());
+            assertEquals(0, calls.get());
+            assertFalse(session.handler().call(allowed.name(), Map.of()).error());
+            assertEquals(List.of("audit-start", "rate", "audit-complete:SUCCEEDED"), policy.events);
+            assertThrows(ManagedToolExecutor.ManagedToolRequestInvalid.class,
+                    () -> session.handler().call(hidden.name(), Map.of()));
+            assertEquals(1, calls.get());
+        }
+    }
+
+    @Test
+    void refusesMissingOrChangedCatalogBeforeCreatingASession() {
+        ManagedRuntimeBinding binding = binding(tool(null));
+        ManagedRuntimeBinding changed = binding(tool(new RetryPolicy(List.of(503), false, 1, 1, 1, false)));
+        try (var executor = new ManagedToolExecutor(new TestManagedExecutionTasks(), (request, timeout) -> {
+            throw new AssertionError("No provider call should occur while opening a session");
+        }, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), TEST_CLOCK)) {
+            var missing = new ManagedToolSessionService(
+                    catalogs(binding, Optional.empty()), executor, resolver(binding.instance()));
+            assertThrows(ToolCatalogService.ToolCatalogNotFound.class,
+                    () -> missing.open(access(binding, Set.of("managed_tool"))));
+            var drifted = new ManagedToolSessionService(
+                    catalogs(binding, Optional.of(catalogDetails(changed))), executor, resolver(binding.instance()));
+            assertThrows(IllegalArgumentException.class,
+                    () -> drifted.open(access(binding, Set.of("managed_tool"))));
+        }
+    }
 
     @Test
     void mapsCapacityRejectionAndClosesInjectedExecutionResources() {
@@ -326,14 +381,43 @@ class ManagedToolExecutorTest {
         }
     }
 
-    private ManagedRuntimeBinding binding(RuntimeTool tool) {
+    private ManagedRuntimeBinding binding(RuntimeTool... tools) {
         var artifact = new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(
-                RuntimeMetadataDocument.VERSION, "b".repeat(64), List.of(tool)));
+                RuntimeMetadataDocument.VERSION, "b".repeat(64), List.of(tools)));
         ManagedRuntimeInstance instance = new ManagedRuntimeInstance(
                 new RuntimeInstanceId(UUID.randomUUID()), new AccountId(UUID.randomUUID()), UUID.randomUUID(),
                 artifact.checksum(), Optional.empty(), Instant.parse("2026-08-21T00:00:00Z"),
                 Instant.parse("2026-08-22T00:00:00Z"), Optional.empty());
         return new ManagedRuntimeBinding(instance, artifact);
+    }
+
+    private CatalogDetails catalogDetails(ManagedRuntimeBinding binding) {
+        var metadata = binding.metadata();
+        return new CatalogDetails(new CatalogSummary(
+                binding.instance().catalogId(), new JobId(UUID.randomUUID()), metadata.document().metadataVersion(),
+                metadata.checksum(), metadata.document().tools().size(), TEST_CLOCK.instant()),
+                metadata.document().specificationChecksum(), metadata);
+    }
+
+    private ToolCatalogService catalogs(ManagedRuntimeBinding binding, Optional<CatalogDetails> result) {
+        return new ToolCatalogService(new ToolCatalogStore() {
+            @Override
+            public List<CatalogSummary> list(AccountId owner, int limit, Optional<CatalogCursor> cursor) {
+                throw new AssertionError("Session preparation must load its pinned catalog");
+            }
+
+            @Override
+            public Optional<CatalogDetails> find(AccountId owner, UUID id) {
+                assertEquals(binding.instance().owner(), owner);
+                assertEquals(binding.instance().catalogId(), id);
+                return result;
+            }
+
+            @Override
+            public Optional<ToolDetails> findTool(AccountId owner, UUID id, String name) {
+                throw new AssertionError("Session preparation must use one catalog snapshot");
+            }
+        });
     }
 
     private RuntimeAccess access(ManagedRuntimeBinding binding, Set<String> tools) {
