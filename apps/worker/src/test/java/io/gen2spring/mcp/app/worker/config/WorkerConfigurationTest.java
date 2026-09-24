@@ -20,11 +20,13 @@ import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetBucketAclResponse;
-import software.amazon.awssdk.services.s3.model.GetBucketAclRequest;
+import software.amazon.awssdk.services.s3.model.GetBucketPolicyRequest;
+import software.amazon.awssdk.services.s3.model.GetBucketPolicyResponse;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 class WorkerConfigurationTest {
     private static final String PINNED = "registry.example/gen2spring/runner@sha256:" + "a".repeat(64);
@@ -77,13 +79,23 @@ class WorkerConfigurationTest {
         when(connection.isValid(2)).thenReturn(true);
         S3Client s3 = mock(S3Client.class);
         when(s3.headBucket(any(HeadBucketRequest.class))).thenReturn(HeadBucketResponse.builder().build());
-        when(s3.getBucketAcl(any(GetBucketAclRequest.class)))
-                .thenReturn(GetBucketAclResponse.builder().grants(List.of()).build());
+        when(s3.getBucketPolicy(any(GetBucketPolicyRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404)
+                        .awsErrorDetails(AwsErrorDetails.builder().errorCode("NoSuchBucketPolicy").build())
+                        .build());
         FakeDocker commands = new FakeDocker(properties.docker().generationImage());
 
         WorkerReadiness readiness = new WorkerInfrastructureConfiguration()
                 .workerReadiness(dataSource, s3, commands, properties);
         readiness.verify();
+
+        when(s3.getBucketPolicy(any(GetBucketPolicyRequest.class)))
+                .thenReturn(GetBucketPolicyResponse.builder().policy("{}").build());
+        assertThrows(WorkerStartupFailure.class, readiness::verify);
+        when(s3.getBucketPolicy(any(GetBucketPolicyRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404)
+                        .awsErrorDetails(AwsErrorDetails.builder().errorCode("NoSuchBucketPolicy").build())
+                        .build());
 
         assertEquals(List.of("info", "image", "image", "image", "image"), commands.operations);
 

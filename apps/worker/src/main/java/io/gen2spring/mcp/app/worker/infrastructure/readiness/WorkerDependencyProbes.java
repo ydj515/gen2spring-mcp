@@ -3,6 +3,7 @@ package io.gen2spring.mcp.app.worker.infrastructure.readiness;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.adapter.container.DockerCommandRunner;
+import io.gen2spring.mcp.adapter.storage.MinioPrivateBucketProbe;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.time.Duration;
@@ -10,9 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetBucketAclRequest;
-import software.amazon.awssdk.services.s3.model.Grant;
-import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 
 public final class WorkerDependencyProbes {
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(5);
@@ -31,16 +29,7 @@ public final class WorkerDependencyProbes {
     }
 
     public static WorkerReadiness.Probe storage(S3Client s3, String bucket) {
-        return () -> {
-            s3.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
-            List<Grant> grants = s3.getBucketAcl(
-                            GetBucketAclRequest.builder().bucket(bucket).build())
-                    .grants();
-            if (grants == null || grants.stream().anyMatch(grant ->
-                    grant == null || grant.grantee() == null || grant.grantee().uri() != null)) {
-                throw new IllegalStateException();
-            }
-        };
+        return () -> MinioPrivateBucketProbe.verify(s3, bucket);
     }
 
     public static WorkerReadiness.Probe docker(

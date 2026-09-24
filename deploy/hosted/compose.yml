@@ -20,7 +20,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   minio:
-    image: minio/minio:RELEASE.2025-07-23T15-54-02Z@sha256:d249d1fb6966de4d8ad26c04754b545205ff15a62e4fd19ebd0f26fa5baacbc0
+    image: tobi312/minio:alpine-RELEASE.2025-07-23T15-54-02Z@sha256:d081402f706701b8f6ab6678d481036a673777d58ae7107652632b245b94a9dc
     command: server /data
     restart: unless-stopped
     environment:
@@ -38,7 +38,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   minio-init:
-    image: minio/mc:RELEASE.2025-07-21T05-28-08Z@sha256:fb8f773eac8ef9d6da0486d5dec2f42f219358bcb8de579d1623d518c9ebd4cc
+    image: tobi312/minio:alpine-RELEASE.2025-07-23T15-54-02Z@sha256:d081402f706701b8f6ab6678d481036a673777d58ae7107652632b245b94a9dc
     depends_on:
       minio: {condition: service_healthy}
     entrypoint: /bin/sh

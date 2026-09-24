@@ -13,6 +13,7 @@ import io.gen2spring.mcp.adapter.persistence.PostgresRuntimePolicyStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresToolCatalogStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresSpecificationCatalog;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
+import io.gen2spring.mcp.adapter.storage.MinioPrivateBucketProbe;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
 import io.gen2spring.mcp.application.hosted.account.AccountStore;
 import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
@@ -61,8 +62,6 @@ import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
-import software.amazon.awssdk.services.s3.model.GetBucketAclRequest;
-import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "gen2spring.mode", havingValue = "hosted")
@@ -281,13 +280,7 @@ public class HostedWebConfiguration {
                             hostedClock.instant().minus(properties.workerStaleAfter()))) {
                 throw invalid();
             }
-            hostedS3Client.headBucket(HeadBucketRequest.builder().bucket(properties.storage().bucket()).build());
-            var grants = hostedS3Client.getBucketAcl(
-                    GetBucketAclRequest.builder().bucket(properties.storage().bucket()).build()).grants();
-            if (grants == null || grants.stream().anyMatch(grant ->
-                    grant == null || grant.grantee() == null || grant.grantee().uri() != null)) {
-                throw invalid();
-            }
+            MinioPrivateBucketProbe.verify(hostedS3Client, properties.storage().bucket());
             return new HostedPlatformReadiness();
         } catch (Error fatal) {
             throw fatal;

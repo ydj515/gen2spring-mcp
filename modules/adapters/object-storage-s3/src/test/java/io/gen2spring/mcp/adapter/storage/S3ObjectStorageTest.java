@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.adapter.storage;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -36,8 +37,10 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.Delete;
+import software.amazon.awssdk.services.s3.model.DeleteBucketPolicyRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
+import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 @Testcontainers
@@ -49,8 +52,8 @@ class S3ObjectStorageTest {
 
     @Container
     private static final GenericContainer<?> MINIO = new GenericContainer<>(DockerImageName.parse(
-            "ghcr.io/coollabsio/minio:RELEASE.2025-04-22T22-12-26Z"
-                    + "@sha256:a4938f37f1be1841b8e7b627ad0207b265345fd0d063e42d7410c78af0e63e68"))
+            "tobi312/minio:alpine-RELEASE.2025-07-23T15-54-02Z"
+                    + "@sha256:d081402f706701b8f6ab6678d481036a673777d58ae7107652632b245b94a9dc"))
             .withEnv("MINIO_ROOT_USER", ACCESS_KEY)
             .withEnv("MINIO_ROOT_PASSWORD", SECRET_KEY)
             .withCommand("server", "/data")
@@ -168,6 +171,21 @@ class S3ObjectStorageTest {
 
         try (StoredObjectContent content = new S3ObjectStorage(client, BUCKET, 1024).get(key)) {
             assertArrayEquals(body, content.body().readAllBytes());
+        }
+    }
+
+    @Test
+    void rejectsAReadableBucketPolicyDuringReadiness() {
+        assertDoesNotThrow(() -> MinioPrivateBucketProbe.verify(client, BUCKET));
+        String policy = """
+                {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*",
+                "Action":"s3:GetObject","Resource":"arn:aws:s3:::%s/*"}]}
+                """.formatted(BUCKET);
+        client.putBucketPolicy(PutBucketPolicyRequest.builder().bucket(BUCKET).policy(policy).build());
+        try {
+            assertThrows(IllegalStateException.class, () -> MinioPrivateBucketProbe.verify(client, BUCKET));
+        } finally {
+            client.deleteBucketPolicy(DeleteBucketPolicyRequest.builder().bucket(BUCKET).build());
         }
     }
 

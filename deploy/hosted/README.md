@@ -19,6 +19,10 @@ while any stored credential still references its key ID.
 
 Set `GEN2SPRING_RUNTIME_BASE_URI` to the externally reachable HTTPS proxy origin returned to MCP clients.
 
+The `minio` and `minio-init` services use one digest-pinned mirror containing the same July 2025 MinIO server and
+client releases as the original images. Keep the digest fixed when preparing a deployment and rehearse the MinIO
+backup and restore procedure below before changing an existing host.
+
 Managed Runtime tokens use `runtime-token-pepper`. Runtime-to-provider traffic uses a dedicated client/server mTLS
 pair (`provider-egress-client*` and `provider-egress-server*`). Runtime can reach PostgreSQL and the internal
 provider-call network but has no direct external egress; provider-egress has no database, object-storage, OIDC, or

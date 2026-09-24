@@ -11,6 +11,21 @@ class HostedComposeContractTest {
     private static final Path ROOT = Path.of("..").toAbsolutePath().normalize().getParent().getParent();
 
     @Test
+    void usesPinnedAvailableMinioImageAndSupportedPrivateBucketPolicy() throws Exception {
+        String compose = Files.readString(ROOT.resolve("deploy/hosted/compose.yml"));
+        String policy = Files.readString(ROOT.resolve("deploy/hosted/minio/gen2spring-policy.json"));
+        String image = "tobi312/minio:alpine-RELEASE.2025-07-23T15-54-02Z"
+                + "@sha256:d081402f706701b8f6ab6678d481036a673777d58ae7107652632b245b94a9dc";
+
+        assertTrue(compose.contains("  minio:\n    image: " + image));
+        assertTrue(compose.contains("  minio-init:\n    image: " + image));
+        assertFalse(compose.contains("image: minio/minio:"));
+        assertFalse(compose.contains("image: minio/mc:"));
+        assertTrue(policy.contains("s3:GetBucketPolicy"));
+        assertFalse(policy.contains("s3:GetBucketAcl"));
+    }
+
+    @Test
     void isolatesRuntimeDatabaseAndProviderEgressCapabilities() throws Exception {
         String compose = Files.readString(ROOT.resolve("deploy/hosted/compose.yml"));
         String environment = Files.readString(ROOT.resolve("deploy/hosted/compose.env.example"));
