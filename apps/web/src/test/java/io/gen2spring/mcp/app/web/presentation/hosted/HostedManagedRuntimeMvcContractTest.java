@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.gen2spring.mcp.app.web.config.JobEventStreamConfiguration;
 import io.gen2spring.mcp.app.web.config.security.HostedSecurityConfiguration;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
 import io.gen2spring.mcp.app.web.presentation.error.WebErrorMapper;
 import io.gen2spring.mcp.app.web.presentation.error.WebErrorResponseWriter;
 import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
@@ -213,6 +214,11 @@ class HostedManagedRuntimeMvcContractTest {
         @Bean
         Clock clock() {
             return Clock.fixed(NOW, ZoneOffset.UTC);
+        }
+
+        @Bean
+        HostedAccountService hostedAccountService(AccountStore accounts, Clock clock) {
+            return new HostedAccountService(accounts, clock);
         }
 
         @Bean

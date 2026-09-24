@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.app.web.presentation.hosted;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -12,7 +13,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.app.web.application.hosted.exception.HostedResourceNotFound;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedArtifactDownloadService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedResourceQueryService;
 import io.gen2spring.mcp.app.web.application.hosted.service.HostedSubmissionService;
+import io.gen2spring.mcp.app.web.infrastructure.hosted.artifact.TempFileVerifiedArtifactReader;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountPrincipal;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
 import io.gen2spring.mcp.app.web.presentation.stream.JobEventStream;
@@ -34,8 +39,10 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -82,7 +89,8 @@ class HostedControllerContractTest {
                                 .find("spring-ai-2.0-java21-mvc-streamable").orElseThrow(),
                         List.of(), List.of(), List.of(), List.of("README.md")));
         HostedSpecificationController controller = new HostedSpecificationController(
-                accounts, submissions, mock(HostedResourceStore.class), new ObjectMapper());
+                accounts, submissions, new HostedResourceQueryService(mock(HostedResourceStore.class)),
+                new ObjectMapper());
         MockHttpServletRequest uploadRequest = new MockHttpServletRequest();
         uploadRequest.setContent("openapi: 3.1.1".getBytes(StandardCharsets.UTF_8));
 
@@ -115,7 +123,8 @@ class HostedControllerContractTest {
                 ObjectKey.parse("artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/result"),
                 "a".repeat(64), 20, "application/zip", Instant.EPOCH, Instant.EPOCH.plusSeconds(60))));
         HostedJobController controller = new HostedJobController(
-                accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class), resources,
+                accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class),
+                new HostedResourceQueryService(resources),
                 new ObjectMapper(), mock(JobEventStream.class));
 
         String response = controller.get(authentication, JOB.value().toString()).toString();
@@ -134,11 +143,12 @@ class HostedControllerContractTest {
         when(resources.job(OWNER, JOB)).thenReturn(Optional.empty());
         JobEventStream streams = mock(JobEventStream.class);
         HostedJobController controller = new HostedJobController(
-                accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class), resources,
+                accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class),
+                new HostedResourceQueryService(resources),
                 new ObjectMapper(), streams);
 
         assertThrows(
-                HostedJobController.HostedResourceNotFound.class,
+                HostedResourceNotFound.class,
                 () -> controller.events(authentication, JOB.value().toString()));
         // Ownership must be settled before any stream exists, or the stream's
         // behaviour would itself disclose whether the job is real.
@@ -162,7 +172,8 @@ class HostedControllerContractTest {
 
         try (JobEventStream streams = new JobEventStream(2)) {
             HostedJobController controller = new HostedJobController(
-                    accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class), resources,
+                    accounts, mock(HostedSubmissionService.class), mock(HostedJobService.class),
+                    new HostedResourceQueryService(resources),
                     new ObjectMapper(), streams);
 
             assertNotNull(controller.events(authentication, JOB.value().toString()));
@@ -192,12 +203,46 @@ class HostedControllerContractTest {
         when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
         UUID artifact = UUID.randomUUID();
         when(resources.artifact(OWNER, artifact)).thenReturn(Optional.empty());
-        HostedArtifactController controller = new HostedArtifactController(accounts, resources, storage);
+        HostedArtifactController controller = new HostedArtifactController(accounts,
+                new HostedArtifactDownloadService(resources, new TempFileVerifiedArtifactReader(storage, 100)));
 
         assertThrows(
-                HostedJobController.HostedResourceNotFound.class,
+                HostedResourceNotFound.class,
                 () -> controller.download(authentication, artifact.toString(), mock(HttpServletResponse.class)));
         verifyNoInteractions(storage);
+    }
+
+    @Test
+    void sendsTheVerifiedArtifactWithItsExistingDownloadHeaders() throws Exception {
+        HostedAccountResolver accounts = mock(HostedAccountResolver.class);
+        HostedResourceStore resources = mock(HostedResourceStore.class);
+        ObjectStorage storage = mock(ObjectStorage.class);
+        Authentication authentication = mock(Authentication.class);
+        UUID artifactId = UUID.randomUUID();
+        ObjectKey key = ObjectKey.parse("artifacts/1a803410-a22a-4bc6-b951-7dbc301ae800/result");
+        byte[] bytes = "safe".getBytes(StandardCharsets.UTF_8);
+        String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        when(accounts.resolve(authentication)).thenReturn(new HostedAccountPrincipal(OWNER));
+        when(resources.artifact(OWNER, artifactId)).thenReturn(Optional.of(new HostedResourceStore.ArtifactView(
+                artifactId, JOB, "ZIP", key, digest, bytes.length,
+                "application/zip", Instant.EPOCH, Instant.EPOCH.plusSeconds(60))));
+        when(storage.get(key)).thenReturn(new StoredObjectContent() {
+            @Override public InputStream body() { return new ByteArrayInputStream(bytes); }
+            @Override public long size() { return bytes.length; }
+            @Override public String sha256() { return digest; }
+            @Override public String contentType() { return "application/zip"; }
+            @Override public void close() {}
+        });
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        HostedArtifactController controller = new HostedArtifactController(accounts,
+                new HostedArtifactDownloadService(resources, new TempFileVerifiedArtifactReader(storage, 100)));
+
+        controller.download(authentication, artifactId.toString(), response);
+
+        assertArrayEquals(bytes, response.getContentAsByteArray());
+        assertEquals("application/zip", response.getHeader(HttpHeaders.CONTENT_TYPE));
+        assertEquals("attachment; filename=\"zip\"", response.getHeader(HttpHeaders.CONTENT_DISPOSITION));
+        assertEquals("private, no-store", response.getHeader(HttpHeaders.CACHE_CONTROL));
     }
 
     @Test
@@ -221,9 +266,10 @@ class HostedControllerContractTest {
             @Override public void close() {}
         });
         MockHttpServletResponse response = new MockHttpServletResponse();
-        HostedArtifactController controller = new HostedArtifactController(accounts, resources, storage);
+        HostedArtifactController controller = new HostedArtifactController(accounts,
+                new HostedArtifactDownloadService(resources, new TempFileVerifiedArtifactReader(storage, 100)));
 
-        assertThrows(HostedArtifactController.HostedArtifactFailure.class,
+        assertThrows(HostedArtifactDownloadService.HostedArtifactUnavailable.class,
                 () -> controller.download(authentication, artifactId.toString(), response));
         assertEquals(0, response.getContentAsByteArray().length);
         assertFalse(response.containsHeader(HttpHeaders.CONTENT_DISPOSITION));
@@ -239,7 +285,8 @@ class HostedControllerContractTest {
         var second = specification("90782e7c-337d-4d4d-bd4d-ad478359563c", Instant.parse("2026-08-13T00:00:01Z"));
         when(resources.specifications(OWNER, 2, Optional.empty())).thenReturn(List.of(first, second));
         HostedSpecificationController controller = new HostedSpecificationController(
-                accounts, mock(HostedSubmissionService.class), resources, new ObjectMapper());
+                accounts, mock(HostedSubmissionService.class), new HostedResourceQueryService(resources),
+                new ObjectMapper());
 
         String response = controller.specifications(authentication, 1, null).toString();
 

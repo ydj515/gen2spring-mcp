@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.app.web.presentation.page;
 
-import io.gen2spring.mcp.app.web.presentation.hosted.HostedJobController;
+import io.gen2spring.mcp.app.web.application.hosted.exception.HostedResourceNotFound;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedResourceQueryService;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
-import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Objects;
@@ -19,19 +19,20 @@ import org.springframework.web.bind.annotation.PathVariable;
 @ConditionalOnProperty(name = "gen2spring.mode", havingValue = "hosted")
 final class DashboardController {
     private final HostedAccountResolver accounts;
-    private final HostedResourceStore resources;
+    private final HostedResourceQueryService queries;
 
-    DashboardController(HostedAccountResolver accounts, HostedResourceStore resources) {
+    DashboardController(HostedAccountResolver accounts, HostedResourceQueryService queries) {
         this.accounts = Objects.requireNonNull(accounts, "accounts");
-        this.resources = Objects.requireNonNull(resources, "resources");
+        this.queries = Objects.requireNonNull(queries, "queries");
     }
 
     @GetMapping("/")
     String dashboard(Authentication authentication, HttpServletRequest request, Model model) {
         var owner = accounts.resolve(authentication).accountId();
         csrf(request, model);
-        model.addAttribute("specifications", resources.specifications(owner, 50));
-        model.addAttribute("jobs", resources.jobs(owner, 50));
+        var dashboard = queries.dashboard(owner);
+        model.addAttribute("specifications", dashboard.specifications());
+        model.addAttribute("jobs", dashboard.jobs());
         return "dashboard";
     }
 
@@ -47,12 +48,12 @@ final class DashboardController {
         var owner = accounts.resolve(authentication).accountId();
         JobId jobId;
         try { jobId = new JobId(UUID.fromString(id)); }
-        catch (RuntimeException failure) { throw new HostedJobController.HostedResourceNotFound(); }
+        catch (RuntimeException failure) { throw new HostedResourceNotFound(); }
         csrf(request, model);
-        model.addAttribute("job", resources.job(owner, jobId)
-                .orElseThrow(HostedJobController.HostedResourceNotFound::new));
-        model.addAttribute("events", resources.events(owner, jobId, 100));
-        model.addAttribute("artifacts", resources.artifacts(owner, jobId));
+        var snapshot = queries.job(owner, jobId);
+        model.addAttribute("job", snapshot.job());
+        model.addAttribute("events", snapshot.events());
+        model.addAttribute("artifacts", snapshot.artifacts());
         return "job-detail";
     }
 

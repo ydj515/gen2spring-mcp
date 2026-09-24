@@ -1,8 +1,7 @@
 package io.gen2spring.mcp.app.web.config.security;
 
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
-import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
-import java.time.Clock;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,8 +19,8 @@ public class HostedSecurityConfiguration {
             + "form-action 'self'; frame-ancestors 'none'";
 
     @Bean
-    HostedAccountResolver hostedAccountResolver(AccountStore accounts, Clock clock) {
-        return new HostedAccountResolver(accounts, clock);
+    HostedAccountResolver hostedAccountResolver(HostedAccountService accounts) {
+        return new HostedAccountResolver(accounts);
     }
 
     @Bean

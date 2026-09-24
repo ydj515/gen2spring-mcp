@@ -1,18 +1,15 @@
 package io.gen2spring.mcp.app.web.presentation.security;
 
-import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
-import java.time.Clock;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
 import java.util.Objects;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
 public final class HostedAccountResolver {
-    private final AccountStore accounts;
-    private final Clock clock;
+    private final HostedAccountService accounts;
 
-    public HostedAccountResolver(AccountStore accounts, Clock clock) {
+    public HostedAccountResolver(HostedAccountService accounts) {
         this.accounts = Objects.requireNonNull(accounts, "accounts");
-        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     public HostedAccountPrincipal resolve(Authentication authentication) {
@@ -24,7 +21,7 @@ public final class HostedAccountResolver {
         }
         try {
             return new HostedAccountPrincipal(accounts.findOrCreate(
-                    user.getIdToken().getIssuer().toString(), user.getSubject(), clock.instant()));
+                    user.getIdToken().getIssuer().toString(), user.getSubject()));
         } catch (Error fatal) {
             throw fatal;
         } catch (RuntimeException failure) {

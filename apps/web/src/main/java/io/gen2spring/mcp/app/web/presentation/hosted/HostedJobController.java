@@ -2,11 +2,12 @@ package io.gen2spring.mcp.app.web.presentation.hosted;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.app.web.application.hosted.exception.HostedResourceNotFound;
 import io.gen2spring.mcp.app.web.application.hosted.port.in.HostedSubmissionUseCase;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedResourceQueryService;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
 import io.gen2spring.mcp.app.web.presentation.stream.JobEventStream;
 import io.gen2spring.mcp.application.hosted.job.HostedJobService;
-import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
@@ -32,7 +33,7 @@ public final class HostedJobController {
     private final HostedAccountResolver accounts;
     private final HostedSubmissionUseCase submissions;
     private final HostedJobService jobs;
-    private final HostedResourceStore resources;
+    private final HostedResourceQueryService queries;
     private final ObjectMapper json;
     private final JobEventStream streams;
 
@@ -40,13 +41,13 @@ public final class HostedJobController {
             HostedAccountResolver accounts,
             HostedSubmissionUseCase submissions,
             HostedJobService jobs,
-            HostedResourceStore resources,
+            HostedResourceQueryService queries,
             ObjectMapper json,
             JobEventStream streams) {
         this.accounts = Objects.requireNonNull(accounts, "accounts");
         this.submissions = Objects.requireNonNull(submissions, "submissions");
         this.jobs = Objects.requireNonNull(jobs, "jobs");
-        this.resources = Objects.requireNonNull(resources, "resources");
+        this.queries = Objects.requireNonNull(queries, "queries");
         this.json = Objects.requireNonNull(json, "json");
         this.streams = Objects.requireNonNull(streams, "streams");
     }
@@ -106,7 +107,8 @@ public final class HostedJobController {
      * the event stream can never drift into different payload shapes.
      */
     private HostedJobEventFeed.Payload payload(AccountId owner, JobId jobId) {
-        var job = resources.job(owner, jobId).orElseThrow(HostedResourceNotFound::new);
+        var snapshot = queries.job(owner, jobId);
+        var job = snapshot.job();
         var result = json.createObjectNode()
                 .put("id", job.id().value().toString())
                 .put("kind", job.kind().name())
@@ -119,7 +121,7 @@ public final class HostedJobController {
         else result.putNull("specificationId");
         var events = result.putArray("events");
         long highestSequence = 0;
-        for (var event : resources.events(owner, jobId, 100)) {
+        for (var event : snapshot.events()) {
             highestSequence = Math.max(highestSequence, event.sequence());
             events.addObject()
                     .put("sequence", event.sequence()).put("status", event.toStatus().name())
@@ -127,7 +129,7 @@ public final class HostedJobController {
                     .put("summary", event.safeSummary()).put("createdAt", event.createdAt().toString());
         }
         var artifacts = result.putArray("artifacts");
-        resources.artifacts(owner, jobId).forEach(artifact -> artifacts.addObject()
+        snapshot.artifacts().forEach(artifact -> artifacts.addObject()
                 .put("id", artifact.id().toString()).put("type", artifact.type())
                 .put("byteSize", artifact.byteSize()).put("contentType", artifact.contentType())
                 .put("expiresAt", artifact.expiresAt().toString()));
@@ -148,7 +150,4 @@ public final class HostedJobController {
         catch (RuntimeException failure) { throw new HostedResourceNotFound(); }
     }
 
-    public static final class HostedResourceNotFound extends RuntimeException {
-        public HostedResourceNotFound() { super("Hosted resource was not found", null, false, false); }
-    }
 }

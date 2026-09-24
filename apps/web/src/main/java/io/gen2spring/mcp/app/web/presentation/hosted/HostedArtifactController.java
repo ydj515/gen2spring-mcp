@@ -1,18 +1,12 @@
 package io.gen2spring.mcp.app.web.presentation.hosted;
 
+import io.gen2spring.mcp.app.web.application.hosted.exception.HostedResourceNotFound;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedArtifactDownloadService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedArtifactDownloadService.HostedArtifactUnavailable;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
-import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
-import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
-import java.security.MessageDigest;
-import java.util.HexFormat;
-import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -25,79 +19,30 @@ import org.springframework.web.bind.annotation.RestController;
 @ConditionalOnProperty(name = "gen2spring.mode", havingValue = "hosted")
 public final class HostedArtifactController {
     private final HostedAccountResolver accounts;
-    private final HostedResourceStore resources;
-    private final ObjectStorage storage;
+    private final HostedArtifactDownloadService artifacts;
 
-    HostedArtifactController(
-            HostedAccountResolver accounts,
-            HostedResourceStore resources,
-            ObjectStorage storage) {
+    HostedArtifactController(HostedAccountResolver accounts, HostedArtifactDownloadService artifacts) {
         this.accounts = Objects.requireNonNull(accounts, "accounts");
-        this.resources = Objects.requireNonNull(resources, "resources");
-        this.storage = Objects.requireNonNull(storage, "storage");
+        this.artifacts = Objects.requireNonNull(artifacts, "artifacts");
     }
 
     @GetMapping("/api/artifacts/{id}/content")
     void download(Authentication authentication, @PathVariable String id, HttpServletResponse response) {
         UUID artifactId;
         try { artifactId = UUID.fromString(id); }
-        catch (RuntimeException failure) { throw new HostedJobController.HostedResourceNotFound(); }
+        catch (RuntimeException failure) { throw new HostedResourceNotFound(); }
         var owner = accounts.resolve(authentication).accountId();
-        var artifact = resources.artifact(owner, artifactId)
-                .orElseThrow(HostedJobController.HostedResourceNotFound::new);
-        Path verified = null;
-        try (var content = storage.get(artifact.objectKey()); var input = content.body()) {
-            if (content.size() != artifact.byteSize() || !content.sha256().equals(artifact.sha256())
-                    || !content.contentType().equals(artifact.contentType())) {
-                throw new IllegalStateException();
-            }
-            verified = Files.createTempFile("gen2spring-artifact-", ".download");
-            restrict(verified);
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] buffer = new byte[8192];
-            long total = 0;
-            int read;
-            try (var output = Files.newOutputStream(verified)) {
-                while ((read = input.read(buffer)) >= 0) {
-                    total += read;
-                    if (total > artifact.byteSize()) throw new IllegalStateException();
-                    digest.update(buffer, 0, read);
-                    output.write(buffer, 0, read);
-                }
-            }
-            if (total != artifact.byteSize() || !HexFormat.of().formatHex(digest.digest()).equals(artifact.sha256())) {
-                throw new IllegalStateException();
-            }
+        var artifact = artifacts.download(owner, artifactId);
+        try (artifact) {
             response.setStatus(200);
             response.setHeader(HttpHeaders.CACHE_CONTROL, "private, no-store");
             response.setHeader(HttpHeaders.CONTENT_TYPE, artifact.contentType());
             response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
-                    "attachment; filename=\"" + artifact.type().toLowerCase(Locale.ROOT) + "\"");
+                    "attachment; filename=\"" + artifact.downloadName() + "\"");
             response.setContentLengthLong(artifact.byteSize());
-            Files.copy(verified, response.getOutputStream());
-        } catch (HostedJobController.HostedResourceNotFound notFound) {
-            throw notFound;
-        } catch (Exception failure) {
-            throw new HostedArtifactFailure();
-        } finally {
-            if (verified != null) {
-                try { Files.deleteIfExists(verified); }
-                catch (Exception ignored) { /* The bounded temporary file is reclaimed by the host. */ }
-            }
+            artifact.writeTo(response.getOutputStream());
+        } catch (IOException | RuntimeException failure) {
+            throw new HostedArtifactUnavailable(failure);
         }
-    }
-
-    private void restrict(Path file) throws IOException {
-        try {
-            Files.setPosixFilePermissions(file, Set.of(
-                    PosixFilePermission.OWNER_READ,
-                    PosixFilePermission.OWNER_WRITE));
-        } catch (UnsupportedOperationException ignored) {
-            // Windows uses the temporary directory ACL.
-        }
-    }
-
-    public static final class HostedArtifactFailure extends RuntimeException {
-        public HostedArtifactFailure() { super("Hosted artifact download failed", null, false, false); }
     }
 }

@@ -17,9 +17,14 @@ import io.gen2spring.mcp.adapter.persistence.specification.PostgresSpecification
 import io.gen2spring.mcp.adapter.persistence.worker.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3BucketReadinessProbe;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
-import io.gen2spring.mcp.app.web.application.hosted.service.HostedSubmissionService;
 import io.gen2spring.mcp.app.web.application.hosted.port.out.HostedSpecificationProcessor;
 import io.gen2spring.mcp.app.web.application.hosted.port.out.HostedSubmissionSnapshotCodec;
+import io.gen2spring.mcp.app.web.application.hosted.port.out.VerifiedArtifactReader;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedArtifactDownloadService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedResourceQueryService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedSubmissionService;
+import io.gen2spring.mcp.app.web.infrastructure.hosted.artifact.TempFileVerifiedArtifactReader;
 import io.gen2spring.mcp.app.web.infrastructure.hosted.submission.GeneratorHostedSpecificationProcessor;
 import io.gen2spring.mcp.app.web.infrastructure.hosted.submission.JacksonHostedSubmissionSnapshotCodec;
 import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
@@ -129,6 +134,11 @@ public class HostedWebConfiguration {
     }
 
     @Bean
+    HostedAccountService hostedAccountService(AccountStore accounts, Clock hostedClock) {
+        return new HostedAccountService(accounts, hostedClock);
+    }
+
+    @Bean
     SpecificationCatalog hostedSpecificationCatalog(DataSource dataSource) {
         return new PostgresSpecificationCatalog(dataSource);
     }
@@ -141,6 +151,11 @@ public class HostedWebConfiguration {
     @Bean
     HostedResourceStore hostedResourceStore(DataSource dataSource) {
         return new PostgresHostedResourceStore(dataSource);
+    }
+
+    @Bean
+    HostedResourceQueryService hostedResourceQueryService(HostedResourceStore resources) {
+        return new HostedResourceQueryService(resources);
     }
 
     @Bean
@@ -272,6 +287,17 @@ public class HostedWebConfiguration {
     ObjectStorage hostedObjectStorage(S3Client hostedS3Client, HostedWebProperties properties) {
         return new S3ObjectStorage(
                 hostedS3Client, properties.storage().bucket(), properties.storage().maxObjectBytes());
+    }
+
+    @Bean
+    VerifiedArtifactReader hostedVerifiedArtifactReader(ObjectStorage storage, HostedWebProperties properties) {
+        return new TempFileVerifiedArtifactReader(storage, properties.storage().maxObjectBytes());
+    }
+
+    @Bean
+    HostedArtifactDownloadService hostedArtifactDownloadService(
+            HostedResourceStore resources, VerifiedArtifactReader reader) {
+        return new HostedArtifactDownloadService(resources, reader);
     }
 
     @Bean

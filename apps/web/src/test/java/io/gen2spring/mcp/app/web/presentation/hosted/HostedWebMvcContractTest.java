@@ -25,6 +25,10 @@ import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.app.web.config.JobEventStreamConfiguration;
 import io.gen2spring.mcp.app.web.config.security.HostedSecurityConfiguration;
 import io.gen2spring.mcp.app.web.application.hosted.service.HostedSubmissionService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedArtifactDownloadService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedResourceQueryService;
+import io.gen2spring.mcp.app.web.infrastructure.hosted.artifact.TempFileVerifiedArtifactReader;
 import io.gen2spring.mcp.app.web.presentation.error.WebErrorMapper;
 import io.gen2spring.mcp.app.web.presentation.error.WebErrorResponseWriter;
 import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
@@ -456,6 +460,19 @@ class HostedWebMvcContractTest {
     @TestConfiguration(proxyBeanMethods = false)
     static class SecurityBeans {
         @Bean Clock clock() { return Clock.fixed(Instant.parse("2026-08-13T00:00:00Z"), ZoneOffset.UTC); }
+
+        @Bean HostedAccountService hostedAccountService(AccountStore accounts, Clock clock) {
+            return new HostedAccountService(accounts, clock);
+        }
+
+        @Bean HostedResourceQueryService hostedResourceQueryService(HostedResourceStore resources) {
+            return new HostedResourceQueryService(resources);
+        }
+
+        @Bean HostedArtifactDownloadService hostedArtifactDownloadService(
+                HostedResourceStore resources, ObjectStorage storage) {
+            return new HostedArtifactDownloadService(resources, new TempFileVerifiedArtifactReader(storage, 100));
+        }
 
         @Bean
         ClientRegistrationRepository clients() {

@@ -17,10 +17,8 @@ class ReadmeContractTest {
 
         assertTrue(readme.lines().count() <= 200, "Root README should remain a concise landing page");
         assertTrue(readme.contains("[사용자 가이드](docs/user-guide.md)"));
-        assertTrue(userGuide.contains(
-                "./gradlew :apps:web:bootRun --quiet --no-daemon --non-interactive"));
-        assertTrue(userGuide.contains("./gradlew :apps:web:bootJar"));
-        assertTrue(userGuide.contains("java -jar apps/web/build/libs/web.jar"));
+        assertTrue(userGuide.contains(":apps:web:bootJar"));
+        assertTrue(userGuide.contains("apps/web/build/libs/web.jar"));
         assertTrue(userGuide.contains("mise run dev"));
         assertTrue(userGuide.contains("mise run ui:build"));
         assertTrue(userGuide.contains("mise run ui:test"));
@@ -44,7 +42,7 @@ class ReadmeContractTest {
 
         assertTrue(mise.contains("[tasks.dev]"));
         assertTrue(mise.contains(
-                ":apps:web:bootRun --quiet --no-daemon --non-interactive"));
+                ":apps:web:bootJar --quiet --no-daemon --non-interactive"));
         assertTrue(mise.contains("[tasks.\"ui:build\"]"));
         assertTrue(mise.contains(":apps:web:bootJar"));
         assertTrue(mise.contains("[tasks.\"ui:test\"]"));

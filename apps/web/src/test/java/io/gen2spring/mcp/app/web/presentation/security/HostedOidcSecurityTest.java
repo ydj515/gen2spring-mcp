@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import java.time.Clock;
 import java.time.Instant;
@@ -25,7 +26,7 @@ class HostedOidcSecurityTest {
     void mapsOnlyIssuerAndSubjectToAStableInternalAccount() {
         StubAccounts accounts = new StubAccounts();
         HostedAccountResolver resolver = new HostedAccountResolver(
-                accounts, Clock.fixed(NOW, ZoneOffset.UTC));
+                new HostedAccountService(accounts, Clock.fixed(NOW, ZoneOffset.UTC)));
 
         AccountId first = resolver.resolve(authentication("https://issuer-a.example", "subject-1", "first@example.com"))
                 .accountId();
@@ -42,7 +43,7 @@ class HostedOidcSecurityTest {
     @Test
     void rejectsNonOidcPrincipalsWithOneFixedFailure() {
         HostedAccountResolver resolver = new HostedAccountResolver(
-                new StubAccounts(), Clock.fixed(NOW, ZoneOffset.UTC));
+                new HostedAccountService(new StubAccounts(), Clock.fixed(NOW, ZoneOffset.UTC)));
 
         var failure = assertThrows(
                 HostedAccountResolver.HostedAuthenticationFailure.class,

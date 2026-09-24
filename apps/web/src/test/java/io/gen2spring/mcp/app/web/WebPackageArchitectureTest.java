@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import io.gen2spring.mcp.app.web.presentation.hosted.HostedArtifactController;
+import io.gen2spring.mcp.app.web.presentation.hosted.HostedJobController;
+import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
 import org.junit.jupiter.api.Test;
 
 final class WebPackageArchitectureTest {
@@ -52,6 +55,17 @@ final class WebPackageArchitectureTest {
                         "..app.web.presentation.security..", "..app.web.presentation.error..")
                 .should().dependOnClassesThat().resideInAPackage("..app.web.infrastructure..")
                 .check(classes);
+    }
+
+    @Test
+    void hostedDownloadAccountAndResourceDeliveryDoNotUseOutputPorts() throws ClassNotFoundException {
+        var classes = new ClassFileImporter().importClasses(
+                HostedArtifactController.class, HostedJobController.class,
+                Class.forName("io.gen2spring.mcp.app.web.presentation.hosted.HostedSpecificationController"),
+                Class.forName("io.gen2spring.mcp.app.web.presentation.page.DashboardController"),
+                HostedAccountResolver.class);
+        noClasses().should().dependOnClassesThat().resideInAnyPackage(
+                "..application.hosted..port.out..", "..app.web.application.hosted.port.out..").check(classes);
     }
 
     private void assertLoadable(String name) {

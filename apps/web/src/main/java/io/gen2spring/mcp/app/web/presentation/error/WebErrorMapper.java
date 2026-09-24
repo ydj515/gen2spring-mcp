@@ -13,8 +13,8 @@ import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationServ
 import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
 import io.gen2spring.mcp.application.managed.policy.RuntimeGrantService;
 import io.gen2spring.mcp.application.managed.audit.RuntimeAuditService;
-import io.gen2spring.mcp.app.web.presentation.hosted.HostedArtifactController;
-import io.gen2spring.mcp.app.web.presentation.hosted.HostedJobController;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedArtifactDownloadService.HostedArtifactUnavailable;
+import io.gen2spring.mcp.app.web.application.hosted.exception.HostedResourceNotFound;
 import io.gen2spring.mcp.app.web.application.hosted.port.in.HostedSubmissionUseCase;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -48,7 +48,7 @@ public final class WebErrorMapper {
         if (failure instanceof WebException exception) {
             return exception.failure();
         }
-        if (failure instanceof HostedJobController.HostedResourceNotFound
+        if (failure instanceof HostedResourceNotFound
                 || failure instanceof HostedSubmissionUseCase.HostedSpecificationNotFound) {
             return new WebFailure(404, "RESOURCE_NOT_FOUND", "HOSTED_LOOKUP", "The hosted resource was not found");
         }
@@ -152,7 +152,7 @@ public final class WebErrorMapper {
         if (failure instanceof HostedAccountResolver.HostedAuthenticationFailure) {
             return new WebFailure(401, "AUTHENTICATION_REQUIRED", "OIDC", "Hosted authentication is required");
         }
-        if (failure instanceof HostedArtifactController.HostedArtifactFailure) {
+        if (failure instanceof HostedArtifactUnavailable) {
             return new WebFailure(409, "ARTIFACT_UNAVAILABLE", "ARTIFACT_READ", "The requested artifact is unavailable");
         }
         if (failure instanceof HttpMediaTypeNotSupportedException) {

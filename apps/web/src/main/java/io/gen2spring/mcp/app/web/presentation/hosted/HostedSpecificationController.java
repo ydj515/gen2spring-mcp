@@ -3,10 +3,11 @@ package io.gen2spring.mcp.app.web.presentation.hosted;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.app.web.application.hosted.port.in.HostedSubmissionUseCase;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedResourceQueryService;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedResourceQueryService.Cursor;
 import io.gen2spring.mcp.app.web.presentation.local.GenerationPreviewPresenter;
 import io.gen2spring.mcp.app.web.presentation.local.SpecificationAnalysisPresenter;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
-import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
@@ -31,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 final class HostedSpecificationController {
     private final HostedAccountResolver accounts;
     private final HostedSubmissionUseCase submissions;
-    private final HostedResourceStore resources;
+    private final HostedResourceQueryService queries;
     private final ObjectMapper json;
     private final SpecificationAnalysisPresenter analysisPresenter;
     private final GenerationPreviewPresenter previewPresenter;
@@ -40,11 +41,11 @@ final class HostedSpecificationController {
     HostedSpecificationController(
             HostedAccountResolver accounts,
             HostedSubmissionUseCase submissions,
-            HostedResourceStore resources,
+            HostedResourceQueryService queries,
             ObjectMapper json) {
         this.accounts = Objects.requireNonNull(accounts, "accounts");
         this.submissions = Objects.requireNonNull(submissions, "submissions");
-        this.resources = Objects.requireNonNull(resources, "resources");
+        this.queries = Objects.requireNonNull(queries, "queries");
         this.json = Objects.requireNonNull(json, "json");
         this.analysisPresenter = new SpecificationAnalysisPresenter(this.json);
         this.previewPresenter = new GenerationPreviewPresenter(this.json);
@@ -109,21 +110,17 @@ final class HostedSpecificationController {
         Optional<HostedCursorCodec.Cursor> decoded;
         try { decoded = cursors.decode(cursor); }
         catch (IllegalArgumentException failure) { throw new HostedSubmissionUseCase.HostedSubmissionFailure(); }
-        var page = resources.specifications(owner, limit + 1, decoded.map(value ->
-                new HostedResourceStore.ResourceCursor(value.createdAt(), value.id())));
-        page.stream().limit(limit).forEach(specification -> values.addObject()
+        var page = queries.specifications(owner, limit, decoded.map(value ->
+                new Cursor(value.createdAt(), value.id())));
+        page.items().forEach(specification -> values.addObject()
                 .put("id", specification.id().value().toString())
                 .put("sourceType", specification.sourceType())
                 .put("label", specification.label())
                 .put("byteSize", specification.byteSize())
                 .put("createdAt", specification.createdAt().toString()));
-        if (page.size() > limit) {
-            var last = page.get(limit - 1);
-            result.put("nextCursor", cursors.encode(new HostedCursorCodec.Cursor(
-                    last.createdAt(), last.id().value())));
-        } else {
-            result.putNull("nextCursor");
-        }
+        page.nextCursor().ifPresentOrElse(next -> result.put("nextCursor", cursors.encode(
+                new HostedCursorCodec.Cursor(next.createdAt(), next.id()))),
+                () -> result.putNull("nextCursor"));
         return result;
     }
 
