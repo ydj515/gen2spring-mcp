@@ -52,6 +52,23 @@ final class ArchitectureRules {
             .should().dependOnClassesThat().resideInAnyPackage(
                     ROOT + "app.fetch.presentation..", ROOT + "app.fetch.config..");
 
+    static final ArchRule PROVIDER_EGRESS_APPLICATION_POINTS_INWARD = noClasses()
+            .that().resideInAPackage(ROOT + "app.provideregress.application..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.provideregress.presentation..", ROOT + "app.provideregress.infrastructure..",
+                    ROOT + "app.provideregress.config..", ROOT + "adapter..");
+
+    static final ArchRule PROVIDER_EGRESS_PRESENTATION_DOES_NOT_USE_INFRASTRUCTURE = noClasses()
+            .that().resideInAPackage(ROOT + "app.provideregress.presentation..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.provideregress.infrastructure..", ROOT + "app.provideregress.config..",
+                    ROOT + "adapter..");
+
+    static final ArchRule PROVIDER_EGRESS_INFRASTRUCTURE_DOES_NOT_USE_DELIVERY = noClasses()
+            .that().resideInAPackage(ROOT + "app.provideregress.infrastructure..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.provideregress.presentation..", ROOT + "app.provideregress.config..");
+
     static final ArchRule ADAPTERS_POINT_INWARD = noClasses().that().resideInAPackage(ADAPTER + ".")
             .should().dependOnClassesThat().resideInAnyPackage(ROOT + "bootstrap..", ROOT + "app..");
 

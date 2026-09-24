@@ -7,10 +7,13 @@ import org.junit.jupiter.api.Test;
 
 final class ProviderEgressPackageArchitectureTest {
     @Test
-    void separatesApiEgressAndConfigurationResponsibilities() {
-        assertLoadable("io.gen2spring.mcp.app.provideregress.api.ProviderEgressController");
-        assertLoadable("io.gen2spring.mcp.app.provideregress.egress.ProviderEgressService");
-        assertLoadable("io.gen2spring.mcp.app.provideregress.egress.ProviderEgressConfiguration");
+    void separatesPresentationApplicationInfrastructureAndConfigurationResponsibilities() {
+        assertLoadable("io.gen2spring.mcp.app.provideregress.presentation.provider.ProviderEgressController");
+        assertLoadable("io.gen2spring.mcp.app.provideregress.presentation.provider.ProviderEgressExceptionHandler");
+        assertLoadable("io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressService");
+        assertLoadable("io.gen2spring.mcp.app.provideregress.application.provider.port.out.ProviderCallCodec");
+        assertLoadable("io.gen2spring.mcp.app.provideregress.infrastructure.client.provider.ApacheProviderTransport");
+        assertLoadable("io.gen2spring.mcp.app.provideregress.config.ProviderEgressConfiguration");
         assertLoadable("io.gen2spring.mcp.app.provideregress.config.ProviderEgressSecurityConfiguration");
 
         assertNotLoadable("io.gen2spring.mcp.app.provideregress.ProviderEgressController");

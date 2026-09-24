@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.provideregress.egress;
+package io.gen2spring.mcp.app.provideregress.application.provider;
 
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import java.net.URI;
@@ -8,14 +8,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-final class ProviderRequestPolicy {
+public final class ProviderRequestPolicy {
     private static final Set<String> HOP_BY_HOP = Set.of(
             "connection", "content-length", "host", "keep-alive", "proxy-authenticate",
             "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade");
 
     private ProviderRequestPolicy() {}
 
-    static ProviderCallRequest requireAllowed(ProviderCallRequest request) {
+    public static ProviderCallRequest requireAllowed(ProviderCallRequest request) {
         if (request == null) throw failed();
         URI uri = request.uri();
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);

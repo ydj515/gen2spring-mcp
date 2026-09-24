@@ -57,6 +57,11 @@ final class ArchitectureTest {
         ArchitectureRules.FETCH_PRESENTATION_DOES_NOT_USE_INFRASTRUCTURE.check(production);
         ArchitectureRules.FETCH_INFRASTRUCTURE_DOES_NOT_USE_DELIVERY.check(production);
     }
+    @Test void providerEgressLayersPointInward() {
+        ArchitectureRules.PROVIDER_EGRESS_APPLICATION_POINTS_INWARD.check(production);
+        ArchitectureRules.PROVIDER_EGRESS_PRESENTATION_DOES_NOT_USE_INFRASTRUCTURE.check(production);
+        ArchitectureRules.PROVIDER_EGRESS_INFRASTRUCTURE_DOES_NOT_USE_DELIVERY.check(production);
+    }
     @Test void adaptersDoNotDependOnCompositionOrApps() { ArchitectureRules.ADAPTERS_POINT_INWARD.check(production); }
     @Test void adaptersShareOnlyEmitterSupport() { ArchitectureRules.ADAPTERS_ARE_INDEPENDENT.check(production); }
     @Test void bootstrapDoesNotDependOnApps() { ArchitectureRules.BOOTSTRAP_DOES_NOT_DEPEND_ON_APPS.check(production); }

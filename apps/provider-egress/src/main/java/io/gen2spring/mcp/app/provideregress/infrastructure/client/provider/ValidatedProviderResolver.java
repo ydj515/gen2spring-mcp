@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.provideregress.egress;
+package io.gen2spring.mcp.app.provideregress.infrastructure.client.provider;
 
 import io.gen2spring.mcp.domain.platform.imports.NetworkAddressPolicy;
 import java.net.InetAddress;
@@ -9,10 +9,10 @@ import java.util.Locale;
 import java.util.Objects;
 import org.apache.hc.client5.http.DnsResolver;
 
-final class ValidatedProviderResolver implements DnsResolver {
+public final class ValidatedProviderResolver implements DnsResolver {
     private final HostLookup lookup;
 
-    ValidatedProviderResolver() {
+    public ValidatedProviderResolver() {
         this(InetAddress::getAllByName);
     }
 

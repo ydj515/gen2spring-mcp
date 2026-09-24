@@ -1,14 +1,12 @@
-package io.gen2spring.mcp.app.provideregress.api;
+package io.gen2spring.mcp.app.provideregress.presentation.provider;
 
-import io.gen2spring.mcp.adapter.provideregress.ProviderEgressCodec;
-import io.gen2spring.mcp.app.provideregress.egress.ProviderEgressFailure;
-import io.gen2spring.mcp.app.provideregress.egress.ProviderEgressService;
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressFailure;
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.security.cert.X509Certificate;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,11 +24,11 @@ final class ProviderEgressController {
     ResponseEntity<byte[]> call(HttpServletRequest servletRequest) {
         requireCertificate(servletRequest);
         try {
-            if (servletRequest.getContentLengthLong() > ProviderEgressCodec.MAX_WIRE_BYTES) {
+            if (servletRequest.getContentLengthLong() > ProviderEgressService.MAX_REQUEST_BYTES) {
                 throw new ProviderEgressFailure();
             }
-            byte[] wire = servletRequest.getInputStream().readNBytes(ProviderEgressCodec.MAX_WIRE_BYTES + 1);
-            if (wire.length > ProviderEgressCodec.MAX_WIRE_BYTES) throw new ProviderEgressFailure();
+            byte[] wire = servletRequest.getInputStream().readNBytes(ProviderEgressService.MAX_REQUEST_BYTES + 1);
+            if (wire.length > ProviderEgressService.MAX_REQUEST_BYTES) throw new ProviderEgressFailure();
             byte[] response = service.execute(wire);
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(response);
         } catch (ProviderEgressFailure failure) {
@@ -42,12 +40,6 @@ final class ProviderEgressController {
         }
     }
 
-    @ExceptionHandler({ProviderEgressFailure.class, IllegalArgumentException.class})
-    ResponseEntity<FailureBody> failure() {
-        return ResponseEntity.unprocessableEntity().contentType(MediaType.APPLICATION_JSON)
-                .body(new FailureBody("PROVIDER_EGRESS_REJECTED", "Provider egress request failed"));
-    }
-
     private void requireCertificate(HttpServletRequest request) {
         Object value = request.getAttribute(CERTIFICATES);
         if (!(value instanceof X509Certificate[] certificates) || certificates.length == 0) {
@@ -55,5 +47,4 @@ final class ProviderEgressController {
         }
     }
 
-    record FailureBody(String code, String message) {}
 }

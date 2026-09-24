@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.provideregress.egress;
+package io.gen2spring.mcp.app.provideregress.infrastructure.client.provider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.adapter.provideregress.ProviderEgressCodec;
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressFailure;
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderRequestPolicy;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import java.io.IOException;

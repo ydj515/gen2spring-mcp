@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.provideregress.egress;
+package io.gen2spring.mcp.app.provideregress.application.provider;
 
 public final class ProviderEgressFailure extends RuntimeException {
     public ProviderEgressFailure() {

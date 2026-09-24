@@ -1,10 +1,13 @@
-package io.gen2spring.mcp.app.provideregress.egress;
+package io.gen2spring.mcp.app.provideregress.infrastructure.client.provider;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.adapter.provideregress.ProviderEgressCodec;
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressFailure;
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressService;
+import io.gen2spring.mcp.app.provideregress.application.provider.port.out.ProviderTransport;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
@@ -20,6 +23,11 @@ import org.junit.jupiter.api.Test;
 
 class ProviderEgressContractTest {
     private final ProviderEgressCodec codec = new ProviderEgressCodec();
+
+    @Test
+    void presentationRequestLimitMatchesTheCodecContract() {
+        assertEquals(ProviderEgressCodec.MAX_WIRE_BYTES, ProviderEgressService.MAX_REQUEST_BYTES);
+    }
 
     @Test
     void validatesEveryConnectionTimeDnsAnswer() throws Exception {
@@ -50,7 +58,7 @@ class ProviderEgressContractTest {
             return new ProviderCallResponse(201, Map.of("Content-Type", List.of("application/json")),
                     "{\"ok\":true}".getBytes(StandardCharsets.UTF_8));
         };
-        ProviderEgressService service = new ProviderEgressService(transport, codec);
+        ProviderEgressService service = new ProviderEgressService(transport, new JsonProviderCallCodec(codec));
         byte[] wire = codec.encodeRequest(new ProviderCallRequest(
                 HttpMethod.POST,
                 URI.create("https://api.example.com:443/v1/weather?q=seoul"),
@@ -68,7 +76,7 @@ class ProviderEgressContractTest {
     void rejectsInvalidPortsWithFixedFailures() {
         ProviderEgressService service = new ProviderEgressService((request, timeout) -> {
             throw new AssertionError("transport must not execute");
-        }, codec);
+        }, new JsonProviderCallCodec(codec));
 
         byte[] invalidPort = codec.encodeRequest(new ProviderCallRequest(
                 HttpMethod.GET, URI.create("https://api.example.com:8443/private"),

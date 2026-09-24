@@ -1,6 +1,10 @@
-package io.gen2spring.mcp.app.provideregress.egress;
+package io.gen2spring.mcp.app.provideregress.config;
 
 import io.gen2spring.mcp.adapter.provideregress.ProviderEgressCodec;
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressService;
+import io.gen2spring.mcp.app.provideregress.infrastructure.client.provider.ApacheProviderTransport;
+import io.gen2spring.mcp.app.provideregress.infrastructure.client.provider.JsonProviderCallCodec;
+import io.gen2spring.mcp.app.provideregress.infrastructure.client.provider.ValidatedProviderResolver;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,6 +18,6 @@ final class ProviderEgressConfiguration {
 
     @Bean
     ProviderEgressService providerEgressService(ApacheProviderTransport transport) {
-        return new ProviderEgressService(transport, new ProviderEgressCodec());
+        return new ProviderEgressService(transport, new JsonProviderCallCodec(new ProviderEgressCodec()));
     }
 }

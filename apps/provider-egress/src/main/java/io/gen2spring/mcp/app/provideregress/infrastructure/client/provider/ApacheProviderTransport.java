@@ -1,5 +1,8 @@
-package io.gen2spring.mcp.app.provideregress.egress;
+package io.gen2spring.mcp.app.provideregress.infrastructure.client.provider;
 
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressFailure;
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderRequestPolicy;
+import io.gen2spring.mcp.app.provideregress.application.provider.port.out.ProviderTransport;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import java.io.ByteArrayOutputStream;
@@ -24,11 +27,11 @@ import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 import org.apache.hc.core5.util.Timeout;
 
-final class ApacheProviderTransport implements ProviderTransport, AutoCloseable {
+public final class ApacheProviderTransport implements ProviderTransport, AutoCloseable {
     private static final int MAX_BODY = 1_048_576;
     private final CloseableHttpClient client;
 
-    ApacheProviderTransport(ValidatedProviderResolver resolver, Duration connectTimeout) {
+    public ApacheProviderTransport(ValidatedProviderResolver resolver, Duration connectTimeout) {
         Objects.requireNonNull(resolver, "resolver");
         if (connectTimeout == null || connectTimeout.isZero() || connectTimeout.isNegative()
                 || connectTimeout.compareTo(Duration.ofSeconds(5)) > 0) throw new ProviderEgressFailure();

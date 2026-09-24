@@ -1,5 +1,6 @@
-package io.gen2spring.mcp.app.provideregress.egress;
+package io.gen2spring.mcp.app.provideregress.infrastructure.client.provider;
 
+import io.gen2spring.mcp.app.provideregress.application.provider.ProviderEgressFailure;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import java.util.LinkedHashMap;
 import java.util.List;
