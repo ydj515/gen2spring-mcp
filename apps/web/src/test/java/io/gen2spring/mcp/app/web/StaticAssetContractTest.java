@@ -444,7 +444,7 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"progress-list\""));
         assertTrue(index.contains("id=\"progress-overview\""));
         assertTrue(index.contains("class=\"progress-details-title\""));
-        assertTrue(index.contains("열어 진행 상태 확인"));
+        assertTrue(index.contains("progress-details-chevron"));
         assertTrue(index.contains("<details id=\"job-progress-details\""));
         assertFalse(index.contains("<summary>상세 보기</summary>"));
 

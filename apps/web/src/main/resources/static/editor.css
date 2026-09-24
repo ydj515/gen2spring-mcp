@@ -1045,7 +1045,6 @@ main.editor-main .workflow-step {
 .pipeline-panel .progress-details-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--app-space-3);
   margin: 0;
   padding: var(--app-space-4);
@@ -1054,22 +1053,12 @@ main.editor-main .workflow-step {
   font-weight: 700;
   cursor: pointer;
   list-style: none;
+  transition: background-color 120ms ease;
 }
 .pipeline-panel .progress-details-title::-webkit-details-marker { display: none; }
-.pipeline-panel .progress-details-title::after {
-  content: '열기';
-  display: inline-flex;
-  align-items: center;
-  min-height: 2rem;
-  padding: 0 var(--app-space-3);
-  border: 1px solid var(--app-border-strong);
-  border-radius: var(--app-radius-control);
-  color: var(--app-primary);
-  font-size: 0.75rem;
-  font-weight: 800;
-}
-.pipeline-panel .progress-details[open] .progress-details-title::after { content: '접기'; }
-.progress-details-hint { color: var(--app-muted); font-size: 0.75rem; font-weight: 500; margin-left: auto; }
+.pipeline-panel .progress-details-title:hover { background: var(--app-surface-subtle); }
+.progress-details-chevron { color: var(--app-muted); font-size: 0.75rem; transition: color 120ms ease, transform 120ms ease; }
+.pipeline-panel .progress-details[open] .progress-details-chevron { color: var(--app-primary); transform: rotate(180deg); }
 .pipeline-panel .progress-details-title:focus-visible { outline: 3px solid var(--app-primary-soft); outline-offset: -3px; }
 .pipeline-panel .progress-list { margin-bottom: 0; }
 .pipeline-stage { font-weight: 700; }
