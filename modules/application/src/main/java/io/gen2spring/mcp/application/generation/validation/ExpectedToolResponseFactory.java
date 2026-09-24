@@ -154,6 +154,9 @@ public final class ExpectedToolResponseFactory {
         }
         Object result = root;
         if (policy.successCodePointer() != null) {
+            if (policy.successValues().isEmpty()) {
+                throw invalid();
+            }
             result = insert(result, policy.successCodePointer(), policy.successValues().getFirst());
         }
         if (policy.errorMessagePointer() != null) {

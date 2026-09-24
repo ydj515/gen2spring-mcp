@@ -100,8 +100,14 @@ public final class SchemaFixtureFactory {
             minimum = max(minimum, BigInteger.valueOf(Long.MIN_VALUE));
             maximum = min(maximum, BigInteger.valueOf(Long.MAX_VALUE));
         }
-        BigInteger candidate = minimum == null ? BigInteger.valueOf(variant + 1L) : minimum.add(BigInteger.valueOf(variant));
-        if (maximum != null && candidate.compareTo(maximum) > 0) {
+        BigInteger offset = BigInteger.valueOf(variant);
+        BigInteger candidate = schema.minimum() == null
+                ? BigInteger.valueOf(variant + 1L) : minimum.add(offset);
+        if (schema.minimum() == null && maximum != null && candidate.compareTo(maximum) > 0) {
+            candidate = maximum.subtract(offset);
+        }
+        if (minimum != null && candidate.compareTo(minimum) < 0
+                || maximum != null && candidate.compareTo(maximum) > 0) {
             throw invalid();
         }
         return candidate;
@@ -110,6 +116,10 @@ public final class SchemaFixtureFactory {
     private BigDecimal number(ApiSchema schema, int variant) {
         BigDecimal candidate = schema.minimum() == null
                 ? BigDecimal.valueOf(variant + 1L) : schema.minimum().add(BigDecimal.valueOf(variant));
+        if (schema.minimum() == null && schema.maximum() != null
+                && candidate.compareTo(schema.maximum()) > 0) {
+            candidate = schema.maximum().subtract(BigDecimal.valueOf(variant));
+        }
         if (schema.maximum() != null && candidate.compareTo(schema.maximum()) > 0) {
             throw invalid();
         }

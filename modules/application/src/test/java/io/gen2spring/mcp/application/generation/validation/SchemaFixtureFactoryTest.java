@@ -2,9 +2,11 @@ package io.gen2spring.mcp.application.generation.validation;
 
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.ARRAY;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.INTEGER;
+import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.NUMBER;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.OBJECT;
 import static io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType.STRING;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import java.math.BigDecimal;
@@ -40,6 +42,35 @@ class SchemaFixtureFactoryTest {
 
         assertEquals("only", factory.create(single, 1));
         assertEquals("a", factory.create(budgetedPattern, 0));
+    }
+
+    @Test
+    void derivesIntegerVariantsBelowAnUpperBoundWithoutAnExplicitMinimum() {
+        ApiSchema bounded = schema(INTEGER, Map.of(), List.of(), null, null, BigDecimal.ZERO);
+        ApiSchema int32 = new ApiSchema(INTEGER, "int32", false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+
+        assertEquals(BigInteger.ZERO, factory.create(bounded, 0));
+        assertEquals(BigInteger.ONE.negate(), factory.create(bounded, 1));
+        assertEquals(BigInteger.ONE, factory.create(int32, 0));
+        assertEquals(BigInteger.TWO, factory.create(int32, 1));
+    }
+
+    @Test
+    void derivesDecimalVariantsBelowAnUpperBoundWithoutAnExplicitMinimum() {
+        ApiSchema bounded = schema(NUMBER, Map.of(), List.of(), null, null, new BigDecimal("-0.5"));
+
+        assertEquals(new BigDecimal("-0.5"), factory.create(bounded, 0));
+        assertEquals(new BigDecimal("-1.5"), factory.create(bounded, 1));
+    }
+
+    @Test
+    void preservesMinimumBasedVariantsAndRejectsAnImpossibleSecondValue() {
+        ApiSchema bounded = schema(INTEGER, Map.of(), List.of(), null, BigDecimal.ONE, BigDecimal.ONE);
+
+        assertEquals(BigInteger.ONE, factory.create(bounded, 0));
+        assertEquals("Schema fixture cannot be derived",
+                assertThrows(IllegalArgumentException.class, () -> factory.create(bounded, 1)).getMessage());
     }
 
     private ApiSchema schema(

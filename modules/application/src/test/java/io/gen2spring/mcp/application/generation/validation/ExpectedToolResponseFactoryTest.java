@@ -8,6 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.generation.validation.ExpectedToolResponseFactory.ExpectedToolResponse;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
 import io.gen2spring.mcp.domain.tool.ToolOutput;
@@ -166,6 +169,27 @@ class ExpectedToolResponseFactoryTest {
 
         assertEquals(Map.of("city", "a"), result.upstreamResponse().body());
         assertEquals(Map.of("city", "a"), result.expectedResult());
+    }
+
+    @Test
+    void rejectsPaginationWithAnEmptySuccessCodeListUsingTheSafeFailure() {
+        ApiSchema text = new ApiSchema(SchemaType.STRING, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema items = new ApiSchema(SchemaType.ARRAY, null, false, List.of(), null, null,
+                null, null, null, null, Map.of(), List.of(), text, true, List.of());
+        ApiSchema provider = new ApiSchema(SchemaType.OBJECT, null, false, List.of(), null, null,
+                null, null, null, null, Map.of("items", items, "next", text),
+                List.of("items", "next"), null, true, List.of());
+        var policy = policy(null, "/code", List.of(), null, null);
+        var pagination = new PaginationPolicy("cursor", "start", "/items", "/next", 2, 2);
+        var execution = new HttpExecution(GET, URI.create("https://api.example.test"), "/forecast",
+                List.of(), false, false, policy, null, pagination);
+        var tool = new ToolDefinition("getForecast", "weather_get_forecast", "Get a forecast.",
+                List.of(), execution, List.of(), new ToolOutput(OutputKind.TYPED_DTO, provider, provider));
+
+        var failure = assertThrows(IllegalArgumentException.class, () -> factory.create(tool));
+
+        assertEquals("Expected response fixture cannot be derived", failure.getMessage());
     }
 
     private ResponseNormalizationPolicy normalization() {

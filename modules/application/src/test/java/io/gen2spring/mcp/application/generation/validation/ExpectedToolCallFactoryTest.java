@@ -309,8 +309,8 @@ class ExpectedToolCallFactoryTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> body = (Map<String, Object>) ((Map<String, Object>) response.get("response")).get("body");
         assertEquals(List.of(
-                Map.of("id", BigInteger.valueOf(Long.MIN_VALUE)),
-                Map.of("id", BigInteger.valueOf(Long.MIN_VALUE).add(BigInteger.ONE))), body.get("items"));
+                Map.of("id", BigInteger.ONE),
+                Map.of("id", BigInteger.TWO)), body.get("items"));
         assertTrue(body.containsKey("next"));
         assertEquals(null, body.get("next"));
         assertEquals(call.upstreamInteractions().get(0).response(), call.upstreamResponse());
