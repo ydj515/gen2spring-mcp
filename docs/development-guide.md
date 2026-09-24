@@ -98,8 +98,10 @@ processing/configuration error도 빌드를 실패시킨다. Checkstyle·PMD 실
 
 루트 `src/test/java`는 제품 모듈에 포함되지 않는 검증 harness다. `architectureTest`는 루트 `test`를 실행하고
 모든 production class directory와 실제 `compileClasspath`·`runtimeClasspath`의 선언된 project dependency를
-검사한다. Test 전용 모듈 의존은 production graph에서 제외한다. 빈 class directory나 누락된 모듈은 실패한다.
-Domain 역방향 fixture, 문자열 오탐 방지, 미사용 Gradle 의존 추가, PMD 실제 오류와 무효 설정도 회귀 테스트한다.
+검사한다. Domain·application·공유 emitter의 외부 라이브러리 선언도 허용 목록과 대조한다.
+Test 전용 모듈 의존은 production graph에서 제외한다. 빈 class directory나 누락된 모듈은 실패한다.
+Domain 역방향 fixture, 문자열 오탐 방지, 미사용 project/external 의존 추가, port에서 service 참조,
+application의 직접 thread pool 사용, PMD 실제 오류와 무효 설정도 회귀 테스트한다.
 상세 규칙과 허용 예외는 [아키텍처 경계](architecture-boundaries.md#자동-의존-방향-검사)에 있다.
 
 개별 모듈 테스트도 전체 품질·아키텍처 검사를 먼저 실행하므로 다른 모듈의 Java 컴파일이 필요할 수 있다.

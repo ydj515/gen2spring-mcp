@@ -12,6 +12,7 @@ import io.gen2spring.mcp.app.architecturefixture.infrastructure.ForbiddenInfrast
 import io.gen2spring.mcp.app.architecturefixture.presentation.ForbiddenPresentation;
 import io.gen2spring.mcp.application.architecturefixture.ApplicationTarget;
 import io.gen2spring.mcp.application.architecturefixture.ForbiddenThreadPool;
+import io.gen2spring.mcp.application.architecturefixture.port.out.ForbiddenPort;
 import io.gen2spring.mcp.application.architecturefixture.cycle.first.First;
 import io.gen2spring.mcp.application.architecturefixture.cycle.second.Second;
 import io.gen2spring.mcp.domain.architecturefixture.AllowedDomain;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
 final class ArchitectureTest {
     private static JavaClasses production;
     private static Map<String, Set<String>> graph;
+    private static Map<String, Set<String>> externalDependencies;
 
     @BeforeAll
     static void importEveryProductionModule() throws Exception {
@@ -43,15 +45,22 @@ final class ArchitectureTest {
         production = new ClassFileImporter().importPaths(paths);
         assertFalse(production.isEmpty());
         assertTrue(production.stream().noneMatch(type -> type.getName().contains(".architecturefixture.")));
-        String moduleGraph = System.getProperty("architecture.moduleGraph");
+        graph = dependencyGraph("architecture.moduleGraph");
+        externalDependencies = dependencyGraph("architecture.externalDependencies");
+        assertEquals(graph.keySet(), externalDependencies.keySet());
+        assertEquals(graph.size(), paths.size(), "Every production module must contribute bytecode");
+    }
+
+    private static Map<String, Set<String>> dependencyGraph(String property) {
+        String moduleGraph = System.getProperty(property);
         assertTrue(moduleGraph != null && !moduleGraph.isBlank(), "Production module graph must be supplied");
-        graph = new LinkedHashMap<>();
+        Map<String, Set<String>> result = new LinkedHashMap<>();
         for (String line : moduleGraph.lines().toList()) {
             String[] pair = line.split("=", -1);
             assertEquals(2, pair.length);
-            graph.put(pair[0], pair[1].isEmpty() ? Set.of() : Set.copyOf(Arrays.asList(pair[1].split(","))));
+            result.put(pair[0], pair[1].isEmpty() ? Set.of() : Set.copyOf(Arrays.asList(pair[1].split(","))));
         }
-        assertEquals(graph.size(), paths.size(), "Every production module must contribute bytecode");
+        return result;
     }
 
     @Test void domainUsesOnlyDomainAndJdk() { ArchitectureRules.DOMAIN.check(production); }
@@ -59,6 +68,7 @@ final class ArchitectureTest {
     @Test void controllersDoNotUsePersistenceImplementations() { ArchitectureRules.CONTROLLERS_USE_APPLICATION_PORTS.check(production); }
     @Test void applicationUsesDomainAndApprovedJsonModel() { ArchitectureRules.APPLICATION.check(production); }
     @Test void applicationPortsExposeOnlyInnerContracts() { ArchitectureRules.APPLICATION_PORTS.check(production); }
+    @Test void contractsDoNotDependOnUseCaseImplementations() { ArchitectureRules.CONTRACTS_DO_NOT_USE_IMPLEMENTATIONS.check(production); }
     @Test void everyProductionPackageHasAcyclicDependencies() { ArchitectureRules.PACKAGES_ARE_ACYCLIC.check(production); }
     @Test void allAppApplicationsPointInward() { ArchitectureRules.APP_APPLICATIONS_POINT_INWARD.check(production); }
     @Test void allPresentationUsesInputContracts() { ArchitectureRules.PRESENTATION_USES_INPUT_CONTRACTS.check(production); }
@@ -94,6 +104,22 @@ final class ArchitectureTest {
     @Test void bootstrapDoesNotDependOnApps() { ArchitectureRules.BOOTSTRAP_DOES_NOT_DEPEND_ON_APPS.check(production); }
     @Test void appsDoNotDependOnEachOther() { ArchitectureRules.APPS_ARE_INDEPENDENT.check(production); }
     @Test void declaredProductionDependenciesPointInward() { ModuleDependencyRules.check(graph); }
+    @Test void coreModulesDeclareOnlyApprovedExternalLibraries() {
+        ModuleDependencyRules.checkExternal(externalDependencies);
+    }
+
+    @Test
+    void unusedExternalLibrariesCannotBypassCoreModuleBoundaries() {
+        for (String module : Set.of(":modules:domain", ":modules:application",
+                ":modules:adapters:emitters:support", ":modules:adapters:emitters:mcp-runtime")) {
+            var mutated = new LinkedHashMap<>(externalDependencies);
+            mutated.put(module, Set.of("org.springframework:spring-jdbc"));
+            assertThrows(AssertionError.class, () -> ModuleDependencyRules.checkExternal(mutated));
+        }
+        var missing = new LinkedHashMap<>(externalDependencies);
+        missing.remove(":modules:domain");
+        assertThrows(AssertionError.class, () -> ModuleDependencyRules.checkExternal(missing));
+    }
 
     @Test
     void everyModuleOwnsItsProductionPackages() {
@@ -139,6 +165,12 @@ final class ArchitectureTest {
         assertTrue(ArchitectureRules.APP_APPLICATIONS_POINT_INWARD.evaluate(classes).hasViolation());
         assertTrue(ArchitectureRules.APPLICATION_DOES_NOT_ACCESS_FILESYSTEM.evaluate(classes).hasViolation());
         assertTrue(ArchitectureRules.APPLICATION_DOES_NOT_CREATE_EXECUTORS.evaluate(classes).hasViolation());
+    }
+
+    @Test
+    void portRuleRejectsAServiceDependencyEvenWithoutAPackageCycle() {
+        var classes = new ClassFileImporter().importClasses(ForbiddenPort.class);
+        assertTrue(ArchitectureRules.CONTRACTS_DO_NOT_USE_IMPLEMENTATIONS.evaluate(classes).hasViolation());
     }
 
     @Test

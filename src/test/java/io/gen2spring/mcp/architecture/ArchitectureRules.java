@@ -54,6 +54,15 @@ final class ArchitectureRules {
             .should().onlyDependOnClassesThat().resideInAnyPackage(
                     ROOT + "application..", ROOT + "domain..", "java..");
 
+    static final ArchRule CONTRACTS_DO_NOT_USE_IMPLEMENTATIONS = noClasses()
+            .that().resideInAnyPackage(
+                    ROOT + "application..port..", ROOT + "application..command..", ROOT + "application..result..",
+                    ROOT + "app.*.application..port..", ROOT + "app.*.application..command..",
+                    ROOT + "app.*.application..result..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "application..service..", ROOT + "application.generation.usecase..",
+                    ROOT + "application.generation.planning..", ROOT + "app.*.application..service..");
+
     static final ArchRule APP_APPLICATIONS_POINT_INWARD = classes()
             .that().resideInAPackage(ROOT + "app.*.application..")
             .should().onlyDependOnClassesThat().resideInAnyPackage(

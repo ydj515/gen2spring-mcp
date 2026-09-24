@@ -6,6 +6,6 @@ build/
 *.class
 .DS_Store
 out/
-!**/src/main/java/**/port/out/
+!**/src/*/java/**/port/out/
 .idea/
 .worktrees/

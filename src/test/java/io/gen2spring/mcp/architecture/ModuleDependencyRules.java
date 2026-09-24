@@ -10,6 +10,24 @@ final class ModuleDependencyRules {
     private static final String ADAPTERS = ":modules:adapters:";
     private static final String EMITTERS = ADAPTERS + "emitters:";
 
+    private static final Map<String, Set<String>> CORE_EXTERNAL_DEPENDENCIES = Map.of(
+            DOMAIN, Set.of(),
+            APPLICATION, Set.of("com.fasterxml.jackson.core:jackson-databind"),
+            EMITTERS + "support", Set.of(),
+            EMITTERS + "mcp-runtime", Set.of());
+
+    static void checkExternal(Map<String, Set<String>> dependencies) {
+        for (var entry : CORE_EXTERNAL_DEPENDENCIES.entrySet()) {
+            Set<String> declared = dependencies.get(entry.getKey());
+            if (declared == null) throw new AssertionError("Missing core module: " + entry.getKey());
+            for (String target : declared) {
+                if (!entry.getValue().contains(target)) {
+                    throw new AssertionError("Forbidden external dependency: " + entry.getKey() + " -> " + target);
+                }
+            }
+        }
+    }
+
     static boolean allows(String source, String target) {
         if (source.equals(target)) return false;
         if (source.equals(DOMAIN)) return false;

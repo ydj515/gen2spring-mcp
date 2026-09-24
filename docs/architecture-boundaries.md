@@ -132,7 +132,7 @@ Java import 검사는 [루트 빌드](../build.gradle.kts)의 `verifyJavaImportS
 | --- | --- |
 | Domain | domain·JDK만 허용하고 SQL API는 금지 |
 | Application | application·domain·JDK·`javax.lang.model`·기존 Jackson만 허용 |
-| Application port | application·domain·JDK만 허용 |
+| Application port | application·domain·JDK만 허용. 공유·앱 port/command/result에서 service·generation usecase/planning 구현 참조 금지 |
 | Adapter | bootstrap·app 참조와 다른 adapter 직접 참조 금지. 공유 emitter 예외만 허용 |
 | Bootstrap | 앱을 참조하지 않고 생성기 객체 그래프 조립 |
 | App | 서로 다른 앱을 직접 참조하지 않음 |
@@ -155,13 +155,18 @@ Java import 검사는 [루트 빌드](../build.gradle.kts)의 `verifyJavaImportS
 Emitter의 `render`는 상위 포트 구현을 참조하지 않는다. Validation 하위 패키지에는 순환을 허용하지 않고
 process/runtime/MCP/upstream 구현에서 project orchestration으로 향하는 역방향도 금지한다.
 모든 production 패키지는 전체 패키지명을 기준으로 순환 의존을 검사한다. 같은 기능 내부의
-`service`, `port.out`, result 사이 순환도 예외로 두지 않는다.
+`service`, `port.out`, result 사이 순환도 예외로 두지 않는다. Port/command/result에서 service 구현으로
+향하는 의존은 아직 순환을 만들지 않았더라도 실패한다.
 
 [모듈 규칙](../src/test/java/io/gen2spring/mcp/architecture/ModuleDependencyRules.java)은 Gradle에 선언했지만
 아직 코드에서 쓰지 않는 역방향 의존도 잡는다. Domain은 다른 모듈에 의존하지 않고 application은 domain에만,
 일반 adapter는 domain/application에만 의존한다. Emitter support는 domain, MCP runtime은 domain/support,
 계열 emitter는 domain/application/support/MCP runtime을 허용한다. Bootstrap은 중심 계층·adapter,
 앱은 중심 계층·adapter·bootstrap을 허용한다. 테스트 전용 의존은 이 production 정책과 구분한다.
+외부 라이브러리도 선언 단계에서 검사한다. Domain과 emitter support/MCP runtime은 외부 라이브러리를
+허용하지 않고, application은 기존 Jackson Databind 선언만 허용한다. 아직 코드에서 사용하지 않는
+Spring/JDBC 의존성을 추가해도 실패한다. 이는 선언된 compile/runtime 의존 검사이며, 전이 라이브러리의
+실제 사용은 별도의 바이트코드 규칙이 검사한다. Adapter와 실행 앱의 기술 라이브러리는 이 허용 목록 대상이 아니다.
 
 [패키지 소유권 규칙](../src/test/java/io/gen2spring/mcp/architecture/ModulePackageRules.java)은 각 모듈의
 실제 class directory를 별도로 읽어 그 모듈의 package prefix만 포함하는지 확인한다. 전체 모듈 목록은

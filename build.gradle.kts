@@ -1,5 +1,6 @@
 import org.gradle.api.services.BuildService
 import org.gradle.api.services.BuildServiceParameters
+import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.plugins.quality.Checkstyle
 import org.gradle.api.plugins.quality.CheckstyleExtension
@@ -160,6 +161,15 @@ val productionModuleGraph = providers.provider {
         "${module.path}=${targets.joinToString(",")}"
     }
 }
+val productionExternalDependencies = providers.provider {
+    productionProjects.sortedBy { it.path }.joinToString("\n") { module ->
+        val targets = listOf("compileClasspath", "runtimeClasspath").flatMap { name ->
+            module.configurations.getByName(name).allDependencies.withType(ExternalModuleDependency::class.java)
+                .map { "${it.group}:${it.name}" }
+        }.distinct().sorted()
+        "${module.path}=${targets.joinToString(",")}"
+    }
+}
 val checkstyleVersion = libs.versions.checkstyle.get()
 val jacocoVersion = libs.versions.jacoco.get()
 val checkstyleRules = layout.projectDirectory.file("config/checkstyle/checkstyle.xml")
@@ -198,6 +208,7 @@ tasks.test {
     classpath += productionClasses
     inputs.files(productionClasses)
     inputs.property("architecture.moduleGraph", productionModuleGraph)
+    inputs.property("architecture.externalDependencies", productionExternalDependencies)
     inputs.files(productionProjects.map { it.buildFile }, file("settings.gradle.kts"))
     systemProperty("quality.pmdRules", pmdRules.asFile.absolutePath)
     inputs.file(pmdRules)
@@ -205,6 +216,7 @@ tasks.test {
         systemProperty("architecture.productionDirectories",
             productionClasses.files.sortedBy { it.path }.joinToString("\n") { it.absolutePath })
         systemProperty("architecture.moduleGraph", productionModuleGraph.get())
+        systemProperty("architecture.externalDependencies", productionExternalDependencies.get())
         systemProperty("architecture.moduleDirectories", productionProjects.sortedBy { it.path }.joinToString("\n") { module ->
             val directories = module.extensions.getByType<SourceSetContainer>().named("main").get().output.classesDirs
             "${module.path}=${directories.files.joinToString("|") { it.absolutePath }}"
