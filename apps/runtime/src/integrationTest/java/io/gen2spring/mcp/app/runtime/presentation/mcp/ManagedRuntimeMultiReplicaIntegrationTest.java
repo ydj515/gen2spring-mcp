@@ -21,6 +21,7 @@ import io.gen2spring.mcp.application.managed.credential.port.out.CredentialProte
 import io.gen2spring.mcp.application.managed.credential.port.out.ManagedCredentialStore;
 import io.gen2spring.mcp.application.managed.credential.service.RuntimeCredentialResolver;
 import io.gen2spring.mcp.application.managed.execution.ManagedExecutionLimits;
+import io.gen2spring.mcp.app.runtime.infrastructure.execution.BoundedManagedExecutionTasks;
 import io.gen2spring.mcp.application.managed.execution.ManagedRuntimeBinding;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.application.managed.execution.service.ManagedExecutionContext;
@@ -238,7 +239,8 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
             RuntimeMetadataArtifact metadata,
             RuntimePolicyStore policies,
             AtomicInteger providerCalls) {
-        ManagedToolExecutor executor = new ManagedToolExecutor((request, timeout) -> {
+        ManagedToolExecutor executor = new ManagedToolExecutor(
+                new BoundedManagedExecutionTasks(new ManagedExecutionLimits(Duration.ofSeconds(2), 2, 4)), (request, timeout) -> {
             providerCalls.incrementAndGet();
             return new ProviderCallResponse(200, Map.of("Content-Type", List.of("application/json")),
                     "{\"ok\":true}".getBytes(StandardCharsets.UTF_8));
@@ -268,7 +270,8 @@ class ManagedRuntimeMultiReplicaIntegrationTest {
             RuntimePolicyStore policies,
             RuntimeTokenCodec tokens,
             AtomicInteger providerCalls) {
-        ManagedToolExecutor executor = new ManagedToolExecutor((request, timeout) -> {
+        ManagedToolExecutor executor = new ManagedToolExecutor(
+                new BoundedManagedExecutionTasks(new ManagedExecutionLimits(Duration.ofSeconds(2), 2, 4)), (request, timeout) -> {
             providerCalls.incrementAndGet();
             return new ProviderCallResponse(200, Map.of("Content-Type", List.of("application/json")),
                     "{\"ok\":true}".getBytes(StandardCharsets.UTF_8));

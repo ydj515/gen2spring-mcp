@@ -21,6 +21,7 @@ import io.gen2spring.mcp.application.hosted.catalog.result.ToolDetails;
 import io.gen2spring.mcp.application.managed.audit.result.AuditCursor;
 import io.gen2spring.mcp.application.managed.audit.result.AuditPage;
 import io.gen2spring.mcp.application.managed.execution.ManagedExecutionLimits;
+import io.gen2spring.mcp.app.runtime.infrastructure.execution.BoundedManagedExecutionTasks;
 import io.gen2spring.mcp.application.managed.execution.ManagedRuntimeBinding;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
@@ -300,7 +301,8 @@ class ManagedRuntimeJourneyIntegrationTest {
                 providerTarget, NOW.minusSeconds(1), NOW.plusSeconds(86_400), Optional.empty());
         AtomicReference<ManagedRuntimeInstance> stored = new AtomicReference<>(instance);
         AtomicInteger calls = new AtomicInteger();
-        ManagedToolExecutor executor = new ManagedToolExecutor((request, timeout) -> {
+        ManagedToolExecutor executor = new ManagedToolExecutor(
+                new BoundedManagedExecutionTasks(new ManagedExecutionLimits(Duration.ofSeconds(2), 2, 4)), (request, timeout) -> {
             calls.incrementAndGet();
             return provider.execute(request, timeout);
         }, new ManagedExecutionLimits(Duration.ofSeconds(2), 2, 4), Clock.fixed(NOW, ZoneOffset.UTC));

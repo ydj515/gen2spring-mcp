@@ -11,6 +11,7 @@ import io.gen2spring.mcp.app.architecturefixture.application.ForbiddenApplicatio
 import io.gen2spring.mcp.app.architecturefixture.infrastructure.ForbiddenInfrastructure;
 import io.gen2spring.mcp.app.architecturefixture.presentation.ForbiddenPresentation;
 import io.gen2spring.mcp.application.architecturefixture.ApplicationTarget;
+import io.gen2spring.mcp.application.architecturefixture.ForbiddenThreadPool;
 import io.gen2spring.mcp.application.architecturefixture.cycle.first.First;
 import io.gen2spring.mcp.application.architecturefixture.cycle.second.Second;
 import io.gen2spring.mcp.domain.architecturefixture.AllowedDomain;
@@ -63,7 +64,7 @@ final class ArchitectureTest {
     @Test void allPresentationUsesInputContracts() { ArchitectureRules.PRESENTATION_USES_INPUT_CONTRACTS.check(production); }
     @Test void infrastructureDoesNotUseComposition() { ArchitectureRules.INFRASTRUCTURE_DOES_NOT_USE_COMPOSITION.check(production); }
     @Test void applicationDoesNotAccessFilesystem() { ArchitectureRules.APPLICATION_DOES_NOT_ACCESS_FILESYSTEM.check(production); }
-    @Test void applicationDelegatesSchedulingToOutputPorts() { ArchitectureRules.APPLICATION_DOES_NOT_CREATE_SCHEDULERS.check(production); }
+    @Test void applicationDelegatesSchedulingToOutputPorts() { ArchitectureRules.APPLICATION_DOES_NOT_CREATE_EXECUTORS.check(production); }
     @Test void renderersDoNotDependOnEmitterFacades() { ArchitectureRules.RENDERERS_DO_NOT_USE_EMITTER_FACADES.check(production); }
     @Test void validationPackagesHaveOneWayDependencies() {
         ArchitectureRules.VALIDATION_PACKAGES_ARE_ACYCLIC.check(production);
@@ -137,7 +138,13 @@ final class ArchitectureTest {
         assertTrue(ArchitectureRules.INFRASTRUCTURE_DOES_NOT_USE_COMPOSITION.evaluate(classes).hasViolation());
         assertTrue(ArchitectureRules.APP_APPLICATIONS_POINT_INWARD.evaluate(classes).hasViolation());
         assertTrue(ArchitectureRules.APPLICATION_DOES_NOT_ACCESS_FILESYSTEM.evaluate(classes).hasViolation());
-        assertTrue(ArchitectureRules.APPLICATION_DOES_NOT_CREATE_SCHEDULERS.evaluate(classes).hasViolation());
+        assertTrue(ArchitectureRules.APPLICATION_DOES_NOT_CREATE_EXECUTORS.evaluate(classes).hasViolation());
+    }
+
+    @Test
+    void applicationRuleRejectsDirectThreadPoolsWithoutExecutorsFactory() {
+        var classes = new ClassFileImporter().importClasses(ForbiddenThreadPool.class);
+        assertTrue(ArchitectureRules.APPLICATION_DOES_NOT_CREATE_EXECUTORS.evaluate(classes).hasViolation());
     }
 
     @Test

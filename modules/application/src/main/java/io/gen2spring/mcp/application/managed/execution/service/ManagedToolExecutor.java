@@ -7,6 +7,7 @@ import io.gen2spring.mcp.application.managed.execution.ManagedToolResult;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.application.managed.execution.port.out.ProviderCallClient;
+import io.gen2spring.mcp.application.managed.execution.port.out.ManagedExecutionTasks;
 import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
@@ -22,10 +23,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
@@ -35,29 +34,31 @@ public final class ManagedToolExecutor implements AutoCloseable {
     private final ManagedExecutionLimits limits;
     private final RuntimeHttpRequestFactory requests;
     private final RuntimeResponseNormalizer responses;
-    private final ThreadPoolExecutor executor;
+    private final ManagedExecutionTasks executor;
     private final Clock clock;
     private final RuntimePolicyStore policies;
     private final Supplier<UUID> executionIds;
 
-    public ManagedToolExecutor(ProviderCallClient client, ManagedExecutionLimits limits) {
-        this(client, limits, Clock.systemUTC(), null, UUID::randomUUID);
+    public ManagedToolExecutor(ManagedExecutionTasks executor, ProviderCallClient client, ManagedExecutionLimits limits) {
+        this(executor, client, limits, Clock.systemUTC(), null, UUID::randomUUID);
     }
 
-    public ManagedToolExecutor(ProviderCallClient client, ManagedExecutionLimits limits, Clock clock) {
-        this(client, limits, clock, null, UUID::randomUUID);
+    public ManagedToolExecutor(ManagedExecutionTasks executor, ProviderCallClient client, ManagedExecutionLimits limits, Clock clock) {
+        this(executor, client, limits, clock, null, UUID::randomUUID);
     }
 
     public ManagedToolExecutor(
+            ManagedExecutionTasks executor,
             ProviderCallClient client,
             ManagedExecutionLimits limits,
             RuntimePolicyStore policies,
             Clock clock,
             Supplier<UUID> executionIds) {
-        this(client, limits, clock, Objects.requireNonNull(policies, "policies"), executionIds);
+        this(executor, client, limits, clock, Objects.requireNonNull(policies, "policies"), executionIds);
     }
 
     private ManagedToolExecutor(
+            ManagedExecutionTasks executor,
             ProviderCallClient client,
             ManagedExecutionLimits limits,
             Clock clock,
@@ -70,15 +71,7 @@ public final class ManagedToolExecutor implements AutoCloseable {
         this.executionIds = Objects.requireNonNull(executionIds, "executionIds");
         this.requests = new RuntimeHttpRequestFactory();
         this.responses = new RuntimeResponseNormalizer();
-        this.executor = new ThreadPoolExecutor(
-                limits.workers(), limits.workers(), 0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(limits.queueCapacity()),
-                runnable -> {
-                    Thread thread = new Thread(runnable, "managed-provider-call");
-                    thread.setDaemon(false);
-                    return thread;
-                },
-                new ThreadPoolExecutor.AbortPolicy());
+        this.executor = Objects.requireNonNull(executor, "executor");
     }
 
     public ManagedToolResult call(
@@ -433,15 +426,7 @@ public final class ManagedToolExecutor implements AutoCloseable {
 
     @Override
     public void close() {
-        executor.shutdownNow();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("Managed Tool executor did not stop");
-            }
-        } catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Managed Tool executor did not stop");
-        }
+        executor.close();
     }
 
     public static final class ManagedToolRequestInvalid extends RuntimeException {

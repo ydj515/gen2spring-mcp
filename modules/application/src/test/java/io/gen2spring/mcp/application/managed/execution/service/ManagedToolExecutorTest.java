@@ -20,6 +20,7 @@ import io.gen2spring.mcp.application.managed.execution.ManagedRuntimeBinding;
 import io.gen2spring.mcp.application.managed.execution.ManagedToolResult;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.application.managed.execution.port.out.ProviderCallClient;
+import io.gen2spring.mcp.application.managed.execution.port.out.ManagedExecutionTasks;
 import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.StoredGrant;
 import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
@@ -47,6 +48,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -59,13 +63,40 @@ class ManagedToolExecutorTest {
             Instant.parse("2026-08-21T00:01:00Z"), java.time.ZoneOffset.UTC);
 
     @Test
+    void mapsCapacityRejectionAndClosesInjectedExecutionResources() {
+        AtomicInteger closes = new AtomicInteger();
+        AtomicInteger calls = new AtomicInteger();
+        ManagedExecutionTasks tasks = new ManagedExecutionTasks() {
+            @Override
+            public Future<ManagedToolResult> submit(Callable<ManagedToolResult> task) {
+                throw new RejectedExecutionException();
+            }
+
+            @Override
+            public void close() {
+                closes.incrementAndGet();
+            }
+        };
+        RuntimeTool tool = tool(null);
+        try (var executor = new ManagedToolExecutor(tasks, (request, timeout) -> {
+            calls.incrementAndGet();
+            return response(200, "{}");
+        }, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), TEST_CLOCK)) {
+            ManagedToolResult result = executor.call(binding(tool), tool.name(), Map.of());
+            assertEquals(ManagedToolResult.ErrorCategory.LOCAL_RESOURCE, result.category());
+            assertEquals(0, calls.get());
+        }
+        assertEquals(1, closes.get());
+    }
+
+    @Test
     void executesThePinnedToolAndRetriesOnlyConfiguredStatuses() {
         AtomicInteger calls = new AtomicInteger();
         ProviderCallClient client = (request, timeout) -> calls.incrementAndGet() == 1
                 ? response(503, "{\"busy\":true}") : response(200, "{\"ok\":true}");
         RuntimeTool tool = tool(new RetryPolicy(List.of(503), false, 1, 1, 1, false));
 
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 client, new ManagedExecutionLimits(Duration.ofSeconds(2), 1, 1), TEST_CLOCK)) {
             ManagedToolResult result = executor.call(binding(tool), tool.name(), Map.of());
             assertFalse(result.error());
@@ -88,7 +119,7 @@ class ManagedToolExecutorTest {
             }
         };
         RuntimeTool tool = tool(null);
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 client, new ManagedExecutionLimits(Duration.ofMillis(50), 1, 1), TEST_CLOCK)) {
             ManagedToolResult timedOut = executor.call(binding(tool), tool.name(), Map.of());
             assertTrue(timedOut.error());
@@ -107,7 +138,7 @@ class ManagedToolExecutorTest {
         ProviderCallClient internal = (request, timeout) -> {
             throw new IllegalArgumentException("private-marker");
         };
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 internal, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), TEST_CLOCK)) {
             ManagedToolExecutor.ManagedToolInternalFailure failure = assertThrows(
                     ManagedToolExecutor.ManagedToolInternalFailure.class,
@@ -121,7 +152,7 @@ class ManagedToolExecutorTest {
         ProviderCallClient fatalClient = (request, timeout) -> {
             throw fatal;
         };
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 fatalClient, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), TEST_CLOCK)) {
             assertSame(fatal, assertThrows(AssertionError.class,
                     () -> executor.call(binding(tool), tool.name(), Map.of())));
@@ -136,7 +167,7 @@ class ManagedToolExecutorTest {
             return response(200, "{}");
         };
         RuntimeTool tool = tool(null);
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 client, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), TEST_CLOCK)) {
             assertThrows(ManagedToolExecutor.ManagedToolRequestInvalid.class,
                     () -> executor.call(binding(tool), "missing", Map.of()));
@@ -156,7 +187,7 @@ class ManagedToolExecutorTest {
         };
         RuntimeTool tool = tool(null, new PaginationPolicy("cursor", "start", "/items", "/next", 3, 10));
 
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 client, new ManagedExecutionLimits(Duration.ofSeconds(2), 1, 1), TEST_CLOCK)) {
             ManagedToolResult result = executor.call(binding(tool), tool.name(), Map.of());
             var json = new ObjectMapper().readTree(result.json());
@@ -179,7 +210,7 @@ class ManagedToolExecutorTest {
         };
         RuntimeTool tool = tool(new RetryPolicy(List.of(503), false, 1, 20, 20, false));
 
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 client, new ManagedExecutionLimits(Duration.ofSeconds(2), 1, 1), TEST_CLOCK)) {
             ManagedToolResult result = executor.call(binding(tool), tool.name(), Map.of());
 
@@ -202,7 +233,7 @@ class ManagedToolExecutorTest {
         };
         RuntimeTool tool = tool(new RetryPolicy(List.of(503), true, 1, 5_000, 5_000, false));
 
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 client, new ManagedExecutionLimits(Duration.ofSeconds(10), 1, 1), TEST_CLOCK)) {
             CompletableFuture<ManagedToolResult> call = CompletableFuture.supplyAsync(
                     () -> executor.call(binding(tool), tool.name(), Map.of()));
@@ -227,7 +258,7 @@ class ManagedToolExecutorTest {
         ManagedExecutionContext context = new ManagedExecutionContext(
                 access, binding, resolver(binding.instance()));
 
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 (request, timeout) -> {
                     providerCalls.incrementAndGet();
                     return response(200, "{}");
@@ -256,7 +287,7 @@ class ManagedToolExecutorTest {
         ManagedRuntimeBinding binding = binding(tool);
         PolicyStore policy = new PolicyStore(true, false);
         AtomicInteger providerCalls = new AtomicInteger();
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 (request, timeout) -> {
                     providerCalls.incrementAndGet();
                     return response(200, "{}");
@@ -276,7 +307,7 @@ class ManagedToolExecutorTest {
         RuntimeTool tool = tool(null);
         ManagedRuntimeBinding binding = binding(tool);
         PolicyStore policy = new PolicyStore(true, false);
-        try (ManagedToolExecutor executor = new ManagedToolExecutor(
+        try (ManagedToolExecutor executor = new ManagedToolExecutor(new TestManagedExecutionTasks(),
                 (request, timeout) -> { throw new IllegalArgumentException("private-provider-marker"); },
                 new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), policy,
                 java.time.Clock.fixed(Instant.parse("2026-08-21T00:01:00Z"), java.time.ZoneOffset.UTC),

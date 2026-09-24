@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 final class RuntimePackageArchitectureTest {
     @Test
     void separatesCompositionAndMcpDeliveryResponsibilities() {
+        assertLoadable("io.gen2spring.mcp.app.runtime.infrastructure.execution.BoundedManagedExecutionTasks");
         assertLoadable("io.gen2spring.mcp.app.runtime.config.RuntimeConfiguration");
         assertLoadable("io.gen2spring.mcp.app.runtime.config.RuntimeProperties");
         assertLoadable("io.gen2spring.mcp.app.runtime.config.RuntimeServerConfiguration");

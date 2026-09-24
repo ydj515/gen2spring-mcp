@@ -36,7 +36,7 @@ Gradle 모듈은 배포 단위와 외부 기술 의존성을 나누고, 모듈 �
 | `apps/cli` | `app.cli`의 진입점, `presentation`, `application`, `infrastructure.file/logging`, `config`. CLI 해석과 파일 접근을 분리한다. |
 | `apps/web` | `app.web` 아래 계층별로 `local`/`hosted` 기능을 나눈다. HTTP 응답은 presentation, 제출·조회 순서는 application, 파일·실행기 구현은 infrastructure가 담당한다. |
 | `apps/worker` | `app.worker.application.worker`가 작업·heartbeat·maintenance를 조율한다. `infrastructure.scheduling/readiness`는 스레드 수명과 시작 조건을 담당한다. |
-| `apps/runtime` | `app.runtime.presentation.mcp/security`와 `config`로 구성한다. 업무 실행은 공유 application을 호출하므로 단순 위임용 앱 application 계층을 추가하지 않는다. |
+| `apps/runtime` | `app.runtime.presentation.mcp/security`, 실행 자원을 관리하는 `infrastructure.execution`, `config`로 구성한다. 업무 실행은 공유 application을 호출하므로 단순 위임용 앱 application 계층을 추가하지 않는다. |
 | `apps/fetch-gateway` | `app.fetch` 아래 fetch presentation, application과 `infrastructure.client.fetch`를 분리한다. HTTP transport는 output port 뒤에 둔다. |
 | `apps/provider-egress` | `app.provideregress` 아래 provider presentation/application/client infrastructure/config를 분리한다. 요청 정책과 실제 provider 통신을 구분한다. |
 | `apps/import-runner` | `app.importer.presentation.job`은 프로토콜, application은 import 순서, infrastructure는 gateway 호출·격리 workspace 분석을 담당한다. |
@@ -80,6 +80,9 @@ Gradle 모듈은 배포 단위와 외부 기술 의존성을 나누고, 모듈 �
 - 공유 `SpecificationImportService`는 byte 기반 분석 포트를 호출한다. 임시 파일 생성과 정리는
   filesystem adapter가 소유한다. 이 서비스는 현재 실행 앱에 조립되어 있지 않은 재사용 use case이며,
   실제 import-runner의 격리 workspace 수명은 해당 앱 infrastructure가 계속 소유한다.
+- `ManagedToolExecutor`는 재시도·페이지 처리·전체 제한 시간·결과 변환을 소유하고 `ManagedExecutionTasks`로 비동기 실행을 요청한다.
+  Runtime의 `BoundedManagedExecutionTasks`가 제한된 스레드·대기열, 거절, 취소와 종료를 구현한다. 실행 자원은
+  하나의 use case 객체가 독점 소유하며, Spring이 use case를 종료하면 포트를 통해 함께 닫는다.
 - `HostedWorker`는 lease 갱신·취소·stale 판단을 소유하고 `LeaseMonitorScheduler`로 주기 실행을 요청한다.
   Worker infrastructure가 모니터별 스레드 생성·중지·대기와 인터럽트 복구를 담당한다.
 - transaction의 업무 단위는 application의 포트 호출 계약으로 정한다. PostgreSQL adapter는
@@ -145,7 +148,7 @@ Java import 검사는 [루트 빌드](../build.gradle.kts)의 `verifyJavaImportS
 
 공유 emitter의 허용 방향은 `springai1/springai2 → mcpruntime/support`, `mcpruntime → support`다.
 계열 간 직접 참조와 공유 코드에서 계열 코드로 향하는 역방향은 금지한다. Application의 Jackson 사용은
-현재 canonical JSON 모델 계약으로 명시적으로 허용한다. application의 직접 파일 접근과 scheduler 생성은
+현재 canonical JSON 모델 계약으로 명시적으로 허용한다. application의 직접 파일 접근과 executor·scheduler 구현 의존은
 금지한다. `Path`, byte array, stream 같은 입출력 값 자체는 포트 계약에서 사용할 수 있다.
 Emitter의 `render`는 상위 포트 구현을 참조하지 않는다. Validation 하위 패키지에는 순환을 허용하지 않고
 process/runtime/MCP/upstream 구현에서 project orchestration으로 향하는 역방향도 금지한다.

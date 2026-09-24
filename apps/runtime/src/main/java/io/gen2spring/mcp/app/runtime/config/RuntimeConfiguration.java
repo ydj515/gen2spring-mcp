@@ -15,6 +15,7 @@ import io.gen2spring.mcp.application.managed.credential.port.out.CredentialProte
 import io.gen2spring.mcp.application.managed.credential.port.out.ManagedCredentialStore;
 import io.gen2spring.mcp.application.managed.credential.service.RuntimeCredentialResolver;
 import io.gen2spring.mcp.application.managed.execution.ManagedExecutionLimits;
+import io.gen2spring.mcp.app.runtime.infrastructure.execution.BoundedManagedExecutionTasks;
 import io.gen2spring.mcp.application.managed.execution.port.out.ProviderCallClient;
 import io.gen2spring.mcp.application.managed.execution.service.ManagedToolExecutor;
 import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
@@ -125,8 +126,9 @@ class RuntimeConfiguration {
             ProviderCallClient client,
             RuntimePolicyStore policies,
             Clock clock) {
+        var limits = new ManagedExecutionLimits(Duration.ofSeconds(30), 16, 64);
         return new ManagedToolExecutor(
-                client, new ManagedExecutionLimits(Duration.ofSeconds(30), 16, 64),
+                new BoundedManagedExecutionTasks(limits), client, limits,
                 policies, clock, UUID::randomUUID);
     }
 

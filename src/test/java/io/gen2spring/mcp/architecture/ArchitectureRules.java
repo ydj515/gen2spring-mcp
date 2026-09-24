@@ -75,10 +75,10 @@ final class ArchitectureRules {
             .should().dependOnClassesThat().haveNameMatching(
                     "java\\.nio\\.file\\.Files|java\\.io\\.(File|FileInputStream|FileOutputStream|FileReader|FileWriter|RandomAccessFile)");
 
-    static final ArchRule APPLICATION_DOES_NOT_CREATE_SCHEDULERS = noClasses()
+    static final ArchRule APPLICATION_DOES_NOT_CREATE_EXECUTORS = noClasses()
             .that().resideInAnyPackage(ROOT + "application..", ROOT + "app.*.application..")
             .should().dependOnClassesThat().haveNameMatching(
-                    "java\\.util\\.concurrent\\.(Executors|ScheduledExecutorService|ScheduledThreadPoolExecutor)|java\\.util\\.Timer");
+                    "java\\.util\\.concurrent\\.(Executors|ExecutorService|ThreadPoolExecutor|ForkJoinPool|ScheduledExecutorService|ScheduledThreadPoolExecutor)|java\\.util\\.Timer");
 
     static final ArchRule RENDERERS_DO_NOT_USE_EMITTER_FACADES = noClasses()
             .that().resideInAnyPackage(ADAPTER + "emitter.springai1.render..", ADAPTER + "emitter.springai2.render..")
