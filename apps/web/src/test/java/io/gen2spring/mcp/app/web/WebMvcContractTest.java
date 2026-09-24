@@ -167,7 +167,7 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString(
                         "id=\"job-current-task\"")))
                 .andExpect(content().string(containsString(
-                        "class=\"progress-details-title\">상세 진행</summary>")));
+                        "class=\"progress-details-title\"")));
     }
 
     @Test
