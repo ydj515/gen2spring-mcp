@@ -131,9 +131,9 @@ class StaticAssetContractTest {
 
         assertTrue(index.contains("class=\"uploaded-file file-state-card\""));
         assertTrue(index.contains("class=\"field-grid project-settings-grid row g-3\""));
-        assertTrue(index.contains("class=\"preview-workspace row g-4\""));
-        assertTrue(index.contains("class=\"preview-input surface-subtle col-12 col-xl-5\""));
-        assertTrue(index.contains("class=\"preview-result surface-subtle col-12 col-xl-7\""));
+        assertTrue(index.contains("class=\"preview-workspace\""));
+        assertTrue(index.contains("class=\"preview-input\""));
+        assertTrue(index.contains("class=\"preview-result\""));
         assertTrue(index.contains("id=\"validation-arguments-details\""));
         assertTrue(index.contains("class=\"validation-checklist\""));
         assertTrue(index.contains("class=\"job-progress-hero\""));

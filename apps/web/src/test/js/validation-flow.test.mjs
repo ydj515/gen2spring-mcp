@@ -105,7 +105,8 @@ test('validation exposes generation only after success and keeps focus on the ne
   assert.equal(app.element('validation-overall').textContent, '검증 완료');
   assert.equal(app.element('generate-button').hidden, false);
   assert.equal(app.element('generate-button').disabled, false);
-  assert.equal(app.element('preview-button').hidden, true);
+  assert.equal(app.element('preview-button').hidden, false);
+  assert.equal(app.element('preview-button-label').textContent, '다시 검증');
   assert.equal(app.element('generation-stage').attributes['aria-current'], 'step');
   assert.equal(app.activeElement(), app.element('generate-button'));
 });
@@ -215,4 +216,17 @@ test('MCP implementation changes invalidate validation and discard stale respons
   await pending;
   assert.equal(app.state().preview, null);
   assert.equal(app.element('generate-button').disabled, true);
+});
+
+test('revalidation disables generation until the new result succeeds', async () => {
+  const app = await editor();
+  await validate(app);
+  const pending = app.element('preview-button').fire('click');
+  assert.equal(app.element('generate-button').disabled, true);
+  assert.equal(app.element('generate-button').hidden, true);
+  assert.equal(app.element('preview-button').disabled, true);
+  app.requests.at(-1).resolve(preview);
+  await pending;
+  assert.equal(app.element('generate-button').disabled, false);
+  assert.equal(app.element('preview-button').disabled, false);
 });

@@ -329,8 +329,9 @@ function setValidationStatus(status, errorMessage) {
   ui['validation-action'].dataset.status = status;
   ui['validation-action-title'].textContent = title;
   ui['preview-status'].textContent = detail;
-  ui['preview-button-label'].textContent = action;
-  ui['preview-button'].hidden = ready;
+  ui['preview-button-label'].textContent = ready ? '다시 검증' : action;
+  ui['preview-button'].hidden = false;
+  ui['preview-button'].className = ready ? 'secondary' : '';
   ui['generate-button'].hidden = !ready;
   ui['generate-button'].disabled = !ready || generationPending;
   ui['generate-button-label'].textContent = generationPending ? '생성 요청 중…' : '프로젝트 생성';
@@ -650,11 +651,7 @@ function renderPreview(preview) {
   const included = document.createElement('p');
   included.className = 'representative-tool-included';
   included.textContent = '생성 대상에 포함되어 있습니다.';
-  const details = document.createElement('details');
-  const detailsTitle = document.createElement('summary');
-  detailsTitle.textContent = '대표 Tool 상세 보기';
-  details.append(detailsTitle, description, facts, inputsTitle, inputs, disclosure);
-  result.append(heading, included, details);
+  result.append(heading, included, description, facts, inputsTitle, inputs, disclosure);
   ui['preview-output'].replaceChildren(result);
 }
 

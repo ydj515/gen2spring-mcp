@@ -351,8 +351,8 @@
         <li aria-hidden="true"><i class="bi bi-chevron-right"></i></li>
         <li id="generation-stage"><span class="validation-stage-mark" aria-hidden="true">2</span><span>프로젝트 생성</span></li>
       </ol>
-      <div class="preview-workspace row g-4">
-        <div class="preview-input surface-subtle col-12 col-xl-5">
+      <div class="preview-workspace">
+        <div class="preview-input">
           <div class="subsection-heading"><h3>검증에 사용할 입력</h3></div>
           <div class="validation-input-field field"><label for="validation-operation">대표 Tool</label><select id="validation-operation"></select></div>
           <div class="validation-input-field">
@@ -365,13 +365,13 @@
             <p class="validation-input-hint">입력을 변경하면 다시 검증해야 합니다.</p>
           </div>
         </div>
-        <div class="preview-result surface-subtle col-12 col-xl-7">
+        <div class="preview-result">
           <div class="subsection-heading validation-result-heading"><h3>설정 검증 결과</h3><span id="validation-overall" class="validation-badge" data-status="idle">검증 전</span></div>
           <ul id="validation-checklist" class="validation-checklist" aria-label="설정 검증 항목"></ul>
-          <div id="preview-output" class="preview-output">
-            <p class="empty-state">설정을 검증하면 결과가 표시됩니다. 아래 설정 검증하기 버튼을 눌러 주세요.</p>
-          </div>
         </div>
+      </div>
+      <div id="preview-output" class="preview-output">
+        <p class="empty-state">설정을 검증하면 결과가 표시됩니다. 아래 설정 검증하기 버튼을 눌러 주세요.</p>
       </div>
       <div id="validation-action" class="generation-primary-action" data-status="idle">
         <div id="validation-announcement" role="status" aria-live="polite" aria-atomic="true">
