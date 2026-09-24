@@ -39,6 +39,7 @@ dependencies {
     runtimeOnly(libs.postgresql)
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)
+    testImplementation(libs.archunit)
 }
 
 springBoot {

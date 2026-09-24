@@ -16,8 +16,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.app.web.job.GenerationJobManager;
-import io.gen2spring.mcp.app.web.security.WebSecurityConfiguration;
+import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
+import io.gen2spring.mcp.app.web.config.security.WebSecurityConfiguration;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
 import io.gen2spring.mcp.application.usecase.GenerationProgress;
 import io.gen2spring.mcp.application.usecase.ProgressStatus;
@@ -120,9 +120,9 @@ class WebMvcContractTest {
                 .andExpect(content().string(containsString("class=\"tool-editor-heading__title\"")))
                 .andExpect(content().string(containsString(
                         "class=\"field-grid tool-basic-fields row g-3\"")))
-                .andExpect(content().string(containsString("class=\"preview-workspace row g-4\"")))
+                .andExpect(content().string(containsString("class=\"preview-workspace\"")))
                 .andExpect(content().string(containsString(
-                        "class=\"preview-input surface-subtle col-12 col-xl-5\"")))
+                        "class=\"preview-input\"")))
                 .andExpect(content().string(not(containsString(">TOOL EDITOR</p>"))));
     }
 

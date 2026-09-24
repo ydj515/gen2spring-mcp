@@ -3,7 +3,7 @@ package io.gen2spring.mcp.app.web;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.app.web.security.WebSecurityConfiguration;
+import io.gen2spring.mcp.app.web.config.security.WebSecurityConfiguration;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;

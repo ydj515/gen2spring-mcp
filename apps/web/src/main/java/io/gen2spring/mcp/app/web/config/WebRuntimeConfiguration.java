@@ -1,12 +1,16 @@
 package io.gen2spring.mcp.app.web.config;
 
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
-import io.gen2spring.mcp.app.web.api.ArtifactHandler;
-import io.gen2spring.mcp.app.web.api.JobHandler;
-import io.gen2spring.mcp.app.web.api.PreviewHandler;
-import io.gen2spring.mcp.app.web.api.SpecificationStore;
-import io.gen2spring.mcp.app.web.error.WebErrorMapper;
-import io.gen2spring.mcp.app.web.job.GenerationJobManager;
+import io.gen2spring.mcp.app.web.presentation.local.ArtifactHandler;
+import io.gen2spring.mcp.app.web.presentation.local.JobHandler;
+import io.gen2spring.mcp.app.web.presentation.local.PreviewHandler;
+import io.gen2spring.mcp.app.web.infrastructure.local.specification.SpecificationStore;
+import io.gen2spring.mcp.app.web.presentation.error.WebErrorMapper;
+import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
+import io.gen2spring.mcp.app.web.application.local.service.LocalGenerationService;
+import io.gen2spring.mcp.app.web.application.local.port.out.GenerationConfigurationDecoder;
+import io.gen2spring.mcp.app.web.infrastructure.local.configuration.GenerationConfigurationAdapter;
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -66,25 +70,36 @@ class WebRuntimeConfiguration {
     }
 
     @Bean
-    PreviewHandler previewHandler(
-            GeneratorRuntime application,
+    GenerationConfigurationDecoder generationConfigurationDecoder(GeneratorRuntime application) {
+        return new GenerationConfigurationAdapter(application.configurationParser());
+    }
+
+    @Bean
+    LocalGenerationService localGenerationService(
             SpecificationStore specifications,
+            GenerationJobManager jobs,
+            GeneratorRuntime application,
+            GenerationConfigurationDecoder configuration) {
+        return new LocalGenerationService(specifications, jobs, application.pipeline(), configuration);
+    }
+
+    @Bean
+    PreviewHandler previewHandler(
+            LocalGenerationService generation,
             ObjectMapper json) {
-        return new PreviewHandler(application, specifications, json);
+        return new PreviewHandler(generation, json, GenerationConfigurationParser.MAX_BYTES);
     }
 
     @Bean
     JobHandler jobHandler(
-            GeneratorRuntime application,
-            SpecificationStore specifications,
-            GenerationJobManager jobs,
+            LocalGenerationService generation,
             ObjectMapper json) {
-        return new JobHandler(application, specifications, jobs, json);
+        return new JobHandler(generation, json, GenerationConfigurationParser.MAX_BYTES);
     }
 
     @Bean
-    ArtifactHandler artifactHandler(GenerationJobManager jobs) {
-        return new ArtifactHandler(jobs);
+    ArtifactHandler artifactHandler(LocalGenerationService generation) {
+        return new ArtifactHandler(generation);
     }
 
     @Bean

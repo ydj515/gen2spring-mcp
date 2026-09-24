@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.app.web.config;
 
-import io.gen2spring.mcp.app.web.job.JobEventStream;
+import io.gen2spring.mcp.app.web.presentation.stream.JobEventStream;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 

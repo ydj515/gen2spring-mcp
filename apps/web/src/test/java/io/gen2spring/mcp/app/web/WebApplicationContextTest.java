@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
-import io.gen2spring.mcp.app.web.api.SpecificationStore;
-import io.gen2spring.mcp.app.web.job.GenerationJobManager;
+import io.gen2spring.mcp.app.web.infrastructure.local.specification.SpecificationStore;
+import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;

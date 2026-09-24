@@ -36,7 +36,7 @@ import io.gen2spring.mcp.application.managed.credential.ManagedCredentialStore;
 import io.gen2spring.mcp.application.managed.policy.RuntimeGrantService;
 import io.gen2spring.mcp.application.managed.policy.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.audit.RuntimeAuditService;
-import io.gen2spring.mcp.app.web.hosted.HostedSubmissionService;
+import io.gen2spring.mcp.app.web.infrastructure.hosted.submission.HostedSubmissionService;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
