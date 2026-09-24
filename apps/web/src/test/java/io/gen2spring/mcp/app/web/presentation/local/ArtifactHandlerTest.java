@@ -11,12 +11,12 @@ import io.gen2spring.mcp.app.web.application.local.port.out.SpecificationStorage
 import io.gen2spring.mcp.app.web.application.local.service.LocalGenerationService;
 import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.infrastructure.local.job.JobWorkspace;
-import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.ProjectCoordinates;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.ToolCallValidation;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.ValidationConfiguration;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.application.generation.port.out.GenerationProgressListener;
-import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.result.GenerationOutcome;
 import io.gen2spring.mcp.application.generation.usecase.GenerationPipeline;
 import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
 import java.nio.charset.StandardCharsets;

@@ -5,15 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.AuditCursor;
+import io.gen2spring.mcp.application.managed.audit.result.AuditCursor;
 import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.StoredGrant;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
-import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit;
 import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit.AuditStatus;
+import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;

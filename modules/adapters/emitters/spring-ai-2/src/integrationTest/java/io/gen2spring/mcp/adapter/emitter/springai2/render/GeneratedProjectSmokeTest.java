@@ -48,7 +48,7 @@ class GeneratedProjectSmokeTest {
                     request.project(), request.provider(), request.domain(), request.targetProfileId(),
                     request.validationLevel(), request.validation(), request.operations(),
                     io.gen2spring.mcp.domain.profile.McpImplementation.valueOf(mode));
-            var context = new io.gen2spring.mcp.application.generation.usecase.GenerationContext(
+            var context = new io.gen2spring.mcp.application.generation.model.GenerationContext(
                     original.document(), original.tools(), selected, original.profile(), original.originalSpecification());
             var files = new SpringAi2ProjectGenerator().generate(context).files();
             assertProjectBuilds(tempDir.resolve(mode.toLowerCase(java.util.Locale.ROOT)), files);

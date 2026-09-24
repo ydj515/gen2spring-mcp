@@ -1,11 +1,11 @@
 package io.gen2spring.mcp.app.cli.presentation;
 
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.UNVERIFIED;
+import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.ARTIFACT_PACKAGE_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.COMPILE_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SPEC_PARSE_FAILED;
-import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.UNVERIFIED;
-import static io.gen2spring.mcp.application.generation.validation.ValidationStatus.VALIDATED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -13,17 +13,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.app.cli.application.CliUseCases;
 import io.gen2spring.mcp.app.cli.infrastructure.file.GenerationConfigurationReader;
 import io.gen2spring.mcp.app.cli.infrastructure.file.LocalCliFiles;
+import io.gen2spring.mcp.application.generation.analysis.AnalysisResult;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.result.GenerationOutcome;
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
-import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
-import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
-import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -196,7 +197,7 @@ class CliApplicationTest {
             } catch (IOException exception) {
                 throw new UncheckedIOException(exception);
             }
-            return new SpecificationAnalyzer.AnalysisResult(emptyDocument(), new byte[0]);
+            return new AnalysisResult(emptyDocument(), new byte[0]);
         }, unusedGenerator());
 
         var result = run(app, "inspect", "--spec", specification.toString(), "--output", output.toString());
@@ -532,7 +533,7 @@ class CliApplicationTest {
     }
 
     private SpecificationAnalyzer unusedAnalyzer() {
-        return (path, maxBytes) -> new SpecificationAnalyzer.AnalysisResult(emptyDocument(), new byte[0]);
+        return (path, maxBytes) -> new AnalysisResult(emptyDocument(), new byte[0]);
     }
 
     private CliUseCases.GenerationExecutor unusedGenerator() {

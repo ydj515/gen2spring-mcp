@@ -7,9 +7,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.gen2spring.mcp.application.hosted.job.WorkerLeaseService;
-import io.gen2spring.mcp.application.hosted.worker.ArtifactRetentionService;
-import io.gen2spring.mcp.application.hosted.worker.HostedWorker;
+import io.gen2spring.mcp.application.hosted.job.service.WorkerLeaseService;
+import io.gen2spring.mcp.application.hosted.worker.service.ArtifactRetentionService;
+import io.gen2spring.mcp.application.hosted.worker.service.HostedWorker;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 

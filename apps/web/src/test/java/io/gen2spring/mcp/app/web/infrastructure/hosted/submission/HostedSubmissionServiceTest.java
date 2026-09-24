@@ -14,24 +14,25 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.gen2spring.mcp.app.web.application.hosted.port.out.HostedSpecificationProcessor;
 import io.gen2spring.mcp.app.web.application.hosted.service.HostedSubmissionService;
+import io.gen2spring.mcp.application.generation.usecase.GenerationPipeline;
 import io.gen2spring.mcp.application.hosted.imports.EncryptedImportTarget;
 import io.gen2spring.mcp.application.hosted.imports.port.out.ImportTargetProtector;
 import io.gen2spring.mcp.application.hosted.job.CreateJob;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
-import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.job.JobCompletion;
 import io.gen2spring.mcp.application.hosted.job.JobLease;
 import io.gen2spring.mcp.application.hosted.job.JobView;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
 import io.gen2spring.mcp.application.hosted.job.port.out.JobQueue;
+import io.gen2spring.mcp.application.hosted.job.service.HostedJobService;
 import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.specification.port.out.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.ObjectKey;
 import io.gen2spring.mcp.application.hosted.storage.StoredObject;
 import io.gen2spring.mcp.application.hosted.storage.StoredObjectContent;
 import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
-import io.gen2spring.mcp.application.generation.usecase.GenerationPipeline;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
@@ -196,6 +197,7 @@ class HostedSubmissionServiceTest {
         when(resources.specification(OWNER, id)).thenReturn(Optional.of(
                 specificationView(id, key, source, "weather.yml")));
         GeneratorRuntime generator = mock(GeneratorRuntime.class);
+        when(generator.analyzer()).thenReturn(GeneratorRuntime.defaults().analyzer());
         when(generator.configurationParser()).thenReturn(GeneratorRuntime.defaults().configurationParser());
         var pipeline = mock(GenerationPipeline.class);
         when(generator.pipeline()).thenReturn(pipeline);
@@ -216,7 +218,7 @@ class HostedSubmissionServiceTest {
     void rejectsInvalidImportTargetsWithOneFixedNonLeakingFailure(@TempDir Path workRoot) {
         ImportTargetProtector protector = mock(ImportTargetProtector.class);
         HostedSubmissionService service = new HostedSubmissionService(
-                new GeneratorHostedSpecificationProcessor(mock(GeneratorRuntime.class), workRoot),
+                mock(HostedSpecificationProcessor.class),
                 new JacksonHostedSubmissionSnapshotCodec(), mock(ObjectStorage.class), mock(SpecificationCatalog.class),
                 mock(HostedResourceStore.class), mock(HostedJobService.class), protector, Clock.systemUTC());
 
@@ -236,7 +238,7 @@ class HostedSubmissionServiceTest {
         CapturingQueue queue = new CapturingQueue();
         HostedJobService jobs = new HostedJobService(queue, (owner, specification) -> false);
         HostedSubmissionService service = new HostedSubmissionService(
-                new GeneratorHostedSpecificationProcessor(mock(GeneratorRuntime.class), workRoot),
+                mock(HostedSpecificationProcessor.class),
                 new JacksonHostedSubmissionSnapshotCodec(), mock(ObjectStorage.class), mock(SpecificationCatalog.class),
                 mock(HostedResourceStore.class), jobs, protector, Clock.systemUTC());
         AccountId owner = new AccountId(UUID.randomUUID());
@@ -261,7 +263,7 @@ class HostedSubmissionServiceTest {
         CapturingQueue queue = new CapturingQueue();
         HostedJobService jobs = new HostedJobService(queue, (owner, specification) -> true);
         HostedSubmissionService service = new HostedSubmissionService(
-                new GeneratorHostedSpecificationProcessor(GeneratorRuntime.defaults(), workRoot),
+                processor(GeneratorRuntime.defaults(), workRoot),
                 new JacksonHostedSubmissionSnapshotCodec(), mock(ObjectStorage.class), mock(SpecificationCatalog.class),
                 resources, jobs, mock(ImportTargetProtector.class), Clock.systemUTC());
 
@@ -278,6 +280,11 @@ class HostedSubmissionServiceTest {
         assertTrue(queue.commands.get(1).requestSnapshot().contains(predecessorCatalogId.toString()));
     }
 
+    private GeneratorHostedSpecificationProcessor processor(GeneratorRuntime generator, Path workRoot) {
+        return new GeneratorHostedSpecificationProcessor(
+                generator.analyzer(), generator.configurationParser(), generator.pipeline(), workRoot);
+    }
+
     private HostedSubmissionService service(
             GeneratorRuntime generator,
             ObjectStorage storage,
@@ -285,7 +292,7 @@ class HostedSubmissionServiceTest {
             HostedResourceStore resources,
             Path workRoot) {
         return new HostedSubmissionService(
-                new GeneratorHostedSpecificationProcessor(generator, workRoot),
+                processor(generator, workRoot),
                 new JacksonHostedSubmissionSnapshotCodec(), storage, catalog, resources, mock(HostedJobService.class),
                 mock(ImportTargetProtector.class), Clock.systemUTC());
     }

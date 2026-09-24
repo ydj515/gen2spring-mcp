@@ -13,18 +13,20 @@ import io.gen2spring.mcp.app.worker.application.worker.port.in.WorkerTasks;
 import io.gen2spring.mcp.app.worker.application.worker.service.WorkerHeartbeatPublisher;
 import io.gen2spring.mcp.app.worker.application.worker.service.WorkerTaskService;
 import io.gen2spring.mcp.app.worker.infrastructure.readiness.WorkerReadiness;
+import io.gen2spring.mcp.app.worker.infrastructure.scheduling.ExecutorLeaseMonitorScheduler;
 import io.gen2spring.mcp.app.worker.infrastructure.scheduling.WorkerLoop;
 import io.gen2spring.mcp.application.hosted.imports.port.out.ImportTargetProtector;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
-import io.gen2spring.mcp.application.hosted.job.WorkerLeaseService;
 import io.gen2spring.mcp.application.hosted.job.port.out.JobQueue;
+import io.gen2spring.mcp.application.hosted.job.service.WorkerLeaseService;
 import io.gen2spring.mcp.application.hosted.storage.port.out.ArtifactRetentionStore;
 import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
-import io.gen2spring.mcp.application.hosted.worker.ArtifactRetentionService;
-import io.gen2spring.mcp.application.hosted.worker.HostedWorker;
 import io.gen2spring.mcp.application.hosted.worker.port.out.ImportRuntime;
+import io.gen2spring.mcp.application.hosted.worker.port.out.LeaseMonitorScheduler;
 import io.gen2spring.mcp.application.hosted.worker.port.out.SandboxRuntime;
 import io.gen2spring.mcp.application.hosted.worker.port.out.WorkerHeartbeatStore;
+import io.gen2spring.mcp.application.hosted.worker.service.ArtifactRetentionService;
+import io.gen2spring.mcp.application.hosted.worker.service.HostedWorker;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -155,13 +157,19 @@ class WorkerConfiguration {
     }
 
     @Bean
+    LeaseMonitorScheduler leaseMonitorScheduler() {
+        return new ExecutorLeaseMonitorScheduler();
+    }
+
+    @Bean
     HostedWorker hostedWorker(
             JobQueue jobQueue,
             SandboxRuntime sandboxRuntime,
             ImportRuntime importRuntime,
             ObjectStorage objectStorage,
             WorkerProperties properties,
-            Clock workerClock) {
+            Clock workerClock,
+            LeaseMonitorScheduler leaseMonitorScheduler) {
         return new HostedWorker(
                 jobQueue,
                 sandboxRuntime,
@@ -171,7 +179,8 @@ class WorkerConfiguration {
                 properties.limits().sandboxLimits(),
                 workerClock,
                 properties.leaseDuration(),
-                properties.artifactRetention());
+                properties.artifactRetention(),
+                leaseMonitorScheduler);
     }
 
     @Bean

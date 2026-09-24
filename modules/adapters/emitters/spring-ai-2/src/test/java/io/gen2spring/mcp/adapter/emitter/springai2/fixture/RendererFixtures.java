@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.adapter.emitter.springai2.fixture;
 
 import io.gen2spring.mcp.application.generation.command.GenerationCommand;
-import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
+import io.gen2spring.mcp.application.generation.model.GenerationContext;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;

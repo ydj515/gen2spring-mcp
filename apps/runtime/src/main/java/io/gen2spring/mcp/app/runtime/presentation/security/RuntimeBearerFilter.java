@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.app.runtime.presentation.security;
 
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
+import io.gen2spring.mcp.application.managed.runtime.service.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -9,8 +9,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import org.springframework.web.filter.OncePerRequestFilter;

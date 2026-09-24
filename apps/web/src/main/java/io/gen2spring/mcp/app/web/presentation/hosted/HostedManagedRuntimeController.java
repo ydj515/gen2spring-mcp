@@ -1,17 +1,17 @@
 package io.gen2spring.mcp.app.web.presentation.hosted;
 
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeMigrationService;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeService;
+import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Map;
 import java.util.TreeMap;
-import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;

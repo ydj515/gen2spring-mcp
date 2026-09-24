@@ -9,6 +9,7 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATIO
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.TARGET_COMBINATION_UNSUPPORTED;
 
 import io.gen2spring.mcp.application.generation.command.GenerationCommand;
+import io.gen2spring.mcp.application.generation.model.GenerationContext;
 import io.gen2spring.mcp.application.generation.planning.GenerationPlanner;
 import io.gen2spring.mcp.application.generation.planning.ProjectGeneratorRegistry;
 import io.gen2spring.mcp.application.generation.port.out.ArtifactPackager;
@@ -22,13 +23,17 @@ import io.gen2spring.mcp.application.generation.port.out.SourceSnapshot;
 import io.gen2spring.mcp.application.generation.port.out.SourceSnapshotter;
 import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
 import io.gen2spring.mcp.application.generation.port.out.ValidationReportStore;
+import io.gen2spring.mcp.application.generation.progress.GenerationProgress;
+import io.gen2spring.mcp.application.generation.progress.ProgressStatus;
+import io.gen2spring.mcp.application.generation.result.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.result.GenerationPreview;
+import io.gen2spring.mcp.application.generation.validation.ValidationReport;
+import io.gen2spring.mcp.application.generation.validation.ValidationRequest;
+import io.gen2spring.mcp.application.generation.validation.ValidationStageResult;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
 import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataDocumentFactory;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
-import io.gen2spring.mcp.application.generation.validation.ValidationReport;
-import io.gen2spring.mcp.application.generation.validation.ValidationRequest;
-import io.gen2spring.mcp.application.generation.validation.ValidationStageResult;
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;

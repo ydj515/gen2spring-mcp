@@ -15,6 +15,7 @@ configurations.configureEach {
 }
 
 dependencies {
+    implementation(project(":modules:domain"))
     implementation(platform(libs.spring.boot.bom))
     implementation(platform(libs.aws.sdk.bom))
     implementation(project(":modules:bootstrap"))

@@ -3,7 +3,7 @@ package io.gen2spring.mcp.application.hosted.job;
 public final class HostedJobFailure extends RuntimeException {
     private final Code code;
 
-    HostedJobFailure(Code code, String message) {
+    public HostedJobFailure(Code code, String message) {
         super(message);
         this.code = code;
     }

@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.adapter.emitter.springai1.fixture.RendererFixtures;
 import io.gen2spring.mcp.adapter.emitter.support.project.BuildProjectScaffoldRegistry;
+import io.gen2spring.mcp.application.generation.model.GenerationContext;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedToolSources;
-import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import java.util.List;

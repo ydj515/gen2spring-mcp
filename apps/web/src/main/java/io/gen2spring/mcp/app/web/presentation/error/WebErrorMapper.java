@@ -1,27 +1,26 @@
 package io.gen2spring.mcp.app.web.presentation.error;
 
+import io.gen2spring.mcp.app.web.application.hosted.exception.HostedResourceNotFound;
+import io.gen2spring.mcp.app.web.application.hosted.port.in.HostedSubmissionUseCase;
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedArtifactDownloadService.HostedArtifactUnavailable;
 import io.gen2spring.mcp.app.web.application.local.exception.LocalConfigurationFailure;
-import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.app.web.application.local.exception.LocalJobFailure;
 import io.gen2spring.mcp.app.web.application.local.exception.LocalSpecificationFailure;
 import io.gen2spring.mcp.app.web.application.local.io.BoundedBodyReader;
-import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
 import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService;
-import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
-import io.gen2spring.mcp.application.managed.policy.RuntimeGrantService;
+import io.gen2spring.mcp.application.hosted.job.HostedJobFailure;
 import io.gen2spring.mcp.application.managed.audit.RuntimeAuditService;
-import io.gen2spring.mcp.app.web.application.hosted.service.HostedArtifactDownloadService.HostedArtifactUnavailable;
-import io.gen2spring.mcp.app.web.application.hosted.exception.HostedResourceNotFound;
-import io.gen2spring.mcp.app.web.application.hosted.port.in.HostedSubmissionUseCase;
-import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
+import io.gen2spring.mcp.application.managed.credential.service.ManagedCredentialService;
+import io.gen2spring.mcp.application.managed.policy.RuntimeGrantService;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeMigrationService;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeService;
+import io.gen2spring.mcp.domain.error.GeneratorException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.stereotype.Component;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingRequestHeaderException;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.stereotype.Component;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -149,7 +148,7 @@ public final class WebErrorMapper {
         if (failure instanceof HostedSubmissionUseCase.HostedSubmissionFailure) {
             return new WebFailure(400, "HOSTED_SUBMISSION_INVALID", "HOSTED_SUBMIT", "The hosted request is invalid");
         }
-        if (failure instanceof HostedAccountResolver.HostedAuthenticationFailure) {
+        if (failure instanceof HostedAuthenticationFailure) {
             return new WebFailure(401, "AUTHENTICATION_REQUIRED", "OIDC", "Hosted authentication is required");
         }
         if (failure instanceof HostedArtifactUnavailable) {

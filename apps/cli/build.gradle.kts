@@ -14,6 +14,8 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":modules:domain"))
+    implementation(project(":modules:application"))
     implementation(project(":modules:bootstrap"))
     implementation(project(":modules:adapters:configuration"))
     implementation(project(":modules:adapters:filesystem"))

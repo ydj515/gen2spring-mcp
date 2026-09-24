@@ -1,13 +1,12 @@
 package io.gen2spring.mcp.app.web.presentation.local;
 
-import io.gen2spring.mcp.app.web.application.local.result.StoredSpecification;
-import io.gen2spring.mcp.app.web.application.local.io.BoundedBodyReader;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
-import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.app.web.application.local.io.BoundedBodyReader;
+import io.gen2spring.mcp.app.web.application.local.result.StoredSpecification;
 import io.gen2spring.mcp.app.web.application.local.service.LocalGenerationService;
+import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.generation.result.GenerationPreview;
 import java.io.InputStream;
 import java.util.Objects;
 

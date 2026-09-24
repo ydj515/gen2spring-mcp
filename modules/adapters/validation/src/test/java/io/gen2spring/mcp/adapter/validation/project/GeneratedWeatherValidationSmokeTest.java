@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.adapter.emitter.springai2.SpringAi2ProjectGenerator;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.ProjectCoordinates;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand;
-import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
+import io.gen2spring.mcp.application.generation.model.GenerationContext;
 import io.gen2spring.mcp.application.generation.validation.ExpectedToolCall;
 import io.gen2spring.mcp.application.generation.validation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.application.generation.validation.ValidationRequest;

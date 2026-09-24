@@ -2,7 +2,7 @@ package io.gen2spring.mcp.app.runtime.config;
 
 import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandleRegistry;
 import io.gen2spring.mcp.app.runtime.presentation.security.RuntimeBearerFilter;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
+import io.gen2spring.mcp.application.managed.runtime.service.RuntimeAccessAuthenticator;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

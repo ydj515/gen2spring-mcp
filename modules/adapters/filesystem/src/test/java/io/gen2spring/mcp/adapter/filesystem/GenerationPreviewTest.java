@@ -22,8 +22,8 @@ import io.gen2spring.mcp.application.generation.command.GenerationCommand.ToolCa
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.ValidationConfiguration;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectFiles;
+import io.gen2spring.mcp.application.generation.result.GenerationPreview;
 import io.gen2spring.mcp.application.generation.usecase.GenerationPipeline;
-import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
 import io.gen2spring.mcp.application.generation.validation.ValidationReport;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
@@ -57,7 +57,7 @@ class GenerationPreviewTest {
     void rendersAnImmutableSortedPreviewWithoutWritingOrLeakingArguments() throws Exception {
         Path specification = Files.writeString(tempDir.resolve("weather.yaml"), specification(), UTF_8);
         Path absentOutput = tempDir.resolve("must-not-exist");
-        AtomicReference<io.gen2spring.mcp.application.generation.usecase.GenerationContext> context =
+        AtomicReference<io.gen2spring.mcp.application.generation.model.GenerationContext> context =
                 new AtomicReference<>();
         var generator = (io.gen2spring.mcp.application.generation.port.out.ProjectGenerator) generation -> {
             context.set(generation);

@@ -8,10 +8,10 @@ import io.gen2spring.mcp.adapter.emitter.mcpruntime.McpRegistrationSourceRendere
 import io.gen2spring.mcp.adapter.emitter.springai1.render.JavaSourceRenderer;
 import io.gen2spring.mcp.adapter.emitter.springai1.render.ProjectFileRenderer;
 import io.gen2spring.mcp.adapter.emitter.support.project.BuildProjectScaffoldRegistry;
+import io.gen2spring.mcp.application.generation.model.GenerationContext;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectFiles;
 import io.gen2spring.mcp.application.generation.port.out.ProjectGenerator;
 import io.gen2spring.mcp.application.generation.port.out.ToolEmitter;
-import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
 import io.gen2spring.mcp.application.generation.validation.ExpectedToolSchemaFactory;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;

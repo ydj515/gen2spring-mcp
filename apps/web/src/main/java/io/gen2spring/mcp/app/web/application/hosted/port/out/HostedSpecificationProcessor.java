@@ -1,7 +1,7 @@
 package io.gen2spring.mcp.app.web.application.hosted.port.out;
 
 import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
-import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
+import io.gen2spring.mcp.application.generation.result.GenerationPreview;
 
 public interface HostedSpecificationProcessor {
     SpecificationAnalysisView analyze(byte[] source, String contentType);

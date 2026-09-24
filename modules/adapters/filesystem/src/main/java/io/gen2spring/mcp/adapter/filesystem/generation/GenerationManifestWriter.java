@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.application.generation.port.out.ManifestWriter;
-import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
+import io.gen2spring.mcp.application.generation.result.GenerationPreview;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.McpImplementation;

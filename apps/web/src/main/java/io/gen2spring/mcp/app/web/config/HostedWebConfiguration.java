@@ -32,23 +32,23 @@ import io.gen2spring.mcp.application.hosted.catalog.CatalogDiffService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
 import io.gen2spring.mcp.application.hosted.imports.port.out.ImportTargetProtector;
-import io.gen2spring.mcp.application.hosted.job.HostedJobService;
 import io.gen2spring.mcp.application.hosted.job.port.out.JobQueue;
+import io.gen2spring.mcp.application.hosted.job.service.HostedJobService;
 import io.gen2spring.mcp.application.hosted.query.port.out.HostedResourceStore;
 import io.gen2spring.mcp.application.hosted.specification.port.out.SpecificationCatalog;
 import io.gen2spring.mcp.application.hosted.storage.port.out.ObjectStorage;
 import io.gen2spring.mcp.application.hosted.worker.port.out.WorkerHeartbeatStore;
 import io.gen2spring.mcp.application.managed.audit.RuntimeAuditService;
-import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
 import io.gen2spring.mcp.application.managed.credential.port.out.CredentialProtector;
 import io.gen2spring.mcp.application.managed.credential.port.out.ManagedCredentialStore;
+import io.gen2spring.mcp.application.managed.credential.service.ManagedCredentialService;
 import io.gen2spring.mcp.application.managed.policy.RuntimeGrantService;
 import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
 import io.gen2spring.mcp.application.managed.runtime.port.out.ManagedRuntimeStore;
 import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore;
 import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeTokenCodec;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeMigrationService;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeService;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -332,7 +332,9 @@ public class HostedWebConfiguration {
     HostedSpecificationProcessor hostedSpecificationProcessor(
             GeneratorRuntime hostedGeneratorRuntime,
             HostedWebProperties properties) {
-        return new GeneratorHostedSpecificationProcessor(hostedGeneratorRuntime, properties.workRoot());
+        return new GeneratorHostedSpecificationProcessor(
+                hostedGeneratorRuntime.analyzer(), hostedGeneratorRuntime.configurationParser(),
+                hostedGeneratorRuntime.pipeline(), properties.workRoot());
     }
 
     @Bean

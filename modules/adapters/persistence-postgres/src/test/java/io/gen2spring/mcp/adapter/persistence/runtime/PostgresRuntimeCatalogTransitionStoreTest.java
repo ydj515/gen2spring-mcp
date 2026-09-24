@@ -1,10 +1,10 @@
 package io.gen2spring.mcp.adapter.persistence.runtime;
 
-import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionKind.MIGRATION;
-import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionKind.ROLLBACK;
 import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionOutcome.APPLIED;
 import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionOutcome.BLOCKED;
 import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionOutcome.CONFLICT;
+import static io.gen2spring.mcp.application.managed.runtime.result.TransitionKind.MIGRATION;
+import static io.gen2spring.mcp.application.managed.runtime.result.TransitionKind.ROLLBACK;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;

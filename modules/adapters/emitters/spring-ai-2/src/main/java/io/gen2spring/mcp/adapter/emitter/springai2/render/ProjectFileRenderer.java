@@ -13,7 +13,7 @@ import io.gen2spring.mcp.adapter.emitter.support.project.ProjectScaffoldModel.Pr
 import io.gen2spring.mcp.adapter.emitter.support.project.ProjectScaffoldModel.Scope;
 import io.gen2spring.mcp.adapter.emitter.support.project.ProjectScaffoldModel;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.ProjectCoordinates;
-import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
+import io.gen2spring.mcp.application.generation.model.GenerationContext;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;

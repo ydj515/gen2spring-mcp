@@ -7,16 +7,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
-import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
-import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.AuditCursor;
-import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.AuditPage;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogCursor;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogDetails;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogSummary;
+import io.gen2spring.mcp.application.hosted.catalog.result.ToolDetails;
+import io.gen2spring.mcp.application.managed.audit.result.AuditCursor;
+import io.gen2spring.mcp.application.managed.audit.result.AuditPage;
 import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.StoredGrant;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.runtime.IssuedRuntimeToken;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
 import io.gen2spring.mcp.application.managed.runtime.port.out.ManagedRuntimeStore;
 import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeTokenCodec;
+import io.gen2spring.mcp.application.managed.runtime.service.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
@@ -26,9 +30,9 @@ import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit;
-import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import java.time.Clock;
 import java.time.Instant;
@@ -204,10 +208,10 @@ class RuntimeBearerFilterTest {
                 null, null, null, List.of());
         var metadata = new CanonicalRuntimeMetadataCodec().encode(new RuntimeMetadataDocument(
                 RuntimeMetadataDocument.VERSION, "b".repeat(64), List.of(tool)));
-        var summary = new ToolCatalogStore.CatalogSummary(
+        var summary = new CatalogSummary(
                 instance.catalogId(), new JobId(UUID.fromString("40000000-0000-0000-0000-000000000001")),
                 RuntimeMetadataDocument.VERSION, metadata.checksum(), 1, NOW.minusSeconds(30));
-        var details = new ToolCatalogStore.CatalogDetails(summary, "b".repeat(64), metadata);
+        var details = new CatalogDetails(summary, "b".repeat(64), metadata);
         ToolCatalogService catalogs = new ToolCatalogService(new ToolCatalogStore() {
             @Override public List<CatalogSummary> list(AccountId owner, int limit, Optional<CatalogCursor> cursor) {
                 return List.of(summary);

@@ -16,11 +16,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.config.security.WebSecurityConfiguration;
-import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
-import io.gen2spring.mcp.application.generation.usecase.GenerationProgress;
-import io.gen2spring.mcp.application.generation.usecase.ProgressStatus;
+import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
+import io.gen2spring.mcp.application.generation.progress.GenerationProgress;
+import io.gen2spring.mcp.application.generation.progress.ProgressStatus;
+import io.gen2spring.mcp.application.generation.result.GenerationOutcome;
 import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

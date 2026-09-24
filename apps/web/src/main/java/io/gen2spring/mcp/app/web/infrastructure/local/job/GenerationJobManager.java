@@ -1,21 +1,20 @@
 package io.gen2spring.mcp.app.web.infrastructure.local.job;
 
-import io.gen2spring.mcp.app.web.application.local.result.ArtifactDownload;
-import io.gen2spring.mcp.app.web.application.local.result.VersionedJobSnapshot;
-import io.gen2spring.mcp.app.web.application.local.job.JobSnapshot;
 import io.gen2spring.mcp.app.web.application.local.exception.LocalJobFailure;
 import io.gen2spring.mcp.app.web.application.local.io.BoundedBodyReader;
+import io.gen2spring.mcp.app.web.application.local.job.JobSnapshot;
 import io.gen2spring.mcp.app.web.application.local.port.out.GenerationJobs;
-
+import io.gen2spring.mcp.app.web.application.local.result.ArtifactDownload;
+import io.gen2spring.mcp.app.web.application.local.result.VersionedJobSnapshot;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand;
-import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
-import io.gen2spring.mcp.application.generation.usecase.GenerationProgress;
-import io.gen2spring.mcp.application.generation.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.generation.progress.GenerationProgress;
+import io.gen2spring.mcp.application.generation.progress.ProgressStatus;
+import io.gen2spring.mcp.application.generation.result.GenerationOutcome;
 import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
-import java.nio.file.Path;
-import java.nio.file.Files;
+import io.gen2spring.mcp.domain.error.GeneratorException;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Clock;

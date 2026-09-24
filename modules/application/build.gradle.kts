@@ -1,4 +1,4 @@
 dependencies {
-    implementation(project(":modules:domain"))
+    api(project(":modules:domain"))
     implementation(libs.jackson.databind)
 }

@@ -10,25 +10,29 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.app.runtime.presentation.security.RuntimeBearerFilter;
-import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.OperationSelection;
+import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogCursor;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogDetails;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogSummary;
+import io.gen2spring.mcp.application.hosted.catalog.result.ToolDetails;
+import io.gen2spring.mcp.application.managed.audit.result.AuditCursor;
+import io.gen2spring.mcp.application.managed.audit.result.AuditPage;
 import io.gen2spring.mcp.application.managed.execution.ManagedExecutionLimits;
 import io.gen2spring.mcp.application.managed.execution.ManagedRuntimeBinding;
-import io.gen2spring.mcp.application.managed.execution.ManagedToolExecutor;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallRequest;
 import io.gen2spring.mcp.application.managed.execution.ProviderCallResponse;
 import io.gen2spring.mcp.application.managed.execution.port.out.ProviderCallClient;
-import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
-import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.AuditCursor;
-import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.AuditPage;
+import io.gen2spring.mcp.application.managed.execution.service.ManagedToolExecutor;
 import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore.StoredGrant;
+import io.gen2spring.mcp.application.managed.policy.port.out.RuntimePolicyStore;
 import io.gen2spring.mcp.application.managed.runtime.IssuedRuntimeToken;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
 import io.gen2spring.mcp.application.managed.runtime.port.out.ManagedRuntimeStore;
 import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeTokenCodec;
+import io.gen2spring.mcp.application.managed.runtime.service.RuntimeAccessAuthenticator;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataDocumentFactory;
 import io.gen2spring.mcp.application.toolmodel.ToolModelFactory;
@@ -42,9 +46,9 @@ import io.gen2spring.mcp.domain.platform.runtime.RuntimeGrantId;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import io.gen2spring.mcp.domain.platform.runtime.ToolExecutionAudit;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeHttp;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeTool;
+import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
@@ -334,10 +338,10 @@ class ManagedRuntimeJourneyIntegrationTest {
                 return new RuntimeTokenDigest(new byte[32]);
             }
         };
-        var summary = new ToolCatalogStore.CatalogSummary(
+        var summary = new CatalogSummary(
                 instance.catalogId(), new JobId(UUID.fromString("40000000-0000-0000-0000-000000000001")),
                 RuntimeMetadataDocument.VERSION, metadata.checksum(), document.tools().size(), NOW.minusSeconds(1));
-        var details = new ToolCatalogStore.CatalogDetails(summary, document.specificationChecksum(), metadata);
+        var details = new CatalogDetails(summary, document.specificationChecksum(), metadata);
         ToolCatalogService catalogs = new ToolCatalogService(new ToolCatalogStore() {
             @Override public List<CatalogSummary> list(AccountId owner, int limit, Optional<CatalogCursor> cursor) {
                 return List.of(summary);

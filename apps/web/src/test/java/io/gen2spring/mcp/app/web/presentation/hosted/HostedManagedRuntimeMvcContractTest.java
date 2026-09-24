@@ -13,19 +13,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
 import io.gen2spring.mcp.app.web.config.JobEventStreamConfiguration;
 import io.gen2spring.mcp.app.web.config.security.HostedSecurityConfiguration;
-import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
 import io.gen2spring.mcp.app.web.presentation.error.WebErrorMapper;
 import io.gen2spring.mcp.app.web.presentation.error.WebErrorResponseWriter;
 import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService.MigrationResult;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeService;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeActivation;
-import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.RuntimeCatalogTransition;
-import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionKind;
-import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionPage;
+import io.gen2spring.mcp.application.managed.runtime.result.RuntimeCatalogTransition;
+import io.gen2spring.mcp.application.managed.runtime.result.TransitionKind;
+import io.gen2spring.mcp.application.managed.runtime.result.TransitionPage;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeMigrationService.MigrationResult;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeMigrationService;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeService;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;

@@ -1,9 +1,9 @@
 package io.gen2spring.mcp.app.worker.application.worker.service;
 
 import io.gen2spring.mcp.app.worker.application.worker.port.in.WorkerTasks;
-import io.gen2spring.mcp.application.hosted.job.WorkerLeaseService;
-import io.gen2spring.mcp.application.hosted.worker.ArtifactRetentionService;
-import io.gen2spring.mcp.application.hosted.worker.HostedWorker;
+import io.gen2spring.mcp.application.hosted.job.service.WorkerLeaseService;
+import io.gen2spring.mcp.application.hosted.worker.service.ArtifactRetentionService;
+import io.gen2spring.mcp.application.hosted.worker.service.HostedWorker;
 import java.util.Objects;
 
 public final class WorkerTaskService implements WorkerTasks {

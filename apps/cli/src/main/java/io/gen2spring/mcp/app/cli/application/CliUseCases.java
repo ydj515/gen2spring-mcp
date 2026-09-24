@@ -6,10 +6,11 @@ import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.INTERNAL_ERROR;
 
 import io.gen2spring.mcp.app.cli.application.port.out.CliFilePort;
 import io.gen2spring.mcp.app.cli.application.port.out.ConfigurationPort;
+import io.gen2spring.mcp.application.generation.analysis.AnalysisResult;
 import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
-import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.result.GenerationOutcome;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
@@ -41,7 +42,7 @@ public final class CliUseCases {
 
     public Inspection inspect(Path specificationPath, Path output) {
         CliFilePort.AnalysisOutput target = files.newAnalysisOutput(output);
-        SpecificationAnalyzer.AnalysisResult result;
+        AnalysisResult result;
         try (CliFilePort.SpecificationCopy specification = files.specificationCopy(specificationPath)) {
             result = analyzer.analyze(specification.path(), MAX_SPECIFICATION_BYTES);
             specification.path();

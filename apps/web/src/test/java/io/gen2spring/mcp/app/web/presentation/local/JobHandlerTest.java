@@ -16,7 +16,7 @@ import io.gen2spring.mcp.app.web.infrastructure.local.job.GenerationJobManager;
 import io.gen2spring.mcp.app.web.infrastructure.local.specification.SpecificationStore;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand;
 import io.gen2spring.mcp.application.generation.port.out.GenerationProgressListener;
-import io.gen2spring.mcp.application.generation.usecase.GenerationOutcome;
+import io.gen2spring.mcp.application.generation.result.GenerationOutcome;
 import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
 import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
 import java.io.ByteArrayInputStream;

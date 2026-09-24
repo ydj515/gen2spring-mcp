@@ -4,8 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
 import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
+import io.gen2spring.mcp.app.web.presentation.error.HostedAuthenticationFailure;
+import io.gen2spring.mcp.application.hosted.account.port.out.AccountStore;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import java.time.Clock;
 import java.time.Instant;
@@ -46,7 +47,7 @@ class HostedOidcSecurityTest {
                 new HostedAccountService(new StubAccounts(), Clock.fixed(NOW, ZoneOffset.UTC)));
 
         var failure = assertThrows(
-                HostedAccountResolver.HostedAuthenticationFailure.class,
+                HostedAuthenticationFailure.class,
                 () -> resolver.resolve(new TestingAuthenticationToken("private-marker", "secret")));
 
         assertEquals("Hosted account authentication failed", failure.getMessage());

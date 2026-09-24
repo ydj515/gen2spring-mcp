@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.app.web.presentation.security;
 
 import io.gen2spring.mcp.app.web.application.hosted.service.HostedAccountService;
+import io.gen2spring.mcp.app.web.presentation.error.HostedAuthenticationFailure;
 import java.util.Objects;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
@@ -29,9 +30,4 @@ public final class HostedAccountResolver {
         }
     }
 
-    public static final class HostedAuthenticationFailure extends RuntimeException {
-        public HostedAuthenticationFailure() {
-            super("Hosted account authentication failed", null, false, false);
-        }
-    }
 }

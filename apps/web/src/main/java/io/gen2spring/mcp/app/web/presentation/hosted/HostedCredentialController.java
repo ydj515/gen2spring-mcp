@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.app.web.presentation.hosted;
 
-import io.gen2spring.mcp.application.managed.credential.CredentialSecret;
-import io.gen2spring.mcp.application.managed.credential.ManagedCredentialService;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
+import io.gen2spring.mcp.application.managed.credential.CredentialSecret;
+import io.gen2spring.mcp.application.managed.credential.service.ManagedCredentialService;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredential;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialId;
 import io.gen2spring.mcp.domain.platform.credential.ManagedCredentialKind;

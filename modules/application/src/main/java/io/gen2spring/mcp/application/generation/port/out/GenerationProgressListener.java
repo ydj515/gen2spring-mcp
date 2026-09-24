@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.application.generation.port.out;
 
-import io.gen2spring.mcp.application.generation.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.generation.progress.GenerationProgress;
 
 @FunctionalInterface
 public interface GenerationProgressListener {

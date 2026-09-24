@@ -1,8 +1,8 @@
 package io.gen2spring.mcp.app.web.application.hosted.port.in;
 
 import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
+import io.gen2spring.mcp.application.generation.result.GenerationPreview;
 import io.gen2spring.mcp.application.hosted.job.CreateJobResult;
-import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;
 import java.io.InputStream;

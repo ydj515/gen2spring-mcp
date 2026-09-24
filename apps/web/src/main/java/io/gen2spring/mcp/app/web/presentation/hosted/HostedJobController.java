@@ -7,7 +7,7 @@ import io.gen2spring.mcp.app.web.application.hosted.port.in.HostedSubmissionUseC
 import io.gen2spring.mcp.app.web.application.hosted.service.HostedResourceQueryService;
 import io.gen2spring.mcp.app.web.presentation.security.HostedAccountResolver;
 import io.gen2spring.mcp.app.web.presentation.stream.JobEventStream;
-import io.gen2spring.mcp.application.hosted.job.HostedJobService;
+import io.gen2spring.mcp.application.hosted.job.service.HostedJobService;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.job.JobId;
 import io.gen2spring.mcp.domain.platform.specification.SpecificationId;

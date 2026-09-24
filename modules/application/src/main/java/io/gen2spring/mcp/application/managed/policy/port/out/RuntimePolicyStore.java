@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.application.managed.policy.port.out;
 
+import io.gen2spring.mcp.application.managed.audit.result.AuditCursor;
+import io.gen2spring.mcp.application.managed.audit.result.AuditPage;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeTokenDigest;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeGrant;
@@ -45,20 +47,4 @@ public interface RuntimePolicyStore {
         }
     }
 
-    record AuditCursor(Instant startedAt, UUID executionId) {
-        public AuditCursor {
-            Objects.requireNonNull(startedAt, "startedAt");
-            Objects.requireNonNull(executionId, "executionId");
-        }
-    }
-
-    record AuditPage(List<ToolExecutionAudit> items, Optional<AuditCursor> nextCursor) {
-        public AuditPage {
-            items = List.copyOf(Objects.requireNonNull(items, "items"));
-            if (items.stream().anyMatch(Objects::isNull)) {
-                throw new IllegalArgumentException("Runtime audit page is invalid");
-            }
-            Objects.requireNonNull(nextCursor, "nextCursor");
-        }
-    }
 }

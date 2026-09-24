@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.application;
 
-import static io.gen2spring.mcp.application.generation.usecase.ProgressStatus.PENDING;
+import static io.gen2spring.mcp.application.generation.progress.ProgressStatus.PENDING;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.OperationSelection;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedToolSources;
 import io.gen2spring.mcp.application.generation.port.out.GenerationProgressListener;
-import io.gen2spring.mcp.application.generation.usecase.GenerationProgress;
+import io.gen2spring.mcp.application.generation.progress.GenerationProgress;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

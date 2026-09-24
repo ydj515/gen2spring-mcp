@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.app.web.application.local.job;
 
-import io.gen2spring.mcp.application.generation.usecase.ProgressStatus;
+import io.gen2spring.mcp.application.generation.progress.ProgressStatus;
 import io.gen2spring.mcp.application.generation.validation.ValidationStatus;
 import java.util.List;
 

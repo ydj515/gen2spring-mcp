@@ -1,9 +1,9 @@
 package io.gen2spring.mcp.adapter.emitter.springai1;
 
 import io.gen2spring.mcp.adapter.emitter.springai1.render.JavaSourceRenderer;
+import io.gen2spring.mcp.application.generation.model.GenerationContext;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedToolSources;
 import io.gen2spring.mcp.application.generation.port.out.ToolEmitter;
-import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 
 public final class SpringAi1ToolEmitter implements ToolEmitter {

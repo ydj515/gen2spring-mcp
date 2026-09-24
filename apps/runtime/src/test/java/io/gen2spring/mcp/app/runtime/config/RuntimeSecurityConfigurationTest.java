@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 
 import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandleRegistry;
 import io.gen2spring.mcp.app.runtime.presentation.security.RuntimeBearerFilter;
-import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
+import io.gen2spring.mcp.application.managed.runtime.service.RuntimeAccessAuthenticator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;

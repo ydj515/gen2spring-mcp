@@ -3,7 +3,11 @@ package io.gen2spring.mcp.adapter.persistence.catalog;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
-import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogVersion;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogCursor;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogDetails;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogSummary;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogVersion;
+import io.gen2spring.mcp.application.hosted.catalog.result.ToolDetails;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.application.runtime.metadata.RuntimeMetadataArtifact;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;

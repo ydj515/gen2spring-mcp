@@ -1,10 +1,11 @@
 package io.gen2spring.mcp.app.web.infrastructure.local.specification;
 
-import io.gen2spring.mcp.app.web.application.local.result.StoredSpecification;
-import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
-import io.gen2spring.mcp.app.web.application.local.io.BoundedBodyReader;
 import io.gen2spring.mcp.app.web.application.local.exception.LocalSpecificationFailure;
+import io.gen2spring.mcp.app.web.application.local.io.BoundedBodyReader;
 import io.gen2spring.mcp.app.web.application.local.port.out.SpecificationStorage;
+import io.gen2spring.mcp.app.web.application.local.result.StoredSpecification;
+import io.gen2spring.mcp.application.generation.analysis.AnalysisResult;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -76,7 +77,7 @@ public final class SpecificationStore implements SpecificationStorage, AutoClose
             if (!attributes.isRegularFile() || Files.isSymbolicLink(path)) {
                 throw new IOException("Stored specification is not a regular file");
             }
-            SpecificationAnalyzer.AnalysisResult analysis = analyzer.analyze(path, MAX_SPECIFICATION_BYTES);
+            AnalysisResult analysis = analyzer.analyze(path, MAX_SPECIFICATION_BYTES);
             StoredFile stored = new StoredFile(
                     identifier, name, path, attributes.fileKey(), attributes.size(), analysis);
             evictForCapacity();
@@ -222,7 +223,7 @@ public final class SpecificationStore implements SpecificationStorage, AutoClose
             Path path,
             Object fileKey,
             long size,
-            SpecificationAnalyzer.AnalysisResult analysis) {
+            AnalysisResult analysis) {
         private StoredFile {
             Objects.requireNonNull(id, "id");
             Objects.requireNonNull(displayName, "displayName");

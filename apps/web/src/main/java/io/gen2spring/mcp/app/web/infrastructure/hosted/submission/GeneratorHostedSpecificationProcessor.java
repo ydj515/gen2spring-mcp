@@ -1,9 +1,11 @@
 package io.gen2spring.mcp.app.web.infrastructure.hosted.submission;
 
+import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
 import io.gen2spring.mcp.app.web.application.hosted.port.out.HostedSpecificationProcessor;
 import io.gen2spring.mcp.application.generation.analysis.SpecificationAnalysisView;
-import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
-import io.gen2spring.mcp.bootstrap.GeneratorRuntime;
+import io.gen2spring.mcp.application.generation.port.out.SpecificationAnalyzer;
+import io.gen2spring.mcp.application.generation.result.GenerationPreview;
+import io.gen2spring.mcp.application.generation.usecase.GenerationPipeline;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -13,11 +15,19 @@ import java.util.Set;
 
 public final class GeneratorHostedSpecificationProcessor implements HostedSpecificationProcessor {
     private static final int MAX_SPECIFICATION_BYTES = 10 * 1024 * 1024;
-    private final GeneratorRuntime generator;
+    private final SpecificationAnalyzer analyzer;
+    private final GenerationConfigurationParser configurationParser;
+    private final GenerationPipeline pipeline;
     private final Path workRoot;
 
-    public GeneratorHostedSpecificationProcessor(GeneratorRuntime generator, Path workRoot) {
-        this.generator = Objects.requireNonNull(generator, "generator");
+    public GeneratorHostedSpecificationProcessor(
+            SpecificationAnalyzer analyzer,
+            GenerationConfigurationParser configurationParser,
+            GenerationPipeline pipeline,
+            Path workRoot) {
+        this.analyzer = Objects.requireNonNull(analyzer, "analyzer");
+        this.configurationParser = Objects.requireNonNull(configurationParser, "configurationParser");
+        this.pipeline = Objects.requireNonNull(pipeline, "pipeline");
         if (workRoot == null || !workRoot.isAbsolute() || Files.isSymbolicLink(workRoot)
                 || !Files.isDirectory(workRoot)) {
             throw new IllegalArgumentException("Hosted Web configuration is invalid");
@@ -28,7 +38,7 @@ public final class GeneratorHostedSpecificationProcessor implements HostedSpecif
     @Override
     public SpecificationAnalysisView analyze(byte[] source, String contentType) {
         return withPrivateCopy(source, contentType, temporary -> {
-            var analysis = generator.analyzer().analyze(temporary, MAX_SPECIFICATION_BYTES);
+            var analysis = analyzer.analyze(temporary, MAX_SPECIFICATION_BYTES);
             if (!Arrays.equals(source, analysis.originalSpecification())) {
                 throw new IllegalStateException("Specification changed during analysis");
             }
@@ -38,13 +48,13 @@ public final class GeneratorHostedSpecificationProcessor implements HostedSpecif
 
     @Override
     public void validateConfiguration(byte[] configurationBytes) {
-        generator.configurationParser().parseJson(configurationBytes);
+        configurationParser.parseJson(configurationBytes);
     }
 
     @Override
     public GenerationPreview preview(byte[] source, String contentType, byte[] configurationBytes) {
-        var configuration = generator.configurationParser().parseJson(configurationBytes);
-        return withPrivateCopy(source, contentType, temporary -> generator.pipeline().preview(temporary, configuration));
+        var configuration = configurationParser.parseJson(configurationBytes);
+        return withPrivateCopy(source, contentType, temporary -> pipeline.preview(temporary, configuration));
     }
 
     private <T> T withPrivateCopy(byte[] source, String contentType, FileAction<T> action) {

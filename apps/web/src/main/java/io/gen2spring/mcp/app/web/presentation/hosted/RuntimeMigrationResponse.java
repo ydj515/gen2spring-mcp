@@ -1,9 +1,9 @@
 package io.gen2spring.mcp.app.web.presentation.hosted;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import io.gen2spring.mcp.application.managed.runtime.ManagedRuntimeMigrationService.MigrationResult;
-import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.RuntimeCatalogTransition;
-import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionPage;
+import io.gen2spring.mcp.application.managed.runtime.result.RuntimeCatalogTransition;
+import io.gen2spring.mcp.application.managed.runtime.result.TransitionPage;
+import io.gen2spring.mcp.application.managed.runtime.service.ManagedRuntimeMigrationService.MigrationResult;
 import java.time.Instant;
 import java.util.List;
 

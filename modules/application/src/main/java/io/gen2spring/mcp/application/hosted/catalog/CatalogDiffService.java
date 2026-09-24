@@ -15,7 +15,7 @@ import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.ChangeKind;
 import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.Compatibility;
 import io.gen2spring.mcp.application.hosted.catalog.CatalogDiff.ToolChange;
 import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore;
-import io.gen2spring.mcp.application.hosted.catalog.port.out.ToolCatalogStore.CatalogDetails;
+import io.gen2spring.mcp.application.hosted.catalog.result.CatalogDetails;
 import io.gen2spring.mcp.application.runtime.metadata.CanonicalRuntimeMetadataCodec;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.runtime.RuntimeMetadataDocument.RuntimeCredential;

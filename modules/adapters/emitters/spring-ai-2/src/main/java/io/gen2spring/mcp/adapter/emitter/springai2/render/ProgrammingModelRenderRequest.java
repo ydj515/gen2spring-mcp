@@ -1,6 +1,6 @@
 package io.gen2spring.mcp.adapter.emitter.springai2.render;
 
-import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
+import io.gen2spring.mcp.application.generation.model.GenerationContext;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import java.util.List;
 import java.util.Map;

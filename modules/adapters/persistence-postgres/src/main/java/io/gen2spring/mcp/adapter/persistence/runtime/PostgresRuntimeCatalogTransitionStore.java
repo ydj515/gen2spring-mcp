@@ -5,9 +5,12 @@ import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCata
 import static io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore.TransitionOutcome.CONFLICT;
 
 import io.gen2spring.mcp.application.managed.runtime.port.out.RuntimeCatalogTransitionStore;
+import io.gen2spring.mcp.application.managed.runtime.result.RuntimeCatalogTransition;
+import io.gen2spring.mcp.application.managed.runtime.result.TransitionKind;
+import io.gen2spring.mcp.application.managed.runtime.result.TransitionPage;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
-import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance.RuntimeState;
+import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.ProviderTarget;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
 import java.sql.Array;
