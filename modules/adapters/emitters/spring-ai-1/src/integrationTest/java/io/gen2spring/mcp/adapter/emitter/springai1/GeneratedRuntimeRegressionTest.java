@@ -38,6 +38,24 @@ class GeneratedRuntimeRegressionTest {
     Path tempDir;
 
     @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void generatedComposedArrayInputsCompileAcrossToolAndCallbackSources() throws Exception {
+        ApiSchema composed = new ApiSchema(SchemaType.COMPOSED, null, false, List.of(),
+                null, null, null, null, null, null, Map.of(), List.of(), null, null, null, false,
+                new SchemaComposition(CompositionKind.ONE_OF,
+                        List.of(RendererFixtures.textSchema(), RendererFixtures.objectSchema(Map.of(), List.of()))),
+                true, List.of());
+        ApiSchema array = new ApiSchema(SchemaType.ARRAY, null, false, List.of(),
+                null, null, null, null, null, null, Map.of(), List.of(), composed, true, List.of());
+        ToolDefinition tool = RendererFixtures.weatherTool(
+                List.of(new ToolInput("values", "values", "Values", true, array)),
+                List.of(new ParameterBinding("values", ParameterLocation.QUERY, "values")));
+        var files = new SpringAi1ProjectGenerator().generate(RendererFixtures.context(List.of(tool))).files();
+
+        assertProjectBuilds(tempDir.resolve("composed-array"), files);
+    }
+
+    @Test
     void generatedImplementationModesBuildAndStart() throws Exception {
         for (String mode : List.of("SPRING_AI_ANNOTATIONS", "MCP_JAVA_SDK")) {
             var original = RendererFixtures.contextWithWeatherTool();

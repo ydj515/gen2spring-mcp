@@ -51,7 +51,8 @@ final class ToolCallbackConfigurationRenderer {
                 }
                 String simple = type.replace("java.math.", "").replace("java.util.List<", "")
                         .replace("<", "").replace(">", "");
-                if (!Set.of("String", "Integer", "Long", "Boolean", "BigDecimal").contains(simple)) {
+                if (!simple.contains(".")
+                        && !Set.of("String", "Integer", "Long", "Boolean", "BigDecimal").contains(simple)) {
                     imports.add(packageName + ".generated.model." + simple);
                 }
             }

@@ -15,7 +15,7 @@ final class ReactiveRuntimeSourceRenderer {
                 request.domainClass(),
                 request.tools().getFirst().operationId(),
                 request.hasTypedOutputs(),
-                request.hasRetryPolicies(),
+                request.hasRetryPolicies() || request.hasPaginationPolicies(),
                 request.hasPaginationPolicies()));
         String runtimePath = "src/main/java/" + request.packagePath() + "/runtime/";
         sources.remove(runtimePath + "ToolArgumentContext.java");

@@ -46,6 +46,29 @@ class JavaSourceRendererTest {
     private final JavaSourceRenderer renderer = new JavaSourceRenderer();
 
     @Test
+    void doesNotImportQualifiedJsonNodeTypesFromTheGeneratedModelPackage() {
+        ApiSchema composed = new ApiSchema(SchemaType.COMPOSED, null, false, List.of(),
+                null, null, null, null, null, null, Map.of(), List.of(), null, null, null, false,
+                new SchemaComposition(CompositionKind.ONE_OF, List.of(textSchema(), objectSchema(Map.of(), List.of()))),
+                true, List.of());
+        ApiSchema array = new ApiSchema(SchemaType.ARRAY, null, false, List.of(),
+                null, null, null, null, null, null, Map.of(), List.of(), composed, true, List.of());
+        ToolDefinition tool = weatherTool(List.of(new ToolInput("values", "values", "Values", true, array)),
+                List.of(new ParameterBinding("values", ParameterLocation.QUERY, "values")));
+        var files = renderer.render(context(List.of(tool)));
+        for (String name : List.of("WeatherMcpTools.java", "WeatherMcpToolCallbacks.java")) {
+            String source = utf8(files.get("src/main/java/com/example/weather/generated/tool/" + name));
+            assertFalse(source.contains("import com.example.weather.generated.model.com.fasterxml.jackson"), source);
+        }
+    }
+
+    @Test
+    void rejectsEmptyToolListsWithTheSourceGenerationErrorContract() {
+        var failure = assertThrows(GeneratorException.class, () -> renderer.render(context(List.of())));
+        assertEquals(io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED, failure.code());
+    }
+
+    @Test
     void rendersAFlatMcpToolAndInputRecord() throws IOException {
         var files = renderer.render(contextWithWeatherTool());
 

@@ -46,6 +46,40 @@ class JavaSourceRendererTest {
     private final JavaSourceRenderer renderer = new JavaSourceRenderer();
 
     @Test
+    void rendersRetryRuntimeForAsyncPaginationWithoutARetryPolicy() {
+        ToolDefinition base = weatherTool();
+        ApiSchema text = textSchema();
+        ApiSchema nullableText = new ApiSchema(
+                SchemaType.STRING, null, true, List.of(), null, null, null, null, null,
+                null, Map.of(), List.of(), null, true, List.of());
+        ApiSchema response = objectSchema(Map.of(
+                "items", new ApiSchema(
+                        SchemaType.ARRAY, null, false, List.of(), null, null, null, null, null,
+                        null, Map.of(), List.of(), text, true, List.of()),
+                "next", nullableText), List.of("items"));
+        PaginationPolicy pagination = new PaginationPolicy("cursor", "first", "/items", "/next", 4, 100);
+        ToolDefinition paginated = new ToolDefinition(
+                base.operationId(), base.name(), base.description(), base.inputs(),
+                new HttpExecution(
+                        base.execution().method(), base.execution().baseUrl(), base.execution().path(),
+                        base.execution().bindings(), false, false, null, null, pagination),
+                base.secretBindings(), new ToolOutput(
+                        OutputKind.GENERIC_JSON, response, null));
+
+        var asyncProfile = AsyncProgrammingModelSourceRendererTest.asyncProfile("GRADLE_KOTLIN");
+        var files = new JavaSourceRenderer(asyncProfile).render(context(asyncProfile, List.of(paginated)));
+        assertTrue(files.containsKey("src/main/java/com/example/weather/runtime/RetryPolicy.java"));
+        String operation = utf8(files.get("src/main/java/com/example/weather/runtime/OperationDefinition.java"));
+        assertTrue(operation.contains("RetryPolicy retryPolicy"), operation);
+    }
+
+    @Test
+    void rejectsEmptyToolListsWithTheSourceGenerationErrorContract() {
+        var failure = assertThrows(GeneratorException.class, () -> renderer.render(context(List.of())));
+        assertEquals(io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED, failure.code());
+    }
+
+    @Test
     void rendersAFlatMcpToolAndInputRecord() throws IOException {
         var files = renderer.render(contextWithWeatherTool());
 

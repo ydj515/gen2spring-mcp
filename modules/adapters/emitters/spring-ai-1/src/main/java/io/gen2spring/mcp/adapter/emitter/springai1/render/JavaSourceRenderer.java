@@ -283,6 +283,9 @@ public final class JavaSourceRenderer {
     }
 
     private void validateTools(List<ToolDefinition> tools) {
+        if (tools.isEmpty()) {
+            throw invalid("Generated tool definitions cannot be empty");
+        }
         Set<String> operationClasses = new HashSet<>();
         Set<String> methodNames = new HashSet<>();
         Set<String> constants = new HashSet<>();

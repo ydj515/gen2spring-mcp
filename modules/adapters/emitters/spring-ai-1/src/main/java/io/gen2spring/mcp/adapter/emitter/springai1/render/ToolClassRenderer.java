@@ -136,7 +136,7 @@ final class ToolClassRenderer {
         }
         String simple = type.replace("java.math.BigDecimal", "").replace("java.util.List", "")
                 .replace("<", "").replace(">", "");
-        if (!simple.isBlank() && !Set.of("String", "Integer", "Long", "Boolean").contains(simple)) {
+        if (!simple.isBlank() && !simple.contains(".") && !Set.of("String", "Integer", "Long", "Boolean").contains(simple)) {
             imports.add(packageName + ".generated.model." + simple);
         }
     }

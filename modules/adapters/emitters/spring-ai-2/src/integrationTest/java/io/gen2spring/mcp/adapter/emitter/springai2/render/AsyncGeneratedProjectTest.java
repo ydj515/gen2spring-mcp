@@ -7,7 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gen2spring.mcp.adapter.emitter.springai2.SpringAi2ProjectGenerator;
 import io.gen2spring.mcp.adapter.emitter.springai2.fixture.RendererFixtures;
+import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -22,6 +25,23 @@ import org.junit.jupiter.api.io.TempDir;
 class AsyncGeneratedProjectTest {
     @TempDir
     Path tempDir;
+
+    @Test
+    @Timeout(value = 5, unit = MINUTES)
+    void buildsTheAsyncPaginationOnlyProjectWithoutAnExplicitRetryPolicy() throws Exception {
+        var profile = asyncProfile("GRADLE_KOTLIN");
+        ToolDefinition base = RendererFixtures.weatherTool();
+        HttpExecution execution = base.execution();
+        ToolDefinition tool = new ToolDefinition(
+                base.operationId(), base.name(), base.description(), base.inputs(),
+                new HttpExecution(execution.method(), execution.baseUrl(), execution.path(), execution.bindings(),
+                        execution.objectRequestBody(), execution.requestBodyRequired(), execution.responseNormalization(),
+                        null, new PaginationPolicy("cursor", "first", "/items", "/next", 4, 10)),
+                base.secretBindings(), base.output());
+        var files = new SpringAi2ProjectGenerator().generate(RendererFixtures.context(profile, List.of(tool))).files();
+
+        assertProjectBuilds(tempDir.resolve("async-pagination-only"), files, profile);
+    }
 
     @Test
     @Timeout(value = 5, unit = MINUTES)
@@ -42,6 +62,10 @@ class AsyncGeneratedProjectTest {
         files.put(
                 "src/test/java/com/example/weather/application/GeneratedAsyncMcpContractTest.java",
                 generatedContractTest().getBytes(UTF_8));
+        assertProjectBuilds(project, files, profile);
+    }
+
+    private void assertProjectBuilds(Path project, Map<String, byte[]> files, CompatibilityProfile profile) throws Exception {
         writeProject(project, files);
 
         List<String> command = new ArrayList<>();
