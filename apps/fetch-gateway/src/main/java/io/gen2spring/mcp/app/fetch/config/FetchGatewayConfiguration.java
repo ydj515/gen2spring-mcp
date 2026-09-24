@@ -1,5 +1,8 @@
-package io.gen2spring.mcp.app.fetch.fetching;
+package io.gen2spring.mcp.app.fetch.config;
 
+import io.gen2spring.mcp.app.fetch.application.fetch.BoundedFetcher;
+import io.gen2spring.mcp.app.fetch.infrastructure.client.fetch.ApacheFetchTransport;
+import io.gen2spring.mcp.app.fetch.infrastructure.client.fetch.ValidatedDnsResolver;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

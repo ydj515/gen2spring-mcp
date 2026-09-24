@@ -1,5 +1,6 @@
-package io.gen2spring.mcp.app.fetch.fetching;
+package io.gen2spring.mcp.app.fetch.application.fetch;
 
+import io.gen2spring.mcp.app.fetch.application.fetch.port.out.FetchTransport;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -27,7 +28,7 @@ public final class BoundedFetcher {
     private final Duration totalTimeout;
     private final LongSupplier ticker;
 
-    BoundedFetcher(
+    public BoundedFetcher(
             FetchTransport transport,
             int maxWireBytes,
             int maxDecodedBytes,

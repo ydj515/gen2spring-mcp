@@ -52,6 +52,11 @@ final class ArchitectureTest {
     @Test void domainDoesNotUseSql() { ArchitectureRules.DOMAIN_HAS_NO_SQL.check(production); }
     @Test void controllersDoNotUsePersistenceImplementations() { ArchitectureRules.CONTROLLERS_USE_APPLICATION_PORTS.check(production); }
     @Test void applicationUsesDomainAndApprovedJsonModel() { ArchitectureRules.APPLICATION.check(production); }
+    @Test void fetchGatewayLayersPointInward() {
+        ArchitectureRules.FETCH_APPLICATION_POINTS_INWARD.check(production);
+        ArchitectureRules.FETCH_PRESENTATION_DOES_NOT_USE_INFRASTRUCTURE.check(production);
+        ArchitectureRules.FETCH_INFRASTRUCTURE_DOES_NOT_USE_DELIVERY.check(production);
+    }
     @Test void adaptersDoNotDependOnCompositionOrApps() { ArchitectureRules.ADAPTERS_POINT_INWARD.check(production); }
     @Test void adaptersShareOnlyEmitterSupport() { ArchitectureRules.ADAPTERS_ARE_INDEPENDENT.check(production); }
     @Test void bootstrapDoesNotDependOnApps() { ArchitectureRules.BOOTSTRAP_DOES_NOT_DEPEND_ON_APPS.check(production); }

@@ -7,10 +7,13 @@ import org.junit.jupiter.api.Test;
 
 final class FetchGatewayPackageArchitectureTest {
     @Test
-    void separatesApiFetchingAndConfigurationResponsibilities() {
-        assertLoadable("io.gen2spring.mcp.app.fetch.api.FetchController");
-        assertLoadable("io.gen2spring.mcp.app.fetch.fetching.BoundedFetcher");
-        assertLoadable("io.gen2spring.mcp.app.fetch.fetching.FetchGatewayConfiguration");
+    void separatesPresentationApplicationInfrastructureAndConfigurationResponsibilities() {
+        assertLoadable("io.gen2spring.mcp.app.fetch.presentation.fetch.FetchController");
+        assertLoadable("io.gen2spring.mcp.app.fetch.presentation.fetch.FetchExceptionHandler");
+        assertLoadable("io.gen2spring.mcp.app.fetch.application.fetch.BoundedFetcher");
+        assertLoadable("io.gen2spring.mcp.app.fetch.application.fetch.port.out.FetchTransport");
+        assertLoadable("io.gen2spring.mcp.app.fetch.infrastructure.client.fetch.ApacheFetchTransport");
+        assertLoadable("io.gen2spring.mcp.app.fetch.config.FetchGatewayConfiguration");
         assertLoadable("io.gen2spring.mcp.app.fetch.config.FetchGatewaySecurityConfiguration");
 
         assertNotLoadable("io.gen2spring.mcp.app.fetch.FetchController");

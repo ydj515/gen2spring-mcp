@@ -46,7 +46,7 @@ modules/
 | --- | --- |
 | CLI | `command`, `output`, `error` |
 | Web | `api`, `page`, `hosted`, `job`, `security`, `config`, `error` |
-| Fetch Gateway | `api`, `fetching`, `config` |
+| Fetch Gateway | `presentation/fetch`, `application/fetch`, `infrastructure/client/fetch`, `config` |
 | Import Runner | `job` |
 | Provider Egress | `api`, `egress`, `config` |
 | Runtime | `config`, `security`, `server` |

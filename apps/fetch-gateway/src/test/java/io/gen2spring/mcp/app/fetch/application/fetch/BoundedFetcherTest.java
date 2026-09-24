@@ -1,23 +1,16 @@
-package io.gen2spring.mcp.app.fetch.fetching;
+package io.gen2spring.mcp.app.fetch.application.fetch;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
+import io.gen2spring.mcp.app.fetch.application.fetch.port.out.FetchTransport;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -27,51 +20,9 @@ import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPOutputStream;
-import javax.net.ssl.SSLPeerUnverifiedException;
-import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
-import org.apache.hc.core5.http.HttpEntity;
 import org.junit.jupiter.api.Test;
 
-class FetchGatewaySecurityTest {
-    @Test
-    void validatesEveryDnsAnswerAndReturnsOnlyTheValidatedSnapshot() throws Exception {
-        AtomicInteger resolutions = new AtomicInteger();
-        InetAddress[] first = {InetAddress.getByName("93.184.216.34")};
-        ValidatedDnsResolver resolver = new ValidatedDnsResolver(host -> {
-            if (resolutions.getAndIncrement() == 0) {
-                return first;
-            }
-            return new InetAddress[] {InetAddress.getByName("127.0.0.1")};
-        });
-
-        InetAddress[] validated = resolver.resolve("api.example.com");
-        first[0] = InetAddress.getByName("127.0.0.1");
-
-        assertEquals("93.184.216.34", validated[0].getHostAddress());
-        UnknownHostException rebound = assertThrows(
-                UnknownHostException.class,
-                () -> resolver.resolve("api.example.com"));
-        assertEquals("Import destination is not public", rebound.getMessage());
-
-        ValidatedDnsResolver mixed = new ValidatedDnsResolver(host -> new InetAddress[] {
-                InetAddress.getByName("93.184.216.34"),
-                InetAddress.getByName("10.0.0.1")
-        });
-        assertThrows(UnknownHostException.class, () -> mixed.resolve("mixed.example.com"));
-
-        assertEquals(
-                "93.184.216.34",
-                new ValidatedDnsResolver(host -> new InetAddress[] {InetAddress.getByName(host)})
-                        .resolve("93.184.216.34")[0]
-                        .getHostAddress());
-        assertThrows(
-                UnknownHostException.class,
-                () -> new ValidatedDnsResolver(host -> new InetAddress[] {InetAddress.getByName(host)})
-                        .resolve("127.0.0.1"));
-    }
-
+final class BoundedFetcherTest {
     @Test
     void followsOnlyThreeManuallyValidatedRedirects() {
         ScriptedTransport transport = new ScriptedTransport(
@@ -240,37 +191,6 @@ class FetchGatewaySecurityTest {
 
         assertFetchFailure(() -> decoding.fetch(
                 ImportTarget.parse("https://api.example.com/openapi.yaml")));
-    }
-
-    @Test
-    void usesStrictTlsHostnameVerification() throws Exception {
-        X509Certificate certificate = mock(X509Certificate.class);
-        when(certificate.getSubjectAlternativeNames())
-                .thenReturn(List.of(List.of(2, "other.example.com")));
-
-        assertThrows(
-                SSLPeerUnverifiedException.class,
-                () -> ApacheFetchTransport.productionHostnameVerifier()
-                        .verify("api.example.com", certificate));
-    }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    void closesTheResponseWhenEntityStreamingCannotStart() throws Exception {
-        CloseableHttpClient client = mock(CloseableHttpClient.class);
-        CloseableHttpResponse response = mock(CloseableHttpResponse.class);
-        HttpEntity entity = mock(HttpEntity.class);
-        when(client.execute(any(HttpGet.class)))
-                .thenReturn(response);
-        when(response.getEntity()).thenReturn(entity);
-        when(entity.getContent()).thenThrow(new IOException("private marker"));
-        ApacheFetchTransport transport = new ApacheFetchTransport(client);
-
-        assertFetchFailure(() -> transport.execute(
-                ImportTarget.parse("https://api.example.com/openapi.yaml"),
-                Duration.ofSeconds(1)));
-
-        verify(response).close();
     }
 
     private BoundedFetcher.FetchResult fetch(

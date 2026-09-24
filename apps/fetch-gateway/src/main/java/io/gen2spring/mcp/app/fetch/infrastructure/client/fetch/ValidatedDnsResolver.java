@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.fetch.fetching;
+package io.gen2spring.mcp.app.fetch.infrastructure.client.fetch;
 
 import io.gen2spring.mcp.domain.platform.imports.NetworkAddressPolicy;
 import java.net.InetAddress;

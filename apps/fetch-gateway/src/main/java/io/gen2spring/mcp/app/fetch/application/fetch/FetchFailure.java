@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.fetch.fetching;
+package io.gen2spring.mcp.app.fetch.application.fetch;
 
 public final class FetchFailure extends RuntimeException {
     private final boolean retryable;
@@ -7,7 +7,7 @@ public final class FetchFailure extends RuntimeException {
         this(false);
     }
 
-    FetchFailure(boolean retryable) {
+    public FetchFailure(boolean retryable) {
         super("URL import fetch failed", null, false, false);
         this.retryable = retryable;
     }

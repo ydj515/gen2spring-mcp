@@ -1,5 +1,7 @@
-package io.gen2spring.mcp.app.fetch.fetching;
+package io.gen2spring.mcp.app.fetch.infrastructure.client.fetch;
 
+import io.gen2spring.mcp.app.fetch.application.fetch.FetchFailure;
+import io.gen2spring.mcp.app.fetch.application.fetch.port.out.FetchTransport;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -24,10 +26,10 @@ import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.util.Timeout;
 
-final class ApacheFetchTransport implements FetchTransport, AutoCloseable {
+public final class ApacheFetchTransport implements FetchTransport, AutoCloseable {
     private final CloseableHttpClient client;
 
-    ApacheFetchTransport(ValidatedDnsResolver resolver, Duration connectTimeout) {
+    public ApacheFetchTransport(ValidatedDnsResolver resolver, Duration connectTimeout) {
         this(createClient(resolver, connectTimeout));
     }
 

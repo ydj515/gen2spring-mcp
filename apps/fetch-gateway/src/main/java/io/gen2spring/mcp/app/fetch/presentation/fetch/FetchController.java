@@ -1,14 +1,14 @@
-package io.gen2spring.mcp.app.fetch.api;
+package io.gen2spring.mcp.app.fetch.presentation.fetch;
 
-import io.gen2spring.mcp.app.fetch.fetching.BoundedFetcher;
-import io.gen2spring.mcp.app.fetch.fetching.FetchFailure;
+import io.gen2spring.mcp.app.fetch.application.fetch.BoundedFetcher;
+import io.gen2spring.mcp.app.fetch.application.fetch.FetchFailure;
+import io.gen2spring.mcp.app.fetch.presentation.fetch.request.FetchRequest;
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import jakarta.servlet.http.HttpServletRequest;
 import java.security.cert.X509Certificate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -41,14 +41,4 @@ public final class FetchController {
                 .body(result.body());
     }
 
-    @ExceptionHandler({FetchFailure.class, IllegalArgumentException.class})
-    ResponseEntity<FailureBody> failure() {
-        return ResponseEntity.unprocessableEntity()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(new FailureBody("FETCH_REJECTED", "URL import fetch failed"));
-    }
-
-    public record FetchRequest(String target) {}
-
-    public record FailureBody(String code, String message) {}
 }

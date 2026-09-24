@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.fetch.fetching;
+package io.gen2spring.mcp.app.fetch.application.fetch.port.out;
 
 import io.gen2spring.mcp.domain.platform.imports.ImportTarget;
 import java.io.IOException;
@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-interface FetchTransport {
+public interface FetchTransport {
     Response execute(ImportTarget target, Duration timeout);
 
     record Response(int status, Map<String, List<String>> headers, InputStream body) implements AutoCloseable {

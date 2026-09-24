@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.fetch.api;
+package io.gen2spring.mcp.app.fetch.presentation.fetch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,8 +9,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import io.gen2spring.mcp.app.fetch.fetching.BoundedFetcher;
-import io.gen2spring.mcp.app.fetch.fetching.FetchFailure;
+import io.gen2spring.mcp.app.fetch.application.fetch.BoundedFetcher;
+import io.gen2spring.mcp.app.fetch.application.fetch.FetchFailure;
+import io.gen2spring.mcp.app.fetch.presentation.fetch.request.FetchRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ final class FetchControllerTest {
         FetchController controller = new FetchController(mock(BoundedFetcher.class));
 
         MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new FetchExceptionHandler())
                 .build()
                 .perform(post("/internal/fetch").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnprocessableEntity())
@@ -42,7 +44,7 @@ final class FetchControllerTest {
 
         assertThrows(FetchFailure.class, () -> controller.fetch(null, missingCertificate));
         assertThrows(FetchFailure.class, () -> controller.fetch(
-                new FetchController.FetchRequest("https://api.example.com/openapi.yaml"),
+                new FetchRequest("https://api.example.com/openapi.yaml"),
                 missingCertificate));
 
         MockHttpServletRequest authenticated = new MockHttpServletRequest();
@@ -50,7 +52,7 @@ final class FetchControllerTest {
                 "jakarta.servlet.request.X509Certificate",
                 new X509Certificate[] {mock(X509Certificate.class)});
         var response = controller.fetch(
-                new FetchController.FetchRequest("https://api.example.com/openapi.yaml"),
+                new FetchRequest("https://api.example.com/openapi.yaml"),
                 authenticated);
 
         assertEquals(200, response.getStatusCode().value());

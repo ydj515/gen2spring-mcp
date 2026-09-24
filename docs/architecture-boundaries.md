@@ -62,6 +62,7 @@ Java import 검사는 [루트 빌드](../build.gradle.kts)의 `verifyJavaImportS
 | Bootstrap | 앱을 참조하지 않고 생성기 객체 그래프 조립 |
 | App | 서로 다른 앱을 직접 참조하지 않음 |
 | Controller | concrete persistence/storage adapter, SQL·Spring JDBC/repository, jOOQ·MyBatis 직접 참조 금지 |
+| Fetch Gateway | application → presentation/infrastructure/config, presentation → infrastructure/config, infrastructure → presentation/config 참조 금지 |
 
 공유 emitter의 허용 방향은 `springai1/springai2 → mcpruntime/support`, `mcpruntime → support`다.
 계열 간 직접 참조와 공유 코드에서 계열 코드로 향하는 역방향은 금지한다. Application의 Jackson 사용은

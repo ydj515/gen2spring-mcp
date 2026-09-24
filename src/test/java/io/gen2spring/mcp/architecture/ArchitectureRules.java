@@ -36,6 +36,22 @@ final class ArchitectureRules {
                     ROOT + "application..", ROOT + "domain..", "java..", "javax.lang.model..",
                     "com.fasterxml.jackson..");
 
+    static final ArchRule FETCH_APPLICATION_POINTS_INWARD = noClasses()
+            .that().resideInAPackage(ROOT + "app.fetch.application..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.fetch.presentation..", ROOT + "app.fetch.infrastructure..",
+                    ROOT + "app.fetch.config..");
+
+    static final ArchRule FETCH_PRESENTATION_DOES_NOT_USE_INFRASTRUCTURE = noClasses()
+            .that().resideInAPackage(ROOT + "app.fetch.presentation..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.fetch.infrastructure..", ROOT + "app.fetch.config..");
+
+    static final ArchRule FETCH_INFRASTRUCTURE_DOES_NOT_USE_DELIVERY = noClasses()
+            .that().resideInAPackage(ROOT + "app.fetch.infrastructure..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.fetch.presentation..", ROOT + "app.fetch.config..");
+
     static final ArchRule ADAPTERS_POINT_INWARD = noClasses().that().resideInAPackage(ADAPTER + ".")
             .should().dependOnClassesThat().resideInAnyPackage(ROOT + "bootstrap..", ROOT + "app..");
 
