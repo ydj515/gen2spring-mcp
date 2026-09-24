@@ -49,7 +49,8 @@ class S3ObjectStorageTest {
 
     @Container
     private static final GenericContainer<?> MINIO = new GenericContainer<>(DockerImageName.parse(
-            "minio/minio:RELEASE.2025-04-22T22-12-26Z"))
+            "ghcr.io/coollabsio/minio:RELEASE.2025-04-22T22-12-26Z"
+                    + "@sha256:a4938f37f1be1841b8e7b627ad0207b265345fd0d063e42d7410c78af0e63e68"))
             .withEnv("MINIO_ROOT_USER", ACCESS_KEY)
             .withEnv("MINIO_ROOT_PASSWORD", SECRET_KEY)
             .withCommand("server", "/data")
