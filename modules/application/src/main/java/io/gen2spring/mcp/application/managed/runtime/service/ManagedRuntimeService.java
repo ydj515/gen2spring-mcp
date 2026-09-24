@@ -132,7 +132,7 @@ public final class ManagedRuntimeService {
         return new RuntimeActivation(
                 instance,
                 issued.plaintext(),
-                runtimeBaseUri.resolve("/mcp/" + id.value()));
+                runtimeBaseUri.resolve("mcp/" + id.value()));
     }
 
     public ManagedRuntimeInstance require(AccountId owner, RuntimeInstanceId id) {
@@ -291,7 +291,10 @@ public final class ManagedRuntimeService {
     private static URI runtimeBase(URI value) {
         try {
             ProviderTarget parsed = new ProviderTarget(value);
-            return parsed.uri();
+            String origin = parsed.uri().resolve("/").toASCIIString();
+            String rawPath = value.getRawPath();
+            String base = origin + (rawPath == null || rawPath.isEmpty() ? "" : rawPath.substring(1));
+            return URI.create(base.endsWith("/") ? base : base + "/").normalize();
         } catch (RuntimeException failure) {
             throw invalid();
         }

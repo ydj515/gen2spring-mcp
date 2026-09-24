@@ -59,6 +59,22 @@ class ManagedRuntimeServiceTest {
     private static final UUID RUNTIME = UUID.fromString("30000000-0000-0000-0000-000000000001");
 
     @Test
+    void preservesConfiguredRuntimePathPrefixesWithOrWithoutATrailingSlash() {
+        for (String base : List.of("https://runtime.example/gateway/v1", "https://runtime.example/gateway/v1/",
+                "https://runtime.example/gateway%20v1")) {
+            Fixture fixture = fixture(tool("https://api.example.com", List.of()));
+            var service = new ManagedRuntimeService(new ToolCatalogService(fixture.catalogStore),
+                    fixture.runtimeStore, fixture.tokenCodec, Clock.fixed(NOW, ZoneOffset.UTC),
+                    URI.create(base), () -> RUNTIME);
+
+            var activation = service.activate(OWNER, CATALOG, Optional.empty(), Optional.empty());
+
+            assertEquals(URI.create(base + (base.endsWith("/") ? "" : "/") + "mcp/" + RUNTIME),
+                    activation.endpoint());
+        }
+    }
+
+    @Test
     void activatesAnOwnedCredentialFreeCatalogAndReturnsTheTokenOnce() {
         Fixture fixture = fixture(tool("https://api.example.com", List.of()));
 
