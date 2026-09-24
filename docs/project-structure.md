@@ -44,12 +44,12 @@ modules/
 
 | 앱 | 책임 패키지 |
 | --- | --- |
-| CLI | `command`, `output`, `error` |
-| Web | `api`, `page`, `hosted`, `job`, `security`, `config`, `error` |
+| CLI | `presentation`, `application`, `infrastructure`, `config` |
+| Web | `presentation`, `application`, `infrastructure`, `config` (각 계층 아래 local·hosted 책임 분리) |
 | Fetch Gateway | `presentation/fetch`, `application/fetch`, `infrastructure/client/fetch`, `config` |
-| Import Runner | `presentation/job`, `application/imports`, `infrastructure/client/fetch`, `config` |
+| Import Runner | `presentation/job`, `application/imports`, `infrastructure/analysis`, `infrastructure/client/fetch`, `config` |
 | Provider Egress | `presentation/provider`, `application/provider`, `infrastructure/client/provider`, `config` |
-| Runtime | `config`, `security`, `server` |
+| Runtime | `presentation/mcp`, `presentation/security`, `config` |
 | Worker | `application/worker`, `infrastructure/readiness`, `infrastructure/scheduling`, `config` |
 
 앱 루트에는 실행 진입점을 둔다. transport 구현과 package-private 협력자는 같은 책임 패키지에 두고,

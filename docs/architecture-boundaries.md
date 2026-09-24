@@ -52,7 +52,7 @@ Java import 검사는 [루트 빌드](../build.gradle.kts)의 `verifyJavaImportS
 ## 자동 의존 방향 검사
 
 [ArchUnit 규칙](../src/test/java/io/gen2spring/mcp/architecture/ArchitectureRules.java)은 production 바이트코드를
-검사한다. 기존 앱별 `*PackageArchitectureTest`의 클래스 위치 검사와 함께 유지한다.
+검사한다. 앱별 `*PackageArchitectureTest`는 클래스 위치와 해당 앱의 계층 의존 방향을 확인한다.
 
 | 출발 계층 | 허용·금지 경계 |
 | --- | --- |
@@ -65,6 +65,10 @@ Java import 검사는 [루트 빌드](../build.gradle.kts)의 `verifyJavaImportS
 | Fetch Gateway | application → presentation/infrastructure/config, presentation → infrastructure/config, infrastructure → presentation/config 참조 금지 |
 | Provider Egress | application → presentation/infrastructure/config/adapter, presentation → infrastructure/config/adapter, infrastructure → presentation/config 참조 금지 |
 | Import Runner | application → presentation/infrastructure/config/adapter, presentation → infrastructure/config/adapter, infrastructure → presentation/config 참조 금지 |
+| CLI | application → presentation/infrastructure/config/adapter/Spring, presentation → infrastructure/config/adapter, infrastructure → config 참조 금지 |
+| Web | application → presentation/infrastructure/config/Spring·Servlet·Jackson, infrastructure → presentation/config, presentation → 내부 infrastructure 참조 금지 |
+| Runtime | presentation → config/concrete persistence adapter 참조 금지 |
+| Worker | application → infrastructure/config/adapter/Spring, infrastructure → config 참조 금지 |
 
 공유 emitter의 허용 방향은 `springai1/springai2 → mcpruntime/support`, `mcpruntime → support`다.
 계열 간 직접 참조와 공유 코드에서 계열 코드로 향하는 역방향은 금지한다. Application의 Jackson 사용은
