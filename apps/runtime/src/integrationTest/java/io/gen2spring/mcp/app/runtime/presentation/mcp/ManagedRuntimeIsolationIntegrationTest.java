@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime.server;
+package io.gen2spring.mcp.app.runtime.presentation.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime.security;
+package io.gen2spring.mcp.app.runtime.presentation.security;
 
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
@@ -69,7 +69,7 @@ public final class RuntimeBearerFilter extends OncePerRequestFilter {
         } catch (RuntimeAccessAuthenticator.RuntimeAccessUnavailable failure) {
             respond(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, UNAVAILABLE);
             return;
-        } catch (RuntimeException failure) {
+        } catch (RuntimeAccessAuthenticator.RuntimeUnauthorized failure) {
             respond(response, HttpServletResponse.SC_UNAUTHORIZED, UNAUTHORIZED);
             return;
         }

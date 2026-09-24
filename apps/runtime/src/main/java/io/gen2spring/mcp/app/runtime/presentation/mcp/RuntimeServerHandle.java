@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime.server;
+package io.gen2spring.mcp.app.runtime.presentation.mcp;
 
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.modelcontextprotocol.server.McpStatelessSyncServer;
@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
 
-final class RuntimeServerHandle implements AutoCloseable {
+public final class RuntimeServerHandle implements AutoCloseable {
     private final ManagedRuntimeInstance instance;
     private final RouterFunction<ServerResponse> router;
     private final Runnable closeAction;
@@ -29,7 +29,7 @@ final class RuntimeServerHandle implements AutoCloseable {
         return new RuntimeServerHandle(instance, request -> Optional.empty(), closeAction);
     }
 
-    static RuntimeServerHandle stateless(
+    public static RuntimeServerHandle stateless(
             ManagedRuntimeInstance instance,
             WebMvcStatelessServerTransport transport,
             McpStatelessSyncServer server) {

@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime.server;
+package io.gen2spring.mcp.app.runtime.presentation.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.application.command.GenerationCommand;
-import io.gen2spring.mcp.app.runtime.security.RuntimeBearerFilter;
+import io.gen2spring.mcp.app.runtime.presentation.security.RuntimeBearerFilter;
 import io.gen2spring.mcp.application.command.GenerationCommand.OperationSelection;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogStore;

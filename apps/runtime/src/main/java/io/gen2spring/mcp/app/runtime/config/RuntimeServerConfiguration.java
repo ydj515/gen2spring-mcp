@@ -1,8 +1,10 @@
-package io.gen2spring.mcp.app.runtime.server;
+package io.gen2spring.mcp.app.runtime.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
-import io.gen2spring.mcp.app.runtime.config.RuntimeProperties;
+import io.gen2spring.mcp.app.runtime.presentation.mcp.ManagedMcpRouter;
+import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandle;
+import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandleRegistry;
 import io.gen2spring.mcp.application.hosted.catalog.ToolCatalogService;
 import io.gen2spring.mcp.application.managed.credential.RuntimeCredentialResolver;
 import io.gen2spring.mcp.application.managed.execution.ManagedExecutionContext;

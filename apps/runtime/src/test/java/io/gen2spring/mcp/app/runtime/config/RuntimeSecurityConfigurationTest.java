@@ -1,11 +1,12 @@
-package io.gen2spring.mcp.app.runtime.security;
+package io.gen2spring.mcp.app.runtime.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 
-import io.gen2spring.mcp.app.runtime.server.RuntimeServerHandleRegistry;
+import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandleRegistry;
+import io.gen2spring.mcp.app.runtime.presentation.security.RuntimeBearerFilter;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccessAuthenticator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;

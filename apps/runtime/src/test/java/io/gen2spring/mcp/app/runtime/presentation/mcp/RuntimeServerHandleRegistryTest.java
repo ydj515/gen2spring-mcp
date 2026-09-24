@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime.server;
+package io.gen2spring.mcp.app.runtime.presentation.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
-import io.gen2spring.mcp.app.runtime.security.RuntimeBearerFilter;
+import io.gen2spring.mcp.app.runtime.presentation.security.RuntimeBearerFilter;
 import io.gen2spring.mcp.domain.platform.identity.AccountId;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance;
 import io.gen2spring.mcp.domain.platform.runtime.RuntimeInstanceId;
@@ -117,8 +117,9 @@ class RuntimeServerHandleRegistryTest {
             return RuntimeServerHandle.testing(access.instance(), () -> {});
         }, 2, Clock.fixed(NOW, ZoneOffset.UTC));
 
-        assertThrows(IllegalStateException.class,
+        IllegalStateException failedBuild = assertThrows(IllegalStateException.class,
                 () -> registry.get(access(instance(1), "a".repeat(64), "owner")));
+        assertEquals("private", failedBuild.getCause().getMessage());
         registry.get(access(instance(1), "a".repeat(64), "owner"));
         assertEquals(2, attempts.get());
 

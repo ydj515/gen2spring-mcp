@@ -144,7 +144,7 @@ class RuntimeConfiguration {
             context.init(keyManagers.getKeyManagers(), trustManagers.getTrustManagers(), null);
             return context;
         } catch (Exception failure) {
-            throw new IllegalStateException("Managed runtime TLS configuration is invalid");
+            throw new IllegalStateException("Managed runtime TLS configuration is invalid", failure);
         } finally {
             Arrays.fill(keyPassword, '\0');
             Arrays.fill(trustPassword, '\0');
@@ -166,7 +166,7 @@ class RuntimeConfiguration {
             }
             return Files.readString(path, StandardCharsets.UTF_8).strip().toCharArray();
         } catch (Exception failure) {
-            throw new IllegalStateException("Managed runtime secret configuration is invalid");
+            throw new IllegalStateException("Managed runtime secret configuration is invalid", failure);
         }
     }
 }

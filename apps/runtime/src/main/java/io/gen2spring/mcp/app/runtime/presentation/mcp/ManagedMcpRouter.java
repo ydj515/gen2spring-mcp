@@ -1,6 +1,6 @@
-package io.gen2spring.mcp.app.runtime.server;
+package io.gen2spring.mcp.app.runtime.presentation.mcp;
 
-import io.gen2spring.mcp.app.runtime.security.RuntimeBearerFilter;
+import io.gen2spring.mcp.app.runtime.presentation.security.RuntimeBearerFilter;
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import java.util.Objects;
 import java.util.Optional;
@@ -10,10 +10,10 @@ import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.servlet.function.ServerResponse;
 
-final class ManagedMcpRouter implements RouterFunction<ServerResponse> {
+public final class ManagedMcpRouter implements RouterFunction<ServerResponse> {
     private final RuntimeServerHandleRegistry handles;
 
-    ManagedMcpRouter(RuntimeServerHandleRegistry handles) {
+    public ManagedMcpRouter(RuntimeServerHandleRegistry handles) {
         this.handles = Objects.requireNonNull(handles, "handles");
     }
 

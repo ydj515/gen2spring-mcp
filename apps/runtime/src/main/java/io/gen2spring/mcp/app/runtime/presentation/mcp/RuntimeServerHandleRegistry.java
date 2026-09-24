@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.runtime.server;
+package io.gen2spring.mcp.app.runtime.presentation.mcp;
 
 import io.gen2spring.mcp.application.managed.runtime.RuntimeAccess;
 import io.gen2spring.mcp.domain.platform.runtime.ManagedRuntimeInstance.RuntimeState;
@@ -16,7 +16,7 @@ public final class RuntimeServerHandleRegistry implements AutoCloseable {
     private final Clock clock;
     private final LinkedHashMap<HandleKey, RuntimeServerHandle> handles = new LinkedHashMap<>();
 
-    RuntimeServerHandleRegistry(HandleFactory factory, int maximumSize, Clock clock) {
+    public RuntimeServerHandleRegistry(HandleFactory factory, int maximumSize, Clock clock) {
         this.factory = Objects.requireNonNull(factory, "factory");
         this.clock = Objects.requireNonNull(clock, "clock");
         if (maximumSize < 1 || maximumSize > 10_000) {
@@ -49,7 +49,7 @@ public final class RuntimeServerHandleRegistry implements AutoCloseable {
                 } catch (Error fatal) {
                     primary = fatal;
                 } catch (RuntimeException failure) {
-                    primary = new IllegalStateException("Managed runtime handle could not be created");
+                    primary = new IllegalStateException("Managed runtime handle could not be created", failure);
                 }
             }
         }
@@ -168,7 +168,7 @@ public final class RuntimeServerHandleRegistry implements AutoCloseable {
     }
 
     @FunctionalInterface
-    interface HandleFactory {
+    public interface HandleFactory {
         RuntimeServerHandle create(RuntimeAccess access);
     }
 }
