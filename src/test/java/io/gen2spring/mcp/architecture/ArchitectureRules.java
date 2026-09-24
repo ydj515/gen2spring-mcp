@@ -9,6 +9,8 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
+import com.tngtech.archunit.library.dependencies.SliceAssignment;
+import com.tngtech.archunit.library.dependencies.SliceIdentifier;
 import java.util.Arrays;
 import java.util.Set;
 
@@ -17,6 +19,18 @@ final class ArchitectureRules {
     private static final String ADAPTER = ROOT + "adapter.";
     private static final Set<String> SHARED_EMITTERS = Set.of(
             ADAPTER + "emitter.support", ADAPTER + "emitter.mcpruntime");
+
+    static final ArchRule PACKAGES_ARE_ACYCLIC = slices().assignedFrom(new SliceAssignment() {
+        @Override
+        public SliceIdentifier getIdentifierOf(JavaClass javaClass) {
+            return SliceIdentifier.of(javaClass.getPackageName());
+        }
+
+        @Override
+        public String getDescription() {
+            return "each complete production package";
+        }
+    }).should().beFreeOfCycles();
 
     static final ArchRule DOMAIN = classes().that().resideInAPackage(ROOT + "domain..")
             .should().onlyDependOnClassesThat().resideInAnyPackage(ROOT + "domain..", "java..");
@@ -39,6 +53,46 @@ final class ArchitectureRules {
     static final ArchRule APPLICATION_PORTS = classes().that().resideInAPackage(ROOT + "application..port..")
             .should().onlyDependOnClassesThat().resideInAnyPackage(
                     ROOT + "application..", ROOT + "domain..", "java..");
+
+    static final ArchRule APP_APPLICATIONS_POINT_INWARD = classes()
+            .that().resideInAPackage(ROOT + "app.*.application..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.*.application..", ROOT + "application..", ROOT + "domain..", "java..");
+
+    static final ArchRule PRESENTATION_USES_INPUT_CONTRACTS = noClasses()
+            .that().resideInAPackage(ROOT + "app.*.presentation..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.*.infrastructure..", ROOT + "app.*.config..", ROOT + "bootstrap..",
+                    ROOT + "adapter..", "..application..port.out..");
+
+    static final ArchRule INFRASTRUCTURE_DOES_NOT_USE_COMPOSITION = noClasses()
+            .that().resideInAPackage(ROOT + "app.*.infrastructure..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ROOT + "app.*.presentation..", ROOT + "app.*.config..", ROOT + "bootstrap..");
+
+    static final ArchRule APPLICATION_DOES_NOT_ACCESS_FILESYSTEM = noClasses()
+            .that().resideInAnyPackage(ROOT + "application..", ROOT + "app.*.application..")
+            .should().dependOnClassesThat().haveNameMatching(
+                    "java\\.nio\\.file\\.Files|java\\.io\\.(File|FileInputStream|FileOutputStream|FileReader|FileWriter|RandomAccessFile)");
+
+    static final ArchRule APPLICATION_DOES_NOT_CREATE_SCHEDULERS = noClasses()
+            .that().resideInAnyPackage(ROOT + "application..", ROOT + "app.*.application..")
+            .should().dependOnClassesThat().haveNameMatching(
+                    "java\\.util\\.concurrent\\.(Executors|ScheduledExecutorService|ScheduledThreadPoolExecutor)|java\\.util\\.Timer");
+
+    static final ArchRule RENDERERS_DO_NOT_USE_EMITTER_FACADES = noClasses()
+            .that().resideInAnyPackage(ADAPTER + "emitter.springai1.render..", ADAPTER + "emitter.springai2.render..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ADAPTER + "emitter.springai1", ADAPTER + "emitter.springai2");
+
+    static final ArchRule VALIDATION_PACKAGES_ARE_ACYCLIC = slices()
+            .matching(ADAPTER + "validation.(*)..").should().beFreeOfCycles();
+
+    static final ArchRule VALIDATION_HELPERS_DO_NOT_USE_PROJECT_ORCHESTRATION = noClasses()
+            .that().resideInAnyPackage(ADAPTER + "validation.process..", ADAPTER + "validation.runtime..",
+                    ADAPTER + "validation.mcp..", ADAPTER + "validation.upstream..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    ADAPTER + "validation", ADAPTER + "validation.project..");
 
     static final ArchRule FETCH_APPLICATION_POINTS_INWARD = noClasses()
             .that().resideInAPackage(ROOT + "app.fetch.application..")

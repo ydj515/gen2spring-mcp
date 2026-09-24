@@ -6,7 +6,7 @@ Managed Runtime은 검증된 Tool Catalog 하나를 활성화하여 `/mcp/{runti
 다운로드 ZIP의 독립 서버와 수명·인증·저장소가 다르며 여러 Catalog를 합치는 공개 Gateway 기능은 없다.
 Catalog 조회는 owner에게 Tool schema, HTTP binding과 실행·credential 요구사항을 제공한다.
 
-[ManagedRuntimeService](../modules/application/src/main/java/io/gen2spring/mcp/application/managed/runtime/ManagedRuntimeService.java)는
+[ManagedRuntimeService](../modules/application/src/main/java/io/gen2spring/mcp/application/managed/runtime/service/ManagedRuntimeService.java)는
 활성화·인증·해제를 담당한다. 활성화/grant token은 발급 시 한 번 전달하고 저장소에는 HMAC digest만 남긴다.
 만료와 revoke는 인증을 거부한다. API 목록과 요청 예시는 [사용자 가이드](user-guide.md#managed-runtime)에 있다.
 
@@ -19,7 +19,7 @@ Owner는 OPAQUE·Bearer·Basic credential을 생성·회전·폐기할 수 있�
 Grant는 허용 Tool 집합과 분당 호출 제한을 가진다. `tools/list`와 `tools/call` 모두 같은 visibility를 적용하고,
 사용자 argument가 credential header/query target을 덮어쓰지 못하게 한다.
 [RuntimeGrantService](../modules/application/src/main/java/io/gen2spring/mcp/application/managed/policy/RuntimeGrantService.java),
-[ManagedCredentialService](../modules/application/src/main/java/io/gen2spring/mcp/application/managed/credential/ManagedCredentialService.java)가
+[ManagedCredentialService](../modules/application/src/main/java/io/gen2spring/mcp/application/managed/credential/service/ManagedCredentialService.java)가
 제어 API의 application 경계다.
 
 ## 실행·rate·audit
@@ -45,7 +45,7 @@ compatible로 취급하는 보수적 정책이다. Input/binding/credential/정�
 
 ## Migration과 rollback
 
-[ManagedRuntimeMigrationService](../modules/application/src/main/java/io/gen2spring/mcp/application/managed/runtime/ManagedRuntimeMigrationService.java)는
+[ManagedRuntimeMigrationService](../modules/application/src/main/java/io/gen2spring/mcp/application/managed/runtime/service/ManagedRuntimeMigrationService.java)는
 현재 Catalog ID와 target checksum을 확인하고 저장소의 CAS transaction으로 전환한다.
 Breaking target 또는 target에 없는 Tool을 사용하는 active grant가 있으면 거부한다.
 

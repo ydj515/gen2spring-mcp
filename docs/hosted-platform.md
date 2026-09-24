@@ -13,7 +13,7 @@ Web의 session·CSRF와 Managed Runtime의 bearer 인증은 별도 경계다.
 
 ## 접수와 상태 전이
 
-[HostedJobService](../modules/application/src/main/java/io/gen2spring/mcp/application/hosted/job/HostedJobService.java)가
+[HostedJobService](../modules/application/src/main/java/io/gen2spring/mcp/application/hosted/job/service/HostedJobService.java)가
 작업 접수를 담당한다. 생성 요청은 owner 범위의 idempotency key와 request hash를 사용한다.
 같은 key와 payload는 기존 작업을 반환하고 다른 payload는 충돌로 거부한다.
 
@@ -33,8 +33,8 @@ PostgreSQL queue는 `FOR UPDATE SKIP LOCKED`로 작업을 선점하고 lease·at
 Heartbeat, event, 완료·artifact 게시에는 현재 claim 소유권이 필요하다. 만료된 Worker의 늦은 성공이
 새 시도의 상태를 덮어쓰지 못해야 한다. 재시도 가능 작업은 다시 QUEUED로, 소진된 작업은 안전한 실패로 처리한다.
 
-[HostedWorker](../modules/application/src/main/java/io/gen2spring/mcp/application/hosted/worker/HostedWorker.java)와
-[WorkerLeaseService](../modules/application/src/main/java/io/gen2spring/mcp/application/hosted/job/WorkerLeaseService.java)가
+[HostedWorker](../modules/application/src/main/java/io/gen2spring/mcp/application/hosted/worker/service/HostedWorker.java)와
+[WorkerLeaseService](../modules/application/src/main/java/io/gen2spring/mcp/application/hosted/job/service/WorkerLeaseService.java)가
 실행 및 복구 흐름의 시작점이다. 컨테이너 정리와 DB 완료는 같은 원자적 동작이 아니므로 claim fencing과
 잔존 실행 정리를 함께 검증한다. 단순 재기동 성공만으로 복구를 증명하지 않는다.
 

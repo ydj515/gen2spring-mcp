@@ -7,7 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
+import io.gen2spring.mcp.app.architecturefixture.application.ForbiddenApplication;
+import io.gen2spring.mcp.app.architecturefixture.infrastructure.ForbiddenInfrastructure;
+import io.gen2spring.mcp.app.architecturefixture.presentation.ForbiddenPresentation;
 import io.gen2spring.mcp.application.architecturefixture.ApplicationTarget;
+import io.gen2spring.mcp.application.architecturefixture.cycle.first.First;
+import io.gen2spring.mcp.application.architecturefixture.cycle.second.Second;
 import io.gen2spring.mcp.domain.architecturefixture.AllowedDomain;
 import io.gen2spring.mcp.domain.architecturefixture.ForbiddenDomain;
 import java.nio.file.Files;
@@ -53,6 +58,17 @@ final class ArchitectureTest {
     @Test void controllersDoNotUsePersistenceImplementations() { ArchitectureRules.CONTROLLERS_USE_APPLICATION_PORTS.check(production); }
     @Test void applicationUsesDomainAndApprovedJsonModel() { ArchitectureRules.APPLICATION.check(production); }
     @Test void applicationPortsExposeOnlyInnerContracts() { ArchitectureRules.APPLICATION_PORTS.check(production); }
+    @Test void everyProductionPackageHasAcyclicDependencies() { ArchitectureRules.PACKAGES_ARE_ACYCLIC.check(production); }
+    @Test void allAppApplicationsPointInward() { ArchitectureRules.APP_APPLICATIONS_POINT_INWARD.check(production); }
+    @Test void allPresentationUsesInputContracts() { ArchitectureRules.PRESENTATION_USES_INPUT_CONTRACTS.check(production); }
+    @Test void infrastructureDoesNotUseComposition() { ArchitectureRules.INFRASTRUCTURE_DOES_NOT_USE_COMPOSITION.check(production); }
+    @Test void applicationDoesNotAccessFilesystem() { ArchitectureRules.APPLICATION_DOES_NOT_ACCESS_FILESYSTEM.check(production); }
+    @Test void applicationDelegatesSchedulingToOutputPorts() { ArchitectureRules.APPLICATION_DOES_NOT_CREATE_SCHEDULERS.check(production); }
+    @Test void renderersDoNotDependOnEmitterFacades() { ArchitectureRules.RENDERERS_DO_NOT_USE_EMITTER_FACADES.check(production); }
+    @Test void validationPackagesHaveOneWayDependencies() {
+        ArchitectureRules.VALIDATION_PACKAGES_ARE_ACYCLIC.check(production);
+        ArchitectureRules.VALIDATION_HELPERS_DO_NOT_USE_PROJECT_ORCHESTRATION.check(production);
+    }
     @Test void persistenceAdaptersAreGroupedByFeature() {
         assertTrue(production.stream().noneMatch(type -> type.getPackageName()
                 .equals("io.gen2spring.mcp.adapter.persistence")));
@@ -79,11 +95,49 @@ final class ArchitectureTest {
     @Test void declaredProductionDependenciesPointInward() { ModuleDependencyRules.check(graph); }
 
     @Test
+    void everyModuleOwnsItsProductionPackages() {
+        String directories = System.getProperty("architecture.moduleDirectories");
+        assertTrue(directories != null && !directories.isBlank());
+        var modules = new java.util.HashSet<String>();
+        for (String line : directories.lines().toList()) {
+            String[] pair = line.split("=", 2);
+            assertTrue(modules.add(pair[0]), "Duplicate production module: " + pair[0]);
+            var paths = Arrays.stream(pair[1].split("\\|")).map(Path::of).toList();
+            ModulePackageRules.check(pair[0], new ClassFileImporter().importPaths(paths));
+        }
+        assertEquals(graph.keySet(), modules, "Package ownership must cover every production module");
+    }
+
+    @Test
+    void packageOwnershipRejectsClassesHiddenInAnotherLayerNamespace() {
+        var misplaced = new ClassFileImporter().importClasses(ApplicationTarget.class);
+        assertThrows(AssertionError.class, () -> ModulePackageRules.check(":modules:domain", misplaced));
+        assertThrows(AssertionError.class, () -> ModulePackageRules.check(":modules:unknown", misplaced));
+    }
+
+    @Test
+    void packageRuleDetectsCyclesBelowTheFeatureLevel() {
+        var cyclic = new ClassFileImporter().importClasses(First.class, Second.class);
+        assertTrue(ArchitectureRules.PACKAGES_ARE_ACYCLIC.evaluate(cyclic).hasViolation());
+    }
+
+    @Test
     void domainRuleDetectsBytecodeEdgesButIgnoresText() {
         var illegal = new ClassFileImporter().importClasses(ForbiddenDomain.class, ApplicationTarget.class);
         assertTrue(ArchitectureRules.DOMAIN.evaluate(illegal).hasViolation());
         var allowed = new ClassFileImporter().importClasses(AllowedDomain.class);
         assertFalse(ArchitectureRules.DOMAIN.evaluate(allowed).hasViolation());
+    }
+
+    @Test
+    void appRulesDetectOutputPortCompositionFilesystemAndSchedulingLeaks() {
+        var classes = new ClassFileImporter().importClasses(
+                ForbiddenPresentation.class, ForbiddenInfrastructure.class, ForbiddenApplication.class);
+        assertTrue(ArchitectureRules.PRESENTATION_USES_INPUT_CONTRACTS.evaluate(classes).hasViolation());
+        assertTrue(ArchitectureRules.INFRASTRUCTURE_DOES_NOT_USE_COMPOSITION.evaluate(classes).hasViolation());
+        assertTrue(ArchitectureRules.APP_APPLICATIONS_POINT_INWARD.evaluate(classes).hasViolation());
+        assertTrue(ArchitectureRules.APPLICATION_DOES_NOT_ACCESS_FILESYSTEM.evaluate(classes).hasViolation());
+        assertTrue(ArchitectureRules.APPLICATION_DOES_NOT_CREATE_SCHEDULERS.evaluate(classes).hasViolation());
     }
 
     @Test

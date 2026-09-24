@@ -205,6 +205,10 @@ tasks.test {
         systemProperty("architecture.productionDirectories",
             productionClasses.files.sortedBy { it.path }.joinToString("\n") { it.absolutePath })
         systemProperty("architecture.moduleGraph", productionModuleGraph.get())
+        systemProperty("architecture.moduleDirectories", productionProjects.sortedBy { it.path }.joinToString("\n") { module ->
+            val directories = module.extensions.getByType<SourceSetContainer>().named("main").get().output.classesDirs
+            "${module.path}=${directories.files.joinToString("|") { it.absolutePath }}"
+        })
     }
 }
 
