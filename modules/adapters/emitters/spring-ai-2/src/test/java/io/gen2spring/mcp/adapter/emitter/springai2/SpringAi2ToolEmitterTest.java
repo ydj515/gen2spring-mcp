@@ -3,6 +3,7 @@ package io.gen2spring.mcp.adapter.emitter.springai2;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import io.gen2spring.mcp.adapter.emitter.springai2.fixture.RendererFixtures;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -57,14 +58,14 @@ class SpringAi2ToolEmitterTest {
     @Test
     void emitsTheCharacterizedSpringAi2ToolSources() {
         Map<String, byte[]> files = new SpringAi2ToolEmitter()
-                .emit(JavaSourceRendererTest.contextWithWeatherTool())
+                .emit(RendererFixtures.contextWithWeatherTool())
                 .files();
 
         assertEquals(EXPECTED_SOURCE_PATHS, new ArrayList<>(files.keySet()));
         assertEquals(EXPECTED_SOURCE_DIGEST, checksum(files));
 
         Map<String, byte[]> project = new SpringAi2ProjectGenerator()
-                .generate(JavaSourceRendererTest.contextWithWeatherTool())
+                .generate(RendererFixtures.contextWithWeatherTool())
                 .files();
         assertEquals(expectedProjectPaths(), project.keySet().stream().sorted().toList());
         assertEquals(EXPECTED_PROJECT_DIGEST, checksum(project));

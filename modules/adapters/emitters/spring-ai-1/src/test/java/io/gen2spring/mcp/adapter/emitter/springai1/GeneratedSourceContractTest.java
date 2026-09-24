@@ -5,7 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.adapter.emitter.support.BuildProjectScaffoldRegistry;
+import io.gen2spring.mcp.adapter.emitter.springai1.fixture.RendererFixtures;
+import io.gen2spring.mcp.adapter.emitter.support.project.BuildProjectScaffoldRegistry;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedToolSources;
 import io.gen2spring.mcp.application.generation.usecase.GenerationContext;
 import io.gen2spring.mcp.domain.error.GeneratorException;
@@ -54,7 +55,7 @@ class GeneratedSourceContractTest {
                 .orElseThrow();
 
         Map<String, byte[]> files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.contextWithWeatherTool(profile))
+                .generate(RendererFixtures.contextWithWeatherTool(profile))
                 .files();
 
         assertTrue(files.keySet().containsAll(List.of(
@@ -84,7 +85,7 @@ class GeneratedSourceContractTest {
     }
 
     private GenerationContext context() {
-        return JavaSourceRendererTest.contextWithWeatherTool(
+        return RendererFixtures.contextWithWeatherTool(
                 CompatibilityProfileRegistry.defaults()
                         .find("spring-ai-1.1-java21-mvc-streamable")
                         .orElseThrow());

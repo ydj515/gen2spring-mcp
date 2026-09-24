@@ -1,20 +1,20 @@
 package io.gen2spring.mcp.adapter.emitter.springai1;
 
-import io.gen2spring.mcp.domain.tool.OutputKind;
-
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.adapter.emitter.springai1.fixture.RendererFixtures;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
-import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
+import io.gen2spring.mcp.domain.tool.OutputKind;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.ToolOutput;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -49,7 +49,7 @@ class GeneratedProjectSmokeTest {
     @Timeout(value = 5, unit = MINUTES)
     void generatedTypedOutputsRoundTripWholeAndNormalizedResponses() throws Exception {
         var generated = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(typedOutputTools()))
+                .generate(RendererFixtures.context(typedOutputTools()))
                 .files();
         Map<String, byte[]> files = new LinkedHashMap<>(generated);
         files.put(
@@ -61,7 +61,7 @@ class GeneratedProjectSmokeTest {
 
     private void assertProjectBuilds(Path project, int javaVersion) throws Exception {
         var generated = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.contextWithWeatherTool(profile(javaVersion)))
+                .generate(RendererFixtures.contextWithWeatherTool(profile(javaVersion)))
                 .files();
         Map<String, byte[]> files = new LinkedHashMap<>(generated);
         files.put(

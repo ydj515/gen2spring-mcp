@@ -5,7 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.adapter.emitter.support.BuildProjectScaffoldRegistry;
+import io.gen2spring.mcp.adapter.emitter.springai2.fixture.RendererFixtures;
+import io.gen2spring.mcp.adapter.emitter.support.project.BuildProjectScaffoldRegistry;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedToolSources;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
@@ -53,7 +54,7 @@ class GeneratedSourceContractTest {
                 .orElseThrow();
 
         Map<String, byte[]> files = new SpringAi2ProjectGenerator()
-                .generate(JavaSourceRendererTest.contextWithWeatherTool(profile))
+                .generate(RendererFixtures.contextWithWeatherTool(profile))
                 .files();
 
         assertTrue(files.keySet().containsAll(List.of(
@@ -71,14 +72,14 @@ class GeneratedSourceContractTest {
                 projectScaffolds);
 
         GeneratorException failure = assertThrows(GeneratorException.class,
-                () -> generator.generate(JavaSourceRendererTest.contextWithWeatherTool()));
+                () -> generator.generate(RendererFixtures.contextWithWeatherTool()));
 
         assertEquals("Generated project files contain duplicate paths", failure.safeMessage());
     }
 
     private Map<String, byte[]> generatedFiles() {
         return new SpringAi2ProjectGenerator()
-                .generate(JavaSourceRendererTest.contextWithWeatherTool())
+                .generate(RendererFixtures.contextWithWeatherTool())
                 .files();
     }
 }

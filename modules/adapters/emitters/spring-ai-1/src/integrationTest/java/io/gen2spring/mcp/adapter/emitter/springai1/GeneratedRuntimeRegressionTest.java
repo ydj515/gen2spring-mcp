@@ -1,32 +1,32 @@
 package io.gen2spring.mcp.adapter.emitter.springai1;
 
-import io.gen2spring.mcp.domain.tool.OutputKind;
-
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
-import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.adapter.emitter.springai1.fixture.RendererFixtures;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
+import io.gen2spring.mcp.domain.execution.RetryPolicy;
+import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.CompositionKind;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.HttpMethod;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaComposition;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
-import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
-import io.gen2spring.mcp.domain.tool.ToolInput;
+import io.gen2spring.mcp.domain.tool.OutputKind;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
 import io.gen2spring.mcp.domain.tool.SecretBinding;
+import io.gen2spring.mcp.domain.tool.ToolDefinition;
+import io.gen2spring.mcp.domain.tool.ToolInput;
 import io.gen2spring.mcp.domain.tool.ToolOutput;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -40,7 +40,7 @@ class GeneratedRuntimeRegressionTest {
     @Test
     void generatedImplementationModesBuildAndStart() throws Exception {
         for (String mode : List.of("SPRING_AI_ANNOTATIONS", "MCP_JAVA_SDK")) {
-            var original = JavaSourceRendererTest.contextWithWeatherTool();
+            var original = RendererFixtures.contextWithWeatherTool();
             var request = original.request();
             var selected = new io.gen2spring.mcp.application.generation.command.GenerationCommand(
                     request.project(), request.provider(), request.domain(), request.targetProfileId(),
@@ -174,7 +174,7 @@ class GeneratedRuntimeRegressionTest {
                         false, false, normalization),
                 List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(
+                .generate(RendererFixtures.context(
                         List.of(success, providerFailure, internalFailure, fatalFailure)))
                 .files();
         java.util.Map<String, byte[]> filesWithMcpTest = new java.util.LinkedHashMap<>(files);
@@ -204,8 +204,8 @@ class GeneratedRuntimeRegressionTest {
     @Timeout(value = 5, unit = MINUTES)
     void generatedResponseNormalizerEnforcesTheContract() throws Exception {
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(
-                        JavaSourceRendererTest.weatherTool(JavaSourceRendererTest.normalization()))))
+                .generate(RendererFixtures.context(List.of(
+                        RendererFixtures.weatherTool(RendererFixtures.normalization()))))
                 .files();
         java.util.Map<String, byte[]> filesWithNormalizerTest = new java.util.LinkedHashMap<>(files);
         filesWithNormalizerTest.put(
@@ -221,8 +221,8 @@ class GeneratedRuntimeRegressionTest {
         ResponseNormalizationPolicy exponent = new ResponseNormalizationPolicy(
                 null, "/code", List.of(new BigDecimal("1e1000000")), null, null);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(
-                        JavaSourceRendererTest.weatherTool(exponent))))
+                .generate(RendererFixtures.context(List.of(
+                        RendererFixtures.weatherTool(exponent))))
                 .files();
         String metadataPath = "src/main/java/com/example/weather/generated/metadata/WeatherOperations.java";
         String metadata = new String(files.get(metadataPath), java.nio.charset.StandardCharsets.UTF_8);
@@ -236,8 +236,8 @@ class GeneratedRuntimeRegressionTest {
     @Timeout(value = 5, unit = MINUTES)
     void generatedExecutorMapsUpstreamFailures() throws Exception {
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(
-                        JavaSourceRendererTest.weatherTool(JavaSourceRendererTest.normalization()))))
+                .generate(RendererFixtures.context(List.of(
+                        RendererFixtures.weatherTool(RendererFixtures.normalization()))))
                 .files();
         java.util.Map<String, byte[]> filesWithExecutorTest = new java.util.LinkedHashMap<>(files);
         filesWithExecutorTest.put(
@@ -253,7 +253,7 @@ class GeneratedRuntimeRegressionTest {
     @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedExecutorRetriesBoundedRequestsWithinOneDeadline() throws Exception {
-        ToolDefinition base = JavaSourceRendererTest.weatherTool();
+        ToolDefinition base = RendererFixtures.weatherTool();
         var execution = base.execution();
         var retry = new RetryPolicy(List.of(429, 503), true, 3, 100, 1_000, true);
         var tool = new ToolDefinition(
@@ -264,7 +264,7 @@ class GeneratedRuntimeRegressionTest {
                         execution.responseNormalization(), retry),
                 base.secretBindings(), base.output());
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .generate(RendererFixtures.context(List.of(tool)))
                 .files();
         var withRetryTest = new java.util.LinkedHashMap<>(files);
         withRetryTest.put(
@@ -277,7 +277,7 @@ class GeneratedRuntimeRegressionTest {
     @Test
     @Timeout(value = 5, unit = MINUTES)
     void generatedExecutorRetriesAndAggregatesPaginatedResponses() throws Exception {
-        ToolDefinition base = JavaSourceRendererTest.weatherTool();
+        ToolDefinition base = RendererFixtures.weatherTool();
         ApiSchema item = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null, null,
                 null, Map.of("id", new ApiSchema(
@@ -305,7 +305,7 @@ class GeneratedRuntimeRegressionTest {
                 base.secretBindings(), new ToolOutput(
                         OutputKind.GENERIC_JSON, response, null));
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .generate(RendererFixtures.context(List.of(tool)))
                 .files();
         var withPaginationTest = new java.util.LinkedHashMap<>(files);
         withPaginationTest.put(
@@ -365,7 +365,7 @@ class GeneratedRuntimeRegressionTest {
                 List.of(),
                 OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(enumTool, normalTool)))
+                .generate(RendererFixtures.context(List.of(enumTool, normalTool)))
                 .files();
         java.util.Map<String, byte[]> filesWithCallbackTest = new java.util.LinkedHashMap<>(files);
         filesWithCallbackTest.put(
@@ -393,7 +393,7 @@ class GeneratedRuntimeRegressionTest {
                         List.of(new ParameterBinding("details", ParameterLocation.BODY, "body"))),
                 List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .generate(RendererFixtures.context(List.of(tool)))
                 .files();
         java.util.Map<String, byte[]> filesWithCallbackTest = new java.util.LinkedHashMap<>(files);
         filesWithCallbackTest.put(
@@ -434,7 +434,7 @@ class GeneratedRuntimeRegressionTest {
                         List.of(new ParameterBinding("body", ParameterLocation.BODY, "body"))),
                 List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(detailsTool, tagsTool)))
+                .generate(RendererFixtures.context(List.of(detailsTool, tagsTool)))
                 .files();
         java.util.Map<String, byte[]> filesWithBodyTest = new java.util.LinkedHashMap<>(files);
         filesWithBodyTest.put(
@@ -507,7 +507,7 @@ class GeneratedRuntimeRegressionTest {
                         true, true),
                 List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(tool, optionalTool, boundedTool)))
+                .generate(RendererFixtures.context(List.of(tool, optionalTool, boundedTool)))
                 .files();
         java.util.Map<String, byte[]> filesWithBodyTest = new java.util.LinkedHashMap<>(files);
         filesWithBodyTest.put(
@@ -531,7 +531,7 @@ class GeneratedRuntimeRegressionTest {
                         List.of(new ParameterBinding("resourceId", ParameterLocation.PATH, "resourceId"))),
                 List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .generate(RendererFixtures.context(List.of(tool)))
                 .files();
         java.util.Map<String, byte[]> filesWithPathTest = new java.util.LinkedHashMap<>(files);
         filesWithPathTest.put(
@@ -563,7 +563,7 @@ class GeneratedRuntimeRegressionTest {
                         true),
                 List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .generate(RendererFixtures.context(List.of(tool)))
                 .files();
         java.util.Map<String, byte[]> filesWithBodyTest = new java.util.LinkedHashMap<>(files);
         filesWithBodyTest.put(
@@ -587,7 +587,7 @@ class GeneratedRuntimeRegressionTest {
                         HttpMethod.POST, URI.create("https://api.example.test"), "/required", List.of(), true, true),
                 List.of(), OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(optionalTool, requiredTool)))
+                .generate(RendererFixtures.context(List.of(optionalTool, requiredTool)))
                 .files();
         java.util.Map<String, byte[]> filesWithBodyTest = new java.util.LinkedHashMap<>(files);
         filesWithBodyTest.put(
@@ -607,7 +607,7 @@ class GeneratedRuntimeRegressionTest {
                 List.of(new SecretBinding("API_KEY", "api_key", ParameterLocation.QUERY, "api_key", true)),
                 OutputKind.GENERIC_JSON);
         var files = new SpringAi1ProjectGenerator()
-                .generate(JavaSourceRendererTest.context(List.of(tool)))
+                .generate(RendererFixtures.context(List.of(tool)))
                 .files();
 
         assertTrue(new String(files.get("src/main/resources/application.yml"), java.nio.charset.StandardCharsets.UTF_8)

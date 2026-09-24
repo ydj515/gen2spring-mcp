@@ -4,6 +4,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.adapter.emitter.springai1.fixture.RendererFixtures;
+import io.gen2spring.mcp.adapter.emitter.springai1.render.JavaSourceRenderer;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -12,7 +14,7 @@ class GeneratedSecretSafetyTest {
     @Test
     void doesNotExposeServiceKeyAsAToolParameterOrInputField() {
         for (CompatibilityProfile profile : profiles()) {
-            var files = new JavaSourceRenderer(profile).render(JavaSourceRendererTest.contextWithWeatherTool(profile));
+            var files = new JavaSourceRenderer(profile).render(RendererFixtures.contextWithWeatherTool(profile));
             String toolSource = utf8(files.get(
                     "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
             String inputSource = utf8(files.get(
@@ -28,7 +30,7 @@ class GeneratedSecretSafetyTest {
     @Test
     void resolvesSecretsOnlyThroughEnvironmentBackedProviderProperties() {
         for (CompatibilityProfile profile : profiles()) {
-            var files = new JavaSourceRenderer(profile).render(JavaSourceRendererTest.contextWithWeatherTool(profile));
+            var files = new JavaSourceRenderer(profile).render(RendererFixtures.contextWithWeatherTool(profile));
             String metadata = utf8(files.get(
                     "src/main/java/com/example/weather/generated/metadata/WeatherOperations.java"));
             String runtime = utf8(files.get(
@@ -45,7 +47,7 @@ class GeneratedSecretSafetyTest {
     @Test
     void emitsErrorTelemetryWithoutExceptionEventsOrSensitiveInputs() {
         for (CompatibilityProfile profile : profiles()) {
-            var files = new JavaSourceRenderer(profile).render(JavaSourceRendererTest.contextWithWeatherTool(profile));
+            var files = new JavaSourceRenderer(profile).render(RendererFixtures.contextWithWeatherTool(profile));
             String telemetry = utf8(files.get(
                     "src/main/java/com/example/weather/runtime/RuntimeTelemetry.java"));
 

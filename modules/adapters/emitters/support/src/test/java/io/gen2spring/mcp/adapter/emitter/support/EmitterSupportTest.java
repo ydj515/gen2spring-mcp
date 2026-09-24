@@ -3,6 +3,7 @@ package io.gen2spring.mcp.adapter.emitter.support;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import io.gen2spring.mcp.adapter.emitter.support.source.JavaStringLiteral;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Map;

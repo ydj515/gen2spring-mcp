@@ -7,13 +7,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.gen2spring.mcp.adapter.emitter.springai2.fixture.RendererFixtures;
+import io.gen2spring.mcp.adapter.emitter.springai2.render.JavaSourceRenderer;
+import io.gen2spring.mcp.adapter.emitter.springai2.render.ProjectFileRenderer;
 import io.gen2spring.mcp.domain.error.GeneratorException;
+import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ParameterLocation;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.SchemaType;
-import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
-import io.gen2spring.mcp.domain.tool.ToolInput;
 import io.gen2spring.mcp.domain.tool.ParameterBinding;
+import io.gen2spring.mcp.domain.tool.ToolInput;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -43,7 +46,7 @@ class Task5ReviewRegressionTest {
 
     @Test
     void catchesTheJackson3RuntimeParseExceptionContract() {
-        String runtime = utf8(sourceRenderer.render(JavaSourceRendererTest.contextWithWeatherTool()).get(
+        String runtime = utf8(sourceRenderer.render(RendererFixtures.contextWithWeatherTool()).get(
                 "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java"));
 
         assertTrue(runtime.contains("import tools.jackson.core.JacksonException;"));
@@ -54,7 +57,7 @@ class Task5ReviewRegressionTest {
 
     @Test
     void keepsValidatedToolBeansProxyable() {
-        String tool = utf8(sourceRenderer.render(JavaSourceRendererTest.contextWithWeatherTool()).get(
+        String tool = utf8(sourceRenderer.render(RendererFixtures.contextWithWeatherTool()).get(
                 "src/main/java/com/example/weather/generated/tool/WeatherMcpTools.java"));
 
         assertTrue(tool.contains("public class WeatherMcpTools"));
@@ -63,7 +66,7 @@ class Task5ReviewRegressionTest {
 
     @Test
     void emitsBoundedConnectReadAndTotalTimeoutsWithASlowBodyRegression() {
-        var files = sourceRenderer.render(JavaSourceRendererTest.contextWithWeatherTool());
+        var files = sourceRenderer.render(RendererFixtures.contextWithWeatherTool());
         String runtime = utf8(files.get(
                 "src/main/java/com/example/weather/runtime/OpenApiOperationExecutor.java"));
         String contextTest = utf8(files.get(
@@ -81,29 +84,29 @@ class Task5ReviewRegressionTest {
 
     @Test
     void rejectsNestedModelNamesThatCollideWithTheOperationInputRecord() {
-        ApiSchema city = JavaSourceRendererTest.schema(
+        ApiSchema city = RendererFixtures.schema(
                 SchemaType.STRING, null, null, null, null, null, null, List.of());
         ApiSchema object = new ApiSchema(
                 SchemaType.OBJECT, null, false, List.of(), null, null, null, null,
                 null, null, Map.of("city", city), List.of("city"), null, true, List.of());
-        var tool = JavaSourceRendererTest.weatherTool(
+        var tool = RendererFixtures.weatherTool(
                 List.of(new ToolInput("input", "input", "Input", true, object)),
                 List.of(new ParameterBinding("input", ParameterLocation.BODY, "body")));
 
         assertThrows(GeneratorException.class,
-                () -> sourceRenderer.render(JavaSourceRendererTest.context(List.of(tool))));
+                () -> sourceRenderer.render(RendererFixtures.context(List.of(tool))));
     }
 
     @Test
     void rejectsFlatInputNamesThatSpringAiCannotPreserveInToolSchema() {
-        ApiSchema string = JavaSourceRendererTest.schema(
+        ApiSchema string = RendererFixtures.schema(
                 SchemaType.STRING, null, null, null, null, null, null, List.of());
-        var tool = JavaSourceRendererTest.weatherTool(
+        var tool = RendererFixtures.weatherTool(
                 List.of(new ToolInput("postal-code", "postal-code", "Postal code", true, string)),
                 List.of(new ParameterBinding("postal-code", ParameterLocation.QUERY, "postal-code")));
 
         GeneratorException exception = assertThrows(GeneratorException.class,
-                () -> sourceRenderer.render(JavaSourceRendererTest.context(List.of(tool))));
+                () -> sourceRenderer.render(RendererFixtures.context(List.of(tool))));
 
         assertTrue(exception.safeMessage().contains("Spring AI Tool schema"));
     }
@@ -113,9 +116,9 @@ class Task5ReviewRegressionTest {
         CompatibilityProfile java17 = profile(17);
         CompatibilityProfile java21 = profile(21);
         var java17Files = new JavaSourceRenderer(java17)
-                .render(JavaSourceRendererTest.contextWithWeatherTool(java17));
+                .render(RendererFixtures.contextWithWeatherTool(java17));
         var java21Files = new JavaSourceRenderer(java21)
-                .render(JavaSourceRendererTest.contextWithWeatherTool(java21));
+                .render(RendererFixtures.contextWithWeatherTool(java21));
 
         assertTrue(java17Files.keySet().equals(java21Files.keySet()));
         for (String path : java17Files.keySet()) {
