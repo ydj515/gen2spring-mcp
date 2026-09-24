@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.worker.execution;
+package io.gen2spring.mcp.app.worker.application.worker.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

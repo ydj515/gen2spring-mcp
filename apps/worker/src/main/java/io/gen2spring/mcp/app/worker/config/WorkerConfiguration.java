@@ -9,9 +9,11 @@ import io.gen2spring.mcp.adapter.persistence.PostgresJobQueue;
 import io.gen2spring.mcp.adapter.persistence.PostgresArtifactRetentionStore;
 import io.gen2spring.mcp.adapter.persistence.PostgresWorkerHeartbeatStore;
 import io.gen2spring.mcp.adapter.storage.S3ObjectStorage;
-import io.gen2spring.mcp.app.worker.execution.WorkerHeartbeatPublisher;
-import io.gen2spring.mcp.app.worker.execution.WorkerLoop;
-import io.gen2spring.mcp.app.worker.execution.WorkerReadiness;
+import io.gen2spring.mcp.app.worker.application.worker.port.in.WorkerTasks;
+import io.gen2spring.mcp.app.worker.application.worker.service.WorkerHeartbeatPublisher;
+import io.gen2spring.mcp.app.worker.application.worker.service.WorkerTaskService;
+import io.gen2spring.mcp.app.worker.infrastructure.readiness.WorkerReadiness;
+import io.gen2spring.mcp.app.worker.infrastructure.scheduling.WorkerLoop;
 import io.gen2spring.mcp.application.hosted.job.JobQueue;
 import io.gen2spring.mcp.application.hosted.job.WorkerId;
 import io.gen2spring.mcp.application.hosted.job.WorkerLeaseService;
@@ -169,9 +171,8 @@ class WorkerConfiguration {
                 properties.artifactRetention());
     }
 
-    @Bean(initMethod = "start", destroyMethod = "close")
-    WorkerLoop workerLoop(
-            WorkerReadiness workerReadiness,
+    @Bean
+    WorkerTasks workerTasks(
             HostedWorker hostedWorker,
             WorkerHeartbeatStore workerHeartbeatStore,
             JobQueue jobQueue,
@@ -183,16 +184,19 @@ class WorkerConfiguration {
                 workerHeartbeatStore, workerId, workerClock, Duration.ofSeconds(10));
         WorkerLeaseService leases = new WorkerLeaseService(
                 jobQueue, workerClock, properties.leaseDuration(), 3);
+        return new WorkerTaskService(hostedWorker, heartbeats, leases, artifactRetentionService);
+    }
+
+    @Bean(initMethod = "start", destroyMethod = "close")
+    WorkerLoop workerLoop(
+            WorkerReadiness workerReadiness,
+            WorkerTasks workerTasks,
+            WorkerProperties properties) {
         return new WorkerLoop(
                 workerReadiness,
-                () -> hostedWorker.pollOnce() != HostedWorker.PollResult.EMPTY,
+                workerTasks,
                 properties.pollInterval(),
-                heartbeats::publishIfDue,
                 Duration.ofSeconds(10),
-                () -> {
-                    leases.recoverExpired();
-                    artifactRetentionService.sweep(100);
-                },
                 Duration.ofSeconds(10));
     }
 

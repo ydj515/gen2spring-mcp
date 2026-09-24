@@ -50,11 +50,13 @@ modules/
 | Import Runner | `job` |
 | Provider Egress | `presentation/provider`, `application/provider`, `infrastructure/client/provider`, `config` |
 | Runtime | `config`, `security`, `server` |
-| Worker | `config`, `execution` |
+| Worker | `application/worker`, `infrastructure/readiness`, `infrastructure/scheduling`, `config` |
 
 앱 루트에는 실행 진입점을 둔다. transport 구현과 package-private 협력자는 같은 책임 패키지에 두고,
 다른 패키지에 필요한 facade만 공개한다. 파일 수나 줄 수를 맞추기 위해 패키지를 나누지 않는다.
 각 앱의 `*PackageArchitectureTest`가 책임 패키지와 진입점 위치를 검사한다.
+Worker의 application은 작업 순서를 소유하며 scheduling adapter는 input port를 통해 호출한다.
+준비 상태의 DB·S3·Docker 검사는 infrastructure에 두고 config에서 조립한다.
 
 ## 구현 탐색 시작점
 

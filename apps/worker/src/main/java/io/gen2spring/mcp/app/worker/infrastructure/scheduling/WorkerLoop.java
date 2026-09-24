@@ -1,5 +1,7 @@
-package io.gen2spring.mcp.app.worker.execution;
+package io.gen2spring.mcp.app.worker.infrastructure.scheduling;
 
+import io.gen2spring.mcp.app.worker.application.worker.port.in.WorkerTasks;
+import io.gen2spring.mcp.app.worker.infrastructure.readiness.WorkerReadiness;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -8,44 +10,25 @@ public final class WorkerLoop implements AutoCloseable {
     private static final Duration CLOSE_TIMEOUT = Duration.ofSeconds(5);
 
     private final WorkerReadiness readiness;
-    private final Poller poller;
+    private final WorkerTasks tasks;
     private final Duration idleDelay;
-    private final Runnable heartbeat;
     private final Duration heartbeatInterval;
-    private final Runnable maintenance;
     private final Duration maintenanceInterval;
     private final AtomicBoolean running = new AtomicBoolean();
     private volatile Thread pollThread;
     private volatile Thread heartbeatThread;
     private volatile Thread maintenanceThread;
 
-    public WorkerLoop(WorkerReadiness readiness, Poller poller, Duration idleDelay) {
-        this(readiness, poller, idleDelay, () -> {}, Duration.ofSeconds(10), () -> {}, Duration.ofSeconds(10));
-    }
-
     public WorkerLoop(
             WorkerReadiness readiness,
-            Poller poller,
+            WorkerTasks tasks,
             Duration idleDelay,
-            Runnable heartbeat,
-            Duration heartbeatInterval) {
-        this(readiness, poller, idleDelay, heartbeat, heartbeatInterval, () -> {}, Duration.ofSeconds(10));
-    }
-
-    public WorkerLoop(
-            WorkerReadiness readiness,
-            Poller poller,
-            Duration idleDelay,
-            Runnable heartbeat,
             Duration heartbeatInterval,
-            Runnable maintenance,
             Duration maintenanceInterval) {
         this.readiness = Objects.requireNonNull(readiness, "readiness");
-        this.poller = Objects.requireNonNull(poller, "poller");
+        this.tasks = Objects.requireNonNull(tasks, "tasks");
         this.idleDelay = Objects.requireNonNull(idleDelay, "idleDelay");
-        this.heartbeat = Objects.requireNonNull(heartbeat, "heartbeat");
         this.heartbeatInterval = Objects.requireNonNull(heartbeatInterval, "heartbeatInterval");
-        this.maintenance = Objects.requireNonNull(maintenance, "maintenance");
         this.maintenanceInterval = Objects.requireNonNull(maintenanceInterval, "maintenanceInterval");
         if (idleDelay.isZero()
                 || idleDelay.isNegative()
@@ -69,10 +52,10 @@ public final class WorkerLoop implements AutoCloseable {
         pollThread = Thread.ofPlatform().name("gen2spring-hosted-worker").unstarted(this::runPoller);
         heartbeatThread = Thread.ofPlatform()
                 .name("gen2spring-hosted-heartbeat")
-                .unstarted(() -> runScheduled(heartbeat, heartbeatInterval));
+                .unstarted(() -> runScheduled(tasks::heartbeat, heartbeatInterval));
         maintenanceThread = Thread.ofPlatform()
                 .name("gen2spring-hosted-maintenance")
-                .unstarted(() -> runScheduled(maintenance, maintenanceInterval));
+                .unstarted(() -> runScheduled(tasks::maintain, maintenanceInterval));
         pollThread.start();
         heartbeatThread.start();
         maintenanceThread.start();
@@ -93,7 +76,7 @@ public final class WorkerLoop implements AutoCloseable {
             while (running.get()) {
                 boolean worked;
                 try {
-                    worked = poller.poll();
+                    worked = tasks.poll();
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     break;
@@ -187,10 +170,5 @@ public final class WorkerLoop implements AutoCloseable {
         if (thread != null && thread != Thread.currentThread()) {
             thread.interrupt();
         }
-    }
-
-    @FunctionalInterface
-    public interface Poller {
-        boolean poll() throws InterruptedException;
     }
 }

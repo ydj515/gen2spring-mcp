@@ -8,8 +8,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.gen2spring.mcp.adapter.container.DockerCommandRunner;
-import io.gen2spring.mcp.app.worker.execution.WorkerReadiness;
-import io.gen2spring.mcp.app.worker.execution.WorkerStartupFailure;
+import io.gen2spring.mcp.app.worker.infrastructure.readiness.WorkerReadiness;
+import io.gen2spring.mcp.app.worker.infrastructure.readiness.WorkerStartupFailure;
 import java.net.URI;
 import java.nio.file.Path;
 import java.sql.Connection;

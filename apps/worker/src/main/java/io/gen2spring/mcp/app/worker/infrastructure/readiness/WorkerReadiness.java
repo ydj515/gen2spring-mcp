@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.worker.execution;
+package io.gen2spring.mcp.app.worker.infrastructure.readiness;
 
 import java.util.List;
 import java.util.Objects;
@@ -20,8 +20,11 @@ public final class WorkerReadiness {
             }
         } catch (Error fatal) {
             throw fatal;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new WorkerStartupFailure(interrupted);
         } catch (Exception failure) {
-            throw new WorkerStartupFailure();
+            throw new WorkerStartupFailure(failure);
         }
     }
 
