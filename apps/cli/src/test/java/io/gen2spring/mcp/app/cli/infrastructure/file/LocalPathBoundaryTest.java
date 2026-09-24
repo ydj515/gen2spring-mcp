@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.cli.command;
+package io.gen2spring.mcp.app.cli.infrastructure.file;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

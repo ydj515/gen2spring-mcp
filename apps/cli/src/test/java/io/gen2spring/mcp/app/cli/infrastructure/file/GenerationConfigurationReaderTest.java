@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.cli.command;
+package io.gen2spring.mcp.app.cli.infrastructure.file;
 
 import static io.gen2spring.mcp.domain.tool.ParameterSource.SERVER_SECRET;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.gen2spring.mcp.app.cli.error.CliConfigurationException;
+import io.gen2spring.mcp.app.cli.application.exception.CliConfigurationException;
 
 import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;

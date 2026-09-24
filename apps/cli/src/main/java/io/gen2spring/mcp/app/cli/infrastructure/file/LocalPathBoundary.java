@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.cli.command;
+package io.gen2spring.mcp.app.cli.infrastructure.file;
 
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
@@ -6,6 +6,7 @@ import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.gen2spring.mcp.adapter.filesystem.StablePathIdentity;
+import io.gen2spring.mcp.app.cli.application.port.out.CliFilePort;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -414,7 +415,7 @@ final class LocalPathBoundary {
         }
     }
 
-    final class VerifiedCopy implements AutoCloseable {
+    final class VerifiedCopy implements CliFilePort.SpecificationCopy {
         private final Path directory;
         private final StablePathIdentity directoryKey;
         private final RegularFile file;
@@ -425,7 +426,8 @@ final class LocalPathBoundary {
             this.file = file;
         }
 
-        Path path() {
+        @Override
+        public Path path() {
             file.verifyStable();
             return file.path();
         }

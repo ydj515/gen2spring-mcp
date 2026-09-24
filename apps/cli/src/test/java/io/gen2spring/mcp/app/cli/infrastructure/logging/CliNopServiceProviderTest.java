@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.cli.output;
+package io.gen2spring.mcp.app.cli.infrastructure.logging;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

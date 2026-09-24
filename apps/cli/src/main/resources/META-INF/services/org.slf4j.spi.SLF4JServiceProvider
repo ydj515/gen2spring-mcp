@@ -1,1 +1,1 @@
-io.gen2spring.mcp.app.cli.output.CliNopServiceProvider
+io.gen2spring.mcp.app.cli.infrastructure.logging.CliNopServiceProvider

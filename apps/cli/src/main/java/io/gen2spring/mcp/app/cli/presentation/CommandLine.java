@@ -1,6 +1,5 @@
-package io.gen2spring.mcp.app.cli.command;
+package io.gen2spring.mcp.app.cli.presentation;
 
-import io.gen2spring.mcp.app.cli.error.CliUsageException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;

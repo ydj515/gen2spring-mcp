@@ -132,7 +132,7 @@ class InstalledCliTest {
 
         assertTrue(readme.lines().count() <= 200, "Root README should remain a concise landing page");
         assertTrue(readme.contains("[사용자 가이드](docs/user-guide.md)"));
-        assertTrue(readme.contains("## 5분 안에 시작하기"));
+        assertTrue(readme.contains("## 주요 기능"));
         assertTrue(readme.contains("## 문서"));
 
         assertTrue(userGuide.contains("spring-ai-1.1-java17-mvc-streamable"));
@@ -185,13 +185,13 @@ class InstalledCliTest {
         assertTrue(userGuide.contains("`bin/java.exe`"));
         assertTrue(userGuide.contains("https://github.com/ydj515/gen2spring-mcp/issues/2"));
         assertFalse(userGuide.contains("UI operation editor complete"));
-        assertTrue(readme.contains("OpenAPI 3.0.x와 3.1.x"));
-        assertTrue(readme.contains("파일 업로드, API endpoint 선택, 생성 설정의 세 단계"));
+        assertTrue(readme.contains("OpenAPI 3.0·3.1 명세"));
+        assertTrue(readme.contains("OpenAPI 명세 → API 선택·도구 설정 → 서버 코드 생성·검증 → 프로젝트 ZIP"));
         assertTrue(userGuide.contains("OpenAPI 3.0.x와 3.1.x"));
-        assertTrue(userGuide.contains("API endpoint 선택, 생성 설정의 세 단계"));
+        assertTrue(userGuide.contains("OpenAPI 파일, Endpoint 선택, 생성 설정, 설정 검증 및 프로젝트 생성, 생성 진행의 5단계"));
         assertTrue(userGuide.contains("지원 불가 항목은 이유와 함께 비활성화"));
         assertTrue(userGuide.contains("https://spec.openapis.org/oas/3.1/dialect/base"));
-        assertTrue(readme.contains("bounded `allOf`·`oneOf`·`anyOf`"));
+        assertTrue(readme.contains("[프로젝트 구조](docs/project-structure.md)"));
         assertTrue(userGuide.contains("optional nullable query/header"));
         assertTrue(userGuide.contains("nullable root request body"));
         assertTrue(userGuide.contains("`maxItems` 256"));
@@ -212,9 +212,11 @@ class InstalledCliTest {
         assertTrue(prd.contains("FR-5.3 구현 상태: 완료"));
         assertTrue(prd.contains("FR-5.4 구현 상태: 완료"));
         assertTrue(prd.contains("플랫폼 검증 상태: Linux와 Windows 완료"));
-        assertTrue(readme.contains("단일 immutable Tool Catalog"));
-        assertTrue(readme.contains("OPAQUE·Bearer·Basic credential"));
-        assertTrue(readme.contains("Gateway가 아니다"));
+        assertTrue(readme.contains("Hosted 운영"));
+        assertTrue(readme.contains("[Hosted 배포 가이드](deploy/hosted/README.md)"));
+        assertTrue(userGuide.contains("immutable Tool Catalog 하나"));
+        assertTrue(userGuide.contains("OPAQUE·Bearer·Basic credential"));
+        assertTrue(userGuide.contains("공개 Gateway, OAuth2 credential acquisition, billing은 제공하지 않으며"));
         assertTrue(userGuide.contains("POST /api/tool-catalogs/{catalogId}/runtimes"));
         assertTrue(userGuide.contains("POST /api/runtimes/{runtimeId}/revocation"));
         assertTrue(userGuide.contains("POST /api/credentials"));

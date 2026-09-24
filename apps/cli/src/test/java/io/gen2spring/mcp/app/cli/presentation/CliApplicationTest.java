@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.cli.command;
+package io.gen2spring.mcp.app.cli.presentation;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.ARTIFACT_PACKAGE_FAILED;
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.COMPILE_FAILED;
@@ -13,6 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gen2spring.mcp.app.cli.application.CliUseCases;
+import io.gen2spring.mcp.app.cli.infrastructure.file.GenerationConfigurationReader;
+import io.gen2spring.mcp.app.cli.infrastructure.file.LocalCliFiles;
 import io.gen2spring.mcp.domain.error.GeneratorErrorCode;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.usecase.GenerationOutcome;
@@ -24,6 +27,7 @@ import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -123,13 +127,13 @@ class CliApplicationTest {
                 "legacy-java17.yaml", "/config/weather-generation-java17.yaml");
         Path output = safeTemp.resolve("legacy-java17-output");
         boolean[] executorCalled = {false};
-        var application = new CliApplication(
-                new CommandLine(), new GenerationConfigurationReader(CompatibilityProfileRegistry.defaults()),
-                unusedAnalyzer(), (spec, request, target) -> {
+        CompatibilityProfileRegistry restricted = CompatibilityProfileRegistry.of(List.of(CompatibilityProfile.p0()));
+        var application = new CliApplication(new CommandLine(), new CliUseCases(
+                new GenerationConfigurationReader(restricted), new LocalCliFiles(JSON), unusedAnalyzer(),
+                (spec, request, target) -> {
                     executorCalled[0] = true;
                     return new GenerationOutcome(target.toAbsolutePath().normalize(), null, UNVERIFIED, "checksum");
-                },
-                CompatibilityProfile.p0(), JSON);
+                }, restricted), JSON);
 
         JsonNode profiles = JSON.readTree(run(application, "profiles").stdout()).path("profiles");
         var generation = run(application, "generate", "--spec", specification.toString(),
@@ -180,13 +184,36 @@ class CliApplicationTest {
     }
 
     @Test
+    void inspectRejectsAnOutputParentReplacedDuringAnalysis() throws Exception {
+        Path safeTemp = tempDir.toRealPath();
+        Path specification = Files.writeString(safeTemp.resolve("weather.yaml"), simpleSpecification());
+        Path outputParent = Files.createDirectory(safeTemp.resolve("output"));
+        Path output = outputParent.resolve("analysis.json");
+        var app = application((path, maxBytes) -> {
+            try {
+                Files.move(outputParent, safeTemp.resolve("moved-output"));
+                Files.createDirectory(outputParent);
+            } catch (IOException exception) {
+                throw new UncheckedIOException(exception);
+            }
+            return new SpecificationAnalyzer.AnalysisResult(emptyDocument(), new byte[0]);
+        }, unusedGenerator());
+
+        var result = run(app, "inspect", "--spec", specification.toString(), "--output", output.toString());
+
+        assertEquals(2, result.exitCode());
+        assertEquals("", result.stdout());
+        assertFalse(Files.exists(output));
+    }
+
+    @Test
     void inspectUsesAndRemovesAnOwnerOnlyPrivateStagingDirectory() throws Exception {
         Path safeTemp = tempDir.toRealPath();
         Path specification = Files.writeString(safeTemp.resolve("private-staging.yaml"), simpleSpecification());
         Path output = safeTemp.resolve("private-staging.json");
         AtomicReference<Path> stagingPath = new AtomicReference<>();
         AtomicReference<Boolean> ownerOnlyAccess = new AtomicReference<>();
-        var hook = new CliApplication.PublicationHook() {
+        var hook = new LocalCliFiles.PublicationHook() {
             @Override
             public void afterStagingIdentityRecorded(Path staging) throws IOException {
                 stagingPath.set(staging);
@@ -226,7 +253,7 @@ class CliApplicationTest {
         Path specification = Files.writeString(safeTemp.resolve("post-link-failure.yaml"), simpleSpecification());
         Path output = safeTemp.resolve("post-link-failure.json");
         AtomicReference<Path> stagingPath = new AtomicReference<>();
-        var hook = new CliApplication.PublicationHook() {
+        var hook = new LocalCliFiles.PublicationHook() {
             @Override
             public void afterTargetLinked(Path target, Path staging) throws IOException {
                 stagingPath.set(staging);
@@ -249,7 +276,7 @@ class CliApplicationTest {
         Path specification = Files.writeString(safeTemp.resolve("staging-race.yaml"), simpleSpecification());
         Path output = safeTemp.resolve("staging-race.json");
         AtomicReference<Path> stagingPath = new AtomicReference<>();
-        var hook = new CliApplication.PublicationHook() {
+        var hook = new LocalCliFiles.PublicationHook() {
             @Override
             public void afterStagingIdentityRecorded(Path staging) throws IOException {
                 stagingPath.set(staging);
@@ -276,7 +303,7 @@ class CliApplicationTest {
         Path output = safeTemp.resolve("target-race.json");
         AtomicReference<Path> stagingPath = new AtomicReference<>();
         AtomicReference<Path> originalTargetPath = new AtomicReference<>();
-        var hook = new CliApplication.PublicationHook() {
+        var hook = new LocalCliFiles.PublicationHook() {
             @Override
             public void afterTargetLinked(Path target, Path staging) throws IOException {
                 stagingPath.set(staging);
@@ -449,17 +476,17 @@ class CliApplicationTest {
 
     private CliApplication application(
             SpecificationAnalyzer analyzer,
-            CliApplication.GenerationExecutor generationExecutor) {
-        return application(analyzer, generationExecutor, CliApplication.PublicationHook.NONE);
+            CliUseCases.GenerationExecutor generationExecutor) {
+        return application(analyzer, generationExecutor, LocalCliFiles.PublicationHook.NONE);
     }
 
     private CliApplication application(
             SpecificationAnalyzer analyzer,
-            CliApplication.GenerationExecutor generationExecutor,
-            CliApplication.PublicationHook publicationHook) {
-        return new CliApplication(
-                new CommandLine(), new GenerationConfigurationReader(), analyzer, generationExecutor,
-                CompatibilityProfileRegistry.defaults(), JSON, publicationHook);
+            CliUseCases.GenerationExecutor generationExecutor,
+            LocalCliFiles.PublicationHook publicationHook) {
+        return new CliApplication(new CommandLine(), new CliUseCases(
+                new GenerationConfigurationReader(), new LocalCliFiles(JSON, publicationHook),
+                analyzer, generationExecutor, CompatibilityProfileRegistry.defaults()), JSON);
     }
 
     private void assertProfile(
@@ -508,7 +535,7 @@ class CliApplicationTest {
         return (path, maxBytes) -> new SpecificationAnalyzer.AnalysisResult(emptyDocument(), new byte[0]);
     }
 
-    private CliApplication.GenerationExecutor unusedGenerator() {
+    private CliUseCases.GenerationExecutor unusedGenerator() {
         return (specification, request, output) -> {
             throw new AssertionError("generator must not be called");
         };

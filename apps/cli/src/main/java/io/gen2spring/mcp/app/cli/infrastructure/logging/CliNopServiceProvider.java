@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.app.cli.output;
+package io.gen2spring.mcp.app.cli.infrastructure.logging;
 
 import org.slf4j.ILoggerFactory;
 import org.slf4j.IMarkerFactory;

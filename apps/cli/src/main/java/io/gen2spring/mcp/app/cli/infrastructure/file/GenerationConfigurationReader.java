@@ -1,15 +1,16 @@
-package io.gen2spring.mcp.app.cli.command;
+package io.gen2spring.mcp.app.cli.infrastructure.file;
 
 import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationException;
 import io.gen2spring.mcp.adapter.configuration.GenerationConfigurationParser;
-import io.gen2spring.mcp.app.cli.error.CliConfigurationException;
+import io.gen2spring.mcp.app.cli.application.exception.CliConfigurationException;
+import io.gen2spring.mcp.app.cli.application.port.out.ConfigurationPort;
 import io.gen2spring.mcp.application.command.GenerationCommand;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import java.nio.file.Path;
 import java.util.Objects;
 
-public final class GenerationConfigurationReader {
-    static final int MAX_BYTES = GenerationConfigurationParser.MAX_BYTES;
+public final class GenerationConfigurationReader implements ConfigurationPort {
+    public static final int MAX_BYTES = GenerationConfigurationParser.MAX_BYTES;
 
     private final GenerationConfigurationParser parser;
     private final LocalPathBoundary pathBoundary;
@@ -37,10 +38,11 @@ public final class GenerationConfigurationReader {
         this.pathBoundary = Objects.requireNonNull(pathBoundary, "pathBoundary");
     }
 
-    GenerationConfigurationReader withProfiles(CompatibilityProfileRegistry profiles) {
+    public GenerationConfigurationReader withProfiles(CompatibilityProfileRegistry profiles) {
         return new GenerationConfigurationReader(new GenerationConfigurationParser(profiles), pathBoundary);
     }
 
+    @Override
     public GenerationCommand read(Path configuration) {
         byte[] bytes = readBoundedRegularFile(configuration);
         try {

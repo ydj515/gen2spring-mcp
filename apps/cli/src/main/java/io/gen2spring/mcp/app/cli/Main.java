@@ -1,5 +1,6 @@
 package io.gen2spring.mcp.app.cli;
 
+import io.gen2spring.mcp.app.cli.config.ApplicationFactory;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 

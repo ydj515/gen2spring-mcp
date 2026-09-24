@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":modules:bootstrap"))
     implementation(libs.bundles.jackson)
     compileOnly(libs.slf4j.api)
+    testImplementation(libs.archunit)
     testCompileOnly(libs.slf4j.api)
 }
 
