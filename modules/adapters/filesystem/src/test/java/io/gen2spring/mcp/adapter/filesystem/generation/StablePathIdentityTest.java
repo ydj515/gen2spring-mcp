@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.adapter.filesystem;
+package io.gen2spring.mcp.adapter.filesystem.generation;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;

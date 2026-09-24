@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.adapter.filesystem;
+package io.gen2spring.mcp.adapter.filesystem.generation;
 
 import java.util.Locale;
 

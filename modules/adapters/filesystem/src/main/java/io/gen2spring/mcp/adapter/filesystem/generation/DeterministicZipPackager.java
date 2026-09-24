@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.adapter.filesystem;
+package io.gen2spring.mcp.adapter.filesystem.generation;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.ARTIFACT_PACKAGE_FAILED;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -8,8 +8,8 @@ import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.gen2spring.mcp.application.generation.port.out.ArtifactPackager;
-import io.gen2spring.mcp.application.generation.port.out.SourceSnapshot;
 import io.gen2spring.mcp.application.generation.port.out.SourceSnapshot.EntryFingerprint;
+import io.gen2spring.mcp.application.generation.port.out.SourceSnapshot;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import java.io.IOException;
 import java.io.InputStream;

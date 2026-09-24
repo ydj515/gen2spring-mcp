@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.adapter.filesystem;
+package io.gen2spring.mcp.adapter.filesystem.generation;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -12,10 +12,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.application.generation.port.out.ManifestWriter;
 import io.gen2spring.mcp.application.generation.usecase.GenerationPreview;
 import io.gen2spring.mcp.domain.error.GeneratorException;
-import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.McpImplementation;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
+import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import java.io.IOException;
 import java.nio.file.Files;

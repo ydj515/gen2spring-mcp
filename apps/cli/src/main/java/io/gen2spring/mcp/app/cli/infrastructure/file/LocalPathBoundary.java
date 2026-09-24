@@ -5,7 +5,7 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.WRITE;
 
-import io.gen2spring.mcp.adapter.filesystem.StablePathIdentity;
+import io.gen2spring.mcp.adapter.filesystem.generation.StablePathIdentity;
 import io.gen2spring.mcp.app.cli.application.port.out.CliFilePort;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -24,8 +24,8 @@ import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.UserPrincipal;
-import java.util.EnumSet;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;

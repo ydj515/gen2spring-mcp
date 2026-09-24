@@ -1,4 +1,4 @@
-package io.gen2spring.mcp.adapter.filesystem;
+package io.gen2spring.mcp.adapter.filesystem.generation;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectFiles;
+import io.gen2spring.mcp.domain.error.GeneratorException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

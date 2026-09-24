@@ -1,13 +1,13 @@
-package io.gen2spring.mcp.adapter.filesystem;
+package io.gen2spring.mcp.adapter.filesystem.generation;
 
 import static io.gen2spring.mcp.domain.error.GeneratorErrorCode.SOURCE_GENERATION_FAILED;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.WRITE;
 
-import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectFiles;
 import io.gen2spring.mcp.application.generation.port.out.ProjectWorkspace;
+import io.gen2spring.mcp.domain.error.GeneratorException;
 import java.io.IOException;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
@@ -93,7 +93,7 @@ public final class SafeProjectWriter implements ProjectWorkspace {
 
     @Override
     public ProjectWorkspace.ValidationWorkspace openValidationWorkspace(Path canonicalProjectRoot) {
-        return io.gen2spring.mcp.adapter.filesystem.ValidationWorkspace.copyOf(canonicalProjectRoot, this);
+        return io.gen2spring.mcp.adapter.filesystem.generation.ValidationWorkspace.copyOf(canonicalProjectRoot, this);
     }
 
     private Path requireSafeParent(Path root) {
