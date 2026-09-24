@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -188,6 +189,8 @@ public final class ManagedToolExecutor implements AutoCloseable {
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0) throw new TimeoutException();
             return future.get(remaining, TimeUnit.NANOSECONDS);
+        } catch (CancellationException failure) {
+            return responses.error(tool, ManagedToolResult.ErrorCategory.LOCAL_RESOURCE, null, null, null);
         } catch (TimeoutException failure) {
             future.cancel(true);
             return responses.error(tool, ManagedToolResult.ErrorCategory.UPSTREAM_TIMEOUT, null, null, null);

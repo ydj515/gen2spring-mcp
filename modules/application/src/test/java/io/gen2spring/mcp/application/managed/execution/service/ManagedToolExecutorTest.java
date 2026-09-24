@@ -118,6 +118,28 @@ class ManagedToolExecutorTest {
     }
 
     @Test
+    void mapsWorkCancelledByInfrastructureToLocalResource() {
+        ManagedExecutionTasks tasks = new ManagedExecutionTasks() {
+            @Override
+            public Future<ManagedToolResult> submit(Callable<ManagedToolResult> task) {
+                var cancelled = new CompletableFuture<ManagedToolResult>();
+                cancelled.cancel(true);
+                return cancelled;
+            }
+
+            @Override
+            public void close() {}
+        };
+        RuntimeTool tool = tool(null);
+        try (var executor = new ManagedToolExecutor(tasks, (request, timeout) -> {
+            throw new AssertionError("Cancelled work must not reach the provider");
+        }, new ManagedExecutionLimits(Duration.ofSeconds(1), 1, 1), TEST_CLOCK)) {
+            ManagedToolResult result = executor.call(binding(tool), tool.name(), Map.of());
+            assertEquals(ManagedToolResult.ErrorCategory.LOCAL_RESOURCE, result.category());
+        }
+    }
+
+    @Test
     void mapsCapacityRejectionAndClosesInjectedExecutionResources() {
         AtomicInteger closes = new AtomicInteger();
         AtomicInteger calls = new AtomicInteger();

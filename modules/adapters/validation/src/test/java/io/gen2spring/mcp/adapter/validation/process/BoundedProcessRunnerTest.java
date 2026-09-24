@@ -106,12 +106,20 @@ class BoundedProcessRunnerTest {
     @Test
     void interruptionStillTerminatesTheProcess() throws Exception {
         Path pidFile = tempDir.resolve("interrupt.pid");
+        CountDownLatch cleanupFinished = new CountDownLatch(1);
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var future = executor.submit(() -> runner.run(
-                    javaCommand("pid", pidFile.toString()), tempDir, Duration.ofSeconds(30), 1024));
+            var future = executor.submit(() -> {
+                try {
+                    return runner.run(javaCommand("pid", pidFile.toString()), tempDir, Duration.ofSeconds(30), 1024);
+                } finally {
+                    cleanupFinished.countDown();
+                }
+            });
             long pid = waitForPid(pidFile);
             future.cancel(true);
             assertThrows(java.util.concurrent.CancellationException.class, future::get);
+            // Future cancellation completes before the interrupted task finishes its bounded cleanup.
+            assertTrue(cleanupFinished.await(15, SECONDS), "interrupted runner must finish cleanup");
             assertTrue(waitUntilDead(pid));
         }
     }
