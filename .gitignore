@@ -6,6 +6,6 @@ build/
 *.class
 .DS_Store
 out/
-!/modules/application/src/main/java/io/gen2spring/mcp/application/generation/port/out/
+!**/src/main/java/**/port/out/
 .idea/
 .worktrees/
