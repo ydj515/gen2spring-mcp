@@ -33,6 +33,85 @@ class MockUpstreamServerTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
+    void doesNotAcceptVerificationAfterAFatalResponseWriterFailure() throws Exception {
+        try (var server = MockUpstreamServer.start(expectation(), (exchange, status, body) -> {
+            exchange.sendResponseHeaders(status, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+            throw new AssertionError("private fatal failure");
+        })) {
+            assertEquals(200, send(server, "POST", query("first", "second"),
+                    "X-Token", "validator", expectedBody()).statusCode());
+            var failure = assertThrows(MockUpstreamServer.VerificationException.class,
+                    () -> server.sealAndAwaitVerified(WAIT));
+            assertFalse(failure.getMessage().contains("private"));
+        }
+    }
+
+    @Test
+    void acceptsTheNextOrderedRequestBeforeThePreviousResponseHandlerReturns() throws Exception {
+        CountDownLatch responseWritten = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        var writes = new java.util.concurrent.atomic.AtomicInteger();
+        var first = orderedExpectation("first", 200, Map.of("first", true), ExpectedUpstreamOutcome.RESPONSE);
+        var second = orderedExpectation("second", 200, Map.of("second", true), ExpectedUpstreamOutcome.RESPONSE);
+        try (var server = MockUpstreamServer.start(List.of(first, second), (exchange, status, body) -> {
+            exchange.sendResponseHeaders(status, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+            if (writes.getAndIncrement() == 0) {
+                responseWritten.countDown();
+                awaitRelease(release);
+            }
+        })) {
+            try {
+                assertEquals(200, sendOrdered(server, "first").statusCode());
+                assertTrue(responseWritten.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
+                assertEquals(200, sendOrdered(server, "second").statusCode());
+            } finally {
+                release.countDown();
+            }
+            server.sealAndAwaitVerified(WAIT);
+        }
+    }
+
+    @Test
+    void waitsForResponseCompletionAndRetainsLateWriteFailures() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        try (var server = MockUpstreamServer.start(expectation(), (exchange, status, body) -> {
+            exchange.sendResponseHeaders(status, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+            awaitRelease(release);
+            throw new IOException("private write failure");
+        })) {
+            try {
+                assertEquals(200, send(server, "POST", query("first", "second"),
+                        "X-Token", "validator", expectedBody()).statusCode());
+                var observation = java.util.concurrent.CompletableFuture.runAsync(() -> server.sealAndAwaitVerified(WAIT));
+                assertThrows(java.util.concurrent.TimeoutException.class,
+                        () -> observation.get(100, TimeUnit.MILLISECONDS));
+                release.countDown();
+                var failure = assertThrows(java.util.concurrent.ExecutionException.class,
+                        () -> observation.get(WAIT.toMillis(), TimeUnit.MILLISECONDS));
+                assertTrue(failure.getCause() instanceof MockUpstreamServer.VerificationException);
+                assertFalse(failure.getCause().getMessage().contains("private"));
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    private static void awaitRelease(CountDownLatch release) throws IOException {
+        try {
+            if (!release.await(WAIT.toMillis(), TimeUnit.MILLISECONDS)) throw new IOException("Release timed out");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Release interrupted", failure);
+        }
+    }
+
+    @Test
     void verifiesOrderedResponsesAndRejectsOutOfOrderRequests() throws Exception {
         UpstreamCallExpectation first = orderedExpectation(
                 "first", 503, Map.of("retry", true), ExpectedUpstreamOutcome.RESPONSE);

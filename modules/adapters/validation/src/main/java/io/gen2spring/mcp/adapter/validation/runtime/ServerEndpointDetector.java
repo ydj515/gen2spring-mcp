@@ -45,7 +45,7 @@ public interface ServerEndpointDetector {
         }
         for (int index = 0; index < output.length(); index++) {
             char character = output.charAt(index);
-            if (character == '\n') {
+            if (character == '\n' || character == '\t') {
                 continue;
             }
             if (character == '\r' && index + 1 < output.length() && output.charAt(index + 1) == '\n') {

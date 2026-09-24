@@ -14,6 +14,17 @@ class ServerEndpointDetectorTest {
     private final ServerEndpointDetector netty = new NettyServerEndpointDetector();
 
     @Test
+    void acceptsTabsInOrdinaryLogLinesWithoutRelaxingStartupLineMatching() {
+        String trace = "java.lang.IllegalStateException: recovered\n\tat sample.Application.start(Application.java:10)\n";
+        assertEquals(URI.create("http://127.0.0.1:49152/mcp"), tomcat.detect(trace
+                + "Tomcat started on port 49152 (http) with context path '/'\n").orElseThrow());
+        assertEquals(URI.create("http://127.0.0.1:49153/mcp"), netty.detect(trace
+                + "Netty started on port 49153 (http)\n").orElseThrow());
+        assertTrue(netty.detect("Netty started on port 49153 (http)\tforged\n").isEmpty());
+        assertTrue(netty.detect("\u000bNetty started on port 49153 (http)\n").isEmpty());
+    }
+
+    @Test
     void detectsExactlyOneTomcatEndpoint() {
         assertEquals(
                 URI.create("http://127.0.0.1:49152/mcp"),

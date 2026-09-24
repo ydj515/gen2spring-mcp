@@ -228,15 +228,9 @@ public final class McpStreamableHttpClient {
             throw failure(stage, "MCP response content type is unsupported", null);
         }
         byte[] bytes = response.body();
-        String json = "text/event-stream".equals(contentType)
-                ? sseData(bytes, stage)
-                : new String(bytes, StandardCharsets.UTF_8);
-        JsonNode root;
-        try {
-            root = objectMapper.readTree(json);
-        } catch (JsonProcessingException ignored) {
-            throw failure(stage, "MCP response is not valid JSON", null);
-        }
+        JsonNode root = "text/event-stream".equals(contentType)
+                ? sseResponse(bytes, expectedId, stage)
+                : parseResponseJson(new String(bytes, StandardCharsets.UTF_8), stage);
         if (root == null || !root.isObject()
                 || !"2.0".equals(root.path("jsonrpc").asText())
                 || !root.path("id").isIntegralNumber()
@@ -359,12 +353,36 @@ public final class McpStreamableHttpClient {
         }
     }
 
-    private String sseData(byte[] bytes, McpStage stage) {
+    private JsonNode parseResponseJson(String json, McpStage stage) {
+        try {
+            return objectMapper.readTree(json);
+        } catch (JsonProcessingException ignored) {
+            throw failure(stage, "MCP response is not valid JSON", null);
+        }
+    }
+
+    private JsonNode sseResponse(byte[] bytes, long expectedId, McpStage stage) {
+        for (String event : sseData(bytes, stage)) {
+            JsonNode candidate = parseResponseJson(event, stage);
+            if (candidate != null && candidate.isObject()
+                    && "2.0".equals(candidate.path("jsonrpc").asText())
+                    && candidate.path("id").isIntegralNumber()
+                    && candidate.path("id").bigIntegerValue().equals(BigInteger.valueOf(expectedId))
+                    && (candidate.has("result") || candidate.has("error"))) {
+                return candidate;
+            }
+        }
+        throw failure(stage, "MCP SSE response contains no matching JSON-RPC response", null);
+    }
+
+    private List<String> sseData(byte[] bytes, McpStage stage) {
         String text = new String(bytes, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        List<String> events = new ArrayList<>();
         List<String> data = new ArrayList<>();
         for (String line : text.split("\n", -1)) {
             if (line.isEmpty() && !data.isEmpty()) {
-                return String.join("\n", data);
+                events.add(String.join("\n", data));
+                data.clear();
             }
             if (line.startsWith("data:")) {
                 String value = line.substring(5);
@@ -372,9 +390,12 @@ public final class McpStreamableHttpClient {
             }
         }
         if (!data.isEmpty()) {
-            return String.join("\n", data);
+            events.add(String.join("\n", data));
         }
-        throw failure(stage, "MCP SSE response contains no data event", null);
+        if (events.isEmpty()) {
+            throw failure(stage, "MCP SSE response contains no data event", null);
+        }
+        return events;
     }
 
     private JsonNode canonicalSchema(JsonNode schema) {

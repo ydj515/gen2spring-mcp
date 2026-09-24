@@ -61,6 +61,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
     private static final String TOOL_CALL_FAILURE = "MCP Tool call validation failed safely";
 
     private final BoundedProcessRunner processRunner;
+    private final BuildToolDriverRegistry buildTools;
     private final McpStreamableHttpClient mcpClient;
     private final Duration buildTimeout;
     private final Duration startupTimeout;
@@ -208,6 +209,8 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             throw new IllegalArgumentException("maxProcessOutputBytes must be positive");
         }
         this.maxProcessOutputBytes = maxProcessOutputBytes;
+        this.buildTools = BuildToolDriverRegistry.configured(
+                this.processRunner, this.platform, this.buildTimeout, maxProcessOutputBytes);
     }
 
     @Override
@@ -297,7 +300,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             ValidationProgress progress) {
         BuildToolDriver driver;
         try {
-            driver = BuildToolDriverRegistry.defaults().require(
+            driver = buildTools.require(
                     validated.profile().target().buildTool());
             validated.runtime().requireStable();
         } catch (IllegalArgumentException exception) {

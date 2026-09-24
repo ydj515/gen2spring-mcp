@@ -79,6 +79,40 @@ class GradleMcpProjectValidatorTest {
     Path tempDir;
 
     @Test
+    void appliesTheConfiguredBuildTimeoutToMavenValidation() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        Files.createDirectories(root.resolve(".mvn/wrapper"));
+        Files.writeString(root.resolve(".mvn/wrapper/maven-wrapper.properties"), "distributionUrl=test\n");
+        Path wrapper = Files.writeString(root.resolve("mvnw"), "#!/bin/sh\nsleep 2\nexit 7\n");
+        assertTrue(wrapper.toFile().setExecutable(true));
+        var profile = CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java21-maven-mvc-streamable").orElseThrow();
+
+        var report = validator(Duration.ofMillis(100), Duration.ofSeconds(3)).validate(request(root, EXPECTED, profile));
+
+        assertEquals(FAILED, report.stages().getFirst().status());
+        assertTrue(report.stages().getFirst().summary().contains("timedOut=true"), report.toString());
+    }
+
+    @Test
+    void appliesTheConfiguredOutputLimitToMavenValidation() throws Exception {
+        Path root = project("#!/bin/sh\nexit 0\n");
+        Files.createDirectories(root.resolve(".mvn/wrapper"));
+        Files.writeString(root.resolve(".mvn/wrapper/maven-wrapper.properties"), "distributionUrl=test\n");
+        Path wrapper = Files.writeString(root.resolve("mvnw"),
+                "#!/bin/sh\nprintf '" + "x".repeat(1024) + "'\nexit 7\n");
+        assertTrue(wrapper.toFile().setExecutable(true));
+        var profile = CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-2.0-java21-maven-mvc-streamable").orElseThrow();
+        var validator = new GradleMcpProjectValidator(Duration.ofSeconds(3), Duration.ofSeconds(3),
+                Duration.ofMillis(20), 128);
+
+        var report = validator.validate(request(root, EXPECTED, profile));
+
+        assertTrue(report.stages().getFirst().summary().contains("stdoutTruncated=true"), report.toString());
+    }
+
+    @Test
     void fiveArgumentValidationRequestUsesTheJava21CompatibilityProfile() throws IOException {
         ValidationRequest request = request(project("#!/bin/sh\nexit 0\n"), EXPECTED);
 

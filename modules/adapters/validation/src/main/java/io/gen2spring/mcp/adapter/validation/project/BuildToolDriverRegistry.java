@@ -1,5 +1,7 @@
 package io.gen2spring.mcp.adapter.validation.project;
 
+import io.gen2spring.mcp.adapter.validation.process.BoundedProcessRunner;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 
@@ -14,6 +16,16 @@ final class BuildToolDriverRegistry {
 
     static BuildToolDriverRegistry defaults() {
         return Defaults.INSTANCE;
+    }
+
+    static BuildToolDriverRegistry configured(
+            BoundedProcessRunner processRunner,
+            ValidationHostPlatform platform,
+            Duration buildTimeout,
+            int maxProcessOutputBytes) {
+        return of(Map.of(
+                "GRADLE_KOTLIN", new GradleBuildToolDriver(processRunner, platform, buildTimeout, maxProcessOutputBytes),
+                "MAVEN", new MavenBuildToolDriver(processRunner, platform, buildTimeout, maxProcessOutputBytes)));
     }
 
     static BuildToolDriverRegistry of(Map<String, BuildToolDriver> drivers) {

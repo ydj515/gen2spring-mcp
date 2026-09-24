@@ -17,6 +17,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class McpTestServer implements AutoCloseable {
     public enum Scenario {
         SUCCESS,
+        SSE_MULTIPLE_EVENTS,
+        SSE_MATCHING_ERROR,
+        SSE_NO_MATCH,
+        SSE_NO_DATA,
         INITIALIZE_ERROR,
         WRONG_ID,
         OVERSIZED_ID,
@@ -265,7 +269,18 @@ public final class McpTestServer implements AutoCloseable {
         String json = "{\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"tools\":[{"
                 + "\"description\":\"Get the public weather forecast for a grid location.\","
                 + "\"name\":\"kma_weather_get_forecast\"" + inputSchema + "}]}}";
-        String response = "event: message\n" + "data: " + json + "\n\n";
+        String notification = "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\r\n\r\n";
+        String unrelated = "data: {\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{}}\n\n";
+        String response = switch (scenario) {
+            case SSE_MULTIPLE_EVENTS -> notification + unrelated
+                    + "data: {\"jsonrpc\":\"2.0\",\"id\":2}\n\n"
+                    + "event: message\ndata: " + json.substring(0, 1) + "\ndata: " + json.substring(1) + "\n\n";
+            case SSE_MATCHING_ERROR -> notification
+                    + "data: {\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"message\":\"private\"}}\n\n";
+            case SSE_NO_MATCH -> notification + unrelated;
+            case SSE_NO_DATA -> ": keepalive\n\n";
+            default -> "event: message\n" + "data: " + json + "\n\n";
+        };
         send(exchange, 200, "text/event-stream", response.getBytes(StandardCharsets.UTF_8));
         beforeToolsListResponse.run();
     }

@@ -56,6 +56,31 @@ class McpStreamableHttpClientTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
+    void selectsTheMatchingSseResponseAfterNotificationsAndUnrelatedMessages() throws Exception {
+        try (var server = McpTestServer.start(Scenario.SSE_MULTIPLE_EVENTS)) {
+            assertEquals(EXPECTED.keySet(), client.validate(server.uri(), EXPECTED).toolNames());
+        }
+    }
+
+    @Test
+    void preservesSseErrorsAndRejectsStreamsWithoutAMatchingResponse() throws Exception {
+        for (Scenario scenario : List.of(Scenario.SSE_MATCHING_ERROR, Scenario.SSE_NO_MATCH, Scenario.SSE_NO_DATA)) {
+            try (var server = McpTestServer.start(scenario)) {
+                var failure = assertThrows(McpStreamableHttpClient.McpValidationException.class,
+                        () -> client.validate(server.uri(), EXPECTED));
+                assertEquals(McpStage.TOOLS_LIST, failure.stage());
+                assertFalse(failure.getMessage().contains("private"));
+                if (scenario == Scenario.SSE_MATCHING_ERROR) {
+                    assertEquals("MCP JSON-RPC response reported an error", failure.getMessage());
+                }
+                if (scenario == Scenario.SSE_NO_DATA) {
+                    assertEquals("MCP SSE response contains no data event", failure.getMessage());
+                }
+            }
+        }
+    }
+
+    @Test
     void invokesTheExpectedToolWithTheInitializedSessionAndValidatesTheMockResult() throws Exception {
         List<McpStage> startedStages = new ArrayList<>();
         try (var server = McpTestServer.startWithJsonInitializeAndSseToolsList()) {

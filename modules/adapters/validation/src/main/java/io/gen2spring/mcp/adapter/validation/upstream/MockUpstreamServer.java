@@ -67,6 +67,7 @@ public final class MockUpstreamServer implements AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean();
     private long observedRequests;
     private boolean requestInFlight;
+    private int responsesInFlight;
     private int verifiedInteractions;
     private boolean observationSealed;
     private VerificationException observationFailure;
@@ -161,7 +162,7 @@ public final class MockUpstreamServer implements AutoCloseable {
         long deadline = deadline(timeout);
         synchronized (observationMonitor) {
             observationSealed = true;
-            while (requestInFlight && observationFailure == null) {
+            while ((requestInFlight || responsesInFlight > 0) && observationFailure == null) {
                 long remaining = deadline - System.nanoTime();
                 if (remaining <= 0) {
                     VerificationException failure = new VerificationException(
@@ -199,12 +200,15 @@ public final class MockUpstreamServer implements AutoCloseable {
                 return;
             }
             UpstreamCallExpectation expectation = expectations.get(admission.index());
+            boolean verified = false;
             try {
                 byte[] body = exchange.getRequestBody().readNBytes(MAX_REQUEST_BYTES + 1);
                 if (body.length > MAX_REQUEST_BYTES) {
                     throw new RequestMismatch(413, "Mock upstream request exceeded the size limit");
                 }
                 verifyRequest(expectation, expectedBodies.get(admission.index()), exchange, body);
+                completeRequest(admission.index(), null);
+                verified = true;
                 if (expectation.outcome()
                         == io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamOutcome.DISCONNECT) {
                     exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -215,13 +219,20 @@ public final class MockUpstreamServer implements AutoCloseable {
                     respond(exchange, expectation.responseStatus(), configuredResponses.get(admission.index()));
                     exchange.close();
                 }
-                completeRequest(admission.index(), null);
             } catch (RequestMismatch mismatch) {
-                completeRequest(admission.index(), new VerificationException(mismatch.getMessage()));
+                failRequest(admission.index(), verified, new VerificationException(mismatch.getMessage()));
                 respondQuietly(exchange, mismatch.status(), MISMATCH_RESPONSE);
+            } catch (Error fatal) {
+                failRequest(admission.index(), verified, new VerificationException("Mock upstream verification failed"));
+                throw fatal;
             } catch (RuntimeException | IOException failure) {
-                completeRequest(admission.index(), new VerificationException("Mock upstream verification failed"));
+                failRequest(admission.index(), verified, new VerificationException("Mock upstream verification failed"));
                 respondQuietly(exchange, 500, MISMATCH_RESPONSE);
+            } finally {
+                synchronized (observationMonitor) {
+                    responsesInFlight--;
+                    observationMonitor.notifyAll();
+                }
             }
         }
     }
@@ -246,7 +257,19 @@ public final class MockUpstreamServer implements AutoCloseable {
             }
             int index = Math.toIntExact(observedRequests - 1);
             requestInFlight = true;
+            responsesInFlight++;
             return new RequestAdmission(index);
+        }
+    }
+
+    private void failRequest(int index, boolean verified, VerificationException failure) {
+        if (!verified) {
+            completeRequest(index, failure);
+            return;
+        }
+        synchronized (observationMonitor) {
+            recordFailure(failure);
+            observationMonitor.notifyAll();
         }
     }
 
@@ -492,7 +515,7 @@ public final class MockUpstreamServer implements AutoCloseable {
             return;
         }
         synchronized (observationMonitor) {
-            if (!observationSealed || requestInFlight) {
+            if (!observationSealed || requestInFlight || responsesInFlight > 0) {
                 observationSealed = true;
                 recordFailure(new VerificationException(
                         "Mock upstream server closed before request observation was sealed"));
