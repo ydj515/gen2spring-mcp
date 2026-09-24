@@ -54,6 +54,23 @@ class HostedWorkerTest {
             2.0, 4L * 1024 * 1024 * 1024, 256, Duration.ofMinutes(10));
 
     @Test
+    void schedulesLeaseChecksBeforeShortAndFractionalLeasesExpire() throws Exception {
+        for (Duration lease : List.of(Duration.ofMillis(900), Duration.ofMillis(1500), Duration.ofNanos(1))) {
+            ManualScheduler scheduler = new ManualScheduler();
+            StubSandbox sandbox = new StubSandbox();
+            sandbox.result = generationResult();
+            var worker = new HostedWorker(generationQueue(), sandbox,
+                    (claimed, target, limits) -> { throw new AssertionError(); }, new StubStorage(),
+                    WORKER, LIMITS, Clock.fixed(NOW, ZoneOffset.UTC), lease, scheduler);
+
+            worker.pollOnce();
+
+            assertEquals(Duration.ofNanos(Math.max(1, lease.toNanos() / 3)), scheduler.interval);
+            assertTrue(scheduler.stopped);
+        }
+    }
+
+    @Test
     void doesNothingWhenNoLeaseIsAvailable() throws Exception {
         StubQueue queue = new StubQueue();
         StubSandbox sandbox = new StubSandbox();

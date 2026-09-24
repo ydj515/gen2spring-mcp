@@ -354,8 +354,8 @@ public final class HostedWorker {
             this.lease = lease;
             this.control = control;
             this.leaseUntil = leaseUntil;
-            long interval = Math.max(1, leaseDuration.toSeconds() / 3);
-            registration = scheduler.schedule(Duration.ofSeconds(interval), this::check);
+            Duration interval = Duration.ofNanos(Math.max(1, leaseDuration.toNanos() / 3));
+            registration = scheduler.schedule(interval, this::check);
         }
 
         private void check() {
