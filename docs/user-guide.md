@@ -56,17 +56,10 @@ mise run ui:test
 mise run ui:build
 ```
 
-포트를 고정하려면 `GEN2SPRING_UI_PORT=8080 mise run dev`로 실행한다. 직접 실행할 수도 있다.
-
-```bash
-GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
-GEN2SPRING_JAVA_21_HOME="$(mise where java@21)" \
-GEN2SPRING_UI_PORT=0 \
-mise exec -- ./gradlew :apps:web:bootRun --quiet --no-daemon --non-interactive
-
-mise exec -- ./gradlew :apps:web:bootJar --no-daemon --non-interactive
-GEN2SPRING_UI_PORT=0 mise exec -- java -jar apps/web/build/libs/web.jar
-```
+포트를 고정하려면 `GEN2SPRING_UI_PORT=8080 mise run dev`로 실행한다. `dev`는 Web JAR을
+빌드한 뒤 별도의 임시 경로에 복사해 실행한다. 서버 실행 중 Gradle 빌드가 모듈 JAR을 다시
+만들어도 실행 중인 서버의 클래스 경로가 바뀌지 않는다. 배포용 JAR만 빌드하려면
+`mise run ui:build`를 사용한다.
 
 서버는 준비되면 `{"status":"READY","url":"http://127.0.0.1:<port>/"}`를 출력한다.
 binding은 `numeric loopback only`다. 기본 local mode는 public multi-user service가 아니다.

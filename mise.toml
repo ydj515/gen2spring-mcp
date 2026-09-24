@@ -65,18 +65,31 @@ call gradlew.bat :apps:cli:integrationTest --tests "*P1GenerationIntegrationTest
 '''
 
 [tasks.dev]
-description = "Run the local Spring Boot operation editor"
+description = "Run the local Spring Boot operation editor from an isolated JAR"
 run = '''
+set -eu
 export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
 export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
 export GEN2SPRING_UI_PORT="${GEN2SPRING_UI_PORT:-0}"
-exec ./gradlew :apps:web:bootRun --quiet --no-daemon --non-interactive
+./gradlew :apps:web:bootJar --quiet --no-daemon --non-interactive
+runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/gen2spring-web.XXXXXXXX")"
+trap 'rm -f "$runtime_dir/web.jar"; rmdir "$runtime_dir"' EXIT
+cp apps/web/build/libs/web.jar "$runtime_dir/web.jar"
+java -jar "$runtime_dir/web.jar"
 '''
 run_windows = '''
 for /f "delims=" %i in ('mise where java@17') do @set "GEN2SPRING_JAVA_17_HOME=%i"
 for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%i"
 if not defined GEN2SPRING_UI_PORT set "GEN2SPRING_UI_PORT=0"
-call gradlew.bat :apps:web:bootRun --quiet --no-daemon --non-interactive
+call gradlew.bat :apps:web:bootJar --quiet --no-daemon --non-interactive
+if errorlevel 1 exit /b %errorlevel%
+set "GEN2SPRING_DEV_JAR=%TEMP%\gen2spring-web-%RANDOM%-%RANDOM%.jar"
+copy /Y apps\web\build\libs\web.jar "%GEN2SPRING_DEV_JAR%" >nul
+if errorlevel 1 exit /b %errorlevel%
+java -jar "%GEN2SPRING_DEV_JAR%"
+set "GEN2SPRING_DEV_EXIT=%errorlevel%"
+del /Q "%GEN2SPRING_DEV_JAR%"
+exit /b %GEN2SPRING_DEV_EXIT%
 '''
 
 [tasks."ui:build"]
