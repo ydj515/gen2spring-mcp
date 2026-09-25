@@ -260,4 +260,10 @@ mise run architecture:test
 
 의존 보고서는 외부·전이 의존도 출력하므로 그림의 직접 project 의존과 구분해서 읽는다.
 아키텍처 검사는 잘못된 모듈 방향, 핵심 계층의 외부 라이브러리, 패키지 순환을 검증한다.
-문서와 선언의 일치 여부는 별도로 대조해야 한다.
+`architectureTest`는 Gradle이 평가한 production project 선언과 이 문서도 비교한다.
+Mermaid의 모듈·화살표, 텍스트 표의 모듈·의존 범위·빌드 링크, 상단 모듈·의존 개수가 다르면 실패한다.
+누락·추가·중복·`api`/`implementation` 변경도 검사한다. 외부 라이브러리와 테스트 의존은 비교하지 않는다.
+직접 선언 범위는 `api`, `implementation`, `compileOnly`, `compileOnlyApi`, `runtimeOnly`다.
+`api`는 기존 점선 표기를, 다른 범위는 `-->|runtimeOnly|`처럼 명시적인 실선 라벨을 사용할 수 있다.
+검사는 현재 문서의 `flowchart LR`, 노드 선언 후 화살표, 모듈별 표 형식을 읽는다.
+지원하지 않는 Mermaid 선언은 무시하지 않고 실패하며, 문서를 자동 수정하지 않는다.
