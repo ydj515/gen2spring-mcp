@@ -20,6 +20,9 @@ domain <- application <- adapters
 의존한다. 따라서 application 전체를 외부 라이브러리가 없는 계층으로 설명하지 않는다. 다만
 `application/**/port/in`과 `application/**/port/out`의 계약은 Jackson을 노출하지 않는다.
 
+실제 25개 모듈의 직접 의존과 `api`/`implementation` 범위는
+[모듈 의존성 다이어그램](module-dependencies.md)에서 확인할 수 있다.
+
 ## 멀티모듈과 내부 패키지의 역할
 
 Gradle 모듈은 배포 단위와 외부 기술 의존성을 나누고, 모듈 내부 패키지는 기능과 책임을 나눈다.

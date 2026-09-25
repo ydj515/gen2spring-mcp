@@ -3,6 +3,7 @@
 ## 모듈 배치
 
 실제 Gradle 프로젝트 목록은 [settings.gradle.kts](../settings.gradle.kts)가 기준이다.
+직접 의존 관계는 [모듈 의존성 다이어그램](module-dependencies.md)에서 확인한다.
 생성기의 Java 패키지는 `io.gen2spring.mcp` 아래에 있으며 생성 결과의 사용자 지정 패키지와 구분한다.
 
 ```text
@@ -54,7 +55,7 @@ runtime telemetry 계약은 업무 domain 모델이 아닌 application의 toolmo
 | Fetch Gateway | `presentation/fetch`, `application/fetch`, `infrastructure/client/fetch`, `config` |
 | Import Runner | `presentation/job`, `application/imports`, `infrastructure/analysis`, `infrastructure/client/fetch`, `config` |
 | Provider Egress | `presentation/provider`, `application/provider`, `infrastructure/client/provider`, `config` |
-| Runtime | `presentation/mcp`, `presentation/security`, `config` |
+| Runtime | `presentation/mcp`, `presentation/security`, `infrastructure/execution`, `config` |
 | Worker | `application/worker`, `infrastructure/readiness`, `infrastructure/scheduling`, `config` |
 
 앱 루트에는 실행 진입점을 둔다. transport 구현과 package-private 협력자는 같은 책임 패키지에 두고,

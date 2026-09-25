@@ -23,6 +23,7 @@
 | --- | --- |
 | [제품 요구사항](prd.md) | 요구사항과 P0/P1/P2 도입 이력. 현재 사용법은 사용자 가이드 기준 |
 | [Hosted 배포 가이드](../deploy/hosted/README.md) | secret 준비, Linux Compose, 백업·복구·운영 절차 |
+| [모듈 의존성 다이어그램](module-dependencies.md) | 25개 Gradle 모듈의 직접 의존과 공개 범위 |
 | [Hosted 구조도](architecture/hosted-generation-platform.html) | 생성 플랫폼 배포 및 데이터 흐름 |
 | [Managed Runtime 구조도](architecture/managed-mcp-runtime.html) | 제어·실행·provider egress 분리 |
 | [화면 회귀 QA 기준](user-flows.md#화면-회귀-qa-체크리스트) | 화면·상태·접근성 검증과 증거 관리 |
