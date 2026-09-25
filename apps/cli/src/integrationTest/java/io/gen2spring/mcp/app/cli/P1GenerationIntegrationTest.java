@@ -16,7 +16,6 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -674,15 +673,20 @@ class P1GenerationIntegrationTest {
         List<String> command = new ArrayList<>();
         command.add(executable.toString());
         command.addAll(List.of(arguments));
-        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        Path stdout = Files.createTempFile(tempDir, "installed-cli-", ".stdout");
+        Path stderr = Files.createTempFile(tempDir, "installed-cli-", ".stderr");
+        // File redirection avoids filling Windows pipes while waiting for the CLI to exit.
+        ProcessBuilder processBuilder = new ProcessBuilder(command)
+                .redirectOutput(stdout.toFile())
+                .redirectError(stderr.toFile());
         forwardExplicitJavaHome(processBuilder, JAVA_17_HOME);
         forwardExplicitJavaHome(processBuilder, JAVA_21_HOME);
         try (ObservedProcess process = ObservedProcess.start(processBuilder)) {
             int exitCode = process.await(Duration.ofMinutes(5), "installed CLI timed out safely");
             return new InstalledCliResult(
                     exitCode,
-                    new String(process.stdout().readAllBytes(), UTF_8),
-                    new String(process.stderr().readAllBytes(), UTF_8));
+                    Files.readString(stdout, UTF_8),
+                    Files.readString(stderr, UTF_8));
         }
     }
 
@@ -1923,14 +1927,6 @@ class P1GenerationIntegrationTest {
 
         private boolean isRootAlive() {
             return process.isAlive();
-        }
-
-        private InputStream stdout() {
-            return process.getInputStream();
-        }
-
-        private InputStream stderr() {
-            return process.getErrorStream();
         }
 
         private void terminate() throws InterruptedException {
