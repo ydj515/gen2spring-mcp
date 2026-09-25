@@ -87,6 +87,10 @@ testing {
                 testTask.configure {
                     dependsOn(tasks.named("installDist"))
                     shouldRunAfter(tasks.test)
+                    testLogging {
+                        events("failed")
+                        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+                    }
                     systemProperty(
                         "openapiMcp.executable",
                         layout.buildDirectory.file("install/openapi-mcp/bin/$installedExecutableName")
