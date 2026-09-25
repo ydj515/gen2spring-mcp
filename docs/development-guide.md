@@ -41,6 +41,39 @@ Linux 전체 profile과 Windows 대표 profile을 검증한다. PR fast gate 성
 Hosted 검증은 Docker 및 테스트별 외부 실행 전제가 필요하다. 배포 준비와 백업 복구는
 [Hosted 배포 가이드](../deploy/hosted/README.md)를 따른다. 환경 때문에 실행하지 못한 검증은 미실행으로 기록한다.
 
+## 생성 프로젝트 전체 검증
+
+`mise run generator:acceptance`는 POSIX에서 release profile matrix의 세 시나리오,
+Windows에서 대표 profile 시나리오 하나를 실행한다.
+MCP 구현 옵션, 제공된 OpenAPI 3.0/3.1 명세, emitter 회귀와 Web 다운로드까지 확인하려면 다음을 실행한다.
+
+```bash
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
+export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
+./gradlew \
+  :apps:cli:integrationTest \
+  :modules:adapters:emitters:spring-ai-1:integrationTest \
+  :modules:adapters:emitters:spring-ai-2:integrationTest \
+  :modules:adapters:validation:test \
+  :apps:web:integrationTest \
+  --no-daemon --non-interactive --no-parallel --max-workers=2 --rerun-tasks
+```
+
+- CLI suite 전체는 12개 release profile의 생성·빌드·MCP 실행·archive 결정성, 지원되는
+  annotation/SDK 옵션, 두 OpenAPI 버전의 schema 계약과 잘못된 대표 인자를 검증한다.
+- 두 emitter의 `integrationTest`는 생성 코드의 컴파일·실행, MVC·reactive·async 동작을 검증한다.
+- validation의 `test`는 fast suite에서 제외한 실제 생성 프로젝트 smoke test도 포함한다.
+- Web의 `integrationTest`는 설치된 JAR에서 profile 조회와 생성·검증·다운로드·삭제 여정을 확인한다.
+- 각 suite의 결과는 해당 모듈 `build/reports/tests/<task>/index.html`과
+  `build/test-results/<task>/TEST-*.xml`에 기록한다. 전체 통과 여부와 skipped 수를 함께 확인한다.
+
+명령은 실행 중인 OS에서 검증한다. `windowsRepresentativeProfilesValidateAcrossTargetAxes`가
+macOS/Linux에서 통과해도 Windows 검증을 대신하지 않는다.
+실제 Linux·Windows 실행은 [Generation Acceptance](../.github/workflows/generation-acceptance.yml)를
+`workflow_dispatch`로 실행한다. 이 워크플로는 Linux 전체 profile matrix와 Windows 대표 조합을 다루며,
+위 로컬 명령의 모든 integration suite를 원격에서 실행하는 것은 아니다.
+Hosted 저장·worker·runtime acceptance는 별도 범위다.
+
 ## 변경별 검증 선택
 
 - 파서·schema: OpenAPI/domain/application 계약, 두 루트 Swagger fixture, 생성·Managed Runtime 입력 동등성
