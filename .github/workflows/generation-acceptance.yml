@@ -62,6 +62,8 @@ jobs:
       - name: Validate representative Windows generation profiles
         shell: pwsh
         run: >-
-          .\gradlew.bat :apps:cli:integrationTest
+          .\gradlew.bat :modules:adapters:validation:test
+          --tests '*ValidationHostPlatformTest'
+          :apps:cli:integrationTest
           --tests '*P1GenerationIntegrationTest.windowsRepresentativeProfilesValidateAcrossTargetAxes'
           --no-daemon --non-interactive --rerun-tasks

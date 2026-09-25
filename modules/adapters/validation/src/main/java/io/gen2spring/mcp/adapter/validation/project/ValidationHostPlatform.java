@@ -200,7 +200,9 @@ final class WindowsValidationHost implements ValidationHostPlatform {
                 commandLine.append(argument);
             }
         }
-        return List.of(command.toString(), "/D", "/E:OFF", "/V:OFF", "/S", "/C", commandLine.toString());
+        // Maven's .cmd wrapper uses FOR /F, which requires command extensions.
+        String extensions = wrapperSnapshot.getFileName().toString().endsWith(".cmd") ? "/E:ON" : "/E:OFF";
+        return List.of(command.toString(), "/D", extensions, "/V:OFF", "/S", "/C", commandLine.toString());
     }
 
     private static String snapshotCommandPath(Path wrapperSnapshot) {

@@ -4,12 +4,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.gen2spring.mcp.adapter.validation.process.BoundedProcessRunner;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class ValidationHostPlatformTest {
@@ -65,6 +69,7 @@ class ValidationHostPlatformTest {
                         + "classes test bootJar --no-daemon --non-interactive"),
                 windows.buildCommand(snapshot, javaHome));
         assertFalse(windows.buildCommand(snapshot, javaHome).getLast().contains("private-workspace"));
+        assertEquals("/E:OFF", windows.buildCommand(snapshot, List.of("classes")).get(2));
     }
 
     @Test
@@ -78,10 +83,26 @@ class ValidationHostPlatformTest {
 
         assertEquals(List.of(
                 systemRoot.resolve("System32/cmd.exe").toString(),
-                "/D", "/E:OFF", "/V:OFF", "/S", "/C",
+                "/D", "/E:ON", "/V:OFF", "/S", "/C",
                 "call .mvnw-validated-123\\mvnw.cmd test package --batch-mode"),
                 windows.buildCommand(snapshot, List.of("test", "package", "--batch-mode")));
         assertFalse(windows.buildCommand(snapshot, List.of("test")).getLast().contains("private-workspace"));
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void executesTheCommandExtensionsRequiredByMavenWrappers() throws Exception {
+        Path root = tempDir.toRealPath();
+        Path snapshotDirectory = Files.createDirectory(root.resolve(".mvnw-validated-123"));
+        Path wrapper = Files.writeString(snapshotDirectory.resolve("mvnw.cmd"),
+                "@echo off\r\nfor /f %%A in (\"ready\") do exit /b 0\r\nexit /b 1\r\n");
+        ValidationHostPlatform windows = ValidationHostPlatform.current();
+
+        var result = new BoundedProcessRunner().run(
+                windows.buildCommand(wrapper, List.of("test")), root, Duration.ofSeconds(10), 1024);
+
+        assertFalse(result.timedOut());
+        assertEquals(0, result.exitCode(), result.safeSummary());
     }
 
     @Test

@@ -70,7 +70,7 @@ export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
 명령은 실행 중인 OS에서 검증한다. `windowsRepresentativeProfilesValidateAcrossTargetAxes`가
 macOS/Linux에서 통과해도 Windows 검증을 대신하지 않는다.
 실제 Linux·Windows 실행은 [Generation Acceptance](../.github/workflows/generation-acceptance.yml)를
-`workflow_dispatch`로 실행한다. 이 워크플로는 Linux 전체 profile matrix와 Windows 대표 조합을 다루며,
+`workflow_dispatch`로 실행한다. 이 워크플로는 Linux 전체 profile matrix와 Windows 대표 조합·실행 명령 회귀를 다루며,
 위 로컬 명령의 모든 integration suite를 원격에서 실행하는 것은 아니다.
 Hosted 저장·worker·runtime acceptance는 별도 범위다.
 
