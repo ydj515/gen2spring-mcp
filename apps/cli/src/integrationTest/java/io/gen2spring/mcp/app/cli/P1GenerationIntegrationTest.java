@@ -293,6 +293,19 @@ class P1GenerationIntegrationTest {
     Path tempDir;
 
     @Test
+    void independentSourceChecksumUsesCaseSensitivePortablePathOrder() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("checksum-order"));
+        Files.writeString(root.resolve("Z.txt"), "upper\r\n", UTF_8);
+        Files.writeString(root.resolve("a.txt"), "lower\n", UTF_8);
+        Files.createDirectory(root.resolve("a"));
+        Files.writeString(root.resolve("a/file.txt"), "nested\r", UTF_8);
+
+        // Length-framed SHA-256 of Z.txt, a.txt, a/file.txt with LF-normalized content.
+        assertEquals("686b56fac0e03673775d0b42b355495032531ceb5996405ac8b885d69ffbf190",
+                independentSourceChecksum(root));
+    }
+
+    @Test
     void selectedMcpImplementationsValidateAcrossProfiles() throws Exception {
         targetJavaHomes();
         Path specification = resource("openapi/weather-api.yaml");
@@ -1463,7 +1476,10 @@ class P1GenerationIntegrationTest {
     private String independentSourceChecksum(Path root) throws IOException {
         MessageDigest digest = sha256Digest();
         try (var paths = Files.walk(root)) {
-            for (Path path : paths.filter(Files::isRegularFile).sorted().toList()) {
+            List<Path> sourceFiles = paths.filter(Files::isRegularFile)
+                    .sorted(Comparator.comparing(path -> root.relativize(path).toString().replace('\\', '/')))
+                    .toList();
+            for (Path path : sourceFiles) {
                 String relative = root.relativize(path).toString().replace('\\', '/');
                 if (relative.equals("GENERATION_MANIFEST.json")
                         || relative.equals("VALIDATION_REPORT.json")
