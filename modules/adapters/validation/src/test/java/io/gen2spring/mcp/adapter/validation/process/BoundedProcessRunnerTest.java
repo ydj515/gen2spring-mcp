@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.gen2spring.mcp.adapter.validation.support.EnvironmentProbeProcess;
 import io.gen2spring.mcp.adapter.validation.support.SleepingProcess;
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -76,9 +77,10 @@ class BoundedProcessRunnerTest {
         assertFalse(result.safeSummary().contains("secret-value"));
     }
 
-    @Test
+    @RepeatedTest(10)
     void collectorFailureTerminatesTheProcess() throws Exception {
-        Path pidFile = tempDir.resolve("collector.pid");
+        Path workingDirectory = Files.createDirectory(tempDir.resolve("collector-workspace"));
+        Path pidFile = workingDirectory.resolve("collector.pid");
         IOException collectorFailure = new IOException("synthetic collector failure");
         CountDownLatch collectorsReady = new CountDownLatch(2);
         var failing = new BoundedProcessRunner((input, limit) -> {
@@ -91,7 +93,7 @@ class BoundedProcessRunnerTest {
 
         IOException failure = null;
         try {
-            failing.run(javaCommand("pid", pidFile.toString()), tempDir, Duration.ofSeconds(10), 1024);
+            failing.run(javaCommand("pid", pidFile.toString()), workingDirectory, Duration.ofSeconds(10), 1024);
         } catch (IOException exception) {
             failure = exception;
         }
@@ -101,6 +103,24 @@ class BoundedProcessRunnerTest {
         assertEquals(0, failure.getSuppressed().length);
         assertNoRepeatedThrowableReferences(failure);
         assertTrue(waitUntilDead(waitForPid(pidFile)));
+        Files.delete(pidFile);
+        deleteReleasedWorkingDirectory(workingDirectory);
+    }
+
+    private void deleteReleasedWorkingDirectory(Path directory) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (true) {
+            try {
+                Files.delete(directory);
+                return;
+            } catch (FileSystemException exception) {
+                // Retry transient Windows directory locks only after asserting that the helper process is dead.
+                if (System.nanoTime() >= deadline) {
+                    throw exception;
+                }
+                Thread.sleep(25);
+            }
+        }
     }
 
     @Test
