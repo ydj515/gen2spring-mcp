@@ -421,6 +421,15 @@ Tasks는 클라이언트가 요청 capability에 `io.modelcontextprotocol/tasks`
 부작용을 되돌리지 않는다. Managed Runtime은 기존 Bearer 인증과 현재 권한 검사를 유지한다.
 OAuth resource server 및 인증 확장은 아직 구현하지 않았다.
 
+### TODO
+
+- OAuth Resource Server 의존성 승인 후 Client Credentials 토큰의 issuer·audience·scope·만료·철회 검증
+- Enterprise-Managed Authorization metadata와 resource server 권한 흐름
+- MCP Apps 호스트의 `ui/initialize` 및 tool input/result 메시지 계약 검증
+- Apps visibility, CSP, 권한 metadata 적용
+- 실행 중 진행률 알림과 일반 요청 취소 연계
+- 공식 2026-07-28 conformance 전체 시나리오와 원격 CI 결과 갱신
+
 생성 프로젝트는 HTTP 외에 `GeneratedMcpStdioApplication` 진입점으로 신형 stdio를 제공한다.
 아래 클래스·JAR 이름은 생성 프로젝트에 맞춰 바꾼다. 로그는 stderr, 프로토콜은 stdout으로 분리한다.
 

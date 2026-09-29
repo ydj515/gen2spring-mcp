@@ -134,6 +134,18 @@ Skill의 활성화 승인과 실행 권한 부여는 호스트의 책임이다. 
 진행 알림은 완료 시점만 제공하며 실행 중 세부 진행률·일반 요청 취소 연계는 미완료다.
 공식 전체 conformance와 원격 CI는 이 작업 트리에서 통과를 확인하지 않았다.
 
+## TODO
+
+- [ ] OAuth Resource Server 의존성 추가 승인 후 Client Credentials 검증과 scope·audience 검증 구현
+- [ ] Enterprise-Managed Authorization의 resource server metadata와 권한 흐름 구현
+- [ ] OAuth issuer·audience·scope·만료·철회 및 로컬 Authorization Server 테스트 추가
+- [ ] MCP Apps의 `ui/initialize`, `ui/notifications/initialized`, `tool-input`, `tool-result` 호스트 테스트 추가
+- [ ] Apps의 visibility, CSP, 권한 metadata를 `tools/list`와 리소스 응답에 반영
+- [ ] 실행 중 진행률 알림과 일반 요청의 `notifications/cancelled` 연계 구현
+- [ ] 공식 2026-07-28 conformance 전체 시나리오 재실행 및 실패 0건 또는 적용 제외 근거 기록
+- [ ] 원격 CI와 외부 MCP 호스트 호환성 결과 기록
+- [ ] 위 TODO 완료 후 전체 로컬 CI와 아키텍처·품질 검증 재실행
+
 ## 기준 자료
 
 - [MCP 2026-07-28 명세](https://modelcontextprotocol.io/specification/2026-07-28)
