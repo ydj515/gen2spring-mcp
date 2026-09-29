@@ -2,6 +2,7 @@ package io.gen2spring.mcp.application.generation.port.out;
 
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.McpImplementation;
+import io.gen2spring.mcp.domain.profile.McpProtocolMode;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
 import java.nio.file.Path;
@@ -19,6 +20,10 @@ public interface ManifestWriter {
     default Path write(Path projectRoot, CompatibilityProfile profile, OpenApiDocument document,
                        String sourceChecksum, List<ToolDefinition> tools, McpImplementation implementation) {
         return write(projectRoot, profile, document, sourceChecksum, tools);
+    }
+    default Path write(Path root, CompatibilityProfile profile, OpenApiDocument document,
+            String checksum, List<ToolDefinition> tools, McpImplementation implementation, McpProtocolMode protocol) {
+        return write(root, profile, document, checksum, tools, implementation);
     }
 
 }

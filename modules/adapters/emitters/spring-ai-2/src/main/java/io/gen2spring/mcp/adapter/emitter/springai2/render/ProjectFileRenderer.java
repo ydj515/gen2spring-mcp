@@ -139,7 +139,9 @@ public final class ProjectFileRenderer {
     }
 
     public String readme(GenerationContext context) {
-        return gradleScaffold.readme(scaffoldModel(context));
+        return gradleScaffold.readme(scaffoldModel(context))
+                + "\n## MCP protocol versions\n\n"
+                + "Supports the validated 2025-03-26 handshake. This Spring AI profile does not implement 2026-07-28.\n";
     }
 
     private String renderedObservability() {

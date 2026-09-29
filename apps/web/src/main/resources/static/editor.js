@@ -452,6 +452,7 @@ export function buildConfiguration() {
     project: {groupId: value('group-id'), artifactId: value('artifact-id'), packageName: value('package-name')},
     provider: value('provider-name'), domain: value('domain-name'), targetProfileId: value('target-profile'),
     mcpImplementation: value('mcp-implementation'),
+    mcpProtocol: value('mcp-protocol'),
     validationLevel: 'MCP_PROTOCOL', validation: {toolCall: {operationId: validationOperation, arguments: argumentsValue}},
     operations: enabled.map(operation => operationConfiguration(operation))
   };

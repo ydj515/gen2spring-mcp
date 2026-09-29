@@ -146,7 +146,16 @@ public final class ProjectFileRenderer {
     }
 
     public String readme(GenerationContext context) {
-        return gradleScaffold.readme(scaffoldModel(context));
+        return gradleScaffold.readme(scaffoldModel(context)) + "\n## MCP protocol versions\n\n"
+                + (context.request().mcpImplementation() == McpImplementation.MCP_JAVA_SDK
+                ? "Selected protocol: " + context.request().mcpProtocol().name() + ". Supported versions: "
+                    + String.join(", ", context.request().mcpProtocol().versions())
+                    + ". Unselected versions are rejected on /mcp. The modern tools-only adapter uses per-request metadata, "
+                    + "requires matching MCP-Protocol-Version, Mcp-Method and Mcp-Name headers, and creates no sessions. "
+                    + "The modern path accepts only same-origin loopback browser requests. HTTP request bodies are limited to 1 MiB. "
+                    + "Discovery and tool lists use private, immediately stale caching. "
+                    + "The gen2spring.mcp.requests metric records protocol.version (including unknown).\n"
+                : "Supports the validated 2025-03-26 handshake. This Spring AI profile does not implement 2026-07-28.\n");
     }
 
     private String renderedObservability() {

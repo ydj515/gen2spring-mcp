@@ -21,6 +21,7 @@ import io.gen2spring.mcp.application.generation.command.GenerationCommand.Valida
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.ValidationLevel;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.profile.McpImplementation;
+import io.gen2spring.mcp.domain.profile.McpProtocolMode;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicyValidator;
 import io.gen2spring.mcp.domain.tool.ParameterSource;
@@ -72,7 +73,7 @@ public final class GenerationConfigurationParser {
     private static final Set<String> ROOT_FIELDS = Set.of(
             "project", "provider", "domain", "targetProfileId", "validationLevel", "validation", "operations");
     private static final Set<String> ALLOWED_ROOT_FIELDS = java.util.stream.Stream.concat(
-            ROOT_FIELDS.stream(), java.util.stream.Stream.of("mcpImplementation"))
+            ROOT_FIELDS.stream(), java.util.stream.Stream.of("mcpImplementation", "mcpProtocol"))
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
     private static final Set<String> PROJECT_FIELDS = Set.of("groupId", "artifactId", "packageName");
     private static final Set<String> VALIDATION_FIELDS = Set.of("toolCall");
@@ -315,6 +316,9 @@ public final class GenerationConfigurationParser {
         requireString(root, "provider", "Provider");
         requireString(root, "domain", "Domain");
         requireString(root, "targetProfileId", "Target profile");
+        if (root.has("mcpProtocol")) {
+            requireString(root, "mcpProtocol", "MCP protocol");
+        }
         if (root.has("mcpImplementation")) {
             requireString(root, "mcpImplementation", "MCP implementation");
         }
@@ -489,9 +493,13 @@ public final class GenerationConfigurationParser {
         }
         ValidationConfiguration validation = validation(raw.validation());
         List<OperationSelection> operations = operations(raw.operations());
+        McpImplementation implementation = raw.mcpImplementation() == null
+                ? McpImplementation.SPRING_AI_EXPLICIT : raw.mcpImplementation();
+        McpProtocolMode protocol = raw.mcpProtocol() == null ? McpProtocolMode.LEGACY : raw.mcpProtocol();
+        if (!protocol.supports(implementation)) throw invalid("Selected MCP protocol requires MCP_JAVA_SDK");
         return new GenerationCommand(new ProjectCoordinates(groupId, artifactId, packageName), provider, domain,
                 raw.targetProfileId(), raw.validationLevel(), validation, operations,
-                raw.mcpImplementation() == null ? McpImplementation.SPRING_AI_EXPLICIT : raw.mcpImplementation());
+                implementation, protocol);
     }
 
     private ValidationConfiguration validation(RawValidation rawValidation) {
@@ -744,7 +752,8 @@ public final class GenerationConfigurationParser {
             ValidationLevel validationLevel,
             RawValidation validation,
             List<RawOperation> operations,
-            McpImplementation mcpImplementation) {}
+            McpImplementation mcpImplementation,
+            McpProtocolMode mcpProtocol) {}
 
     private record RawValidation(RawToolCall toolCall) {}
 

@@ -333,6 +333,73 @@ GET operation에 bounded retry를 실행할 수 있다. `maxRetries` 1..3, initi
 max backoff 10000ms 이하이며 total timeout 안에서만 적용한다. GET operation에 bounded pagination을 실행할
 수 있으며 `maxPages` 2..20, `maxItems` 1..2000과 items/next JSON Pointer를 요구한다.
 
+## MCP 프로토콜 버전
+
+| 실행 경로 | 지원 버전 |
+| --- | --- |
+| Managed Runtime | `2025-03-26`, `2026-07-28` |
+| `MCP_JAVA_SDK` 생성 서버 (Boot 3.5 / MVC, Java 17·21, Gradle·Maven) | `2025-03-26`, `2026-07-28` 중 단일 또는 병행 선택 |
+| Spring AI 1.1 / 2.0 생성 서버 | `2025-03-26` |
+
+생성 화면의 **MCP 프로토콜 버전**에서 지원 방식을 선택한다. Spring AI 구현에서는
+구형만 선택할 수 있으며, 직접 Java SDK 구현에서는 다음 세 가지를 선택할 수 있다.
+
+| 설정 `mcpProtocol` | 화면 선택 | 생성 서버 동작 |
+| --- | --- | --- |
+| `LEGACY` | 2025-03-26만 지원 | 기존 초기화 흐름 사용 |
+| `MODERN` | 2026-07-28만 지원 | 초기화 없는 요청 사용 |
+| `DUAL` | 두 버전 병행 지원 | 같은 endpoint에서 두 흐름 제공 |
+
+CLI 설정에도 루트 필드 `mcpProtocol`을 지정한다. 생략하면 `LEGACY`를 적용한다.
+Spring AI 구현과 `MODERN` 또는 `DUAL`을 조합하면 설정 오류를 반환한다.
+이 선택은 생성 서버에 적용하며, Managed Runtime은 두 버전을 병행 제공한다.
+
+병행 지원을 선택하면 두 버전은 같은 MCP endpoint를 사용한다. 기존 클라이언트는 `initialize` →
+`notifications/initialized` → `tools/list` → `tools/call` 흐름을 유지한다.
+새 클라이언트는 초기화 없이 `server/discover`(선택), `tools/list`, `tools/call`을 호출한다.
+각 요청의 `params._meta`에는 `io.modelcontextprotocol/protocolVersion: "2026-07-28"`과
+`io.modelcontextprotocol/clientCapabilities: {}`를 넣고, HTTP에는 `MCP-Protocol-Version`,
+`Mcp-Method`, 도구 호출에는 `Mcp-Name` 헤더를 함께 보낸다. 헤더와 본문이 다르면 실행하지 않는다.
+새 요청은 세션 ID를 만들거나 사용하지 않는다. 지원하지 않는 버전은 HTTP 400 / `-32022`로 반환한다.
+
+새 버전은 프로젝트 자체의 tools 전용 어댑터로 제공한다. SDK 0.18.3이나 Spring AI가
+새 명세를 지원한다는 뜻은 아니다. `server/discover`, `tools/list`, `tools/call`을 제공하고
+resources, prompts, sampling, elicitation, subscriptions, task 확장은 광고하지 않는다.
+목록은 `ttlMs: 0`, `cacheScope: private`로 반환한다. MCP HTTP 본문은 최대 1 MiB이며,
+새 프로토콜 endpoint는 Origin이 없거나 동일한 loopback 주소·scheme·port인 요청만 허용한다.
+외부 브라우저에서 직접 호출해야 한다면 인증 정책에 맞는 Origin 허용 목록을 먼저 구현해야 한다.
+
+`GENERATION_MANIFEST.json`의 `mcpProtocol`과 `mcpProtocolVersions`는 선택한 지원 방식과 버전 목록이고,
+`VALIDATION_REPORT.json`의 `verifiedProtocolVersions`는 해당 생성 실행에서 검증을 완료한 목록이다.
+`MCP_JAVA_SDK`의 `MCP_PROTOCOL` 검증은 선택한 각 버전에서 대표 도구를 한 번 실행한다.
+단일 버전 선택 시 다른 버전이 거부되는지도 검사한다.
+실패 보고서의 빈 목록은 프로토콜 검증 성공을 의미하지 않는다.
+CLI `profiles`와 UI 프로필 API는 `mcpProtocolVersionsByImplementation`을 제공한다.
+
+운영 지표 `gen2spring.mcp.requests`는 `protocol.version`별 요청 수를 기록한다.
+버전이 없는 레거시 후속 요청은 `unknown`으로 기록하므로, 이 수치를 무시하고 구형 사용량이
+0이라고 판단하면 안 된다. 구형 지원 종료에는 알려진 클라이언트 소유자의 이전 확인,
+누락 없는 관측에서 30일 연속 구형 요청 0건, 신형 회귀 검증 통과, 사전 종료 공지와
+롤백 경로가 모두 필요하다. 독립 배포한 생성 서버는 운영자 확인과 별도의 프로필 종료 정책을 따른다.
+
+### 두 버전 지원의 검증 범위
+
+2026-09-29 로컬 검증에서 Managed Runtime의 신·구 요청과 인증 폐기, Java 17/Maven 및
+Java 21/Gradle 직접 SDK 생성 프로젝트에서 세 가지 선택을 모두 실행해 도구 호출과
+선택하지 않은 버전의 거부를 확인했다. 아래 conformance 결과는 병행 지원 서버 기준이다.
+공식 [conformance 도구](https://github.com/modelcontextprotocol/conformance/tree/7169291ec0b68eb370fddcd9947313ab0d5e4156)를
+실제 생성 서버에 `--spec-version 2026-07-28`로 실행한 결과는 다음과 같다.
+
+| 시나리오 | 성공 | 실패 | 건너뜀·정보 | 실패 범위 |
+| --- | ---: | ---: | ---: | --- |
+| `server-stateless` | 21 | 4 | 5 | sampling, elicitation, logging 진단용 도구가 없어 검사 불가 |
+| `tools-list` | 3 | 0 | 1 | 없음 |
+| `caching` | 4 | 3 | 1 | 제공하지 않는 prompts/resources 목록 |
+| `dns-rebinding-protection` | 2 | 0 | 0 | 없음 |
+
+이는 tools 전용 구현에 대한 검증이며 공식 전체 conformance 통과나 SDK 인증을 의미하지 않는다.
+지원 기능을 늘릴 때는 해당 기능의 wire 테스트와 공식 시나리오도 추가해야 한다.
+
 ## 검증과 종료 코드
 
 생성 과정은 다음 단계를 순서대로 실행한다.

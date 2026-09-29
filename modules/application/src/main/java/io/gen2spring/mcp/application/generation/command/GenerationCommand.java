@@ -1,6 +1,7 @@
 package io.gen2spring.mcp.application.generation.command;
 
 import io.gen2spring.mcp.domain.profile.McpImplementation;
+import io.gen2spring.mcp.domain.profile.McpProtocolMode;
 import io.gen2spring.mcp.domain.execution.RetryPolicy;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
@@ -21,9 +22,21 @@ public record GenerationCommand(
         ValidationLevel validationLevel,
         ValidationConfiguration validation,
         List<OperationSelection> operations,
-        McpImplementation mcpImplementation) {
+        McpImplementation mcpImplementation,
+        McpProtocolMode mcpProtocol) {
     public GenerationCommand {
         Objects.requireNonNull(mcpImplementation, "mcpImplementation");
+        Objects.requireNonNull(mcpProtocol, "mcpProtocol");
+        if (!mcpProtocol.supports(mcpImplementation)) {
+            throw new IllegalArgumentException("Selected MCP protocol is unsupported by the implementation");
+        }
+    }
+
+    public GenerationCommand(ProjectCoordinates project, String provider, String domain, String targetProfileId,
+            ValidationLevel validationLevel, ValidationConfiguration validation, List<OperationSelection> operations,
+            McpImplementation mcpImplementation) {
+        this(project, provider, domain, targetProfileId, validationLevel, validation, operations,
+                mcpImplementation, McpProtocolMode.LEGACY);
     }
 
     public GenerationCommand(

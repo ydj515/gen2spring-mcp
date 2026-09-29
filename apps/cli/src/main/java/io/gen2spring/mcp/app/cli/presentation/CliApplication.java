@@ -60,8 +60,12 @@ public final class CliApplication {
             ObjectNode item = items.addObject();
             item.put("id", profile.id());
             var implementations = item.putArray("mcpImplementations");
+            ObjectNode protocols = item.putObject("mcpProtocolVersionsByImplementation");
             for (McpImplementation implementation : McpImplementation.values()) {
-                if (implementation.supports(profile)) implementations.add(implementation.name());
+                if (implementation.supports(profile)) {
+                    implementations.add(implementation.name());
+                    protocols.set(implementation.name(), json.valueToTree(implementation.protocolVersions()));
+                }
             }
             item.put("generatorModule", profile.generatorModule());
             item.put("templateVersion", profile.templateVersion());

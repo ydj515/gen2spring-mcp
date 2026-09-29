@@ -306,6 +306,25 @@ class P1GenerationIntegrationTest {
     }
 
     @Test
+    void directSdkHonorsProtocolSelectionOnJava17And21() throws Exception {
+        targetJavaHomes();
+        for (ProfileCase profile : List.of(SPRING_AI_1_JAVA_17_MAVEN, SPRING_AI_1_JAVA_21)) {
+            for (String mode : List.of("LEGACY", "MODERN", "DUAL")) {
+                Path configuration = Files.writeString(tempDir.resolve(profile.id() + "-" + mode + ".yaml"),
+                        "mcpImplementation: MCP_JAVA_SDK\nmcpProtocol: " + mode + "\n"
+                                + Files.readString(configurationFor(profile), UTF_8), UTF_8);
+                GenerationResult result = generate(resource("openapi/weather-api.yaml"), configuration,
+                        tempDir.resolve(profile.id() + "-" + mode));
+                List<String> versions = mode.equals("DUAL") ? List.of("2025-03-26", "2026-07-28")
+                        : List.of(mode.equals("LEGACY") ? "2025-03-26" : "2026-07-28");
+                assertEquals(JSON.valueToTree(versions), result.manifest().path("mcpProtocolVersions"));
+                assertEquals(mode, result.manifest().path("mcpProtocol").asText());
+                assertEquals(result.manifest().path("mcpProtocolVersions"), result.report().path("verifiedProtocolVersions"));
+            }
+        }
+    }
+
+    @Test
     void selectedMcpImplementationsValidateAcrossProfiles() throws Exception {
         targetJavaHomes();
         Path specification = resource("openapi/weather-api.yaml");

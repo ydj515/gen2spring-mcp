@@ -5,6 +5,11 @@ public enum McpImplementation {
     SPRING_AI_ANNOTATIONS,
     MCP_JAVA_SDK;
 
+    public java.util.List<String> protocolVersions() {
+        return this == MCP_JAVA_SDK ? java.util.List.of("2025-03-26", "2026-07-28")
+                : java.util.List.of("2025-03-26");
+    }
+
     public boolean supports(CompatibilityProfile profile) {
         if (profile == null || profile.target() == null) {
             return false;

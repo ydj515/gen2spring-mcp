@@ -8,6 +8,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
+import io.gen2spring.mcp.adapter.mcp.ModernMcpProtocol;
+import io.gen2spring.mcp.app.runtime.infrastructure.mcp.DualProtocolRouter;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
 import io.gen2spring.mcp.app.runtime.presentation.security.RuntimeBearerFilter;
 import io.gen2spring.mcp.application.generation.command.GenerationCommand.OperationSelection;
@@ -79,6 +82,42 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class ManagedRuntimeJourneyIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-08-21T00:00:00Z");
     private final ObjectMapper json = new ObjectMapper();
+
+    @Test
+    void servesModernCallsWithoutHandshakeAndPreservesBearerIsolation() throws Exception {
+        RuntimeFixture fixture = fixture(1, "token-one");
+        try {
+            String endpoint = "/mcp/" + fixture.instance.id().value();
+            for (String method : List.of("server/discover", "tools/list", "tools/call")) {
+                var body = json.createObjectNode().put("jsonrpc", "2.0").put("id", 7).put("method", method);
+                var params = body.putObject("params");
+                var meta = params.putObject("_meta");
+                meta.put(ModernMcpProtocol.VERSION_KEY, ModernMcpProtocol.VERSION);
+                meta.putObject(ModernMcpProtocol.CAPABILITIES_KEY);
+                if (method.equals("tools/call")) {
+                    params.put("name", "weather");
+                    params.putObject("arguments").put("city", "Seoul");
+                }
+                var request = post(endpoint).header("Authorization", "Bearer token-one")
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("MCP-Protocol-Version", ModernMcpProtocol.VERSION)
+                        .header("Mcp-Session-Id", "ignored-legacy-session")
+                        .header("Mcp-Method", method).contentType("application/json").content(body.toString());
+                if (method.equals("tools/call")) request.header("Mcp-Name", "weather");
+                var response = fixture.mvc.perform(request).andReturn().getResponse();
+                assertEquals(200, response.getStatus(), response.getContentAsString());
+                assertEquals(null, response.getHeader("Mcp-Session-Id"));
+                assertEquals("complete", json.readTree(response.getContentAsString()).at("/result/resultType").asText());
+            }
+            assertEquals(1, fixture.providerCalls.get());
+            fixture.stored.set(fixture.instance.revokeAt(NOW.plusSeconds(1)));
+            assertEquals(401, fixture.mvc.perform(post(endpoint).header("Authorization", "Bearer token-one")
+                    .header("MCP-Protocol-Version", ModernMcpProtocol.VERSION).contentType("application/json")
+                    .content("{}")).andReturn().getResponse().getStatus());
+        } finally {
+            fixture.close();
+        }
+    }
 
     @Test
     void servesExactToolsAndOneNormalizedProviderCallThenRejectsRevocation() throws Exception {
@@ -311,12 +350,17 @@ class ManagedRuntimeJourneyIntegrationTest {
             JacksonMcpJsonMapper mapper = new JacksonMcpJsonMapper(json);
             var transport = WebMvcStatelessServerTransport.builder()
                     .jsonMapper(mapper).messageEndpoint("/mcp/" + access.instance().id().value()).build();
+            var specs = new McpJavaSdkEmitter().emitStateless(document.tools(),
+                    (name, arguments) -> executor.call(binding, name, arguments));
             var server = McpServer.sync(transport).jsonMapper(mapper)
                     .serverInfo("managed-test", "1")
-                    .tools(new McpJavaSdkEmitter().emitStateless(document.tools(),
-                            (name, arguments) -> executor.call(binding, name, arguments)))
+                    .tools(specs)
                     .build();
-            return RuntimeServerHandle.stateless(access.instance(), transport, server);
+            var modern = new ModernMcpProtocol(json, specs.stream().map(spec -> spec.tool()).toList(),
+                    (name, arguments) -> specs.stream().filter(spec -> spec.tool().name().equals(name))
+                            .findFirst().orElseThrow().callHandler().apply(null, new McpSchema.CallToolRequest(name, arguments)));
+            var handle = RuntimeServerHandle.stateless(access.instance(), transport, server);
+            return handle.withRouter(DualProtocolRouter.wrap(handle.routes(), modern, json));
         }, 8, Clock.fixed(NOW, ZoneOffset.UTC));
         ManagedRuntimeStore store = new ManagedRuntimeStore() {
             @Override public void create(ManagedRuntimeInstance ignored, RuntimeTokenDigest digest,

@@ -176,6 +176,84 @@ public final class McpStreamableHttpClient {
                 toolCallDuration);
     }
 
+    public void validateDisabledProtocol(URI endpoint, String disabledVersion, List<String> enabledVersions) {
+        LoopbackPortAllocator.requireLoopback(endpoint);
+        String body = INITIALIZE;
+        if ("2026-07-28".equals(disabledVersion)) {
+            ObjectNode request = objectMapper.createObjectNode().put("jsonrpc", "2.0").put("id", 1)
+                    .put("method", "server/discover");
+            var meta = request.putObject("params").putObject("_meta");
+            meta.put("io.modelcontextprotocol/protocolVersion", disabledVersion);
+            meta.putObject("io.modelcontextprotocol/clientCapabilities");
+            body = request.toString();
+        }
+        HttpResponse<byte[]> response = send(endpoint, body, null, McpStage.INITIALIZE);
+        JsonNode error = parseResponseJson(new String(response.body(), StandardCharsets.UTF_8), McpStage.INITIALIZE);
+        JsonNode data = error.path("error").path("data");
+        if (response.statusCode() != 400 || error.path("error").path("code").asInt() != -32022
+                || !disabledVersion.equals(data.path("requested").asText())
+                || !objectMapper.valueToTree(enabledVersions).equals(data.path("supported"))) {
+            throw failure(McpStage.INITIALIZE, "Disabled MCP protocol was not rejected with the selected version list", null);
+        }
+    }
+
+    public Result validateModern(URI endpoint, Map<String, ExpectedTool> expectedTools,
+            ExpectedToolCall expectedCall) {
+        LoopbackPortAllocator.requireLoopback(endpoint);
+        Map<String, ExpectedTool> expected = validatedExpectedTools(expectedTools);
+        long started = System.nanoTime();
+        JsonNode discovery = modernRequest(endpoint, 1, "server/discover", Map.of(), McpStage.INITIALIZE);
+        validateCacheHints(discovery, McpStage.INITIALIZE);
+        boolean supported = false;
+        for (JsonNode version : discovery.path("supportedVersions")) {
+            supported |= "2026-07-28".equals(version.asText());
+        }
+        if (!supported || !discovery.path("capabilities").path("tools").isObject()) {
+            throw failure(McpStage.INITIALIZE, "MCP discovery does not advertise modern tools support", null);
+        }
+        long discoveryMillis = elapsedMillis(started);
+        started = System.nanoTime();
+        JsonNode listed = modernRequest(endpoint, 2, "tools/list", Map.of(), McpStage.TOOLS_LIST);
+        validateCacheHints(listed, McpStage.TOOLS_LIST);
+        List<ObservedTool> observed = validateTools(listed, expected);
+        long listMillis = elapsedMillis(started);
+        started = System.nanoTime();
+        if (expectedCall != null) {
+            JsonNode called = modernRequest(endpoint, 3, "tools/call",
+                    Map.of("name", expectedCall.tool().name(), "arguments", expectedCall.arguments()), McpStage.TOOL_CALL);
+            validateToolCallResult(called, expectedCall);
+        }
+        Set<String> names = new LinkedHashSet<>();
+        observed.forEach(tool -> names.add(tool.name()));
+        return new Result(names, observed, discoveryMillis, listMillis,
+                expectedCall == null ? 0 : elapsedMillis(started));
+    }
+
+    private JsonNode modernRequest(URI endpoint, long id, String method, Map<String, Object> values, McpStage stage) {
+        ObjectNode request = objectMapper.createObjectNode().put("jsonrpc", "2.0").put("id", id).put("method", method);
+        ObjectNode params = request.putObject("params");
+        values.forEach((key, value) -> params.set(key, objectMapper.valueToTree(value)));
+        ObjectNode meta = params.putObject("_meta");
+        meta.put("io.modelcontextprotocol/protocolVersion", "2026-07-28");
+        meta.putObject("io.modelcontextprotocol/clientCapabilities");
+        HttpResponse<byte[]> response = send(endpoint, request.toString(), null, stage);
+        if (response.headers().firstValue("Mcp-Session-Id").isPresent()) {
+            throw failure(stage, "Modern MCP response must not create a session", null);
+        }
+        JsonNode result = requireResult(responseJson(response, id, stage), stage);
+        if (!"complete".equals(result.path("resultType").asText())) {
+            throw failure(stage, "Modern MCP resultType must be complete", null);
+        }
+        return result;
+    }
+
+    private void validateCacheHints(JsonNode result, McpStage stage) {
+        if (!result.path("ttlMs").isNumber() || result.path("ttlMs").decimalValue().signum() < 0
+                || !Set.of("private", "public").contains(result.path("cacheScope").asText())) {
+            throw failure(stage, "Modern MCP cache hints are invalid", null);
+        }
+    }
+
     private HttpResponse<byte[]> send(URI endpoint, String body, String sessionId, McpStage stage) {
         HttpRequest.Builder request = HttpRequest.newBuilder(endpoint)
                 .timeout(requestTimeout)
@@ -184,6 +262,17 @@ public final class McpStreamableHttpClient {
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         if (sessionId != null) {
             request.header("Mcp-Session-Id", sessionId);
+        }
+        JsonNode message = parseResponseJson(body, stage);
+        if (message.path("params").path("_meta").has("io.modelcontextprotocol/protocolVersion")) {
+            request.header("MCP-Protocol-Version", "2026-07-28");
+            request.header("Mcp-Method", message.path("method").asText());
+            if (message.path("params").has("name")) {
+                String name = message.path("params").path("name").asText();
+                String encoded = "=?base64?" + java.util.Base64.getEncoder()
+                        .encodeToString(name.getBytes(StandardCharsets.UTF_8)) + "?=";
+                request.header("Mcp-Name", encoded);
+            }
         }
         long deadline = deadline(requestTimeout);
         BoundedBodyHandler bodyHandler = new BoundedBodyHandler(maxResponseBytes);

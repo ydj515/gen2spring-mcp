@@ -16,6 +16,8 @@ import io.gen2spring.mcp.adapter.validation.runtime.ApplicationRuntimeValidator;
 import io.gen2spring.mcp.adapter.validation.runtime.LoopbackPortAllocator;
 import io.gen2spring.mcp.adapter.validation.runtime.ServerEndpointDetector;
 import io.gen2spring.mcp.adapter.validation.upstream.MockUpstreamServer;
+import io.gen2spring.mcp.domain.profile.McpImplementation;
+import io.gen2spring.mcp.domain.profile.McpProtocolMode;
 import io.gen2spring.mcp.adapter.validation.upstream.UpstreamCallExpectation;
 import io.gen2spring.mcp.application.generation.port.out.GeneratedProjectValidator;
 import io.gen2spring.mcp.application.generation.port.out.GenerationProgressListener;
@@ -346,6 +348,11 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         ValidationPhase phase = ValidationPhase.MOCK_START;
         try {
             List<UpstreamCallExpectation> expectations = UpstreamCallExpectation.allFrom(request.expectedToolCall());
+            if (request.protocol() == McpProtocolMode.DUAL) {
+                List<UpstreamCallExpectation> both = new ArrayList<>(expectations);
+                both.addAll(expectations);
+                expectations = List.copyOf(both);
+            }
             RunningMockUpstream upstream = mockUpstreamFactory.start(expectations);
             progress.start("APPLICATION_CONTEXT");
             Throwable upstreamFailure = null;
@@ -371,9 +378,20 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 }
 
                 phase = ValidationPhase.MCP_VALIDATION;
-                mcpResult = mcpClient.validate(
-                        readinessResult.endpoint(), request.expectedTools(), request.expectedToolCall(),
-                        progress::observeMcpStage);
+                if (request.implementation() == McpImplementation.MCP_JAVA_SDK
+                        && request.protocol() != McpProtocolMode.DUAL) {
+                    mcpClient.validateDisabledProtocol(readinessResult.endpoint(),
+                            request.protocol().modern() ? "2025-03-26" : "2026-07-28", request.protocol().versions());
+                }
+                // Probe the independent modern lifecycle before publishing legacy stage successes.
+                if (request.protocol().modern()) {
+                    mcpResult = mcpClient.validateModern(readinessResult.endpoint(), request.expectedTools(), request.expectedToolCall());
+                }
+                if (request.protocol().legacy()) {
+                    mcpResult = mcpClient.validate(
+                            readinessResult.endpoint(), request.expectedTools(), request.expectedToolCall(),
+                            progress::observeMcpStage);
+                }
                 phase = ValidationPhase.UPSTREAM_VERIFICATION;
                 upstream.sealAndAwaitVerified(startupTimeout);
                 phase = ValidationPhase.APPLICATION_INTEGRITY;
@@ -503,7 +521,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
                 stages.add(failed("MCP_INITIALIZE", System.nanoTime(), "MCP validation did not return a result"));
                 return failedReport(stages, List.of());
             }
-            appendSuccessfulMcpPrerequisites(stages, mcpResult);
+            appendSuccessfulMcpPrerequisites(stages, mcpResult, request.protocol());
             stages.add(new ValidationStageResult(
                     "MCP_TOOL_CALL", FAILED, mcpResult.toolsCallDurationMillis(), 0, 1, TOOL_CALL_FAILURE));
             return failedReport(stages, mcpResult.tools());
@@ -512,10 +530,11 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             stages.add(failed("MCP_INITIALIZE", System.nanoTime(), "MCP validation did not return a result"));
             return failedReport(stages, List.of());
         }
-        appendSuccessfulMcpPrerequisites(stages, mcpResult);
+        appendSuccessfulMcpPrerequisites(stages, mcpResult, request.protocol());
         stages.add(new ValidationStageResult(
                 "MCP_TOOL_CALL", SUCCESS, mcpResult.toolsCallDurationMillis(), 0, 0, TOOL_CALL_SUCCESS));
-        return new ValidationReport(VALIDATED, List.copyOf(stages), mcpResult.tools());
+        return new ValidationReport(VALIDATED, List.copyOf(stages), mcpResult.tools(),
+                request.protocol().versions());
     }
 
     private static void addSuppressedSafely(Throwable primary, Throwable suppressed) {
@@ -546,9 +565,10 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
 
     private void appendSuccessfulMcpPrerequisites(
             List<ValidationStageResult> stages,
-            McpStreamableHttpClient.Result result) {
+            McpStreamableHttpClient.Result result, McpProtocolMode protocol) {
         stages.add(new ValidationStageResult(
-                "MCP_INITIALIZE", SUCCESS, result.initializeDurationMillis(), 0, 0, INITIALIZE_SUCCESS));
+                "MCP_INITIALIZE", SUCCESS, result.initializeDurationMillis(), 0, 0,
+                protocol == McpProtocolMode.MODERN ? "MCP 2026-07-28 server discovery succeeded" : INITIALIZE_SUCCESS));
         stages.add(new ValidationStageResult(
                 "MCP_TOOLS_LIST", SUCCESS, result.toolsListDurationMillis(), 0, 0, TOOLS_LIST_SUCCESS));
     }
@@ -786,7 +806,7 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
         applicationRuntimeValidator.requireEndpointDetector(request.profile());
         return new ValidatedRequest(
                 root, request.artifactId(), Collections.unmodifiableMap(expected), expectedToolCall,
-                request.profile(), null);
+                request.profile(), request.implementation(), request.protocol(), null);
     }
 
     private ValidationReport failedReport(List<ValidationStageResult> attempted, List<ObservedTool> observed) {
@@ -1085,9 +1105,11 @@ public final class GradleMcpProjectValidator implements GeneratedProjectValidato
             Map<String, ExpectedTool> expectedTools,
             ExpectedToolCall expectedToolCall,
             CompatibilityProfile profile,
+            McpImplementation implementation,
+            McpProtocolMode protocol,
             JavaRuntimeResolver.ResolvedJavaRuntime runtime) {
         private ValidatedRequest withRuntime(JavaRuntimeResolver.ResolvedJavaRuntime resolvedRuntime) {
-            return new ValidatedRequest(root, artifactId, expectedTools, expectedToolCall, profile, resolvedRuntime);
+            return new ValidatedRequest(root, artifactId, expectedTools, expectedToolCall, profile, implementation, protocol, resolvedRuntime);
         }
     }
 

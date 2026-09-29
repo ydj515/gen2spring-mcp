@@ -9,7 +9,7 @@ import {clearProgress, renderProgress, stateLabel} from './progress.js';
 const byId = id => document.querySelector(`#${id}`);
 const ui = Object.fromEntries([
   'error-summary', 'error-message', 'analysis-summary', 'target-profile', 'profile-description',
-  'mcp-implementation', 'mcp-implementation-description',
+  'mcp-implementation', 'mcp-implementation-description', 'mcp-protocol', 'mcp-protocol-description',
   'profile-help-button', 'profile-help', 'profile-notice-list',
   'preview-button', 'preview-status', 'preview-button-label', 'generate-button-label',
   'validation-action', 'validation-action-title', 'validation-overall',
@@ -66,10 +66,14 @@ document.querySelectorAll('[data-implementation]').forEach(button => {
 ui['mcp-implementation'].addEventListener('change', renderImplementationChoice);
 if (api.hostedMode) ui['delete-job-button'].textContent = '작업 취소';
 for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name',
-  'target-profile', 'mcp-implementation', 'validation-operation', 'validation-arguments']) {
+  'target-profile', 'mcp-implementation', 'mcp-protocol', 'validation-operation', 'validation-arguments']) {
   byId(id).addEventListener('input', invalidatePreview);
   byId(id).addEventListener('change', invalidatePreview);
 }
+ui['mcp-protocol'].addEventListener('change', () => {
+  renderProtocolDescription();
+  describeProfile();
+});
 ui['validation-operation'].addEventListener('change', renderParameterSummary);
 
 loadProfiles();
@@ -123,12 +127,33 @@ function renderImplementationProfiles() {
     ?? profiles.find(profile => profile.id === preferredId) ?? profiles[0];
   if (selection) ui['target-profile'].value = selection.id;
   renderedImplementation = implementation;
+  const supported = selection?.mcpProtocolVersionsByImplementation?.[implementation] ?? ['2025-03-26'];
+  for (const option of ui['mcp-protocol'].options) {
+    option.disabled = option.value !== 'LEGACY' && !supported.includes('2026-07-28');
+  }
+  if (ui['mcp-protocol'].selectedOptions[0]?.disabled) ui['mcp-protocol'].value = 'LEGACY';
+  renderProtocolDescription();
   ui['mcp-implementation-description'].textContent = sdk
     ? 'Spring AI 의존성 없이 생성합니다. Spring Boot 3 · MVC를 지원합니다.'
     : '@McpTool 애노테이션과 Spring AI를 사용합니다.';
   renderCompatibilityNotices(sdk ? [] : getState().compatibilityNotices);
   describeProfile();
   renderGenerationSummary();
+}
+
+function selectedProtocolLabel() {
+  return ui['mcp-protocol'].selectedOptions[0]?.textContent ?? '2025-03-26만 지원';
+}
+
+function renderProtocolDescription() {
+  const hints = {
+    LEGACY: '초기화 절차를 사용하는 기존 클라이언트용입니다.',
+    MODERN: '초기화 없이 요청마다 버전을 전달합니다. 기존 버전 요청은 거부합니다.',
+    DUAL: '두 버전을 같은 endpoint에서 제공합니다. 기존 클라이언트 이전에 사용할 수 있습니다.'
+  };
+  ui['mcp-protocol-description'].textContent = ui['mcp-implementation'].value === 'MCP_JAVA_SDK'
+    ? hints[ui['mcp-protocol'].value]
+    : 'Spring AI는 2025-03-26을 지원합니다. 새 버전이나 병행 지원은 MCP Java SDK를 선택하세요.';
 }
 
 function renderImplementationChoice() {
@@ -358,7 +383,7 @@ function setValidationStatus(status, errorMessage) {
 function describeProfile() {
   const profile = getState().profiles.find(candidate => candidate.id === ui['target-profile'].value);
   ui['profile-description'].textContent = profile
-    ? `${formatProfileLabel(profile)} · Spring Boot ${profile.springBootVersion}`
+    ? `${formatProfileLabel(profile)} · Spring Boot ${profile.springBootVersion} · MCP ${selectedProtocolLabel()}`
     : '생성 프로필을 선택해 주세요.';
   renderGenerationSummary();
 }

@@ -34,6 +34,8 @@ import io.gen2spring.mcp.application.generation.validation.ExpectedUpstreamRespo
 import io.gen2spring.mcp.application.generation.validation.ValidationRequest;
 import io.gen2spring.mcp.domain.execution.PaginationPolicy;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
+import io.gen2spring.mcp.domain.profile.McpImplementation;
+import io.gen2spring.mcp.domain.profile.McpProtocolMode;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfileRegistry;
 import io.gen2spring.mcp.domain.tool.HttpExecution;
 import io.gen2spring.mcp.domain.tool.OutputKind;
@@ -77,6 +79,21 @@ class GradleMcpProjectValidatorTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void modernFailureDoesNotPublishLegacySuccessOrClaimVerifiedVersions() throws Exception {
+        Path root = runnableProject("");
+        var profile = CompatibilityProfileRegistry.defaults()
+                .find("spring-ai-1.1-java21-mvc-streamable").orElseThrow();
+        var request = new ValidationRequest(root, ARTIFACT_ID, MCP_PROTOCOL, EXPECTED,
+                expectedToolCall(), profile, McpImplementation.MCP_JAVA_SDK, McpProtocolMode.DUAL);
+        List<GenerationProgress> progress = new java.util.ArrayList<>();
+        var report = validator().validate(request, progress::add);
+        assertEquals(UNVERIFIED, report.status());
+        assertTrue(report.verifiedProtocolVersions().isEmpty());
+        assertEquals(FAILED, report.stages().get(2).status());
+        assertTrue(waitUntilDead(readPid(root)));
+    }
 
     @Test
     void appliesTheConfiguredBuildTimeoutToMavenValidation() throws Exception {

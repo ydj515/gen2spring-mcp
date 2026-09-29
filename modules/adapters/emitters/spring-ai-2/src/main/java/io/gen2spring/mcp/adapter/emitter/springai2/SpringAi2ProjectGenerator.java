@@ -93,7 +93,7 @@ public final class SpringAi2ProjectGenerator implements ProjectGenerator {
             }
         }
         var model = new McpRegistrationModel(packageName, domainClass, context.request().project().artifactId(),
-                context.profile(), implementation, tools);
+                context.profile(), implementation, tools, context.request().mcpProtocol());
         new McpRegistrationSourceRenderer().render(model).forEach((path, source) ->
                 files.put(path, source.getBytes(StandardCharsets.UTF_8)));
         String readme = new String(files.get("README.md"), StandardCharsets.UTF_8);

@@ -20,6 +20,21 @@ class GenerationConfigurationParserTest {
             new GenerationConfigurationParser(CompatibilityProfileRegistry.defaults());
 
     @Test
+    void parsesProtocolSelectionAndRejectsUnsupportedCombinations() {
+        assertEquals("LEGACY", parser.parseYaml(validYaml().getBytes(UTF_8)).mcpProtocol().name());
+        for (String mode : java.util.List.of("LEGACY", "MODERN", "DUAL")) {
+            var selected = parser.parseYaml(("mcpImplementation: MCP_JAVA_SDK\nmcpProtocol: " + mode
+                    + "\n" + validYaml()).getBytes(UTF_8));
+            assertEquals(mode, selected.mcpProtocol().name());
+        }
+        var incompatible = assertThrows(GenerationConfigurationException.class, () -> parser.parseJson(
+                validJson().replaceFirst("\\{", "{\"mcpProtocol\":\"MODERN\",").getBytes(UTF_8)));
+        assertEquals("Selected MCP protocol requires MCP_JAVA_SDK", incompatible.getMessage());
+        assertInvalidJson(validJson().replaceFirst("\\{", "{\"mcpProtocol\":\"UNKNOWN\","));
+        assertInvalidJson(validJson().replaceFirst("\\{", "{\"mcpProtocol\":null,"));
+    }
+
+    @Test
     void defaultsLegacyRequestsAndParsesBothImplementationChoices() {
         assertEquals("SPRING_AI_EXPLICIT", parser.parseYaml(validYaml().getBytes(UTF_8)).mcpImplementation().name());
         for (String mode : java.util.List.of("SPRING_AI_ANNOTATIONS", "MCP_JAVA_SDK")) {

@@ -44,6 +44,14 @@ public final class RuntimeServerHandle implements AutoCloseable {
         });
     }
 
+    public RuntimeServerHandle withRouter(RouterFunction<ServerResponse> replacement) {
+        return new RuntimeServerHandle(instance, replacement, this::close);
+    }
+
+    public RouterFunction<ServerResponse> routes() {
+        return router();
+    }
+
     ManagedRuntimeInstance instance() {
         return instance;
     }

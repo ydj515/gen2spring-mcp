@@ -14,6 +14,7 @@ import io.gen2spring.mcp.application.generation.result.GenerationPreview;
 import io.gen2spring.mcp.domain.error.GeneratorException;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.McpImplementation;
+import io.gen2spring.mcp.domain.profile.McpProtocolMode;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument;
 import io.gen2spring.mcp.domain.tool.ToolDefinition;
@@ -51,6 +52,12 @@ public final class GenerationManifestWriter implements ManifestWriter {
     @Override
     public Path write(Path projectRoot, CompatibilityProfile profile, OpenApiDocument document,
                       String sourceChecksum, List<ToolDefinition> tools, McpImplementation implementation) {
+        return write(projectRoot, profile, document, sourceChecksum, tools, implementation, McpProtocolMode.LEGACY);
+    }
+
+    @Override
+    public Path write(Path projectRoot, CompatibilityProfile profile, OpenApiDocument document,
+            String sourceChecksum, List<ToolDefinition> tools, McpImplementation implementation, McpProtocolMode protocol) {
         requireInputs(profile, document, sourceChecksum, tools);
         Path target = outputPath(projectRoot);
         ObjectNode manifest = objectMapper.createObjectNode();
@@ -67,6 +74,8 @@ public final class GenerationManifestWriter implements ManifestWriter {
         } else {
             manifest.put("springAiVersion", profile.target().springAiVersion());
         }
+        manifest.put("mcpProtocol", protocol.name());
+        manifest.set("mcpProtocolVersions", objectMapper.valueToTree(protocol.versions()));
         manifest.put("javaVersion", profile.target().javaVersion());
         ObjectNode buildTool = manifest.putObject("buildTool");
         buildTool.put("type", profile.target().buildTool());

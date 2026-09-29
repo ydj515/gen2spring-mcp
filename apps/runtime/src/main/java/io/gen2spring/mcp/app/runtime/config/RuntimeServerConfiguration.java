@@ -2,6 +2,9 @@ package io.gen2spring.mcp.app.runtime.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
+import io.gen2spring.mcp.adapter.mcp.ModernMcpProtocol;
+import io.gen2spring.mcp.app.runtime.infrastructure.mcp.DualProtocolRouter;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.gen2spring.mcp.app.runtime.presentation.mcp.ManagedMcpRouter;
 import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandle;
 import io.gen2spring.mcp.app.runtime.presentation.mcp.RuntimeServerHandleRegistry;
@@ -12,6 +15,7 @@ import io.gen2spring.mcp.application.managed.execution.service.ManagedToolExecut
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
@@ -33,7 +37,8 @@ final class RuntimeServerConfiguration {
     RuntimeServerHandleRegistry runtimeServerHandleRegistry(
             ManagedToolSessionService sessions,
             RuntimeProperties properties,
-            Clock clock) {
+            Clock clock,
+            MeterRegistry meters) {
         McpJavaSdkEmitter emitter = new McpJavaSdkEmitter();
         ObjectMapper json = new ObjectMapper();
         JacksonMcpJsonMapper mapper = new JacksonMcpJsonMapper(json);
@@ -52,7 +57,13 @@ final class RuntimeServerConfiguration {
                     .requestTimeout(Duration.ofSeconds(30))
                     .tools(specifications)
                     .build();
-            return RuntimeServerHandle.stateless(instance, transport, server);
+            var modern = new ModernMcpProtocol(json, specifications.stream().map(spec -> spec.tool()).toList(),
+                    (name, arguments) -> specifications.stream().filter(spec -> spec.tool().name().equals(name))
+                            .findFirst().orElseThrow().callHandler().apply(null,
+                                    new McpSchema.CallToolRequest(name, arguments)));
+            var handle = RuntimeServerHandle.stateless(instance, transport, server);
+            return handle.withRouter(DualProtocolRouter.wrap(handle.routes(), modern, json,
+                    version -> meters.counter("gen2spring.mcp.requests", "protocol.version", version).increment()));
         }, properties.cacheSize(), clock);
     }
 

@@ -3,7 +3,7 @@ const STAGE_LABELS = {
   GENERATE: '프로젝트 코드 생성',
   COMPILE: 'Gradle 컴파일',
   APPLICATION_CONTEXT: 'Spring 컨텍스트 기동',
-  MCP_INITIALIZE: 'MCP 서버 초기화',
+  MCP_INITIALIZE: 'MCP 프로토콜 연결',
   MCP_TOOLS_LIST: 'Tool 목록 검증',
   MCP_TOOL_CALL: '대표 Tool 호출 검증',
   PACKAGE: '산출물 패키징'
@@ -13,7 +13,7 @@ const STAGE_DESCRIPTIONS = {
   GENERATE: '선택한 Endpoint를 기반으로 프로젝트 코드를 생성합니다.',
   COMPILE: '생성된 프로젝트를 Gradle로 컴파일합니다.',
   APPLICATION_CONTEXT: 'Spring 애플리케이션 컨텍스트를 기동합니다.',
-  MCP_INITIALIZE: 'MCP 서버 연결과 초기화를 확인합니다.',
+  MCP_INITIALIZE: '선택한 MCP 프로토콜의 연결 절차를 확인합니다.',
   MCP_TOOLS_LIST: '생성된 Tool 목록과 메타데이터를 검증합니다.',
   MCP_TOOL_CALL: '대표 Tool을 실제 인자로 호출해 검증합니다.',
   PACKAGE: '다운로드할 프로젝트와 검증 산출물을 패키징합니다.'

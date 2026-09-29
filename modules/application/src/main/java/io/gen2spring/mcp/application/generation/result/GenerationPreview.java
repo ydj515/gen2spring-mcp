@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gen2spring.mcp.application.generation.validation.ExpectedTool;
 import io.gen2spring.mcp.domain.profile.CompatibilityProfile;
 import io.gen2spring.mcp.domain.profile.McpImplementation;
+import io.gen2spring.mcp.domain.profile.McpProtocolMode;
 import io.gen2spring.mcp.domain.response.ResponseNormalizationPolicy;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.AnalysisWarning;
 import io.gen2spring.mcp.domain.specification.OpenApiDocument.ApiSchema;
@@ -25,7 +26,13 @@ public record GenerationPreview(
         List<String> secretEnvironmentVariables,
         List<AnalysisWarning> warnings,
         List<String> generatedFilePaths,
-        McpImplementation mcpImplementation) {
+        McpImplementation mcpImplementation,
+        McpProtocolMode mcpProtocol) {
+    public GenerationPreview(CompatibilityProfile profile, List<Tool> tools,
+            List<String> secrets, List<AnalysisWarning> warnings, List<String> paths, McpImplementation implementation) {
+        this(profile, tools, secrets, warnings, paths, implementation, McpProtocolMode.LEGACY);
+    }
+
     public GenerationPreview(CompatibilityProfile profile, List<Tool> tools,
                              List<String> secretEnvironmentVariables, List<AnalysisWarning> warnings,
                              List<String> generatedFilePaths) {

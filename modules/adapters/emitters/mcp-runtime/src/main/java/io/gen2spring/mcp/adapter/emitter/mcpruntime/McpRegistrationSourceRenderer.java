@@ -13,6 +13,8 @@ public final class McpRegistrationSourceRenderer {
         files.put(root + "GeneratedToolCalls.java", calls(model));
         if (model.implementation() == io.gen2spring.mcp.domain.profile.McpImplementation.MCP_JAVA_SDK) {
             files.put(root + "GeneratedMcpServerConfiguration.java", sdkServer(model));
+            files.put(root + "ModernMcpProtocol.java", template("ModernMcpProtocol", model));
+            files.put(root + "DualMcpServlet.java", template("DualMcpServlet", model));
         } else {
             files.put(root + model.domainClass() + "McpTools.java", annotatedTools(model));
             files.put(root + "GeneratedMcpRegistration.java", annotationRegistration(model));
@@ -292,9 +294,10 @@ public final class McpRegistrationSourceRenderer {
                     }
 
                     @Bean
-                    public ServletRegistrationBean<HttpServletStreamableServerTransportProvider> mcpServlet(
-                            HttpServletStreamableServerTransportProvider transport) {
-                        var registration = new ServletRegistrationBean<>(transport, "/mcp");
+                    public ServletRegistrationBean<DualMcpServlet> mcpServlet(
+                            HttpServletStreamableServerTransportProvider transport, GeneratedToolCalls calls,
+                            com.fasterxml.jackson.databind.ObjectMapper json, io.micrometer.core.instrument.MeterRegistry meters) {
+                        var registration = new ServletRegistrationBean<>(new DualMcpServlet(transport, calls, json, meters), "/mcp");
                         registration.setAsyncSupported(true);
                         return registration;
                     }
@@ -313,6 +316,18 @@ public final class McpRegistrationSourceRenderer {
                     }
                 }
                 """.formatted(model.packageName(), quote(model.artifactId()));
+    }
+
+    private String template(String name, McpRegistrationModel model) {
+        try (var stream = getClass().getResourceAsStream("/mcp/" + name + ".java.template")) {
+            if (stream == null) throw new IllegalStateException("MCP protocol template is missing");
+            return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("${package}", model.packageName())
+                    .replace("${protocolVersions}", "java.util.List.of(" + model.protocol().versions().stream()
+                            .map(this::quote).collect(Collectors.joining(", ")) + ")");
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Cannot read MCP protocol template", failure);
+        }
     }
 
     private String quote(String value) {

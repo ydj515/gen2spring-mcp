@@ -8,6 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import io.gen2spring.mcp.adapter.validation.mcp.McpStreamableHttpClient.McpStage;
 import io.gen2spring.mcp.adapter.validation.support.McpTestServer.Scenario;
 import io.gen2spring.mcp.adapter.validation.support.McpTestServer;
@@ -54,6 +58,58 @@ class McpStreamableHttpClientTest {
 
     private final McpStreamableHttpClient client = new McpStreamableHttpClient(Duration.ofSeconds(2), 64 * 1024);
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @Test
+    void validatesModernMetadataAndRejectsIncompleteModernResponses() throws Exception {
+        for (String defect : List.of("none", "resultType", "ttlMs", "session")) {
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            List<String> methods = new java.util.concurrent.CopyOnWriteArrayList<>();
+            List<String> versions = new java.util.concurrent.CopyOnWriteArrayList<>();
+            server.createContext("/mcp", exchange -> {
+                var request = mapper.readTree(exchange.getRequestBody());
+                String method = request.path("method").asText();
+                methods.add(method);
+                versions.add(exchange.getRequestHeaders().getFirst("MCP-Protocol-Version"));
+                versions.add(request.at("/params/_meta/io.modelcontextprotocol~1protocolVersion").asText());
+                ObjectNode response = mapper.createObjectNode().put("jsonrpc", "2.0");
+                response.set("id", request.get("id"));
+                ObjectNode result = response.putObject("result").put("resultType", "complete")
+                        .put("ttlMs", 0).put("cacheScope", "private");
+                if (method.equals("server/discover")) {
+                    result.putArray("supportedVersions").add("2025-03-26").add("2026-07-28");
+                    result.putObject("capabilities").putObject("tools");
+                } else if (method.equals("tools/list")) {
+                    var tool = result.putArray("tools").addObject().put("name", "kma_weather_get_forecast")
+                            .put("description", EXPECTED.get("kma_weather_get_forecast").description());
+                    tool.set("inputSchema", mapper.valueToTree(EXPECTED.get("kma_weather_get_forecast").inputSchema()));
+                } else {
+                    result.put("isError", false).putArray("content").addObject().put("type", "text")
+                            .put("text", mapper.writeValueAsString(EXPECTED_CALL.expectedResult()));
+                }
+                if (!defect.equals("none")) result.remove(defect);
+                if (defect.equals("session")) exchange.getResponseHeaders().set("Mcp-Session-Id", "forbidden");
+                byte[] bytes = response.toString().getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+                exchange.close();
+            });
+            server.start();
+            try {
+                URI endpoint = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/mcp");
+                if (defect.equals("none")) {
+                    assertEquals(EXPECTED.keySet(), client.validateModern(endpoint, EXPECTED, EXPECTED_CALL).toolNames());
+                    assertEquals(List.of("server/discover", "tools/list", "tools/call"), methods);
+                    assertTrue(versions.stream().allMatch("2026-07-28"::equals));
+                } else {
+                    assertThrows(McpStreamableHttpClient.McpValidationException.class,
+                            () -> client.validateModern(endpoint, EXPECTED, EXPECTED_CALL), defect);
+                }
+            } finally {
+                server.stop(0);
+            }
+        }
+    }
 
     @Test
     void selectsTheMatchingSseResponseAfterNotificationsAndUnrelatedMessages() throws Exception {

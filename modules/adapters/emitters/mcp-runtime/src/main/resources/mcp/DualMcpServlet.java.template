@@ -1,0 +1,111 @@
+package ${package}.generated.tool;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.servlet.ReadListener;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletInputStream;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.ByteArrayInputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+
+/** Keeps legacy sessions in the SDK while modern requests use independent metadata. */
+public final class DualMcpServlet extends HttpServlet {
+    private final HttpServlet legacy;
+    private final ModernMcpProtocol modern;
+    private final ObjectMapper json;
+    private final MeterRegistry meters;
+
+    public DualMcpServlet(HttpServlet legacy, GeneratedToolCalls calls, ObjectMapper json, MeterRegistry meters) {
+        this.meters = meters;
+        this.legacy = legacy;
+        this.json = json;
+        this.modern = new ModernMcpProtocol(json, calls.tools(), calls::call, ${protocolVersions});
+    }
+
+    @Override
+    public void init() throws ServletException {
+        legacy.init(getServletConfig());
+    }
+
+    @Override
+    protected void service(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        if (!"POST".equals(request.getMethod())) {
+            if (!modern.supportsLegacy() || ModernMcpProtocol.VERSION.equals(request.getHeader("MCP-Protocol-Version"))) {
+                response.setHeader("Allow", "POST");
+                response.setStatus(405);
+            } else {
+                legacy.service(request, response);
+            }
+            return;
+        }
+        byte[] bytes = request.getInputStream().readNBytes(1024 * 1024 + 1);
+        if (bytes.length > 1024 * 1024) {
+            response.setStatus(413);
+            return;
+        }
+        JsonNode body;
+        try {
+            body = json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .with(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION).readTree(bytes);
+        } catch (IOException invalid) {
+            write(response, modern.error(null, 400, -32700, "Parse error", null));
+            return;
+        }
+        if (body == null) {
+            write(response, modern.error(null, 400, -32600, "Invalid request", null));
+            return;
+        }
+        meters.counter("gen2spring.mcp.requests", "protocol.version",
+                ModernMcpProtocol.observedVersion(body, request.getHeader("MCP-Protocol-Version"))).increment();
+        if (ModernMcpProtocol.isModern(body, request.getHeader("MCP-Protocol-Version"))) {
+            if (!ModernMcpProtocol.allowsOrigin(request.getHeader("Origin"), request.getScheme(),
+                    request.getServerName(), request.getServerPort())) {
+                response.setStatus(403);
+                return;
+            }
+            write(response, modern.handle(body, request::getHeader));
+            return;
+        }
+        String legacyVersion = body.path("params").path("protocolVersion")
+                .asText(request.getHeader("MCP-Protocol-Version"));
+        if (!modern.supportsLegacy() || (legacyVersion != null && !"2025-03-26".equals(legacyVersion))) {
+            write(response, modern.rejectLegacy(body, request.getHeader("MCP-Protocol-Version")));
+            return;
+        }
+        legacy.service(new HttpServletRequestWrapper(request) {
+            @Override
+            public BufferedReader getReader() {
+                return new BufferedReader(new InputStreamReader(getInputStream(), StandardCharsets.UTF_8));
+            }
+
+            @Override
+            public ServletInputStream getInputStream() {
+                ByteArrayInputStream input = new ByteArrayInputStream(bytes);
+                return new ServletInputStream() {
+                    @Override public int read() { return input.read(); }
+                    @Override public boolean isFinished() { return input.available() == 0; }
+                    @Override public boolean isReady() { return true; }
+                    @Override public void setReadListener(ReadListener listener) {
+                        throw new UnsupportedOperationException("Synchronous request replay only");
+                    }
+                };
+            }
+        }, response);
+    }
+
+    private void write(HttpServletResponse response, ModernMcpProtocol.Reply reply) throws IOException {
+        response.setStatus(reply.status());
+        response.setContentType("application/json");
+        response.setHeader("Cache-Control", "private, no-store");
+        json.writeValue(response.getOutputStream(), reply.body());
+    }
+}

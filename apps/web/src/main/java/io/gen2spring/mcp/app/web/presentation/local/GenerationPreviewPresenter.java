@@ -28,6 +28,8 @@ public final class GenerationPreviewPresenter {
         }
         root.set("profile", selectedProfile);
         root.put("mcpImplementation", preview.mcpImplementation().name());
+        root.put("mcpProtocol", preview.mcpProtocol().name());
+        root.set("mcpProtocolVersions", json.valueToTree(preview.mcpProtocol().versions()));
         ArrayNode tools = root.putArray("tools");
         preview.tools().forEach(tool -> tools.add(tool(tool)));
         ArrayNode environment = root.putArray("secretEnvironmentVariables");
@@ -42,9 +44,11 @@ public final class GenerationPreviewPresenter {
         ObjectNode node = json.createObjectNode();
         node.put("id", profile.id());
         ArrayNode implementations = node.putArray("mcpImplementations");
+        ObjectNode protocols = node.putObject("mcpProtocolVersionsByImplementation");
         for (McpImplementation implementation : McpImplementation.values()) {
             if (implementation.supports(profile)) {
                 implementations.add(implementation.name());
+                protocols.set(implementation.name(), json.valueToTree(implementation.protocolVersions()));
             }
         }
         node.put("javaVersion", profile.target().javaVersion());

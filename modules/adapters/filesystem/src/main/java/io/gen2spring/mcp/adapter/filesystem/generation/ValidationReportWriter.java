@@ -65,6 +65,7 @@ public final class ValidationReportWriter implements ValidationReportStore {
         json.put("status", report.status().name());
         writeStages(json.putArray("stages"), report.stages(), sensitiveNames);
         writeTools(json.putArray("tools"), report.tools(), sensitiveNames);
+        json.set("verifiedProtocolVersions", objectMapper.valueToTree(report.verifiedProtocolVersions()));
         writeJson(target, json);
         return target;
     }
@@ -81,6 +82,7 @@ public final class ValidationReportWriter implements ValidationReportStore {
         json.put("status", report.status().name());
         writeStages(json.putArray("stages"), report.stages(), sensitiveNames);
         writeTools(json.putArray("tools"), report.tools(), sensitiveNames);
+        json.set("verifiedProtocolVersions", objectMapper.valueToTree(report.verifiedProtocolVersions()));
         Path target = outputPath(projectRoot);
         replaceJson(target, json);
         return target;
