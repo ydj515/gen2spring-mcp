@@ -15,6 +15,7 @@ async function editor() {
   let document;
   class Element {
     value = 'test'; hidden = false; disabled = false; textContent = ''; dataset = {};
+    options = []; selectedOptions = [];
     children = []; attributes = {}; handlers = new Map();
     addEventListener(name, handler) {
       this.handlers.set(name, [...(this.handlers.get(name) ?? []), handler]);

@@ -27,7 +27,7 @@ public final class DualMcpServlet extends HttpServlet {
         this.meters = meters;
         this.legacy = legacy;
         this.json = json;
-        this.modern = new ModernMcpProtocol(json, calls.tools(), calls::call, ${protocolVersions});
+        this.modern = ModernMcpProtocol.configured(json, calls.tools(), calls::call, ${protocolVersions}, "${package}");
     }
 
     @Override
@@ -40,6 +40,8 @@ public final class DualMcpServlet extends HttpServlet {
             throws ServletException, IOException {
         if (!"POST".equals(request.getMethod())) {
             if (!modern.supportsLegacy() || ModernMcpProtocol.VERSION.equals(request.getHeader("MCP-Protocol-Version"))) {
+                if (!ModernMcpProtocol.allowsOrigin(request.getHeader("Origin"), request.getScheme(),
+                        request.getServerName(), request.getServerPort())) { response.setStatus(403); return; }
                 response.setHeader("Allow", "POST");
                 response.setStatus(405);
             } else {
@@ -72,7 +74,7 @@ public final class DualMcpServlet extends HttpServlet {
                 response.setStatus(403);
                 return;
             }
-            write(response, modern.handle(body, request::getHeader));
+            write(response, modern.handle(body, request::getHeader, request.getUserPrincipal() == null ? "local" : request.getUserPrincipal().getName()));
             return;
         }
         String legacyVersion = body.path("params").path("protocolVersion")
@@ -102,10 +104,19 @@ public final class DualMcpServlet extends HttpServlet {
         }, response);
     }
 
+    @Override public void destroy() {
+        try { modern.close(); } finally { legacy.destroy(); }
+    }
+
     private void write(HttpServletResponse response, ModernMcpProtocol.Reply reply) throws IOException {
         response.setStatus(reply.status());
-        response.setContentType("application/json");
         response.setHeader("Cache-Control", "private, no-store");
-        json.writeValue(response.getOutputStream(), reply.body());
+        if (reply.stream() != null) {
+            response.setContentType("text/event-stream");
+            reply.stream().write(response.getOutputStream());
+        } else if (reply.body() != null) {
+            response.setContentType("application/json");
+            json.writeValue(response.getOutputStream(), reply.body());
+        }
     }
 }

@@ -1,0 +1,269 @@
+package io.gen2spring.mcp.adapter.mcp;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+
+/** Single-writer durable task store with bounded execution and principal-bound handles. */
+public final class McpTaskStore implements AutoCloseable {
+    private static final ThreadPoolExecutor WORKERS = new ThreadPoolExecutor(4, 4, 30, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(128), runnable -> {
+                Thread thread = new Thread(runnable, "mcp-task"); thread.setDaemon(true); return thread;
+            });
+    private final ObjectMapper json;
+    private final Clock clock;
+    private final Duration ttl;
+    private final Path directory;
+    private final FileChannel lockChannel;
+    private final FileLock lock;
+    private final Map<String, ObjectNode> tasks = new LinkedHashMap<>();
+    private final Map<String, Future<?>> running = new LinkedHashMap<>();
+    private final byte[] stateKey;
+    private boolean closed;
+
+    public McpTaskStore(ObjectMapper json, Path directory, Clock clock, Duration ttl) {
+        this.json = json; this.directory = directory.toAbsolutePath().normalize(); this.clock = clock; this.ttl = ttl;
+        if (ttl.isNegative() || ttl.isZero() || ttl.compareTo(Duration.ofDays(7)) > 0) throw new IllegalArgumentException("Invalid task TTL");
+        FileChannel channel = null;
+        FileLock acquired = null;
+        try {
+            Files.createDirectories(this.directory);
+            restrict(this.directory, true);
+            Path lockPath = this.directory.resolve("writer.lock");
+            channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            restrict(lockPath, false);
+            acquired = channel.tryLock();
+            if (acquired == null) throw new IllegalStateException("MCP task directory already has a writer");
+            Path snapshot = this.directory.resolve("tasks.json");
+            if (Files.exists(snapshot)) {
+                restrict(snapshot, false);
+                if (Files.size(snapshot) > 32 * 1024 * 1024) throw new IOException("Task snapshot exceeds limit");
+                JsonNode saved = json.readTree(Files.readAllBytes(snapshot));
+                if (!saved.isObject() || !saved.path("tasks").isArray()) throw new IOException("Invalid task snapshot");
+                this.stateKey = Base64.getDecoder().decode(saved.path("stateKey").asText());
+                if (stateKey.length != 32) throw new IOException("Invalid task state key");
+                for (JsonNode task : saved.path("tasks")) {
+                    ObjectNode record = (ObjectNode) task;
+                    String id = McpFeatureCatalog.text(record.path("task"), "taskId");
+                    if ("working".equals(record.at("/task/status").asText())) fail(record, "Execution interrupted; automatic replay is disabled");
+                    tasks.put(id, record);
+                }
+            } else {
+                this.stateKey = new byte[32]; new java.security.SecureRandom().nextBytes(stateKey);
+            }
+            prune(); persist();
+            this.lockChannel = channel; this.lock = acquired;
+        } catch (IOException | RuntimeException failure) {
+            try { if (acquired != null) acquired.close(); if (channel != null) channel.close(); }
+            catch (IOException suppressed) { failure.addSuppressed(suppressed); }
+            throw new IllegalStateException("Cannot open MCP task store", failure);
+        }
+    }
+
+    public byte[] stateKey() { return stateKey.clone(); }
+
+    public synchronized ObjectNode create(String owner, ObjectNode request, Function<ObjectNode, JsonNode> execute) {
+        ensureOpen(); prune();
+        if (tasks.size() >= 128) throw new IllegalStateException("MCP task capacity exceeded");
+        String id = UUID.randomUUID().toString();
+        ObjectNode record = json.createObjectNode().put("owner", owner);
+        record.set("request", request.deepCopy());
+        ObjectNode task = record.putObject("task").put("taskId", id).put("status", "working")
+                .put("createdAt", clock.instant().toString()).put("lastUpdatedAt", clock.instant().toString())
+                .put("ttlMs", ttl.toMillis()).put("pollIntervalMs", 1000);
+        record.putArray("answeredKeys");
+        tasks.put(id, record);
+        try { persist(); } catch (RuntimeException failure) { tasks.remove(id); throw failure; }
+        ObjectNode handle = task.deepCopy().put("resultType", "task");
+        schedule(id, execute);
+        return handle;
+    }
+
+    public synchronized ObjectNode get(String owner, String id) {
+        ensureOpen(); return ((ObjectNode) require(owner, id).get("task")).deepCopy();
+    }
+
+    public synchronized void cancel(String owner, String id) {
+        ensureOpen(); ObjectNode record = require(owner, id);
+        if (terminal(record)) return;
+        ObjectNode before = record.deepCopy();
+        ObjectNode task = (ObjectNode) record.get("task");
+        task.put("status", "cancelled").put("lastUpdatedAt", clock.instant().toString());
+        task.remove("inputRequests");
+        persistOrRestore(id, before);
+        Future<?> work = running.remove(id); if (work != null) work.cancel(true);
+    }
+
+    public synchronized void update(String owner, String id, JsonNode responses, Function<ObjectNode, JsonNode> execute) {
+        ensureOpen();
+        if (!responses.isObject()) throw new IllegalArgumentException("Input responses must be an object");
+        ObjectNode record = require(owner, id);
+        if (!"input_required".equals(record.at("/task/status").asText())) return;
+        ObjectNode pending = (ObjectNode) record.at("/task/inputRequests");
+        for (var entry : responses.properties()) {
+            if (pending.has(entry.getKey()) && !entry.getValue().isObject()) throw new IllegalArgumentException("Input response must be an object");
+        }
+        ObjectNode before = record.deepCopy();
+        ObjectNode request = (ObjectNode) record.get("request");
+        ObjectNode accepted = request.path("inputResponses").isObject()
+                ? (ObjectNode) request.get("inputResponses") : request.putObject("inputResponses");
+        for (var entry : responses.properties()) {
+            if (!pending.has(entry.getKey())) continue;
+            if (!entry.getValue().isObject()) throw new IllegalArgumentException("Input response must be an object");
+            accepted.set(entry.getKey(), entry.getValue().deepCopy()); pending.remove(entry.getKey());
+            ((com.fasterxml.jackson.databind.node.ArrayNode) record.get("answeredKeys")).add(entry.getKey());
+        }
+        ObjectNode task = (ObjectNode) record.get("task");
+        task.put("lastUpdatedAt", clock.instant().toString());
+        if (pending.isEmpty()) { task.put("status", "working"); task.remove("inputRequests"); }
+        persistOrRestore(id, before);
+        if (pending.isEmpty()) schedule(id, execute);
+    }
+
+    private void schedule(String id, Function<ObjectNode, JsonNode> execute) {
+        FutureTask<Void> future = new FutureTask<>(() -> {
+            ObjectNode request;
+            synchronized (this) {
+                if (closed || !tasks.containsKey(id) || terminal(tasks.get(id))) return null;
+                request = ((ObjectNode) tasks.get(id).get("request")).deepCopy();
+            }
+            try {
+                JsonNode result = execute.apply(request);
+                synchronized (this) {
+                    ObjectNode record = tasks.get(id);
+                    if (closed || record == null || terminal(record)) return null;
+                    if (!result.isObject() || result.toString().length() > 1024 * 1024) throw new IllegalStateException("Invalid task result");
+                    ObjectNode before = record.deepCopy();
+                    ObjectNode task = (ObjectNode) record.get("task");
+                    if ("input_required".equals(result.path("resultType").asText())) {
+                        if (!result.path("inputRequests").isObject() || result.path("inputRequests").isEmpty()) {
+                            throw new IllegalStateException("Task input requests are required");
+                        }
+                        for (JsonNode key : record.path("answeredKeys")) {
+                            if (result.path("inputRequests").has(key.asText())) throw new IllegalStateException("Task input key was reused");
+                        }
+                        task.put("status", "input_required").set("inputRequests", result.path("inputRequests").deepCopy());
+                        ObjectNode savedRequest = (ObjectNode) record.get("request");
+                        savedRequest.remove("inputResponses");
+                        if (result.has("requestState")) savedRequest.set("requestState", result.get("requestState"));
+                    } else {
+                        task.put("status", "completed").set("result", result.deepCopy());
+                        record.remove("request");
+                    }
+                    task.put("lastUpdatedAt", clock.instant().toString()); persistOrRestore(id, before);
+                }
+            } catch (RuntimeException failure) {
+                synchronized (this) {
+                    ObjectNode record = tasks.get(id);
+                    if (!closed && record != null && !terminal(record)) {
+                        ObjectNode before = record.deepCopy();
+                        fail(record, "Task execution failed");
+                        ObjectNode error = (ObjectNode) record.at("/task/error");
+                        if (failure instanceof IllegalArgumentException) error.put("code", -32602).put("message", "Invalid parameters");
+                        if (failure instanceof McpInteractions.MissingCapability missing) {
+                            error.put("code", -32021).put("message", missing.getMessage());
+                            ObjectNode required = error.putObject("data").putObject("requiredCapabilities");
+                            for (String part : missing.capability().split("\\.")) required = required.putObject(part);
+                        }
+                        persistOrRestore(id, before);
+                    }
+                }
+            } finally { synchronized (this) { running.remove(id); } }
+            return null;
+        });
+        running.put(id, future);
+        try { WORKERS.execute(future); }
+        catch (java.util.concurrent.RejectedExecutionException full) {
+            running.remove(id); fail(tasks.get(id), "Task executor capacity exceeded"); persist();
+        }
+    }
+
+    private ObjectNode require(String owner, String id) {
+        ObjectNode record = tasks.get(id);
+        if (record == null || !owner.equals(record.path("owner").asText())
+                || !clock.instant().isBefore(Instant.parse(record.at("/task/createdAt").asText()).plusMillis(record.at("/task/ttlMs").asLong()))) {
+            throw new IllegalArgumentException("Unknown or expired task");
+        }
+        return record;
+    }
+    private boolean terminal(ObjectNode record) {
+        return java.util.List.of("completed", "failed", "cancelled").contains(record.at("/task/status").asText());
+    }
+    private void fail(ObjectNode record, String message) {
+        ObjectNode task = (ObjectNode) record.get("task");
+        task.put("status", "failed").put("lastUpdatedAt", clock.instant().toString());
+        task.remove(java.util.List.of("inputRequests", "result"));
+        task.putObject("error").put("code", -32603).put("message", message);
+        record.remove("request");
+    }
+    private void prune() {
+        var iterator = tasks.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (clock.instant().isBefore(Instant.parse(entry.getValue().at("/task/createdAt").asText()).plusMillis(entry.getValue().at("/task/ttlMs").asLong()))) continue;
+            Future<?> work = running.remove(entry.getKey()); if (work != null) work.cancel(true);
+            iterator.remove();
+        }
+    }
+    private void persistOrRestore(String id, ObjectNode before) {
+        try { persist(); } catch (RuntimeException failure) { tasks.put(id, before); throw failure; }
+    }
+    private void persist() {
+        try {
+            ObjectNode snapshot = json.createObjectNode().put("stateKey", Base64.getEncoder().encodeToString(stateKey));
+            snapshot.set("tasks", json.valueToTree(tasks.values()));
+            byte[] bytes = json.writeValueAsBytes(snapshot);
+            if (bytes.length > 32 * 1024 * 1024) throw new IOException("Task snapshot capacity exceeded");
+            Path temporary = directory.resolve("tasks.pending");
+            if (!Files.exists(temporary)) Files.createFile(temporary);
+            restrict(temporary, false);
+            try (FileChannel file = FileChannel.open(temporary, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                ByteBuffer buffer = ByteBuffer.wrap(bytes); while (buffer.hasRemaining()) file.write(buffer); file.force(true);
+            }
+            Files.move(temporary, directory.resolve("tasks.json"), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            if (Files.getFileStore(directory).supportsFileAttributeView("posix")) {
+                try (FileChannel folder = FileChannel.open(directory, StandardOpenOption.READ)) { folder.force(true); }
+            }
+        } catch (IOException failure) { throw new IllegalStateException("Cannot persist MCP task state", failure); }
+    }
+    private static void restrict(Path path, boolean directory) throws IOException {
+        if (Files.isSymbolicLink(path)) throw new IOException("MCP task paths cannot be symbolic links");
+        if (Files.getFileStore(path).supportsFileAttributeView("posix")) {
+            Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(directory ? "rwx------" : "rw-------"));
+        }
+    }
+    private void ensureOpen() { if (closed) throw new IllegalStateException("MCP task store is closed"); }
+    @Override public synchronized void close() {
+        if (closed) return;
+        closed = true;
+        running.values().forEach(work -> work.cancel(true)); running.clear();
+        tasks.values().stream().filter(record -> "working".equals(record.at("/task/status").asText()))
+                .forEach(record -> fail(record, "Execution interrupted; automatic replay is disabled"));
+        try { persist(); } finally {
+            try { lock.close(); lockChannel.close(); }
+            catch (IOException failure) { throw new IllegalStateException("Cannot close MCP task store", failure); }
+        }
+    }
+}

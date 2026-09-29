@@ -28,6 +28,7 @@ public final class GenerationPreviewPresenter {
         }
         root.set("profile", selectedProfile);
         root.put("mcpImplementation", preview.mcpImplementation().name());
+        root.set("configuredMcpFeatures", json.valueToTree(preview.configuredMcpFeatures()));
         root.put("mcpProtocol", preview.mcpProtocol().name());
         root.set("mcpProtocolVersions", json.valueToTree(preview.mcpProtocol().versions()));
         ArrayNode tools = root.putArray("tools");

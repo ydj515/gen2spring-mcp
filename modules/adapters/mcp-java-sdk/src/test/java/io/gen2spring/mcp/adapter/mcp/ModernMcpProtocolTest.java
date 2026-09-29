@@ -103,11 +103,13 @@ class ModernMcpProtocolTest {
     void generatedProtocolTemplateMatchesTheTestedManagedImplementation() throws Exception {
         Path root = Path.of("").toAbsolutePath();
         while (!Files.exists(root.resolve("settings.gradle.kts"))) root = root.getParent();
-        String source = Files.readString(root.resolve(
-                "modules/adapters/mcp-java-sdk/src/main/java/io/gen2spring/mcp/adapter/mcp/ModernMcpProtocol.java"));
-        String template = Files.readString(root.resolve(
-                "modules/adapters/emitters/mcp-runtime/src/main/resources/mcp/ModernMcpProtocol.java.template"));
-        assertEquals(source.replace("package io.gen2spring.mcp.adapter.mcp;", "package ${package}.generated.tool;"), template);
+        for (String name : List.of("ModernMcpProtocol", "McpFeatureCatalog", "McpTaskStore", "McpInteractions", "McpStdioTransport")) {
+            String source = Files.readString(root.resolve(
+                    "modules/adapters/mcp-java-sdk/src/main/java/io/gen2spring/mcp/adapter/mcp/" + name + ".java"));
+            String template = Files.readString(root.resolve(
+                    "modules/adapters/emitters/mcp-runtime/src/main/resources/mcp/" + name + ".java.template"));
+            assertEquals(source.replace("package io.gen2spring.mcp.adapter.mcp;", "package ${package}.generated.tool;"), template);
+        }
     }
 
     private ObjectNode request(String method) {

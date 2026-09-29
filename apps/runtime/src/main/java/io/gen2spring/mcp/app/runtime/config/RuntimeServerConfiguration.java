@@ -17,6 +17,7 @@ import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.transport.WebMvcStatelessServerTransport;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
+import java.util.List;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -57,13 +58,15 @@ final class RuntimeServerConfiguration {
                     .requestTimeout(Duration.ofSeconds(30))
                     .tools(specifications)
                     .build();
-            var modern = new ModernMcpProtocol(json, specifications.stream().map(spec -> spec.tool()).toList(),
+            var modern = ModernMcpProtocol.configured(json, specifications.stream().map(spec -> spec.tool()).toList(),
                     (name, arguments) -> specifications.stream().filter(spec -> spec.tool().name().equals(name))
                             .findFirst().orElseThrow().callHandler().apply(null,
-                                    new McpSchema.CallToolRequest(name, arguments)));
+                                    new McpSchema.CallToolRequest(name, arguments)),
+                    List.of("2025-03-26", ModernMcpProtocol.VERSION),
+                    instance.id().value() + ":" + access.principal() + ":" + access.policyChecksum());
             var handle = RuntimeServerHandle.stateless(instance, transport, server);
             return handle.withRouter(DualProtocolRouter.wrap(handle.routes(), modern, json,
-                    version -> meters.counter("gen2spring.mcp.requests", "protocol.version", version).increment()));
+                    version -> meters.counter("gen2spring.mcp.requests", "protocol.version", version).increment(), access.principal()), modern::close);
         }, properties.cacheSize(), clock);
     }
 

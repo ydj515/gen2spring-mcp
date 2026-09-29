@@ -1,0 +1,23 @@
+package ${package}.generated.tool;
+
+/** Run this main class with the generated application's runtime classpath for modern stdio MCP. */
+public final class GeneratedMcpStdioApplication {
+    private GeneratedMcpStdioApplication() {}
+
+    public static void main(String[] args) throws Exception {
+        java.io.PrintStream protocolOutput = System.out;
+        System.setOut(System.err);
+        System.setProperty("gen2spring.mcp.transport", "stdio");
+        var application = new org.springframework.boot.SpringApplication(${package}.application.${domainClass}McpApplication.class);
+        application.setWebApplicationType(org.springframework.boot.WebApplicationType.NONE);
+        application.setBannerMode(org.springframework.boot.Banner.Mode.OFF);
+        try (var context = application.run(args)) {
+            var calls = context.getBean(GeneratedToolCalls.class);
+            var json = context.getBean(com.fasterxml.jackson.databind.ObjectMapper.class);
+            try (var protocol = ModernMcpProtocol.configured(json, calls.tools(), calls::call,
+                    java.util.List.of(ModernMcpProtocol.VERSION), "${package}-stdio")) {
+                McpStdioTransport.serve(protocol, json, System.in, protocolOutput);
+            }
+        }
+    }
+}

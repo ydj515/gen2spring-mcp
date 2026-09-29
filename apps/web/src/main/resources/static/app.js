@@ -66,7 +66,7 @@ document.querySelectorAll('[data-implementation]').forEach(button => {
 ui['mcp-implementation'].addEventListener('change', renderImplementationChoice);
 if (api.hostedMode) ui['delete-job-button'].textContent = '작업 취소';
 for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name',
-  'target-profile', 'mcp-implementation', 'mcp-protocol', 'validation-operation', 'validation-arguments']) {
+  'target-profile', 'mcp-implementation', 'mcp-protocol', 'mcp-features', 'validation-operation', 'validation-arguments']) {
   byId(id).addEventListener('input', invalidatePreview);
   byId(id).addEventListener('change', invalidatePreview);
 }
@@ -146,6 +146,7 @@ function selectedProtocolLabel() {
 }
 
 function renderProtocolDescription() {
+  byId('mcp-features').disabled = ui['mcp-implementation'].value !== 'MCP_JAVA_SDK' || ui['mcp-protocol'].value === 'LEGACY';
   const hints = {
     LEGACY: '초기화 절차를 사용하는 기존 클라이언트용입니다.',
     MODERN: '초기화 없이 요청마다 버전을 전달합니다. 기존 버전 요청은 거부합니다.',

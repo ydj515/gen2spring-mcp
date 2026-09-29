@@ -32,13 +32,21 @@ public final class DualProtocolRouter {
 
     public static RouterFunction<ServerResponse> wrap(RouterFunction<ServerResponse> legacy,
             ModernMcpProtocol modern, ObjectMapper json, Consumer<String> observedVersion) {
-        return request -> Optional.of(ignored -> handle(request, legacy, modern, json, observedVersion));
+        return wrap(legacy, modern, json, observedVersion, "local");
+    }
+
+    public static RouterFunction<ServerResponse> wrap(RouterFunction<ServerResponse> legacy,
+            ModernMcpProtocol modern, ObjectMapper json, Consumer<String> observedVersion, String owner) {
+        return request -> Optional.of(ignored -> handle(request, legacy, modern, json, observedVersion, owner));
     }
 
     private static ServerResponse handle(ServerRequest request, RouterFunction<ServerResponse> legacy,
-            ModernMcpProtocol modern, ObjectMapper json, Consumer<String> observedVersion) throws Exception {
+            ModernMcpProtocol modern, ObjectMapper json, Consumer<String> observedVersion, String owner) throws Exception {
         if (!"POST".equals(request.method().name())) {
             if (ModernMcpProtocol.VERSION.equals(request.headers().firstHeader("MCP-Protocol-Version"))) {
+                var servlet = request.servletRequest();
+                if (!ModernMcpProtocol.allowsOrigin(request.headers().firstHeader("Origin"), servlet.getScheme(),
+                        servlet.getServerName(), servlet.getServerPort())) return ServerResponse.status(403).build();
                 return ServerResponse.status(405).header("Allow", "POST").build();
             }
             return legacy.route(request).orElseThrow().handle(request);
@@ -58,7 +66,7 @@ public final class DualProtocolRouter {
             var servlet = request.servletRequest();
             if (!ModernMcpProtocol.allowsOrigin(request.headers().firstHeader("Origin"), servlet.getScheme(),
                     servlet.getServerName(), servlet.getServerPort())) return ServerResponse.status(403).build();
-            return response(modern.handle(body, request.headers()::firstHeader));
+            return response(modern.handle(body, request.headers()::firstHeader, owner));
         }
         ServerRequest replay = ServerRequest.create(new HttpServletRequestWrapper(request.servletRequest()) {
             @Override
@@ -83,6 +91,12 @@ public final class DualProtocolRouter {
     }
 
     private static ServerResponse response(ModernMcpProtocol.Reply reply) {
+        if (reply.stream() != null) {
+            return ServerResponse.status(reply.status()).header("Content-Type", "text/event-stream")
+                    .header("Cache-Control", "private, no-store")
+                    .build((request, response) -> { reply.stream().write(response.getOutputStream()); return null; });
+        }
+        if (reply.body() == null) return ServerResponse.status(reply.status()).build();
         return ServerResponse.status(reply.status()).contentType(MediaType.APPLICATION_JSON)
                 .header("Cache-Control", "private, no-store").body(reply.body());
     }

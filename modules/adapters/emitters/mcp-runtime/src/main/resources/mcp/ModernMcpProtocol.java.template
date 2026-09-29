@@ -14,11 +14,17 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-/** Stateless tools-only MCP 2026 adapter; legacy requests remain owned by the SDK. */
-public final class ModernMcpProtocol {
+/** MCP 2026 server protocol; legacy requests remain owned by the SDK. */
+public final class ModernMcpProtocol implements AutoCloseable {
     public static final String VERSION = "2026-07-28";
     public static final String VERSION_KEY = "io.modelcontextprotocol/protocolVersion";
     public static final String CAPABILITIES_KEY = "io.modelcontextprotocol/clientCapabilities";
+    public static final String TASKS = "io.modelcontextprotocol/tasks";
+    private volatile McpFeatureCatalog catalog;
+    private final McpInteractions interactions;
+    private final McpTaskStore tasks;
+    private final java.util.Set<String> asyncTools;
+    private final java.util.concurrent.ConcurrentMap<String, Subscription> subscriptions = new java.util.concurrent.ConcurrentHashMap<>();
     private final ObjectMapper json;
     private final List<String> supportedVersions;
     private final List<?> tools;
@@ -31,10 +37,78 @@ public final class ModernMcpProtocol {
 
     public ModernMcpProtocol(ObjectMapper json, List<?> tools,
             BiFunction<String, Map<String, Object>, ?> call, List<String> supportedVersions) {
+        this(json, tools, call, supportedVersions, json.createObjectNode(), null);
+    }
+
+    public ModernMcpProtocol(ObjectMapper json, List<?> tools,
+            BiFunction<String, Map<String, Object>, ?> call, List<String> supportedVersions,
+            JsonNode configuration, McpTaskStore tasks) {
+        this.catalog = new McpFeatureCatalog(json, configuration);
+        this.tasks = tasks;
+        java.util.Set<String> selected = new java.util.HashSet<>();
+        JsonNode taskOptions = configuration.path("tasks");
+        if (!taskOptions.isMissingNode() && !taskOptions.isObject()) throw new IllegalArgumentException("Tasks settings must be an object");
+        if (taskOptions.has("enabled") && !taskOptions.get("enabled").isBoolean()) throw new IllegalArgumentException("Tasks enabled must be boolean");
+        if (taskOptions.has("tools") && !taskOptions.get("tools").isArray()) throw new IllegalArgumentException("Task tools must be an array");
+        taskOptions.path("tools").forEach(value -> {
+            if (!value.isTextual() || tools.stream().noneMatch(tool -> value.asText().equals(json.valueToTree(tool).path("name").asText()))) {
+                throw new IllegalArgumentException("Unknown asynchronous tool");
+            }
+            selected.add(value.asText());
+        });
+        this.asyncTools = java.util.Set.copyOf(selected);
+        byte[] key = new byte[32]; new java.security.SecureRandom().nextBytes(key);
+        this.interactions = new McpInteractions(json, configuration.path("interactions").isMissingNode()
+                ? json.createObjectNode() : configuration.path("interactions"), tasks == null ? key : tasks.stateKey(), java.time.Clock.systemUTC());
         this.supportedVersions = List.copyOf(supportedVersions);
         this.json = json;
         this.tools = List.copyOf(tools);
         this.call = call;
+    }
+
+    public static ModernMcpProtocol configured(ObjectMapper json, List<?> tools,
+            BiFunction<String, Map<String, Object>, ?> call, List<String> versions, String namespace) {
+        String file = setting("gen2spring.mcp.features", "GEN2SPRING_MCP_FEATURES");
+        JsonNode configuration = json.createObjectNode();
+        McpTaskStore store = null;
+        try {
+            if (file == null) {
+                try (var bundled = ModernMcpProtocol.class.getResourceAsStream("/mcp-features.json")) {
+                    if (bundled != null) {
+                        byte[] bytes = bundled.readNBytes(16 * 1024 * 1024 + 1);
+                        if (bytes.length > 16 * 1024 * 1024) throw new IllegalArgumentException("MCP feature configuration exceeds limit");
+                        configuration = json.readTree(bytes);
+                    }
+                }
+            }
+            if (file != null) {
+                java.nio.file.Path path = java.nio.file.Path.of(file);
+                if (java.nio.file.Files.size(path) > 16 * 1024 * 1024) throw new IllegalArgumentException("MCP feature configuration exceeds limit");
+                configuration = json.readTree(java.nio.file.Files.readAllBytes(path));
+                if (!configuration.isObject()) throw new IllegalArgumentException("MCP feature configuration must be an object");
+            }
+            if (configuration.path("tasks").path("enabled").asBoolean()) {
+                String directory = setting("gen2spring.mcp.task-directory", "GEN2SPRING_MCP_TASK_DIRECTORY");
+                if (directory == null) directory = ".gen2spring/mcp-tasks";
+                store = new McpTaskStore(json, java.nio.file.Path.of(directory).resolve(McpFeatureCatalog.digest(
+                        namespace.getBytes(StandardCharsets.UTF_8))), java.time.Clock.systemUTC(), java.time.Duration.ofMillis(
+                                configuration.path("tasks").path("ttlMs").asLong(3600000)));
+            }
+            return new ModernMcpProtocol(json, tools, call, versions, configuration, store);
+        } catch (java.io.IOException | RuntimeException failure) {
+            if (store != null) store.close();
+            throw new IllegalStateException("Cannot configure MCP extensions", failure);
+        }
+    }
+
+    private static String setting(String property, String environment) {
+        String value = System.getProperty(property, System.getenv(environment));
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    /** Atomically replace registered content; active subscribers observe changes on their next poll. */
+    public void replaceCatalog(JsonNode configuration) {
+        catalog = new McpFeatureCatalog(json, configuration);
     }
 
     public boolean supportsLegacy() {
@@ -79,20 +153,32 @@ public final class ModernMcpProtocol {
     }
 
     public Reply handle(JsonNode body, Function<String, String> headers) {
+        return handle(body, headers, "local");
+    }
+
+    public Reply handle(JsonNode body, Function<String, String> headers, String owner) {
         JsonNode id = body.path("id");
         if (!body.isObject() || !"2.0".equals(body.path("jsonrpc").asText())
-                || !(id.isTextual() || id.isIntegralNumber()) || !body.path("method").isTextual()) {
+                || !(id.isMissingNode() || id.isTextual() || id.isIntegralNumber()) || !body.path("method").isTextual()) {
             return error(id.isTextual() || id.isIntegralNumber() ? id : null, 400, -32600, "Invalid request", null);
         }
         JsonNode params = body.path("params");
+        if (id.isMissingNode()) {
+            if (headers == null && body.path("method").asText().equals("notifications/cancelled")) {
+                subscriptions.values().forEach(subscription -> {
+                    if (owner.equals(subscription.owner()) && params.path("requestId").equals(subscription.id())) subscription.active().set(false);
+                });
+            }
+            return new Reply(202, null);
+        }
         JsonNode meta = params.path("_meta");
         if (!meta.path(VERSION_KEY).isTextual() || !meta.path(CAPABILITIES_KEY).isObject()) {
             return error(id, 400, -32602, "Required request metadata is missing", null);
         }
         String version = meta.path(VERSION_KEY).asText();
         String method = body.path("method").asText();
-        if (!version.equals(headers.apply("MCP-Protocol-Version"))
-                || !method.equals(headers.apply("Mcp-Method"))) {
+        if (headers != null && (!version.equals(headers.apply("MCP-Protocol-Version"))
+                || !method.equals(headers.apply("Mcp-Method")))) {
             return error(id, 400, -32020, "Header mismatch", null);
         }
         if (!VERSION.equals(version) || !supportedVersions.contains(version)) {
@@ -101,34 +187,197 @@ public final class ModernMcpProtocol {
         }
         try {
             return switch (method) {
-                case "server/discover" -> complete(id, Map.of("supportedVersions", supportedVersions,
-                        "capabilities", Map.of("tools", Map.of()), "ttlMs", 0, "cacheScope", "private"));
-                case "tools/list" -> params.has("cursor")
-                        ? error(id, 400, -32602, "Invalid cursor", null)
-                        : complete(id, Map.of("tools", tools, "ttlMs", 0, "cacheScope", "private"));
-                case "tools/call" -> call(id, params, headers);
+                case "server/discover" -> {
+                    ObjectNode capabilities = (ObjectNode) catalog.capabilities();
+                    if (tasks != null) ((ObjectNode) capabilities.get("extensions")).putObject(TASKS);
+                    yield complete(id, Map.of("supportedVersions", supportedVersions,
+                            "capabilities", capabilities, "ttlMs", 0, "cacheScope", "private"));
+                }
+                case "tools/list" -> complete(id, catalog.page("tools", catalog.decorateTools(tools,
+                        meta.path(CAPABILITIES_KEY).path("extensions").path("io.modelcontextprotocol/ui").isObject()), params));
+                case "tools/call" -> call(id, (ObjectNode) params.deepCopy(), headers, owner);
+                case "subscriptions/listen" -> subscribe(id, params, owner);
+                case "tasks/get", "tasks/update", "tasks/cancel" -> task(method, id, params, owner);
+                case "resources/read", "prompts/get" -> {
+                    String name = McpFeatureCatalog.text(params, method.equals("prompts/get") ? "name" : "uri");
+                    if (headers != null && !name.equals(decode(headers.apply("Mcp-Name")))) yield error(id, 400, -32020, "Header mismatch", null);
+                    ObjectNode prepared = (ObjectNode) params.deepCopy();
+                    ObjectNode input = interactions.prepare(method, prepared, owner);
+                    yield complete(id, input == null ? catalog.dispatch(method, prepared) : input);
+                }
+                case "resources/list", "resources/templates/list", "prompts/list", "completion/complete",
+                        "skills/list", "skills/get", "resources/directory/read" -> {
+                    if ((method.startsWith("skills/") || method.equals("resources/directory/read"))
+                            && !catalog.capabilities().path("extensions").has("io.modelcontextprotocol/skills")) {
+                        yield error(id, 404, -32601, "Method not found", null);
+                    }
+                    yield complete(id, catalog.dispatch(method, params));
+                }
                 default -> error(id, 404, -32601, "Method not found", null);
             };
+        } catch (McpInteractions.MissingCapability missing) {
+            ObjectNode required = json.createObjectNode();
+            ObjectNode leaf = required;
+            for (String part : missing.capability().split("\\.")) leaf = leaf.putObject(part);
+            return error(id, 400, -32021, missing.getMessage(), Map.of("requiredCapabilities", required));
+        } catch (McpInteractions.InputDeclined declined) {
+            return error(id, 400, -32602, declined.getMessage(), null);
+        } catch (IllegalArgumentException invalid) {
+            return error(id, 400, -32602, "Invalid parameters", null);
         } catch (RuntimeException failure) {
-            return error(id, 500, -32603, "Tool execution failed", null);
+            return error(id, 500, -32603, "Request execution failed", null);
         }
     }
 
-    private Reply call(JsonNode id, JsonNode params, Function<String, String> headers) {
+    private Reply call(JsonNode id, ObjectNode params, Function<String, String> headers, String owner) {
         if (!params.path("name").isTextual()
                 || (params.has("arguments") && !params.path("arguments").isObject())) {
             return error(id, 400, -32602, "Invalid tool parameters", null);
         }
+        JsonNode progressToken = params.path("_meta").path("progressToken");
+        if (!progressToken.isMissingNode() && !(progressToken.isTextual() || progressToken.isIntegralNumber())) {
+            throw new IllegalArgumentException("Invalid progress token");
+        }
         String name = params.path("name").asText();
-        if (!name.equals(decode(headers.apply("Mcp-Name")))) {
+        if (headers != null && !name.equals(decode(headers.apply("Mcp-Name")))) return error(id, 400, -32020, "Header mismatch", null);
+        JsonNode definition = tools.stream().map(json::<JsonNode>valueToTree)
+                .filter(tool -> name.equals(tool.path("name").asText())).findFirst().orElse(null);
+        if (definition == null) return error(id, 400, -32602, "Unknown tool", null);
+        if (headers != null && !validateHeaders(definition.path("inputSchema"), params.path("arguments"), headers)) {
             return error(id, 400, -32020, "Header mismatch", null);
         }
-        boolean known = tools.stream().anyMatch(tool -> name.equals(json.valueToTree(tool).path("name").asText()));
-        if (!known) return error(id, 400, -32602, "Unknown tool", null);
+        boolean taskClient = params.path("_meta").path(CAPABILITIES_KEY).path("extensions").path(TASKS).isObject();
+        if (tasks != null && taskClient && asyncTools.contains(name)) {
+            return complete(id, tasks.create(owner, params, request -> executeTool(request, owner)));
+        }
+        Reply reply = complete(id, executeTool(params, owner));
+        JsonNode token = params.path("_meta").path("progressToken");
+        if (token.isMissingNode()) return reply;
+        if (!(token.isTextual() || token.isIntegralNumber())) throw new IllegalArgumentException("Invalid progress token");
+        return new Reply(200, null, output -> {
+            ObjectNode progress = json.createObjectNode().put("jsonrpc", "2.0").put("method", "notifications/progress");
+            ObjectNode progressParams = progress.putObject("params").put("progress", 1).put("total", 1);
+            progressParams.set("progressToken", token);
+            event(output, progress); event(output, reply.body());
+        });
+    }
+
+    private JsonNode executeTool(ObjectNode params, String owner) {
+        try {
+            ObjectNode input = interactions.prepare("tools/call", params, owner);
+            if (input != null) return input;
+        } catch (McpInteractions.InputDeclined declined) {
+            return json.valueToTree(Map.of("resultType", "complete", "isError", true,
+                    "content", List.of(Map.of("type", "text", "text", declined.getMessage()))));
+        }
         Map<String, Object> arguments = new LinkedHashMap<>();
-        params.path("arguments").properties().forEach(entry ->
-                arguments.put(entry.getKey(), json.convertValue(entry.getValue(), Object.class)));
-        return complete(id, call.apply(name, arguments));
+        params.path("arguments").properties().forEach(entry -> arguments.put(entry.getKey(), json.convertValue(entry.getValue(), Object.class)));
+        ObjectNode result = json.valueToTree(call.apply(params.path("name").asText(), arguments));
+        result.put("resultType", "complete");
+        return result;
+    }
+
+    private boolean validateHeaders(JsonNode schema, JsonNode values, Function<String, String> headers) {
+        for (var property : schema.path("properties").properties()) {
+            JsonNode value = values.path(property.getKey());
+            String header = property.getValue().path("x-mcp-header").asText(null);
+            if (header != null) {
+                String supplied = decode(headers.apply("Mcp-Param-" + header));
+                if (value.isNull() || value.isMissingNode()) { if (supplied != null) return false; }
+                else if (!value.isValueNode() || !value.asText().equals(supplied)) return false;
+            }
+            if (!validateHeaders(property.getValue(), value, headers)) return false;
+        }
+        return true;
+    }
+
+    private Reply task(String method, JsonNode id, JsonNode params, String owner) {
+        if (tasks == null) return error(id, 404, -32601, "Method not found", null);
+        String taskId = McpFeatureCatalog.text(params, "taskId");
+        if (method.equals("tasks/get")) return complete(id, tasks.get(owner, taskId));
+        if (method.equals("tasks/cancel")) tasks.cancel(owner, taskId);
+        else tasks.update(owner, taskId, params.path("inputResponses"), request -> executeTool(request, owner));
+        return complete(id, Map.of());
+    }
+
+    private Reply subscribe(JsonNode id, JsonNode params, String owner) {
+        JsonNode filters = params.path("notifications");
+        if (!filters.isObject()) throw new IllegalArgumentException("Subscription filter must be an object");
+        for (String field : List.of("toolsListChanged", "promptsListChanged", "resourcesListChanged")) {
+            if (filters.has(field) && !filters.get(field).isBoolean()) throw new IllegalArgumentException("Invalid subscription filter");
+        }
+        if (filters.has("resourceSubscriptions")) {
+            if (!filters.get("resourceSubscriptions").isArray()) throw new IllegalArgumentException("Invalid resource subscriptions");
+            for (JsonNode uri : filters.get("resourceSubscriptions")) if (!uri.isTextual()) throw new IllegalArgumentException("Invalid resource subscription URI");
+        }
+        List<String> taskIds = new java.util.ArrayList<>();
+        if (filters.has("taskIds")) {
+            if (!filters.get("taskIds").isArray() || filters.get("taskIds").size() > 128) throw new IllegalArgumentException("Invalid task subscriptions");
+            for (JsonNode taskId : filters.get("taskIds")) {
+                if (!taskId.isTextual() || tasks == null) throw new IllegalArgumentException("Invalid task subscriptions");
+                tasks.get(owner, taskId.asText()); taskIds.add(taskId.asText());
+            }
+        }
+        List<String> resourceUris = new java.util.ArrayList<>();
+        for (JsonNode uri : filters.path("resourceSubscriptions")) {
+            catalog.dispatch("resources/read", json.createObjectNode().put("uri", uri.asText()));
+            resourceUris.add(uri.asText());
+        }
+        String subscriptionKey = java.util.UUID.randomUUID().toString();
+        var active = new java.util.concurrent.atomic.AtomicBoolean(true);
+        if (subscriptions.size() >= 32 || subscriptions.putIfAbsent(subscriptionKey, new Subscription(owner, id.deepCopy(), active)) != null) {
+            throw new IllegalArgumentException("Subscription capacity or duplicate request ID");
+        }
+        return new Reply(200, null, output -> {
+            try {
+                ObjectNode acknowledged = json.createObjectNode();
+                if (!taskIds.isEmpty()) acknowledged.set("taskIds", json.valueToTree(taskIds));
+                if (!resourceUris.isEmpty()) acknowledged.set("resourceSubscriptions", json.valueToTree(resourceUris));
+                for (String field : List.of("resourcesListChanged", "promptsListChanged")) {
+                    if (filters.path(field).asBoolean()) acknowledged.put(field, true);
+                }
+                Map<String, JsonNode> registered = new java.util.HashMap<>();
+                for (String method : List.of("resources/list", "prompts/list")) registered.put(method, catalog.listFingerprint(method));
+                for (String uri : resourceUris) registered.put(uri, catalog.dispatch("resources/read", json.createObjectNode().put("uri", uri)));
+                ObjectNode ack = json.createObjectNode().set("notifications", acknowledged);
+                event(output, notification("notifications/subscriptions/acknowledged", id, ack));
+                Map<String, JsonNode> previous = new java.util.HashMap<>();
+                long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(25);
+                while (active.get() && System.nanoTime() < deadline) {
+                    for (String taskId : taskIds) {
+                        ObjectNode task = tasks.get(owner, taskId);
+                        if (!task.equals(previous.put(taskId, task))) event(output, notification("notifications/tasks", id, task.deepCopy()));
+                    }
+                    for (String method : List.of("resources/list", "prompts/list")) {
+                        String kind = method.substring(0, method.indexOf('/'));
+                        JsonNode current = catalog.listFingerprint(method);
+                        if (!current.equals(registered.put(method, current)) && filters.path(kind + "ListChanged").asBoolean()) {
+                            event(output, notification("notifications/" + kind + "/list_changed", id, json.createObjectNode()));
+                        }
+                    }
+                    for (String uri : resourceUris) {
+                        JsonNode current;
+                        try { current = catalog.dispatch("resources/read", json.createObjectNode().put("uri", uri)); }
+                        catch (IllegalArgumentException removed) { current = json.nullNode(); }
+                        if (!current.equals(registered.put(uri, current))) event(output, notification("notifications/resources/updated", id, json.createObjectNode().put("uri", uri)));
+                    }
+                    output.write(": heartbeat\n\n".getBytes(StandardCharsets.UTF_8)); output.flush();
+                    try { Thread.sleep(1000); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); break; }
+                }
+                if (active.get()) event(output, complete(id, Map.of()).body());
+            } finally { subscriptions.remove(subscriptionKey); }
+        });
+    }
+
+    private record Subscription(String owner, JsonNode id, java.util.concurrent.atomic.AtomicBoolean active) {}
+
+    private JsonNode notification(String method, JsonNode id, ObjectNode params) {
+        params.putObject("_meta").set("io.modelcontextprotocol/subscriptionId", id);
+        ObjectNode notification = json.createObjectNode().put("jsonrpc", "2.0").put("method", method);
+        notification.set("params", params); return notification;
+    }
+    private void event(java.io.OutputStream output, JsonNode value) throws java.io.IOException {
+        output.write(("event: message\ndata: " + json.writeValueAsString(value) + "\n\n").getBytes(StandardCharsets.UTF_8)); output.flush();
     }
 
     private String decode(String header) {
@@ -147,8 +396,9 @@ public final class ModernMcpProtocol {
 
     private Reply complete(JsonNode id, Object value) {
         ObjectNode result = json.valueToTree(value);
-        result.put("resultType", "complete");
-        result.putObject("_meta").putObject("io.modelcontextprotocol/serverInfo")
+        if (!result.has("resultType")) result.put("resultType", "complete");
+        ObjectNode metadata = result.path("_meta").isObject() ? (ObjectNode) result.get("_meta") : result.putObject("_meta");
+        metadata.putObject("io.modelcontextprotocol/serverInfo")
                 .put("name", "gen2spring-mcp").put("version", "0.1.0");
         ObjectNode response = json.createObjectNode().put("jsonrpc", "2.0");
         response.set("id", id);
@@ -164,5 +414,13 @@ public final class ModernMcpProtocol {
         return new Reply(status, response);
     }
 
-    public record Reply(int status, JsonNode body) {}
+    @Override public void close() {
+        subscriptions.values().forEach(subscription -> subscription.active().set(false)); subscriptions.clear();
+        if (tasks != null) tasks.close();
+    }
+
+    @FunctionalInterface public interface EventStream { void write(java.io.OutputStream output) throws java.io.IOException; }
+    public record Reply(int status, JsonNode body, EventStream stream) {
+        public Reply(int status, JsonNode body) { this(status, body, null); }
+    }
 }

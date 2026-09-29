@@ -7,8 +7,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gen2spring.mcp.adapter.mcp.McpJavaSdkEmitter;
 import io.gen2spring.mcp.adapter.mcp.ModernMcpProtocol;
+import io.gen2spring.mcp.adapter.mcp.McpTaskStore;
 import io.gen2spring.mcp.app.runtime.infrastructure.mcp.DualProtocolRouter;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.gen2spring.mcp.adapter.openapi.swagger.SwaggerOpenApiAnalyzer;
@@ -76,12 +78,58 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class ManagedRuntimeJourneyIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-08-21T00:00:00Z");
     private final ObjectMapper json = new ObjectMapper();
+    @TempDir Path extensionDirectory;
+    private JsonNode extensionConfiguration = json.createObjectNode();
+
+    @Test
+    void servesDurableTasksThroughTheBearerProtectedRuntimeRoute() throws Exception {
+        extensionConfiguration = json.valueToTree(Map.of("tasks", Map.of("enabled", true, "tools", List.of("weather")),
+                "resources", List.of(Map.of("uri", "resource://guide", "name", "Guide", "text", "Runtime guide"))));
+        try (RuntimeFixture fixture = fixture(1, "token-one")) {
+            JsonNode handle = modern(fixture, "tools/call", Map.of("name", "weather", "arguments", Map.of("city", "Seoul")));
+            assertEquals("task", handle.at("/result/resultType").asText());
+            String id = handle.at("/result/taskId").asText();
+            JsonNode task = null;
+            long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+            while (System.nanoTime() < deadline) {
+                task = modern(fixture, "tasks/get", Map.of("taskId", id));
+                if (!task.at("/result/status").asText().equals("working")) break;
+                Thread.sleep(10);
+            }
+            assertEquals("completed", task.at("/result/status").asText());
+            assertEquals(1, fixture.providerCalls.get());
+            assertEquals("Runtime guide", modern(fixture, "resources/read", Map.of("uri", "resource://guide"))
+                    .at("/result/contents/0/text").asText());
+            fixture.stored.set(fixture.instance.revokeAt(NOW.plusSeconds(1)));
+            String endpoint = "/mcp/" + fixture.instance.id().value();
+            assertEquals(401, fixture.mvc.perform(post(endpoint).header("Authorization", "Bearer token-one")
+                    .header("MCP-Protocol-Version", ModernMcpProtocol.VERSION).contentType("application/json")
+                    .content("{}")).andReturn().getResponse().getStatus());
+        }
+    }
+
+    private JsonNode modern(RuntimeFixture fixture, String method, Map<String, ?> values) throws Exception {
+        var body = json.createObjectNode().put("jsonrpc", "2.0").put("id", 1).put("method", method);
+        ObjectNode params = json.valueToTree(values); body.set("params", params);
+        params.putObject("_meta").put(ModernMcpProtocol.VERSION_KEY, ModernMcpProtocol.VERSION)
+                .putObject(ModernMcpProtocol.CAPABILITIES_KEY).putObject("extensions").putObject(ModernMcpProtocol.TASKS);
+        var request = post("/mcp/" + fixture.instance.id().value()).header("Authorization", "Bearer token-one")
+                .header("MCP-Protocol-Version", ModernMcpProtocol.VERSION).header("Mcp-Method", method)
+                .contentType("application/json").content(body.toString());
+        if (values.containsKey("name")) request.header("Mcp-Name", values.get("name"));
+        if (values.containsKey("uri")) request.header("Mcp-Name", values.get("uri"));
+        var response = fixture.mvc.perform(request).andReturn().getResponse();
+        assertEquals(200, response.getStatus(), response.getContentAsString());
+        return json.readTree(response.getContentAsString());
+    }
+
 
     @Test
     void servesModernCallsWithoutHandshakeAndPreservesBearerIsolation() throws Exception {
@@ -358,9 +406,13 @@ class ManagedRuntimeJourneyIntegrationTest {
                     .build();
             var modern = new ModernMcpProtocol(json, specs.stream().map(spec -> spec.tool()).toList(),
                     (name, arguments) -> specs.stream().filter(spec -> spec.tool().name().equals(name))
-                            .findFirst().orElseThrow().callHandler().apply(null, new McpSchema.CallToolRequest(name, arguments)));
+                            .findFirst().orElseThrow().callHandler().apply(null, new McpSchema.CallToolRequest(name, arguments)),
+                    List.of("2025-03-26", ModernMcpProtocol.VERSION), extensionConfiguration,
+                    extensionConfiguration.path("tasks").path("enabled").asBoolean()
+                            ? new McpTaskStore(json, extensionDirectory.resolve(access.instance().id().value().toString()),
+                                    Clock.systemUTC(), Duration.ofHours(1)) : null);
             var handle = RuntimeServerHandle.stateless(access.instance(), transport, server);
-            return handle.withRouter(DualProtocolRouter.wrap(handle.routes(), modern, json));
+            return handle.withRouter(DualProtocolRouter.wrap(handle.routes(), modern, json, version -> {}, access.principal()), modern::close);
         }, 8, Clock.fixed(NOW, ZoneOffset.UTC));
         ManagedRuntimeStore store = new ManagedRuntimeStore() {
             @Override public void create(ManagedRuntimeInstance ignored, RuntimeTokenDigest digest,
@@ -465,8 +517,9 @@ class ManagedRuntimeJourneyIntegrationTest {
             AtomicInteger providerCalls,
             RuntimeServerHandleRegistry registry,
             ManagedToolExecutor executor,
-            MockMvc mvc) {
-        void close() {
+            MockMvc mvc) implements AutoCloseable {
+        @Override
+        public void close() {
             registry.close();
             executor.close();
         }

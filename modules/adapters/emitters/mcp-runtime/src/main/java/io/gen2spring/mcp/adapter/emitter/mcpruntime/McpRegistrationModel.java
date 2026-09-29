@@ -13,7 +13,7 @@ public record McpRegistrationModel(
         CompatibilityProfile profile,
         McpImplementation implementation,
         List<Tool> tools,
-        McpProtocolMode protocol) {
+        McpProtocolMode protocol, String featuresJson) {
     public McpRegistrationModel {
         Objects.requireNonNull(packageName);
         Objects.requireNonNull(domainClass);
@@ -24,6 +24,11 @@ public record McpRegistrationModel(
         if (!implementation.supports(profile) || protocol == null || !protocol.supports(implementation)) {
             throw new IllegalArgumentException("Unsupported MCP implementation profile");
         }
+    }
+
+    public McpRegistrationModel(String packageName, String domainClass, String artifactId,
+            CompatibilityProfile profile, McpImplementation implementation, List<Tool> tools, McpProtocolMode protocol) {
+        this(packageName, domainClass, artifactId, profile, implementation, tools, protocol, "{}");
     }
 
     public McpRegistrationModel(String packageName, String domainClass, String artifactId,

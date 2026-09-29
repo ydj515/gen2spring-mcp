@@ -58,6 +58,13 @@ public final class GenerationManifestWriter implements ManifestWriter {
     @Override
     public Path write(Path projectRoot, CompatibilityProfile profile, OpenApiDocument document,
             String sourceChecksum, List<ToolDefinition> tools, McpImplementation implementation, McpProtocolMode protocol) {
+        return write(projectRoot, profile, document, sourceChecksum, tools, implementation, protocol, java.util.Map.of());
+    }
+
+    @Override
+    public Path write(Path projectRoot, CompatibilityProfile profile, OpenApiDocument document,
+            String sourceChecksum, List<ToolDefinition> tools, McpImplementation implementation, McpProtocolMode protocol,
+            java.util.Map<String, Object> features) {
         requireInputs(profile, document, sourceChecksum, tools);
         Path target = outputPath(projectRoot);
         ObjectNode manifest = objectMapper.createObjectNode();
@@ -74,6 +81,7 @@ public final class GenerationManifestWriter implements ManifestWriter {
         } else {
             manifest.put("springAiVersion", profile.target().springAiVersion());
         }
+        manifest.set("configuredMcpFeatures", objectMapper.valueToTree(new java.util.TreeSet<>(features.keySet())));
         manifest.put("mcpProtocol", protocol.name());
         manifest.set("mcpProtocolVersions", objectMapper.valueToTree(protocol.versions()));
         manifest.put("javaVersion", profile.target().javaVersion());

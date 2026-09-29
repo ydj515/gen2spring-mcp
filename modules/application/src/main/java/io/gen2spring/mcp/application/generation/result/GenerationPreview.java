@@ -27,7 +27,12 @@ public record GenerationPreview(
         List<AnalysisWarning> warnings,
         List<String> generatedFilePaths,
         McpImplementation mcpImplementation,
-        McpProtocolMode mcpProtocol) {
+        McpProtocolMode mcpProtocol,
+        List<String> configuredMcpFeatures) {
+    public GenerationPreview(CompatibilityProfile profile, List<Tool> tools, List<String> secrets,
+            List<AnalysisWarning> warnings, List<String> paths, McpImplementation implementation, McpProtocolMode protocol) {
+        this(profile, tools, secrets, warnings, paths, implementation, protocol, List.of());
+    }
     public GenerationPreview(CompatibilityProfile profile, List<Tool> tools,
             List<String> secrets, List<AnalysisWarning> warnings, List<String> paths, McpImplementation implementation) {
         this(profile, tools, secrets, warnings, paths, implementation, McpProtocolMode.LEGACY);
@@ -44,6 +49,7 @@ public record GenerationPreview(
     public GenerationPreview {
         Objects.requireNonNull(profile, "profile");
         Objects.requireNonNull(mcpImplementation, "mcpImplementation");
+        configuredMcpFeatures = List.copyOf(configuredMcpFeatures);
         tools = List.copyOf(tools);
         secretEnvironmentVariables = List.copyOf(secretEnvironmentVariables);
         warnings = List.copyOf(warnings);

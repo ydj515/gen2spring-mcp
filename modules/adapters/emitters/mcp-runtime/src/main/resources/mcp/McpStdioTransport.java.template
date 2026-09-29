@@ -1,0 +1,60 @@
+package ${package}.generated.tool;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+/** Newline-delimited modern MCP. The caller owns stdout exclusively and sends diagnostics to stderr. */
+public final class McpStdioTransport {
+    private McpStdioTransport() {}
+
+    public static void serve(ModernMcpProtocol protocol, ObjectMapper json, InputStream input, OutputStream output) throws IOException {
+        ThreadPoolExecutor streams = new ThreadPoolExecutor(4, 4, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(32));
+        try {
+            byte[] line;
+            while ((line = line(input)) != null) {
+                JsonNode body;
+                try { body = json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                        .with(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION).readTree(line); }
+                catch (IOException invalid) { write(output, json, protocol.error(null, 400, -32700, "Parse error", null).body()); continue; }
+                if (body == null) continue;
+                ModernMcpProtocol.Reply reply = protocol.handle(body, null, "stdio");
+                if (reply.stream() == null) { if (reply.body() != null) write(output, json, reply.body()); continue; }
+                try {
+                    streams.execute(() -> {
+                        try { reply.stream().write(new OutputStream() {
+                            @Override public void write(int value) { throw new UnsupportedOperationException("Use event frames"); }
+                            @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+                                for (String event : new String(bytes, offset, length, StandardCharsets.UTF_8).split("\n")) {
+                                    if (event.startsWith("data: ")) McpStdioTransport.write(output, json, json.readTree(event.substring(6)));
+                                }
+                            }
+                        }); } catch (IOException disconnected) { /* Closing stdin terminates all subscriptions. */ }
+                    });
+                } catch (java.util.concurrent.RejectedExecutionException full) {
+                    write(output, json, protocol.error(body.get("id"), 503, -32603, "Subscription capacity exceeded", null).body());
+                }
+            }
+        } finally { protocol.close(); streams.shutdownNow(); }
+    }
+
+    private static byte[] line(InputStream input) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int value;
+        while ((value = input.read()) != -1 && value != '\n') {
+            if (buffer.size() >= 1024 * 1024) throw new IOException("MCP message exceeds limit");
+            buffer.write(value);
+        }
+        return value == -1 && buffer.size() == 0 ? null : buffer.toByteArray();
+    }
+    private static void write(OutputStream output, ObjectMapper json, JsonNode value) throws IOException {
+        synchronized (output) { output.write(json.writeValueAsBytes(value)); output.write('\n'); output.flush(); }
+    }
+}

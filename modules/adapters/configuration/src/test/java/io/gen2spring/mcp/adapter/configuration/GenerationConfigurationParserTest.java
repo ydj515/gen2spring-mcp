@@ -20,6 +20,16 @@ class GenerationConfigurationParserTest {
             new GenerationConfigurationParser(CompatibilityProfileRegistry.defaults());
 
     @Test
+    void parsesModernFeatureConfigurationAndRejectsLegacyFeatures() {
+        var selected = parser.parseYaml(("mcpImplementation: MCP_JAVA_SDK\nmcpProtocol: MODERN\nmcpFeatures:\n  tasks:\n    enabled: true\n    tools: [weather]\n    ttlMs: 1000\n"
+                + validYaml()).getBytes(UTF_8));
+        assertEquals(true, ((java.util.Map<?, ?>) selected.mcpFeatures().get("tasks")).get("enabled"));
+        assertTrue(((java.util.Map<?, ?>) selected.mcpFeatures().get("tasks")).get("ttlMs") instanceof Number);
+        assertThrows(RuntimeException.class, () -> parser.parseYaml(("mcpFeatures: {resources: []}\n" + validYaml()).getBytes(UTF_8)));
+        assertThrows(RuntimeException.class, () -> parser.parseYaml(("mcpFeatures: []\n" + validYaml()).getBytes(UTF_8)));
+    }
+
+    @Test
     void parsesProtocolSelectionAndRejectsUnsupportedCombinations() {
         assertEquals("LEGACY", parser.parseYaml(validYaml().getBytes(UTF_8)).mcpProtocol().name());
         for (String mode : java.util.List.of("LEGACY", "MODERN", "DUAL")) {

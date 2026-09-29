@@ -73,7 +73,7 @@ public final class GenerationConfigurationParser {
     private static final Set<String> ROOT_FIELDS = Set.of(
             "project", "provider", "domain", "targetProfileId", "validationLevel", "validation", "operations");
     private static final Set<String> ALLOWED_ROOT_FIELDS = java.util.stream.Stream.concat(
-            ROOT_FIELDS.stream(), java.util.stream.Stream.of("mcpImplementation", "mcpProtocol"))
+            ROOT_FIELDS.stream(), java.util.stream.Stream.of("mcpImplementation", "mcpProtocol", "mcpFeatures"))
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
     private static final Set<String> PROJECT_FIELDS = Set.of("groupId", "artifactId", "packageName");
     private static final Set<String> VALIDATION_FIELDS = Set.of("toolCall");
@@ -211,7 +211,8 @@ public final class GenerationConfigurationParser {
                     || (parent.mapping() && ("arguments".equals(parent.pendingKey())
                     || "successValues".equals(parent.pendingKey())
                     || "statusCodes".equals(parent.pendingKey())
-                    || "initialValue".equals(parent.pendingKey())));
+                    || "initialValue".equals(parent.pendingKey())
+                    || "mcpFeatures".equals(parent.pendingKey())));
             parent.completeValue();
         }
         containers.push(new YamlContainer(mapping, jsonValueMode));
@@ -316,6 +317,7 @@ public final class GenerationConfigurationParser {
         requireString(root, "provider", "Provider");
         requireString(root, "domain", "Domain");
         requireString(root, "targetProfileId", "Target profile");
+        if (root.has("mcpFeatures") && !root.get("mcpFeatures").isObject()) throw invalid("MCP features must be an object");
         if (root.has("mcpProtocol")) {
             requireString(root, "mcpProtocol", "MCP protocol");
         }
@@ -497,9 +499,13 @@ public final class GenerationConfigurationParser {
                 ? McpImplementation.SPRING_AI_EXPLICIT : raw.mcpImplementation();
         McpProtocolMode protocol = raw.mcpProtocol() == null ? McpProtocolMode.LEGACY : raw.mcpProtocol();
         if (!protocol.supports(implementation)) throw invalid("Selected MCP protocol requires MCP_JAVA_SDK");
+        if (raw.mcpFeatures() != null && !raw.mcpFeatures().isEmpty()
+                && (implementation != McpImplementation.MCP_JAVA_SDK || !protocol.modern())) {
+            throw invalid("MCP features require the modern Java SDK adapter");
+        }
         return new GenerationCommand(new ProjectCoordinates(groupId, artifactId, packageName), provider, domain,
                 raw.targetProfileId(), raw.validationLevel(), validation, operations,
-                implementation, protocol);
+                implementation, protocol, raw.mcpFeatures() == null ? Map.of() : raw.mcpFeatures());
     }
 
     private ValidationConfiguration validation(RawValidation rawValidation) {
@@ -753,7 +759,8 @@ public final class GenerationConfigurationParser {
             RawValidation validation,
             List<RawOperation> operations,
             McpImplementation mcpImplementation,
-            McpProtocolMode mcpProtocol) {}
+            McpProtocolMode mcpProtocol,
+            Map<String, Object> mcpFeatures) {}
 
     private record RawValidation(RawToolCall toolCall) {}
 

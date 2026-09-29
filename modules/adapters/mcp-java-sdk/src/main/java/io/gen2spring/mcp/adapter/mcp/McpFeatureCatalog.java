@@ -1,0 +1,329 @@
+package io.gen2spring.mcp.adapter.mcp;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Explicit, in-memory content registry. Client URIs never resolve to filesystem paths or URLs. */
+public final class McpFeatureCatalog {
+    private final ObjectMapper json;
+    private final Map<String, ObjectNode> resources = new LinkedHashMap<>();
+    private final Map<String, ObjectNode> prompts = new LinkedHashMap<>();
+    private final Map<String, ObjectNode> skills = new LinkedHashMap<>();
+    private final Map<String, String> apps = new LinkedHashMap<>();
+    private final List<ObjectNode> templates = new ArrayList<>();
+
+    public McpFeatureCatalog(ObjectMapper json, JsonNode configuration) {
+        this.json = json;
+        if (!configuration.isObject()) throw new IllegalArgumentException("Feature configuration must be an object");
+        for (var entry : configuration.properties()) {
+            if (!List.of("resources", "resourceTemplates", "prompts", "skills", "apps", "tasks", "interactions").contains(entry.getKey())) {
+                throw new IllegalArgumentException("Unknown MCP feature configuration field");
+            }
+        }
+        for (JsonNode value : array(configuration, "resources")) addResource(object(value));
+        for (JsonNode value : array(configuration, "resourceTemplates")) {
+            ObjectNode template = object(value);
+            String expression = text(template, "uriTemplate");
+            String literals = expression.replaceAll("\\{[A-Za-z0-9_]+\\}", "value");
+            if (literals.contains("{") || literals.contains("}") || !java.net.URI.create(literals).isAbsolute()) {
+                throw new IllegalArgumentException("Only simple absolute resource templates are supported");
+            }
+            text(template, "name");
+            text(template, "text");
+            templates.add(template.deepCopy());
+        }
+        for (JsonNode value : array(configuration, "prompts")) {
+            ObjectNode prompt = object(value);
+            String name = text(prompt, "name");
+            if (!prompt.path("messages").isArray() || prompts.putIfAbsent(name, prompt.deepCopy()) != null) {
+                throw new IllegalArgumentException("Invalid or duplicate prompt");
+            }
+            for (JsonNode argument : array(prompt, "arguments")) text(argument, "name");
+            for (JsonNode message : prompt.path("messages")) {
+                if (!List.of("user", "assistant").contains(text(message, "role"))) throw new IllegalArgumentException("Invalid prompt role");
+                JsonNode content = message.path("content");
+                switch (text(content, "type")) {
+                    case "text" -> text(content, "text");
+                    case "image", "audio" -> { Base64.getDecoder().decode(text(content, "data")); text(content, "mimeType"); }
+                    case "resource" -> {
+                        JsonNode resource = content.path("resource"); text(resource, "uri");
+                        if (resource.has("text")) text(resource, "text"); else Base64.getDecoder().decode(text(resource, "blob"));
+                    }
+                    case "resource_link" -> { text(content, "uri"); text(content, "name"); }
+                    default -> throw new IllegalArgumentException("Invalid prompt content type");
+                }
+            }
+        }
+        for (JsonNode value : array(configuration, "skills")) addSkill(object(value));
+        for (JsonNode value : array(configuration, "apps")) {
+            String uri = text(value, "uri");
+            String html = text(value, "html");
+            if (!uri.startsWith("ui://") || !html.toLowerCase(java.util.Locale.ROOT).contains("<!doctype html>")) {
+                throw new IllegalArgumentException("Invalid MCP App resource");
+            }
+            ObjectNode resource = json.createObjectNode().put("uri", uri).put("name", text(value, "name"))
+                    .put("mimeType", "text/html;profile=mcp-app").put("text", html);
+            resource.set("_meta", value.path("_meta").isObject() ? value.path("_meta").deepCopy() : json.createObjectNode());
+            addResource(resource);
+            for (JsonNode tool : array(value, "tools")) {
+                if (!tool.isTextual() || apps.putIfAbsent(tool.asText(), uri) != null) {
+                    throw new IllegalArgumentException("Invalid MCP App tool binding");
+                }
+            }
+        }
+    }
+
+    public JsonNode listFingerprint(String method) {
+        return json.valueToTree(method.equals("resources/list") ? resources : prompts);
+    }
+
+    private void addResource(ObjectNode value) {
+        String uri = text(value, "uri");
+        if (!java.net.URI.create(uri).isAbsolute() || value.has("text") == value.has("blob")) {
+            throw new IllegalArgumentException("Resource must have an absolute URI and exactly one content field");
+        }
+        if (value.has("text")) text(value, "text");
+        else Base64.getDecoder().decode(text(value, "blob"));
+        if (resources.putIfAbsent(uri, value.deepCopy()) != null) throw new IllegalArgumentException("Duplicate resource URI");
+    }
+
+    private void addSkill(ObjectNode value) {
+        String uri = text(value, "uri");
+        ObjectNode frontmatter = object(value.path("frontmatter"));
+        String name = text(frontmatter, "name");
+        text(frontmatter, "description");
+        if (name.length() > 64 || !name.matches("[a-z0-9]+(?:-[a-z0-9]+)*") || !uri.endsWith("/" + name + "/SKILL.md")) {
+            throw new IllegalArgumentException("Skill URI must end with its name and SKILL.md");
+        }
+        String root = uri.substring(0, uri.length() - "SKILL.md".length());
+        String source = "---\n" + frontmatter + "\n---\n\n" + text(value, "instructions") + "\n";
+        List<ObjectNode> files = new ArrayList<>();
+        files.add(json.createObjectNode().put("uri", uri).put("text", source).put("mimeType", "text/markdown"));
+        for (JsonNode file : array(value, "files")) {
+            String relative = text(file, "path");
+            if (!relative.matches("[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*")
+                    || List.of(relative.split("/")).stream().anyMatch(part -> part.equals(".") || part.equals(".."))) {
+                throw new IllegalArgumentException("Invalid skill file path");
+            }
+            ObjectNode resource = object(file).deepCopy();
+            resource.remove("path");
+            resource.put("uri", root + relative);
+            files.add(resource);
+        }
+        if (files.size() > 512) throw new IllegalArgumentException("Skill file count exceeds limit");
+        ArrayNode manifest = json.createArrayNode();
+        long size = 0;
+        for (ObjectNode file : files) {
+            byte[] bytes = file.has("text") ? text(file, "text").getBytes(StandardCharsets.UTF_8)
+                    : Base64.getDecoder().decode(text(file, "blob"));
+            size += bytes.length;
+            if (size > 16 * 1024 * 1024) throw new IllegalArgumentException("Skill size exceeds limit");
+            addResource(file);
+            manifest.addObject().put("uri", text(file, "uri")).put("digest", "sha256:" + digest(bytes)).put("size", bytes.length);
+        }
+        ObjectNode skill = json.createObjectNode().put("uri", uri);
+        skill.set("frontmatter", frontmatter.deepCopy());
+        skill.set("resources", manifest);
+        if (skills.putIfAbsent(uri, skill) != null) throw new IllegalArgumentException("Duplicate skill URI");
+    }
+
+    public JsonNode capabilities() {
+        ObjectNode capabilities = json.createObjectNode();
+        capabilities.putObject("tools");
+        capabilities.putObject("resources").put("subscribe", true).put("listChanged", true);
+        capabilities.putObject("prompts").put("listChanged", true);
+        capabilities.putObject("completions");
+        ObjectNode extensions = capabilities.putObject("extensions");
+        if (!skills.isEmpty()) extensions.putObject("io.modelcontextprotocol/skills").put("directoryRead", true);
+        if (!apps.isEmpty()) extensions.putObject("io.modelcontextprotocol/ui");
+        return capabilities;
+    }
+
+    public List<JsonNode> decorateTools(List<?> tools, boolean appClient) {
+        return tools.stream().map(tool -> {
+            ObjectNode value = json.valueToTree(tool);
+            String uri = apps.get(value.path("name").asText());
+            if (appClient && uri != null) {
+                ObjectNode meta = value.path("_meta").isObject() ? (ObjectNode) value.get("_meta") : value.putObject("_meta");
+                meta.putObject("ui").put("resourceUri", uri);
+            }
+            return (JsonNode) value;
+        }).toList();
+    }
+
+    public ObjectNode dispatch(String method, JsonNode params) {
+        return switch (method) {
+            case "resources/list" -> page("resources", resources.values().stream().map(this::descriptor).toList(), params);
+            case "resources/templates/list" -> page("resourceTemplates", templates.stream().map(value -> {
+                ObjectNode descriptor = value.deepCopy(); descriptor.remove(List.of("text", "completions")); return descriptor;
+            }).toList(), params);
+            case "resources/read" -> read(text(params, "uri"));
+            case "resources/directory/read" -> directory(text(params, "uri"));
+            case "prompts/list" -> page("prompts", prompts.values().stream().map(value -> {
+                ObjectNode descriptor = value.deepCopy(); descriptor.remove(List.of("messages", "completions")); return descriptor;
+            }).toList(), params);
+            case "prompts/get" -> prompt(params);
+            case "skills/list" -> page("skills", new ArrayList<>(skills.values()), params);
+            case "skills/get" -> {
+                ObjectNode result = cached(); result.set("skill", require(skills, text(params, "uri")).deepCopy()); yield result;
+            }
+            case "completion/complete" -> completion(params);
+            default -> throw new IllegalArgumentException("Unknown catalog method");
+        };
+    }
+
+    private ObjectNode read(String uri) {
+        ObjectNode content = resources.get(uri);
+        if (content == null) {
+            for (ObjectNode template : templates) {
+                String pattern = template.path("uriTemplate").asText();
+                java.util.regex.Matcher fields = java.util.regex.Pattern.compile("\\{([A-Za-z0-9_]+)\\}").matcher(pattern);
+                StringBuilder regex = new StringBuilder("^");
+                List<String> names = new ArrayList<>();
+                int offset = 0;
+                while (fields.find()) {
+                    regex.append(java.util.regex.Pattern.quote(pattern.substring(offset, fields.start()))).append("([^/?#]+)");
+                    names.add(fields.group(1)); offset = fields.end();
+                }
+                regex.append(java.util.regex.Pattern.quote(pattern.substring(offset))).append('$');
+                var match = java.util.regex.Pattern.compile(regex.toString()).matcher(uri);
+                if (!match.matches()) continue;
+                String text = template.path("text").asText();
+                for (int i = 0; i < names.size(); i++) text = text.replace("${" + names.get(i) + "}", match.group(i + 1));
+                content = json.createObjectNode().put("uri", uri).put("text", text)
+                        .put("mimeType", template.path("mimeType").asText("text/plain"));
+                break;
+            }
+        }
+        if (content == null) throw new IllegalArgumentException("Unknown resource");
+        ObjectNode result = cached();
+        ObjectNode copy = content.deepCopy(); copy.remove(List.of("name", "description"));
+        result.putArray("contents").add(copy);
+        return result;
+    }
+
+    private ObjectNode prompt(JsonNode params) {
+        ObjectNode prompt = require(prompts, text(params, "name"));
+        JsonNode arguments = params.path("arguments");
+        if (!arguments.isMissingNode() && !arguments.isObject()) throw new IllegalArgumentException("Invalid prompt arguments");
+        for (JsonNode argument : array(prompt, "arguments")) {
+            String name = text(argument, "name");
+            if (argument.path("required").asBoolean() && !arguments.path(name).isTextual()) {
+                throw new IllegalArgumentException("Required prompt argument is missing");
+            }
+        }
+        ObjectNode result = cached();
+        if (prompt.has("description")) result.set("description", prompt.get("description"));
+        result.set("messages", substitute(prompt.path("messages"), arguments));
+        return result;
+    }
+
+    private JsonNode substitute(JsonNode node, JsonNode arguments) {
+        if (node.isTextual()) {
+            String text = node.asText();
+            for (var entry : arguments.properties()) {
+                if (!entry.getValue().isTextual()) throw new IllegalArgumentException("Prompt arguments must be strings");
+                text = text.replace("${" + entry.getKey() + "}", entry.getValue().asText());
+            }
+            return json.getNodeFactory().textNode(text);
+        }
+        if (node.isArray()) { ArrayNode result = json.createArrayNode(); node.forEach(value -> result.add(substitute(value, arguments))); return result; }
+        if (node.isObject()) {
+            ObjectNode result = json.createObjectNode(); node.properties().forEach(entry -> result.set(entry.getKey(), substitute(entry.getValue(), arguments))); return result;
+        }
+        return node.deepCopy();
+    }
+
+    private ObjectNode completion(JsonNode params) {
+        JsonNode ref = params.path("ref");
+        String type = text(ref, "type");
+        String name = text(params.path("argument"), "name");
+        String prefix = text(params.path("argument"), "value");
+        JsonNode choices;
+        if ("ref/prompt".equals(type)) choices = require(prompts, text(ref, "name")).path("completions").path(name);
+        else if ("ref/resource".equals(type)) choices = templates.stream()
+                .filter(value -> value.path("uriTemplate").asText().equals(text(ref, "uri")))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("Unknown resource template"))
+                .path("completions").path(name);
+        else throw new IllegalArgumentException("Invalid completion reference");
+        List<String> matches = new ArrayList<>();
+        choices.forEach(value -> { if (value.isTextual() && value.asText().startsWith(prefix)) matches.add(value.asText()); });
+        ObjectNode result = json.createObjectNode();
+        ObjectNode completion = result.putObject("completion").put("total", matches.size()).put("hasMore", matches.size() > 100);
+        completion.set("values", json.valueToTree(matches.stream().limit(100).toList()));
+        return result;
+    }
+
+    private ObjectNode directory(String uri) {
+        if (uri.endsWith("/") || skills.keySet().stream().noneMatch(skill -> (uri.equals(skill.substring(0, skill.lastIndexOf('/'))) || uri.startsWith(skill.substring(0, skill.lastIndexOf('/')) + "/")))) {
+            throw new IllegalArgumentException("Unknown skill directory");
+        }
+        Map<String, ObjectNode> children = new LinkedHashMap<>();
+        resources.forEach((key, value) -> {
+            if (!key.startsWith(uri + "/")) return;
+            String relative = key.substring(uri.length() + 1);
+            int slash = relative.indexOf('/');
+            String child = slash < 0 ? key : uri + "/" + relative.substring(0, slash);
+            children.put(child, slash < 0 ? descriptor(value) : json.createObjectNode().put("uri", child)
+                    .put("name", relative.substring(0, slash)).put("mimeType", "inode/directory"));
+        });
+        if (children.isEmpty()) throw new IllegalArgumentException("Unknown skill directory");
+        ObjectNode result = cached(); result.set("resources", json.valueToTree(children.values())); return result;
+    }
+
+    public ObjectNode page(String field, List<? extends JsonNode> values, JsonNode params) {
+        int offset = 0;
+        if (params.has("cursor")) {
+            try {
+                String decoded = new String(Base64.getUrlDecoder().decode(text(params, "cursor")), StandardCharsets.UTF_8);
+                String prefix = digest((field + values).getBytes(StandardCharsets.UTF_8)) + ":";
+                if (!decoded.startsWith(prefix)) throw new IllegalArgumentException("Invalid cursor");
+                offset = Integer.parseInt(decoded.substring(prefix.length()));
+                if (offset <= 0 || offset >= values.size()) throw new IllegalArgumentException("Invalid cursor");
+            } catch (RuntimeException invalid) { throw new IllegalArgumentException("Invalid cursor"); }
+        }
+        ObjectNode result = cached();
+        int end = Math.min(offset + 100, values.size());
+        result.set(field, json.valueToTree(values.subList(offset, end)));
+        if (end < values.size()) result.put("nextCursor", Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (digest((field + values).getBytes(StandardCharsets.UTF_8)) + ":" + end).getBytes(StandardCharsets.UTF_8)));
+        return result;
+    }
+
+    private ObjectNode descriptor(ObjectNode value) {
+        ObjectNode result = value.deepCopy(); result.remove(List.of("text", "blob"));
+        if (!result.has("name")) result.put("name", text(value, "uri"));
+        return result;
+    }
+
+    private ObjectNode cached() { return json.createObjectNode().put("ttlMs", 0).put("cacheScope", "private"); }
+    private static ObjectNode require(Map<String, ObjectNode> values, String key) {
+        ObjectNode value = values.get(key); if (value == null) throw new IllegalArgumentException("Unknown catalog entry"); return value;
+    }
+    private static ObjectNode object(JsonNode value) {
+        if (!value.isObject()) throw new IllegalArgumentException("Expected object"); return (ObjectNode) value;
+    }
+    private static Iterable<JsonNode> array(JsonNode value, String name) {
+        JsonNode items = value.path(name);
+        if (!items.isMissingNode() && !items.isArray()) throw new IllegalArgumentException("Expected array");
+        return items;
+    }
+    static String text(JsonNode value, String name) {
+        if (!value.path(name).isTextual()) throw new IllegalArgumentException("Expected string: " + name); return value.path(name).asText();
+    }
+    static String digest(byte[] bytes) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
+        catch (NoSuchAlgorithmException failure) { throw new IllegalStateException("SHA-256 is unavailable", failure); }
+    }
+}

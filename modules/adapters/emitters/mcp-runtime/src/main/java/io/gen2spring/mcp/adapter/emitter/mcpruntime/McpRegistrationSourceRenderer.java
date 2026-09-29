@@ -13,8 +13,12 @@ public final class McpRegistrationSourceRenderer {
         files.put(root + "GeneratedToolCalls.java", calls(model));
         if (model.implementation() == io.gen2spring.mcp.domain.profile.McpImplementation.MCP_JAVA_SDK) {
             files.put(root + "GeneratedMcpServerConfiguration.java", sdkServer(model));
-            files.put(root + "ModernMcpProtocol.java", template("ModernMcpProtocol", model));
+            files.put("src/main/resources/mcp-features.json", model.featuresJson());
+            for (String source : java.util.List.of("ModernMcpProtocol", "McpFeatureCatalog", "McpInteractions", "McpTaskStore", "McpStdioTransport")) {
+                files.put(root + source + ".java", template(source, model));
+            }
             files.put(root + "DualMcpServlet.java", template("DualMcpServlet", model));
+            if (model.protocol().modern()) files.put(root + "GeneratedMcpStdioApplication.java", template("GeneratedMcpStdioApplication", model));
         } else {
             files.put(root + model.domainClass() + "McpTools.java", annotatedTools(model));
             files.put(root + "GeneratedMcpRegistration.java", annotationRegistration(model));
@@ -286,6 +290,8 @@ public final class McpRegistrationSourceRenderer {
                 import org.springframework.context.annotation.Configuration;
 
                 @Configuration(proxyBeanMethods = false)
+                @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+                        name = "gen2spring.mcp.transport", havingValue = "http", matchIfMissing = true)
                 public class GeneratedMcpServerConfiguration {
                     @Bean(destroyMethod = "")
                     public HttpServletStreamableServerTransportProvider mcpTransport() {
@@ -323,6 +329,7 @@ public final class McpRegistrationSourceRenderer {
             if (stream == null) throw new IllegalStateException("MCP protocol template is missing");
             return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
                     .replace("${package}", model.packageName())
+                    .replace("${domainClass}", model.domainClass())
                     .replace("${protocolVersions}", "java.util.List.of(" + model.protocol().versions().stream()
                             .map(this::quote).collect(Collectors.joining(", ")) + ")");
         } catch (java.io.IOException failure) {

@@ -48,6 +48,12 @@ public final class RuntimeServerHandle implements AutoCloseable {
         return new RuntimeServerHandle(instance, replacement, this::close);
     }
 
+    public RuntimeServerHandle withRouter(RouterFunction<ServerResponse> replacement, Runnable cleanup) {
+        return new RuntimeServerHandle(instance, replacement, () -> {
+            try { cleanup.run(); } finally { close(); }
+        });
+    }
+
     public RouterFunction<ServerResponse> routes() {
         return router();
     }

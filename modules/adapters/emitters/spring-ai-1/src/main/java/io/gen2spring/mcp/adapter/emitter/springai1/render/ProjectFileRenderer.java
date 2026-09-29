@@ -150,10 +150,14 @@ public final class ProjectFileRenderer {
                 + (context.request().mcpImplementation() == McpImplementation.MCP_JAVA_SDK
                 ? "Selected protocol: " + context.request().mcpProtocol().name() + ". Supported versions: "
                     + String.join(", ", context.request().mcpProtocol().versions())
-                    + ". Unselected versions are rejected on /mcp. The modern tools-only adapter uses per-request metadata, "
+                    + ". Unselected versions are rejected on /mcp. The modern adapter uses per-request metadata, "
                     + "requires matching MCP-Protocol-Version, Mcp-Method and Mcp-Name headers, and creates no sessions. "
                     + "The modern path accepts only same-origin loopback browser requests. HTTP request bodies are limited to 1 MiB. "
-                    + "Discovery and tool lists use private, immediately stale caching. "
+                    + "Discovery and lists use private, immediately stale caching. "
+                    + "Configure resources, prompts, skills, apps, interactions and tasks in src/main/resources/mcp-features.json. "
+                    + "Override the file with GEN2SPRING_MCP_FEATURES. Tasks require a persistent GEN2SPRING_MCP_TASK_DIRECTORY "
+                    + "with a single process writer; interrupted work is never automatically replayed. "
+                    + "The GeneratedMcpStdioApplication entry point serves the modern protocol over stdio. "
                     + "The gen2spring.mcp.requests metric records protocol.version (including unknown).\n"
                 : "Supports the validated 2025-03-26 handshake. This Spring AI profile does not implement 2026-07-28.\n");
     }

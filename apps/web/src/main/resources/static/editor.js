@@ -453,6 +453,7 @@ export function buildConfiguration() {
     provider: value('provider-name'), domain: value('domain-name'), targetProfileId: value('target-profile'),
     mcpImplementation: value('mcp-implementation'),
     mcpProtocol: value('mcp-protocol'),
+    mcpFeatures: readMcpFeatures(value),
     validationLevel: 'MCP_PROTOCOL', validation: {toolCall: {operationId: validationOperation, arguments: argumentsValue}},
     operations: enabled.map(operation => operationConfiguration(operation))
   };
@@ -568,5 +569,16 @@ function requireSafeIntegers(value) {
     value.forEach(requireSafeIntegers);
   } else if (value && typeof value === 'object') {
     Object.values(value).forEach(requireSafeIntegers);
+  }
+}
+
+function readMcpFeatures(value) {
+  if (value('mcp-implementation') !== 'MCP_JAVA_SDK' || value('mcp-protocol') === 'LEGACY') return {};
+  try {
+    const features = parseSafeJson(value('mcp-features') || '{}');
+    if (!features || Array.isArray(features) || typeof features !== 'object') throw new Error();
+    return features;
+  } catch {
+    throw new Error('신형 MCP 기능 설정은 올바른 JSON 객체여야 합니다.');
   }
 }

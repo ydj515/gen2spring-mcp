@@ -362,12 +362,72 @@ Spring AI 구현과 `MODERN` 또는 `DUAL`을 조합하면 설정 오류를 반�
 `Mcp-Method`, 도구 호출에는 `Mcp-Name` 헤더를 함께 보낸다. 헤더와 본문이 다르면 실행하지 않는다.
 새 요청은 세션 ID를 만들거나 사용하지 않는다. 지원하지 않는 버전은 HTTP 400 / `-32022`로 반환한다.
 
-새 버전은 프로젝트 자체의 tools 전용 어댑터로 제공한다. SDK 0.18.3이나 Spring AI가
-새 명세를 지원한다는 뜻은 아니다. `server/discover`, `tools/list`, `tools/call`을 제공하고
-resources, prompts, sampling, elicitation, subscriptions, task 확장은 광고하지 않는다.
+새 버전은 프로젝트 자체 어댑터로 제공한다. SDK 0.18.3이나 Spring AI가 새 명세를
+지원한다는 뜻은 아니다. 도구 외에 Resources·Prompts·Completion, MRTR 입력 요청,
+Subscriptions, Tasks, Skills, MCP Apps 리소스를 구성할 수 있다. 등록 URI만 조회하며
+클라이언트가 보낸 URI로 서버 파일이나 외부 URL에 접근하지 않는다.
 목록은 `ttlMs: 0`, `cacheScope: private`로 반환한다. MCP HTTP 본문은 최대 1 MiB이며,
 새 프로토콜 endpoint는 Origin이 없거나 동일한 loopback 주소·scheme·port인 요청만 허용한다.
 외부 브라우저에서 직접 호출해야 한다면 인증 정책에 맞는 Origin 허용 목록을 먼저 구현해야 한다.
+
+### 신형 기능 설정
+
+생성 화면에서 **신형 MCP 기능 설정**을 펼쳐 JSON을 입력한다. CLI에서는 같은 객체를
+루트 `mcpFeatures`에 넣는다. 직접 SDK의 `MODERN`·`DUAL`에서만 사용할 수 있다.
+아래 `weather`는 실제 생성 도구 이름으로 바꿔야 한다.
+
+```json
+{
+  "resources": [{"uri": "resource://guide", "name": "Guide", "text": "Weather service guide"}],
+  "prompts": [{"name": "weather-guide", "arguments": [{"name": "city", "required": true}],
+    "messages": [{"role": "user", "content": {"type": "text", "text": "Weather in ${city}"}}]}],
+  "tasks": {"enabled": true, "tools": ["weather"], "ttlMs": 3600000}
+}
+```
+
+설정은 생성물의 `src/main/resources/mcp-features.json`에 포함된다.
+`GEN2SPRING_MCP_FEATURES`로 외부 설정 파일 경로를 지정하면 번들 설정을 대체한다.
+Managed Runtime에서는 이 환경 변수로 서버 관리자가 설정한다. 현재 등록 콘텐츠는
+해당 프로세스의 모든 인스턴스에 적용되므로 특정 사용자 시크릿을 넣으면 안 된다.
+`configuredMcpFeatures`는 설정한 기능 이름이며 검증 완료 선언이 아니다.
+
+- Resources: `uri`, `name`, `text` 또는 Base64 `blob`을 등록한다. `resourceTemplates`는
+  단순 `{name}` URI 변수와 본문의 `${name}` 치환을 지원한다.
+- Prompts: `messages`와 `arguments`를 등록한다. `completions`의 인자별 문자열 목록으로
+  Completion을 제공한다. 목록 페이지는 최대 100개다.
+- MRTR: `interactions`의 `tools/call:도구이름` 키에 `inputRequests`를 구성한다.
+  Elicitation·Sampling·Roots 요청을 전달하고 `argumentBindings`의 JSON Pointer로
+  응답을 도구 인자에 연결한다. 서명된 requestState는 소유자·원 요청·10분 만료에 묶인다.
+  일반 MRTR은 재전송에 대한 exactly-once 실행을 보장하지 않는다.
+- Skills: `skills`에 `uri`, `frontmatter`, `instructions`, `files`를 등록한다.
+  파일별 SHA-256과 크기를 제공한다. 스킬당 최대 512개 파일·16 MiB다.
+- Apps: `apps`에 `ui://` URI, 이름, `html`, 연결할 `tools`, 선택 `_meta`를 등록한다.
+  지원 클라이언트에 UI 리소스 메타데이터를 제공한다. HTML의 호스트 초기화·메시지 처리는
+  App 작성자가 구현해야 하며, 외부 호스트 호환성은 아직 검증하지 않았다.
+- Subscriptions: 최초 확인 알림 후 등록 목록·리소스·허용된 작업의 변경을 전달한다.
+  연결은 최대 25초이며 클라이언트가 재연결한다. HTTP 취소는 연결 종료로 처리한다.
+
+Tasks는 클라이언트가 요청 capability에 `io.modelcontextprotocol/tasks`를 선언한 경우
+설정된 도구를 비동기로 실행한다. 미지원 클라이언트에는 동기 결과를 반환한다.
+`tasks/get`, `tasks/update`, `tasks/cancel`과 작업 알림을 제공하며, 구형
+`tasks/result`·`tasks/list`를 사용하지 않는다.
+
+배포에서는 `GEN2SPRING_MCP_TASK_DIRECTORY`를 영속 볼륨에 지정한다. 기본값은
+`.gen2spring/mcp-tasks`이고 네임스페이스별 하위 디렉터리를 사용한다. 디렉터리당 한
+프로세스만 쓸 수 있다. 작업 인자·결과가 저장되므로 접근 권한과 보존 정책을 적용한다.
+기본 TTL은 1시간, 최대 7일이며 저장소당 128개 작업, 프로세스당 실행 4개·대기 128개로 제한한다.
+재시작 시 완료 결과와 입력 대기를 복구하고, 실행 중이던 작업은 실패로 전환한다.
+외부 API 부작용을 자동 재실행하지 않는다. 취소는 인터럽트 요청이며 이미 발생한 외부
+부작용을 되돌리지 않는다. Managed Runtime은 기존 Bearer 인증과 현재 권한 검사를 유지한다.
+OAuth resource server 및 인증 확장은 아직 구현하지 않았다.
+
+생성 프로젝트는 HTTP 외에 `GeneratedMcpStdioApplication` 진입점으로 신형 stdio를 제공한다.
+아래 클래스·JAR 이름은 생성 프로젝트에 맞춰 바꾼다. 로그는 stderr, 프로토콜은 stdout으로 분리한다.
+
+```sh
+java -Dloader.main=com.example.weather.generated.tool.GeneratedMcpStdioApplication \
+  -cp build/libs/weather-mcp-server.jar org.springframework.boot.loader.launch.PropertiesLauncher
+```
 
 `GENERATION_MANIFEST.json`의 `mcpProtocol`과 `mcpProtocolVersions`는 선택한 지원 방식과 버전 목록이고,
 `VALIDATION_REPORT.json`의 `verifiedProtocolVersions`는 해당 생성 실행에서 검증을 완료한 목록이다.
@@ -397,8 +457,8 @@ Java 21/Gradle 직접 SDK 생성 프로젝트에서 세 가지 선택을 모두 
 | `caching` | 4 | 3 | 1 | 제공하지 않는 prompts/resources 목록 |
 | `dns-rebinding-protection` | 2 | 0 | 0 | 없음 |
 
-이는 tools 전용 구현에 대한 검증이며 공식 전체 conformance 통과나 SDK 인증을 의미하지 않는다.
-지원 기능을 늘릴 때는 해당 기능의 wire 테스트와 공식 시나리오도 추가해야 한다.
+위 표는 확장 구현 전 기준 커밋 `98e3036`의 tools 전용 구현에 대한 검증이며 공식 전체 conformance 통과나 SDK 인증을 의미하지 않는다.
+확장 구현은 별도 단위·HTTP·stdio·Managed Runtime 통합 테스트로 검증한다. 위 공식 결과를 확장 구현 전체의 통과 근거로 사용하지 않는다.
 
 ## 검증과 종료 코드
 

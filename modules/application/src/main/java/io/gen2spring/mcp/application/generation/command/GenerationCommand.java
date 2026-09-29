@@ -23,13 +23,24 @@ public record GenerationCommand(
         ValidationConfiguration validation,
         List<OperationSelection> operations,
         McpImplementation mcpImplementation,
-        McpProtocolMode mcpProtocol) {
+        McpProtocolMode mcpProtocol,
+        Map<String, Object> mcpFeatures) {
     public GenerationCommand {
         Objects.requireNonNull(mcpImplementation, "mcpImplementation");
         Objects.requireNonNull(mcpProtocol, "mcpProtocol");
+        mcpFeatures = immutableJsonMap(Objects.requireNonNull(mcpFeatures, "mcpFeatures"));
+        if (!mcpFeatures.isEmpty() && (mcpImplementation != McpImplementation.MCP_JAVA_SDK || !mcpProtocol.modern())) {
+            throw new IllegalArgumentException("MCP features require the modern Java SDK adapter");
+        }
         if (!mcpProtocol.supports(mcpImplementation)) {
             throw new IllegalArgumentException("Selected MCP protocol is unsupported by the implementation");
         }
+    }
+
+    public GenerationCommand(ProjectCoordinates project, String provider, String domain, String targetProfileId,
+            ValidationLevel validationLevel, ValidationConfiguration validation, List<OperationSelection> operations,
+            McpImplementation mcpImplementation, McpProtocolMode mcpProtocol) {
+        this(project, provider, domain, targetProfileId, validationLevel, validation, operations, mcpImplementation, mcpProtocol, Map.of());
     }
 
     public GenerationCommand(ProjectCoordinates project, String provider, String domain, String targetProfileId,

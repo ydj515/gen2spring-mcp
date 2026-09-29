@@ -26,4 +26,10 @@ public interface ManifestWriter {
         return write(root, profile, document, checksum, tools, implementation);
     }
 
+    default Path write(Path root, CompatibilityProfile profile, OpenApiDocument document,
+            String checksum, List<ToolDefinition> tools, McpImplementation implementation, McpProtocolMode protocol,
+            java.util.Map<String, Object> features) {
+        return write(root, profile, document, checksum, tools, implementation, protocol);
+    }
+
 }

@@ -325,6 +325,98 @@ class P1GenerationIntegrationTest {
     }
 
     @Test
+    void generatedModernExtensionsExecuteOverHttpAndStdio() throws Exception {
+        TargetJavaHomes homes = targetJavaHomes();
+        String features = """
+                {"resources":[{"uri":"resource://guide","name":"Guide","text":"Extension guide"}],
+                 "prompts":[{"name":"guide","messages":[{"role":"user","content":{"type":"text","text":"Use weather"}}]}],
+                 "skills":[{"uri":"skill://weather-guide/SKILL.md","frontmatter":{"name":"weather-guide","description":"Weather guide"},"instructions":"Use weather."}],
+                 "apps":[{"uri":"ui://weather/view","name":"Weather","html":"<!doctype html><html><body>Weather</body></html>","tools":["kma_weather_get_forecast"]}],
+                 "tasks":{"enabled":true,"tools":["kma_weather_get_forecast"]}}
+                """;
+        Path configuration = Files.writeString(tempDir.resolve("modern-extensions.yaml"),
+                "mcpImplementation: MCP_JAVA_SDK\nmcpProtocol: MODERN\nmcpFeatures: " + features.replace("\n", " ")
+                        + "\n" + Files.readString(configurationFor(SPRING_AI_1_JAVA_21), UTF_8));
+        GenerationResult generated = generate(resource("openapi/weather-api.yaml"), configuration, tempDir.resolve("extensions"));
+        assertEquals(JSON.readTree(features), JSON.readTree(Files.readString(generated.projectRoot().resolve("src/main/resources/mcp-features.json"))));
+        assertTrue(generated.manifest().path("configuredMcpFeatures").toString().contains("tasks"));
+        assertFalse(generated.archiveEntries().keySet().stream().anyMatch(path -> path.contains("tasks.json")));
+        buildBootJar(generated.projectRoot(), homes.java21Home());
+        int port = reserveLoopbackPort();
+        try (IndependentUpstreamRecorder upstream = IndependentUpstreamRecorder.start()) {
+            ProcessBuilder launch = applicationProcess(generated.projectRoot(), javaExecutable(homes.java21Home()), port, upstream.baseUri());
+            launch.environment().put("GEN2SPRING_MCP_TASK_DIRECTORY", tempDir.resolve("http-task-state").toString());
+            try (ObservedProcess application = ObservedProcess.start(launch)) {
+                awaitApplication(application, port);
+                JsonNode discovery = modernRequest(port, "server/discover", Map.of());
+                assertTrue(discovery.at("/result/capabilities/extensions").has("io.modelcontextprotocol/tasks"));
+                assertEquals("Extension guide", modernRequest(port, "resources/read", Map.of("uri", "resource://guide"))
+                        .at("/result/contents/0/text").asText());
+                assertEquals("Use weather", modernRequest(port, "prompts/get", Map.of("name", "guide"))
+                        .at("/result/messages/0/content/text").asText());
+                assertEquals("weather-guide", modernRequest(port, "skills/list", Map.of()).at("/result/skills/0/frontmatter/name").asText());
+                assertEquals("text/html;profile=mcp-app", modernRequest(port, "resources/read", Map.of("uri", "ui://weather/view"))
+                        .at("/result/contents/0/mimeType").asText());
+                JsonNode handle = modernRequest(port, "tools/call", Map.of("name", TOOL_NAME,
+                        "arguments", Map.of("stationId", "STN01", "days", 3, "latitude", 37.5, "longitude", 127.0)));
+                assertEquals("task", handle.at("/result/resultType").asText(), handle.toString());
+                String id = handle.at("/result/taskId").asText();
+                JsonNode state = null;
+                long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+                while (System.nanoTime() < deadline) {
+                    state = modernRequest(port, "tasks/get", Map.of("taskId", id));
+                    if (!state.at("/result/status").asText().equals("working")) break;
+                    Thread.sleep(100);
+                }
+                assertNotNull(state);
+                assertEquals("completed", state.at("/result/status").asText(), state.toString());
+                upstream.sealAndAssert(Duration.ofMillis(250));
+            }
+        }
+        Path stdout = tempDir.resolve("stdio.out");
+        ProcessBuilder stdio = new ProcessBuilder(javaExecutable(homes.java21Home()).toString(),
+                "-Dloader.main=com.example.weather.generated.tool.GeneratedMcpStdioApplication", "-cp",
+                generated.projectRoot().resolve("build/libs/weather-mcp-server.jar").toString(),
+                "org.springframework.boot.loader.launch.PropertiesLauncher");
+        stdio.environment().put("PROVIDER_BASE_URL", "http://127.0.0.1:1");
+        stdio.environment().put("KMA_SERVICE_KEY", "test-only");
+        stdio.environment().put("WEATHER_HEADER_KEY", "test-only");
+        stdio.environment().put("GEN2SPRING_MCP_TASK_DIRECTORY", tempDir.resolve("stdio-task-state").toString());
+        stdio.redirectOutput(stdout.toFile());
+        stdio.redirectError(tempDir.resolve("stdio.err").toFile());
+        Process process = stdio.start();
+        try {
+            process.getOutputStream().write((modernBody("resources/list", Map.of()).toString() + "\n").getBytes(UTF_8));
+            process.getOutputStream().close();
+            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "stdio process did not terminate");
+            assertEquals(0, process.exitValue(), Files.readString(tempDir.resolve("stdio.err")));
+            JsonNode result = JSON.readTree(Files.readString(stdout));
+            assertEquals("complete", result.at("/result/resultType").asText());
+            assertTrue(result.at("/result/resources").size() >= 1);
+        } finally { if (process.isAlive()) process.destroyForcibly(); }
+    }
+
+    private ObjectNode modernBody(String method, Map<String, ?> parameters) {
+        ObjectNode body = JSON.createObjectNode().put("jsonrpc", "2.0").put("id", 1).put("method", method);
+        ObjectNode params = JSON.valueToTree(parameters); body.set("params", params);
+        ObjectNode meta = params.putObject("_meta").put("io.modelcontextprotocol/protocolVersion", "2026-07-28");
+        meta.putObject("io.modelcontextprotocol/clientCapabilities").putObject("extensions").putObject("io.modelcontextprotocol/tasks");
+        return body;
+    }
+
+    private JsonNode modernRequest(int port, String method, Map<String, ?> params) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/mcp"))
+                .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream").header("MCP-Protocol-Version", "2026-07-28")
+                .header("Mcp-Method", method).POST(HttpRequest.BodyPublishers.ofString(modernBody(method, params).toString()));
+        if (params.containsKey("name")) request.header("Mcp-Name", params.get("name").toString());
+        if (params.containsKey("uri")) request.header("Mcp-Name", params.get("uri").toString());
+        HttpResponse<String> response = HttpClient.newHttpClient().send(request.build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode(), response.body());
+        return JSON.readTree(response.body());
+    }
+
+    @Test
     void selectedMcpImplementationsValidateAcrossProfiles() throws Exception {
         targetJavaHomes();
         Path specification = resource("openapi/weather-api.yaml");
