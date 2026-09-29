@@ -466,6 +466,7 @@ val coverageSuitePaths = listOf(
     ":modules:adapters:configuration:test",
     ":modules:adapters:openapi:test",
     ":modules:adapters:filesystem:test",
+    ":modules:adapters:mcp-java-sdk:test",
     ":modules:adapters:emitters:support:test",
     ":modules:adapters:emitters:spring-ai-1:fastTest",
     ":modules:adapters:emitters:spring-ai-2:fastTest",
