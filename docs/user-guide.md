@@ -370,6 +370,24 @@ Subscriptions, Tasks, Skills, MCP Apps 리소스를 구성할 수 있다. 등록
 새 프로토콜 endpoint는 Origin이 없거나 동일한 loopback 주소·scheme·port인 요청만 허용한다.
 외부 브라우저에서 직접 호출해야 한다면 인증 정책에 맞는 Origin 허용 목록을 먼저 구현해야 한다.
 
+#### 병행 모드의 서버 라우팅 메커니즘
+
+`DUAL` 모드의 생성 서버는 `DualMcpServlet`을 `POST /mcp`에 단일 등록하고,
+각 요청의 HTTP 헤더와 JSON-RPC 본문을 분석해 프로토콜 버전을 판별한다.
+별도 endpoint(`/mcp/v1`, `/mcp/v2`)를 분리하지 않으므로 클라이언트의 base URL 변경 없이
+서버만 업그레이드하는 이전 시나리오를 지원한다.
+
+판별 순서:
+
+1. **신형(2026-07-28) 판별** — 다음 중 하나라도 해당하면 신형 요청으로 처리한다.
+   - `MCP-Protocol-Version` 헤더 값이 구형 버전이 아닌 경우
+   - `params._meta`에 `io.modelcontextprotocol/protocolVersion` 키가 존재하는 경우
+   - JSON-RPC method가 `server/discover`인 경우
+2. **구형(2025-03-26)** — 위 조건에 해당하지 않으면 MCP Java SDK의 세션 기반 transport로 위임한다.
+3. **비지원 버전** — HTTP 400 / JSON-RPC 에러 `-32022`로 거부한다.
+
+서버 내부 설계 근거는 [설계 의사결정 — DUAL 프로토콜 모드](design-decisions.md#dual-프로토콜-모드의-단일-endpoint-라우팅)에 있다.
+
 ### 신형 기능 설정
 
 생성 화면에서 **신형 MCP 기능 설정**을 펼쳐 JSON을 입력한다. CLI에서는 같은 객체를

@@ -182,11 +182,31 @@
 
         <div class="field protocol-choice">
           <label for="mcp-protocol">MCP 프로토콜 버전</label>
-          <select id="mcp-protocol" class="form-select" aria-describedby="mcp-protocol-description" required>
+          <select id="mcp-protocol" class="form-select" aria-describedby="mcp-protocol-description" required hidden>
             <option value="LEGACY" selected>2025-03-26만 지원</option>
             <option value="MODERN" disabled>2026-07-28만 지원</option>
             <option value="DUAL" disabled>두 버전 병행 지원</option>
           </select>
+          <div class="protocol-cards" role="radiogroup" aria-label="MCP 프로토콜 버전 선택">
+            <button type="button" class="protocol-card" data-protocol="LEGACY" aria-pressed="true">
+              <span class="protocol-card__version">2025-03-26</span>
+              <span class="protocol-card__label">기존 버전만 지원</span>
+              <span class="protocol-card__desc">initialize → initialized 핸드셰이크 후 세션 기반으로 동작합니다.</span>
+              <span class="protocol-card__endpoint"><code>POST /mcp</code> · 세션 기반 · 신형 요청 거부</span>
+            </button>
+            <button type="button" class="protocol-card" data-protocol="MODERN" aria-pressed="false" disabled>
+              <span class="protocol-card__version">2026-07-28</span>
+              <span class="protocol-card__label">신형 버전만 지원</span>
+              <span class="protocol-card__desc">초기화 없이 요청마다 MCP-Protocol-Version 헤더로 버전을 전달합니다.</span>
+              <span class="protocol-card__endpoint"><code>POST /mcp</code> · 무상태 · 구형 요청 거부</span>
+            </button>
+            <button type="button" class="protocol-card" data-protocol="DUAL" aria-pressed="false" disabled>
+              <span class="protocol-card__version">병행</span>
+              <span class="protocol-card__label">두 버전 동시 지원</span>
+              <span class="protocol-card__desc">단일 endpoint에서 헤더와 본문을 분석해 버전을 자동 판별합니다.</span>
+              <span class="protocol-card__endpoint"><code>POST /mcp</code> · 자동 라우팅 · 클라이언트 설정 변경 불필요</span>
+            </button>
+          </div>
           <p id="mcp-protocol-description" class="field-hint" aria-live="polite">Spring AI는 2025-03-26을 지원합니다. 새 버전이나 병행 지원은 MCP Java SDK를 선택하세요.</p>
           <details class="mt-3">
             <summary>신형 MCP 기능 설정</summary>

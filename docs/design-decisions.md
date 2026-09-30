@@ -88,6 +88,46 @@ SSE는 browser polling을 기본 경로에서 대체하고 polling fallback을 �
 동시 stream의 DB 읽기 부하가 측정된 병목이 되면 같은 feed 경계의 교체를 검토한다.
 [사용자 흐름](user-flows.md)에 상태·접근성·화면 QA 계약이 있다.
 
+## DUAL 프로토콜 모드의 단일 endpoint 라우팅
+
+생성 서버의 프로토콜 모드를 `DUAL`로 선택하면 `/mcp/v1`, `/mcp/v2` 같은 별도 endpoint를
+만들지 않고 **단일 `POST /mcp` endpoint**에서 요청별로 프로토콜 버전을 판별한다.
+별도 endpoint 분리 대신 단일 경로를 선택한 이유는 (1) 클라이언트의 base URL 설정을 하나로
+유지하고, (2) 이전 기간 동안 클라이언트 설정 변경 없이 서버만 업그레이드하는 시나리오를
+지원하기 위함이다.
+
+### DualMcpServlet 라우팅 흐름
+
+`DualMcpServlet`은 `ServletRegistrationBean`으로 `/mcp`에 단일 등록되며, 아래 순서로 분기한다.
+
+1. **신형(2026-07-28) 판별** — `ModernMcpProtocol.isModern()`:
+   - `MCP-Protocol-Version` 헤더 값이 구형(`2025-03-26`, `2025-06-18`, `2025-11-25`)이 아닌 경우
+   - 요청 본문 `params._meta`에 `io.modelcontextprotocol/protocolVersion` 키가 존재하는 경우
+   - JSON-RPC method가 `server/discover`인 경우
+
+2. **신형 요청 처리** — `ModernMcpProtocol.handle()`:
+   - Origin 검증(동일 loopback 주소·scheme·port, 또는 Origin 헤더 없음)으로 CSRF/DNS Rebinding 방지
+   - `MCP-Protocol-Version: 2026-07-28` 헤더와 본문 메타데이터 일치 검증
+   - `Mcp-Method`, 도구 호출 시 `Mcp-Name` 헤더 검증
+   - 세션 ID를 발급하거나 사용하지 않는 무상태(stateless) 처리
+
+3. **구형(2025-03-26) 요청 처리** — `legacy.service()`:
+   - `modern.supportsLegacy()` (DUAL 또는 LEGACY 모드)를 확인한 뒤 MCP Java SDK의
+     `HttpServletStreamableServerTransportProvider`로 위임
+   - `initialize` → `notifications/initialized` 세션 기반 핸드셰이크를 수행
+
+4. **비지원 버전 거부**: HTTP 400 / JSON-RPC 에러 `-32022` (Unsupported protocol version)
+
+### 구현체 제약
+
+- `DUAL`과 `MODERN` 모드는 `McpImplementation.MCP_JAVA_SDK`에서만 지원한다.
+  Spring AI 구현체는 구형(2025-03-26)만 지원하므로, Spring AI + DUAL 조합은 `GenerationCommand`
+  생성자와 `GradleMcpProjectValidator`에서 검증 오류를 반환한다.
+- `McpProtocolMode`의 `legacy()`와 `modern()` 메서드로 각 모드의 버전 지원 여부를 판별한다.
+  DUAL은 둘 다 `true`를 반환한다.
+
+클라이언트 관점의 동작 계약은 [사용자 가이드](user-guide.md#mcp-프로토콜-버전-선택)에 있다.
+
 ## 통합 출처
 
 아래 식별자는 삭제한 과거 파일명이며 링크나 재실행할 계획이 아니다. 각 설계와 계획의 유지할 내용은 연결된

@@ -64,6 +64,14 @@ document.querySelectorAll('[data-implementation]').forEach(button => {
   });
 });
 ui['mcp-implementation'].addEventListener('change', renderImplementationChoice);
+document.querySelectorAll('[data-protocol]').forEach(card => {
+  card.addEventListener('click', () => {
+    if (card.disabled || ui['mcp-protocol'].value === card.dataset.protocol) return;
+    ui['mcp-protocol'].value = card.dataset.protocol;
+    renderProtocolCards();
+    ui['mcp-protocol'].dispatchEvent(new Event('change', {bubbles: true}));
+  });
+});
 if (api.hostedMode) ui['delete-job-button'].textContent = '작업 취소';
 for (const id of ['group-id', 'artifact-id', 'package-name', 'provider-name', 'domain-name',
   'target-profile', 'mcp-implementation', 'mcp-protocol', 'mcp-features', 'validation-operation', 'validation-arguments']) {
@@ -132,6 +140,7 @@ function renderImplementationProfiles() {
     option.disabled = option.value !== 'LEGACY' && !supported.includes('2026-07-28');
   }
   if (ui['mcp-protocol'].selectedOptions[0]?.disabled) ui['mcp-protocol'].value = 'LEGACY';
+  renderProtocolCards();
   renderProtocolDescription();
   ui['mcp-implementation-description'].textContent = sdk
     ? 'Spring AI 의존성 없이 생성합니다. Spring Boot 3 · MVC를 지원합니다.'
@@ -147,14 +156,18 @@ function selectedProtocolLabel() {
 
 function renderProtocolDescription() {
   byId('mcp-features').disabled = ui['mcp-implementation'].value !== 'MCP_JAVA_SDK' || ui['mcp-protocol'].value === 'LEGACY';
-  const hints = {
-    LEGACY: '초기화 절차를 사용하는 기존 클라이언트용입니다.',
-    MODERN: '초기화 없이 요청마다 버전을 전달합니다. 기존 버전 요청은 거부합니다.',
-    DUAL: '두 버전을 같은 endpoint에서 제공합니다. 기존 클라이언트 이전에 사용할 수 있습니다.'
-  };
-  ui['mcp-protocol-description'].textContent = ui['mcp-implementation'].value === 'MCP_JAVA_SDK'
-    ? hints[ui['mcp-protocol'].value]
-    : 'Spring AI는 2025-03-26을 지원합니다. 새 버전이나 병행 지원은 MCP Java SDK를 선택하세요.';
+  const sdk = ui['mcp-implementation'].value === 'MCP_JAVA_SDK';
+  ui['mcp-protocol-description'].textContent = sdk
+    ? '' : 'Spring AI는 2025-03-26을 지원합니다. 새 버전이나 병행 지원은 MCP Java SDK를 선택하세요.';
+}
+
+function renderProtocolCards() {
+  const selected = ui['mcp-protocol'].value;
+  document.querySelectorAll('[data-protocol]').forEach(card => {
+    const option = [...ui['mcp-protocol'].options].find(o => o.value === card.dataset.protocol);
+    card.disabled = option?.disabled ?? true;
+    card.setAttribute('aria-pressed', String(card.dataset.protocol === selected));
+  });
 }
 
 function renderImplementationChoice() {
