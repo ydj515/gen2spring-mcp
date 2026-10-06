@@ -1,5 +1,17 @@
+min_version = "2026.9.18"
+
+[settings]
+lockfile = true
+lockfile_platforms = ["macos-arm64", "linux-x64", "windows-x64"]
+
+[vars]
+runtime_env = "local"
+
+[env]
+APP_ENV = "{{ vars.runtime_env }}"
+
 [tools]
-java = "21.0.2"
+java = ["21.0.2", "17.0.2"]
 
 [tasks.lint]
 description = "Run Java import policy, Checkstyle and PMD across production and test sources"
@@ -64,33 +76,11 @@ for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%
 call gradlew.bat :apps:cli:integrationTest --tests "*P1GenerationIntegrationTest.windowsRepresentativeProfilesValidateAcrossTargetAxes" --no-daemon --non-interactive --rerun-tasks
 '''
 
-[tasks.dev]
+[tasks."dev"]
 description = "Run the local Spring Boot operation editor from an isolated JAR"
-run = '''
-set -eu
-export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
-export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
-export GEN2SPRING_UI_PORT="${GEN2SPRING_UI_PORT:-0}"
-./gradlew :apps:web:bootJar --quiet --no-daemon --non-interactive
-runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/gen2spring-web.XXXXXXXX")"
-trap 'rm -f "$runtime_dir/web.jar"; rmdir "$runtime_dir"' EXIT
-cp apps/web/build/libs/web.jar "$runtime_dir/web.jar"
-java -jar "$runtime_dir/web.jar"
-'''
-run_windows = '''
-for /f "delims=" %i in ('mise where java@17') do @set "GEN2SPRING_JAVA_17_HOME=%i"
-for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%i"
-if not defined GEN2SPRING_UI_PORT set "GEN2SPRING_UI_PORT=0"
-call gradlew.bat :apps:web:bootJar --quiet --no-daemon --non-interactive
-if errorlevel 1 exit /b %errorlevel%
-set "GEN2SPRING_DEV_JAR=%TEMP%\gen2spring-web-%RANDOM%-%RANDOM%.jar"
-copy /Y apps\web\build\libs\web.jar "%GEN2SPRING_DEV_JAR%" >nul
-if errorlevel 1 exit /b %errorlevel%
-java -jar "%GEN2SPRING_DEV_JAR%"
-set "GEN2SPRING_DEV_EXIT=%errorlevel%"
-del /Q "%GEN2SPRING_DEV_JAR%"
-exit /b %GEN2SPRING_DEV_EXIT%
-'''
+run_windows = "for /f \"delims=\" %i in ('mise where java@17') do @set \"GEN2SPRING_JAVA_17_HOME=%i\"\nfor /f \"delims=\" %i in ('mise where java@21') do @set \"GEN2SPRING_JAVA_21_HOME=%i\"\nif not defined GEN2SPRING_UI_PORT set \"GEN2SPRING_UI_PORT=0\"\ncall gradlew.bat :apps:web:bootJar --quiet --no-daemon --non-interactive\nif errorlevel 1 exit /b %errorlevel%\nset \"GEN2SPRING_DEV_JAR=%TEMP%\\gen2spring-web-%RANDOM%-%RANDOM%.jar\"\ncopy /Y apps\\web\\build\\libs\\web.jar \"%GEN2SPRING_DEV_JAR%\" >nul\nif errorlevel 1 exit /b %errorlevel%\njava -jar \"%GEN2SPRING_DEV_JAR%\"\nset \"GEN2SPRING_DEV_EXIT=%errorlevel%\"\ndel /Q \"%GEN2SPRING_DEV_JAR%\"\nexit /b %GEN2SPRING_DEV_EXIT%\n"
+depends = ["guard:local"]
+run = "set -eu\nexport GEN2SPRING_JAVA_17_HOME=\"$(mise where java@17)\"\nexport GEN2SPRING_JAVA_21_HOME=\"$(mise where java@21)\"\nexport GEN2SPRING_UI_PORT=\"${GEN2SPRING_UI_PORT:-0}\"\n./gradlew :apps:web:bootJar --quiet --no-daemon --non-interactive\nruntime_dir=\"$(mktemp -d \"${TMPDIR:-/tmp}/gen2spring-web.XXXXXXXX\")\"\ntrap 'rm -f \"$runtime_dir/web.jar\"; rmdir \"$runtime_dir\"' EXIT\ncp apps/web/build/libs/web.jar \"$runtime_dir/web.jar\"\njava -jar \"$runtime_dir/web.jar\"\n"
 
 [tasks."ui:build"]
 description = "Build the local Spring Boot operation editor JAR"
@@ -164,3 +154,27 @@ run = "deploy/hosted/bin/backup.sh"
 [tasks."hosted:restore-rehearsal"]
 description = "Verify hosted PostgreSQL and Garage backups in isolated resources"
 run = "deploy/hosted/bin/restore-rehearsal.sh"
+
+[tasks."bootstrap"]
+description = "Install locked tools and project dependencies; do not start services"
+run_windows = "mise install --locked java@21.0.2 java@17.0.2\nif errorlevel 1 exit /b %errorlevel%\ncall gradlew.bat --version"
+run = "mise install --locked java@21.0.2 java@17.0.2\n./gradlew --version"
+
+[tasks."config:check"]
+description = "Validate task references without starting applications"
+run = "mise tasks validate --errors-only"
+
+[tasks."verify"]
+description = "Run the repository quality gate"
+run_windows = ".\\gradlew.bat check --no-daemon --non-interactive"
+run = "./gradlew check --no-daemon --non-interactive"
+
+[tasks."ci"]
+description = "Run the repository quality gate"
+run = "mise run verify"
+
+[tasks."guard:local"]
+description = "Reject local services under a production environment"
+hide = true
+run_windows = "if \"%APP_ENV%\"==\"local\" exit /b 0\nif \"%APP_ENV%\"==\"dev\" exit /b 0\necho Local services require local or dev 1>&2\nexit /b 1"
+run = "case \"$APP_ENV\" in local|dev|development) ;; *) echo 'Local services require the default or dev environment' >&2; exit 1 ;; esac"
