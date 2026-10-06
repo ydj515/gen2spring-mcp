@@ -76,7 +76,7 @@ for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%
 call gradlew.bat :apps:cli:integrationTest --tests "*P1GenerationIntegrationTest.windowsRepresentativeProfilesValidateAcrossTargetAxes" --no-daemon --non-interactive --rerun-tasks
 '''
 
-[tasks."dev"]
+[tasks.dev]
 description = "Run the local Spring Boot operation editor from an isolated JAR"
 run_windows = "for /f \"delims=\" %i in ('mise where java@17') do @set \"GEN2SPRING_JAVA_17_HOME=%i\"\nfor /f \"delims=\" %i in ('mise where java@21') do @set \"GEN2SPRING_JAVA_21_HOME=%i\"\nif not defined GEN2SPRING_UI_PORT set \"GEN2SPRING_UI_PORT=0\"\ncall gradlew.bat :apps:web:bootJar --quiet --no-daemon --non-interactive\nif errorlevel 1 exit /b %errorlevel%\nset \"GEN2SPRING_DEV_JAR=%TEMP%\\gen2spring-web-%RANDOM%-%RANDOM%.jar\"\ncopy /Y apps\\web\\build\\libs\\web.jar \"%GEN2SPRING_DEV_JAR%\" >nul\nif errorlevel 1 exit /b %errorlevel%\njava -jar \"%GEN2SPRING_DEV_JAR%\"\nset \"GEN2SPRING_DEV_EXIT=%errorlevel%\"\ndel /Q \"%GEN2SPRING_DEV_JAR%\"\nexit /b %GEN2SPRING_DEV_EXIT%\n"
 depends = ["guard:local"]
