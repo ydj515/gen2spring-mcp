@@ -7,9 +7,9 @@
 
 ```bash
 mise install
-mise install java@17
-export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
-export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
+mise install java@17.0.2
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17.0.2)"
+export GEN2SPRING_JAVA_21_HOME="$(mise where java@21.0.2)"
 mise run dev
 ```
 
@@ -48,8 +48,8 @@ Windows에서 대표 profile 시나리오 하나를 실행한다.
 MCP 구현 옵션, 제공된 OpenAPI 3.0/3.1 명세, emitter 회귀와 Web 다운로드까지 확인하려면 다음을 실행한다.
 
 ```bash
-export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
-export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17.0.2)"
+export GEN2SPRING_JAVA_21_HOME="$(mise where java@21.0.2)"
 ./gradlew \
   :apps:cli:integrationTest \
   :modules:adapters:emitters:spring-ai-1:integrationTest \

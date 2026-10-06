@@ -13,8 +13,8 @@
 
 ```bash
 mise install
-mise install java@17
-export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
+mise install java@17.0.2
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17.0.2)"
 mise exec -- java -version
 ```
 
@@ -34,7 +34,7 @@ target JDK가 없거나 profile과 version이 다르면 검증은 고정 오류�
 ## 빌드와 설치
 
 ```bash
-GEN2SPRING_JAVA_17_HOME="$(mise where java@17)" \
+GEN2SPRING_JAVA_17_HOME="$(mise where java@17.0.2)" \
   mise exec -- ./gradlew clean test integrationTest \
   :apps:cli:installDist :apps:web:bootJar \
   --no-daemon --non-interactive

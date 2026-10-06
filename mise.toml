@@ -1,8 +1,7 @@
 min_version = "2026.9.18"
 
 [settings]
-lockfile = true
-lockfile_platforms = ["macos-arm64", "linux-x64", "windows-x64"]
+lockfile = false
 
 [vars]
 runtime_env = "local"
@@ -36,8 +35,8 @@ run_windows = ".\\gradlew.bat verifyJavaImportStyle --no-daemon --non-interactiv
 [tasks."generator:test"]
 description = "Run fast generator contracts without nested generated project builds"
 run = '''
-export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
-export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17.0.2)"
+export GEN2SPRING_JAVA_21_HOME="$(mise where java@21.0.2)"
 ./gradlew \
   :modules:domain:test :modules:application:test \
   :modules:adapters:configuration:test :modules:adapters:emitters:support:test \
@@ -52,8 +51,8 @@ export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
   --no-daemon --non-interactive --rerun-tasks
 '''
 run_windows = '''
-for /f "delims=" %i in ('mise where java@17') do @set "GEN2SPRING_JAVA_17_HOME=%i"
-for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%i"
+for /f "delims=" %i in ('mise where java@17.0.2') do @set "GEN2SPRING_JAVA_17_HOME=%i"
+for /f "delims=" %i in ('mise where java@21.0.2') do @set "GEN2SPRING_JAVA_21_HOME=%i"
 call gradlew.bat :modules:domain:test :modules:application:test :modules:adapters:configuration:test :modules:adapters:emitters:support:test :modules:adapters:emitters:spring-ai-1:fastTest :modules:adapters:emitters:spring-ai-2:fastTest :modules:adapters:validation:fastTest :modules:bootstrap:test :apps:cli:fastTest --no-daemon --non-interactive --rerun-tasks
 if errorlevel 1 exit /b %errorlevel%
 call gradlew.bat :apps:web:test --tests "*WebMvcContractTest.preservesTheProfilesUploadAndPreviewApi" --tests "*HostedProfileControllerTest.exposesCanonicalProfilesInHostedMode" --tests "*StaticAssetContractTest" --no-daemon --non-interactive --rerun-tasks
@@ -62,8 +61,8 @@ call gradlew.bat :apps:web:test --tests "*WebMvcContractTest.preservesTheProfile
 [tasks."generator:acceptance"]
 description = "Run full POSIX or representative Windows generated project acceptance"
 run = '''
-export GEN2SPRING_JAVA_17_HOME="$(mise where java@17)"
-export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
+export GEN2SPRING_JAVA_17_HOME="$(mise where java@17.0.2)"
+export GEN2SPRING_JAVA_21_HOME="$(mise where java@21.0.2)"
 ./gradlew :apps:cli:integrationTest \
   --tests '*P1GenerationIntegrationTest.installedCliValidatesTheJavaProfileMatrixDeterministically' \
   --tests '*P1GenerationIntegrationTest.mavenMvcProfilesValidateAndArchiveDeterministically' \
@@ -71,16 +70,16 @@ export GEN2SPRING_JAVA_21_HOME="$(mise where java@21)"
   --no-daemon --non-interactive --rerun-tasks
 '''
 run_windows = '''
-for /f "delims=" %i in ('mise where java@17') do @set "GEN2SPRING_JAVA_17_HOME=%i"
-for /f "delims=" %i in ('mise where java@21') do @set "GEN2SPRING_JAVA_21_HOME=%i"
+for /f "delims=" %i in ('mise where java@17.0.2') do @set "GEN2SPRING_JAVA_17_HOME=%i"
+for /f "delims=" %i in ('mise where java@21.0.2') do @set "GEN2SPRING_JAVA_21_HOME=%i"
 call gradlew.bat :apps:cli:integrationTest --tests "*P1GenerationIntegrationTest.windowsRepresentativeProfilesValidateAcrossTargetAxes" --no-daemon --non-interactive --rerun-tasks
 '''
 
 [tasks.dev]
 description = "Run the local Spring Boot operation editor from an isolated JAR"
-run_windows = "for /f \"delims=\" %i in ('mise where java@17') do @set \"GEN2SPRING_JAVA_17_HOME=%i\"\nfor /f \"delims=\" %i in ('mise where java@21') do @set \"GEN2SPRING_JAVA_21_HOME=%i\"\nif not defined GEN2SPRING_UI_PORT set \"GEN2SPRING_UI_PORT=0\"\ncall gradlew.bat :apps:web:bootJar --quiet --no-daemon --non-interactive\nif errorlevel 1 exit /b %errorlevel%\nset \"GEN2SPRING_DEV_JAR=%TEMP%\\gen2spring-web-%RANDOM%-%RANDOM%.jar\"\ncopy /Y apps\\web\\build\\libs\\web.jar \"%GEN2SPRING_DEV_JAR%\" >nul\nif errorlevel 1 exit /b %errorlevel%\njava -jar \"%GEN2SPRING_DEV_JAR%\"\nset \"GEN2SPRING_DEV_EXIT=%errorlevel%\"\ndel /Q \"%GEN2SPRING_DEV_JAR%\"\nexit /b %GEN2SPRING_DEV_EXIT%\n"
+run_windows = "for /f \"delims=\" %i in ('mise where java@17.0.2') do @set \"GEN2SPRING_JAVA_17_HOME=%i\"\nfor /f \"delims=\" %i in ('mise where java@21.0.2') do @set \"GEN2SPRING_JAVA_21_HOME=%i\"\nif not defined GEN2SPRING_UI_PORT set \"GEN2SPRING_UI_PORT=0\"\ncall gradlew.bat :apps:web:bootJar --quiet --no-daemon --non-interactive\nif errorlevel 1 exit /b %errorlevel%\nset \"GEN2SPRING_DEV_JAR=%TEMP%\\gen2spring-web-%RANDOM%-%RANDOM%.jar\"\ncopy /Y apps\\web\\build\\libs\\web.jar \"%GEN2SPRING_DEV_JAR%\" >nul\nif errorlevel 1 exit /b %errorlevel%\njava -jar \"%GEN2SPRING_DEV_JAR%\"\nset \"GEN2SPRING_DEV_EXIT=%errorlevel%\"\ndel /Q \"%GEN2SPRING_DEV_JAR%\"\nexit /b %GEN2SPRING_DEV_EXIT%\n"
 depends = ["guard:local"]
-run = "set -eu\nexport GEN2SPRING_JAVA_17_HOME=\"$(mise where java@17)\"\nexport GEN2SPRING_JAVA_21_HOME=\"$(mise where java@21)\"\nexport GEN2SPRING_UI_PORT=\"${GEN2SPRING_UI_PORT:-0}\"\n./gradlew :apps:web:bootJar --quiet --no-daemon --non-interactive\nruntime_dir=\"$(mktemp -d \"${TMPDIR:-/tmp}/gen2spring-web.XXXXXXXX\")\"\ntrap 'rm -f \"$runtime_dir/web.jar\"; rmdir \"$runtime_dir\"' EXIT\ncp apps/web/build/libs/web.jar \"$runtime_dir/web.jar\"\njava -jar \"$runtime_dir/web.jar\"\n"
+run = "set -eu\nexport GEN2SPRING_JAVA_17_HOME=\"$(mise where java@17.0.2)\"\nexport GEN2SPRING_JAVA_21_HOME=\"$(mise where java@21.0.2)\"\nexport GEN2SPRING_UI_PORT=\"${GEN2SPRING_UI_PORT:-0}\"\n./gradlew :apps:web:bootJar --quiet --no-daemon --non-interactive\nruntime_dir=\"$(mktemp -d \"${TMPDIR:-/tmp}/gen2spring-web.XXXXXXXX\")\"\ntrap 'rm -f \"$runtime_dir/web.jar\"; rmdir \"$runtime_dir\"' EXIT\ncp apps/web/build/libs/web.jar \"$runtime_dir/web.jar\"\njava -jar \"$runtime_dir/web.jar\"\n"
 
 [tasks."ui:build"]
 description = "Build the local Spring Boot operation editor JAR"
@@ -156,9 +155,9 @@ description = "Verify hosted PostgreSQL and Garage backups in isolated resources
 run = "deploy/hosted/bin/restore-rehearsal.sh"
 
 [tasks."bootstrap"]
-description = "Install locked tools and project dependencies; do not start services"
-run_windows = "mise install --locked java@21.0.2 java@17.0.2\nif errorlevel 1 exit /b %errorlevel%\ncall gradlew.bat --version"
-run = "mise install --locked java@21.0.2 java@17.0.2\n./gradlew --version"
+description = "Install pinned tools and project dependencies; do not start services"
+run_windows = "mise install java@21.0.2 java@17.0.2\nif errorlevel 1 exit /b %errorlevel%\ncall gradlew.bat --version"
+run = "mise install java@21.0.2 java@17.0.2\n./gradlew --version"
 
 [tasks."config:check"]
 description = "Validate task references without starting applications"
