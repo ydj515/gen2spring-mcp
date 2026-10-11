@@ -3,5 +3,5 @@ base: true
 languages: [java]
 frameworks: [spring]
 builds: [gradle]
-tools: [checkstyle, pmd, jacoco, archunit]
+tools: [checkstyle, pmd, jacoco, archunit, spotless]
 runtimes: [mise]
