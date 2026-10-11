@@ -8,7 +8,7 @@
   },
   "config": {
     "path": ".dev-standards/config.yml",
-    "sha256": "78179feb02dbea9b05628fde249a996073c20b06c7762cf77deee0abd0d2c93f"
+    "sha256": "b33059bd8b5b19f3a617c5c0775192e70ac93ed2e1290694c01ba8229619423b"
   },
   "files": {
     ".dev-standards/claude/skills/merge-dev-standards/SKILL.md": {
@@ -138,6 +138,10 @@
       "ownership": "managed",
       "sha256": "3dd073b5f2f8462caccfc32a0025408570d5f3fa6831eadb2e6a1bf413d148d8"
     },
+    ".dev-standards/standards/tools/languages/java/spotless.md": {
+      "ownership": "managed",
+      "sha256": "fa31ea98ee1ea70f2d42701d3f3e71fe694868f661e0ee7be2a82fba1a170f12"
+    },
     ".dev-standards/standards/workflows/branch.md": {
       "ownership": "managed",
       "sha256": "453a4e9afb7e0672ff53d585b65365429b818ba51f10d09b55887ab387da6a2d"
@@ -156,7 +160,7 @@
     },
     ".dev-standards/styleguide.md": {
       "ownership": "managed",
-      "sha256": "04f09f22bf97592cdd7a00d4c65322dcf045e8d0c115ce19d11a5e57fe2ff5cd"
+      "sha256": "bf0fa7247602cd8a2924dad6cf7604fcad62c11e51b1ed1bcba15978a4211292"
     },
     ".worktreeinclude": {
       "ownership": "project-owned"
