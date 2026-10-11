@@ -1,0 +1,7 @@
+version: 1
+base: true
+languages: [java]
+frameworks: [spring]
+builds: [gradle]
+tools: [checkstyle, pmd, jacoco, archunit]
+runtimes: [mise]
