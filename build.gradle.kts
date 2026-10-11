@@ -16,6 +16,7 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 plugins {
+    alias(libs.plugins.spotless)
     java
     pmd
     checkstyle
@@ -538,3 +539,23 @@ val coverageVerification = tasks.register<JacocoCoverageVerification>("coverageV
     }
 }
 tasks.check { dependsOn(coverageVerification) }
+
+// Check changed/new Java files from this fixed adoption commit; CI fetches its history.
+spotless {
+    ratchetFrom("5a1675c052cd1148039c29d092172f3e44440d2c")
+    java {
+        target("**/src/**/*.java")
+        targetExclude("**/build/**", "**/.gradle/**", "**/node_modules/**")
+        googleJavaFormat(libs.versions.googleJavaFormat.get()).aosp()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+tasks.named("check") {
+    dependsOn("spotlessCheck")
+}
+
+tasks.named("verifyJavaQuality") {
+    dependsOn("spotlessCheck")
+}
