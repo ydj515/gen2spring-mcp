@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "source": {
     "repository": "ydj515/dev-standards",
-    "requestedRef": "v1.5.0",
-    "resolvedRef": "v1.5.0",
-    "commit": "52aa44ec3374d0d8d570fec9c26399f39406d5db"
+    "requestedRef": "v1.5.1",
+    "resolvedRef": "v1.5.1",
+    "commit": "1c697564334aa64f822238ba434b9f24d911bdbd"
   },
   "config": {
     "path": ".dev-standards/config.yml",
@@ -108,15 +108,15 @@
     },
     ".dev-standards/standards/build-tools/gradle.md": {
       "ownership": "managed",
-      "sha256": "3266ee33839b2536a8f86f9200eeacdb81eaa805369b33f21fee1ef3ae5cb8b0"
+      "sha256": "392d249d22279af3760dc1d1fdd8b731f155c79a3b7e9ac3b0de3ab752147345"
     },
     ".dev-standards/standards/frameworks/spring.md": {
       "ownership": "managed",
-      "sha256": "77e32faceb765f75400c3631a9e3f62fd1f22f98ae82156764d7204e5dc096f7"
+      "sha256": "76a57e02d463cd104137816bc1eca453d8c3b9d539f096993da39c0654513639"
     },
     ".dev-standards/standards/languages/java.md": {
       "ownership": "managed",
-      "sha256": "af1f808ac96986f05e25cf0086051d2d44d774372baa8c648f1e48b4f132bae9"
+      "sha256": "81f304e30bd3026592b015cca320ab30379994c4bec10dd149a862186e524178"
     },
     ".dev-standards/standards/runtime/mise.md": {
       "ownership": "managed",
@@ -160,7 +160,7 @@
     },
     ".dev-standards/styleguide.md": {
       "ownership": "managed",
-      "sha256": "bf0fa7247602cd8a2924dad6cf7604fcad62c11e51b1ed1bcba15978a4211292"
+      "sha256": "38b30e8b4467ebbc0316cd46b24114142027d75eb88d0da593b087b7eb69cf93"
     },
     ".worktreeinclude": {
       "ownership": "project-owned"

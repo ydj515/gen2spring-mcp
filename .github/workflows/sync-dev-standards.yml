@@ -20,7 +20,7 @@ jobs:
     with:
       standards_owner: ydj515
       standards_repo: dev-standards
-      standards_ref: v1.5.0
+      standards_ref: v1.5.1
       delivery_mode: pull-request
       bootstrap_templates: false
       bootstrap_agent_files: false

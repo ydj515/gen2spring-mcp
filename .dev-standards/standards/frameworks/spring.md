@@ -236,11 +236,13 @@ final class PlaceOrderService {
   database로 integration test합니다.
 - package 의존 방향과 transaction annotation 소유 계층은 architecture test로 고정합니다.
   예외가 필요하면 허용 목록에 기술적 이유와 제거 조건을 함께 기록합니다.
-- JVM package 경계는 ArchUnit으로 검증하고, coverage는 Kotlin 중심 build의 Kover 또는
-  범용 JaCoCo 중 하나를 `check`에 연결합니다.
+- package 경계는 선택한 architecture test 도구로 검증합니다. Konsist는 Kotlin source
+  선언·구조를, ArchUnit은 JVM bytecode 의존을 검사하므로 실제 source set과 필요한 검증
+  범위에 맞춥니다. coverage는 Kover 또는 JaCoCo 중 하나를 `check`에 연결합니다.
 - 모듈 의존 문서가 있으면 build tool이 읽은 실제 모듈·의존 방향과의 일치도 검사합니다.
   package 규칙, 문서 일치와 Spring wiring 검증은 각각 유지합니다. 구체적인 범위와
-  lifecycle 연결 기준은 `tools/languages/java/archunit.md`를 따릅니다.
+  lifecycle 연결 기준은 선택한 `tools/languages/kotlin/konsist.md` 또는
+  `tools/languages/java/archunit.md`를 따릅니다.
 - Actuator endpoint는 노출 범위와 인증을 명시하고 readiness와 liveness 의미를 구분합니다.
 
 ```sh

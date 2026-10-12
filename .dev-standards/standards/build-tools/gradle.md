@@ -49,7 +49,8 @@
 최소 구조는 `templates/gradle/libs.versions.toml.example`을 참고하되, 모든 버전
 자리표시자는 프로젝트가 검증한 값으로 교체합니다.
 
-Checkstyle, PMD, SpotBugs, Detekt, ktlint, ArchUnit, Kover와 JaCoCo의 Kotlin DSL 시작점은
+Spotless, Checkstyle, PMD, SpotBugs, Detekt, ktlint, Konsist, ArchUnit, Kover와 JaCoCo의
+Kotlin DSL 시작점은
 `templates/gradle/<tool>/build.gradle.kts.example`에 둡니다. 여러 도구를 함께 사용할 때는
 각 예제의 plugin 선언을 하나의 `plugins` block으로 합치고 설정과 task block은 도구별로
 유지합니다. Kover와 JaCoCo는 coverage 책임이 겹치므로 하나만 선택합니다. 조직이 repository
