@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/ydj515/gen2spring-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ydj515/gen2spring-mcp/actions/workflows/ci.yml)
 [![Generation Acceptance](https://github.com/ydj515/gen2spring-mcp/actions/workflows/generation-acceptance.yml/badge.svg)](https://github.com/ydj515/gen2spring-mcp/actions/workflows/generation-acceptance.yml)
+[![Sync Development Standards](https://github.com/ydj515/gen2spring-mcp/actions/workflows/sync-dev-standards.yml/badge.svg)](https://github.com/ydj515/gen2spring-mcp/actions/workflows/sync-dev-standards.yml)
 ![Java](https://img.shields.io/badge/Java-21%20%7C%2017-007396?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?logo=springboot&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-2025--03--26%20%7C%202026--07--28-4A90E2)
