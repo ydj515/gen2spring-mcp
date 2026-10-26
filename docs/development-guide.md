@@ -6,8 +6,8 @@
 명령은 저장소 루트에서 실행한다. 기본 버전과 task 정의는 [mise.toml](../mise.toml)을 따른다.
 
 ```bash
-mise install
-mise install java@17.0.2
+mise trust ./mise.toml
+mise run bootstrap
 export GEN2SPRING_JAVA_17_HOME="$(mise where java@17.0.2)"
 export GEN2SPRING_JAVA_21_HOME="$(mise where java@21.0.2)"
 mise run dev
@@ -15,17 +15,41 @@ mise run dev
 
 Web의 `READY` JSON에 있는 URL로 접속한다. CLI 설치와 실제 입력 예제는 [사용자 가이드](user-guide.md)에 있다.
 
+### mise 환경 구성
+
+`mise.toml`은 도구·공통 task, [`mise.dev.toml`](../mise.dev.toml)·[`mise.prod.toml`](../mise.prod.toml)은 공유 환경 선택을 담당한다.
+
+```bash
+mise trust ./mise.toml  # task와 overlay를 검토한 뒤 신뢰
+mise run bootstrap      # 고정된 버전의 도구 설치 후 의존성 준비
+mise run config:check   # task 참조·순환 검사, 앱 실행 없음
+mise run verify         # 프로젝트 검증 (Docker 등 기존 검증 전제는 유지)
+mise -E dev run verify
+```
+
+- **환경 프로필(`-E dev`, `-E prod`):** 기본 실행은 `APP_ENV=local`, `-E dev`는 개발 overlay, `-E prod`는 운영 설정 선택이다. 환경 선택 자체가 배포나 서비스 시작을 수행하지 않는다.
+- **개인 개발 설정(`mise.dev.local.toml`):** 개인 개발 설정은 [`mise.dev.local.toml.example`](../mise.dev.local.toml.example)을 검토해 `mise.dev.local.toml`로 복사한다. `.env.dev.local`을 만든 뒤 `env._.file`을 활성화하면 `dev`에서만 읽는다. 기존 개인 파일을 덮어쓰지 않는다.
+- **전역 로컬 오버라이드 주의(`mise.local.toml`):** `mise.local.toml`은 **모든 환경**에서 로드된다. `prod` checkout에 개인 override나 개발 dotenv를 두지 않는다. `-E local`은 사용하지 않는다.
+- **`APP_ENV` 식별자:** `APP_ENV`는 공통 식별자다. Spring 실행 task의 프로파일은 해당 task에서 매핑하며, 존재하지 않는 운영 설정을 자동 생성하지 않는다. `prod` 선택만으로 기존 개발용 앱이 운영 준비를 마친 것은 아니다.
+- **도구 버전 고정 및 `mise.lock` 정책:** mise는 개발 도구의 정확한 버전 고정과 프로필 분리에 사용한다. `[settings] lockfile = false`로 도구 lock 생성을 끄고 `mise.lock`은 관리하지 않는다. 공통 표준의 mise lock 지침보다 이 저장소의 정책을 우선하며, 설치 파일까지 고정해야 하는 요구가 생기면 다시 도입한다.
+- **애플리케이션 잠금 유지:** 도구 버전은 `mise.toml`의 `[tools]`에서 관리하며 `dev`/`prod`에서도 같은 버전을 사용한다. 로컬과 CI는 `mise install` 또는 같은 정확한 버전의 setup action으로 도구를 준비한다. `package-lock.json`, `pnpm-lock.yaml`, `uv.lock`, Gradle lock 등 애플리케이션 의존성 잠금과 검증 옵션은 유지한다.
+- **OS 및 플랫폼 호환성:** 지원 OS는 각 도구와 실행 스크립트의 호환성에 따른다. mise lock을 사용하지 않는다고 Windows 실행까지 보장되는 것은 아니다. 생성 프로젝트 검증에 기존 task가 요구하는 Java `17.0.2`도 함께 선언했으며, Java `21.0.2`가 기본이고 Windows 실행 task는 `gradlew.bat`를 사용한다.
+- **부트스트랩 구분:** `mise run bootstrap`은 프로젝트 초기 설정이다. OS package·dotfile·서비스를 관리하는 `mise bootstrap`은 개인 머신 설정에서 별도로 채택한다.
+
 ## 검증 범위
 
 | 명령 | 검증하는 것 | 포함하지 않는 것 |
 | --- | --- | --- |
+| `./gradlew spotlessCheck` | 도입 기준 커밋(`ratchetFrom`) 이후 변경·신규 Java 파일의 Google Java Format(AOSP) 서식 | 기준 커밋 이전 미변경 파일, 빌드 산출물 |
+| `./gradlew spotlessApply` | 변경·신규 Java 파일에 Google Java Format(AOSP, 4칸 들여쓰기)·공백·개행 규칙 적용 | 정적 분석 및 런타임 검증 |
 | `mise run lint:imports` | Java import 정적 정책 | 실행 동작 |
-| `mise run lint` | import 검사와 Checkstyle·PMD, production/test/integrationTest Java 소스 | Kotlin 빌드 스크립트, 생성 템플릿 문자열 내부 Java의 분석 |
-| `mise run coverage:check` | 고정 15개 suite, 전체 production 라인 65%·브랜치 55% 하한 | 컨테이너·생성 프로젝트 acceptance 실행 |
+| `mise run lint` | Spotless 포맷 검사, import 검사와 Checkstyle·PMD, production/test/integrationTest Java 소스 | Kotlin 빌드 스크립트, 생성 템플릿 문자열 내부 Java의 분석 |
+| `mise run coverage:check` | 고정 16개 suite, 전체 production 라인 65%·브랜치 55% 하한 | 컨테이너·생성 프로젝트 acceptance 실행 |
 | `mise run architecture:test` | 모든 production 모듈의 ArchUnit·Gradle 의존 방향과 검사 자체의 회귀 테스트 | 컨테이너 실행·생성 프로젝트의 runtime 검증 |
 | `mise run generator:test` | 주요 생성기 계약, emitter/validator fastTest, 선택 Web 계약 | 생성 프로젝트 내부 빌드와 전체 hosted 검증 |
 | `mise run ui:test` | Web 모듈 unit/계약 테스트 | 실제 브라우저 시각·키보드 검증 |
 | `mise run ui:build` | Web Boot JAR 패키징 | 사용자 흐름 검증 |
+| `mise run verify` | 루트 `check` 게이트(`spotlessCheck`, `verifyJavaQuality`, `architectureTest`, `coverageVerification`) | 생성 프로젝트 전체 acceptance 및 hosted 컨테이너 기동 |
 | `mise run generator:acceptance` | POSIX 12개 profile 또는 Windows 대표 profile의 실제 생성·검증 | hosted 배포 및 모든 MCP 구현 옵션의 별도 전체 조합 증명 |
 | `mise run hosted:acceptance` | PostgreSQL·저장소·sandbox·worker·runtime·Web 관련 테스트 | 운영 환경의 실제 OIDC·인증서·네트워크 설정 검증 |
 
@@ -86,11 +110,21 @@ Hosted 저장·worker·runtime acceptance는 별도 범위다.
 
 ## Java 품질과 의존 방향 검사
 
-Java 스타일 검사에는 Checkstyle 10.21.4, 정적 분석에는 PMD 7.27.0,
-커버리지에는 JaCoCo 0.8.13, 의존 방향 검사에는 ArchUnit 1.5.0을 사용한다.
+Java 코드 포맷에는 Spotless 7.0.2와 Google Java Format 1.25.2(AOSP), 스타일 검사에는 Checkstyle 10.21.4,
+정적 분석에는 PMD 7.27.0, 커버리지에는 JaCoCo 0.8.13, 의존 방향 검사에는 ArchUnit 1.5.0을 사용한다.
 버전은 [version catalog](../gradle/libs.versions.toml)에서 관리한다.
 Kotlin 소스가 없는 Java 프로젝트이므로 Kover·ktlint·detekt는 적용하지 않는다.
 기존 `verifyJavaImportStyle`이 FQCN 정책을 계속 담당한다.
+
+### Java 포맷팅 (Spotless)
+
+`./gradlew spotlessCheck`는 모든 모듈과 소스셋(`**/src/**/*.java`)에서 도입 기준 커밋(`ratchetFrom`) 이후
+변경되거나 새로 작성된 Java 파일을 검사하며, `./gradlew spotlessApply`는 해당 파일들을 고정된
+Google Java Format(AOSP, 4칸 들여쓰기)과 줄 끝 공백 제거·파일 끝 개행 규칙으로 포맷한다.
+생성된 빌드 산출물(`build/**`, `.gradle/**`)은 대상에서 제외된다.
+`spotlessCheck`는 `verifyJavaQuality`(`mise run lint`)와 루트 `check`(`mise run verify`)에 포함되어 있으며,
+CI는 전체 Git 이력(`fetch-depth: 0`)을 체크아웃해 `ratchetFrom` 기준 커밋을 항상 유지한다.
+기존 정적 분석(import 정책, Checkstyle, PMD)도 함께 활성 상태를 유지한다.
 
 [Checkstyle 규칙](../config/checkstyle/checkstyle.xml)은 wildcard·중복·미사용 import,
 파일명과 최상위 타입명 일치, modifier 순서, 파일 끝 개행을 검사한다.

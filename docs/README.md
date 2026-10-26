@@ -7,7 +7,7 @@
 ## 읽기 순서
 
 1. [사용자 가이드](user-guide.md): 설치, CLI, 생성 설정, 지원 profile과 제한
-2. [개발 및 검증](development-guide.md): 로컬 개발, 빠른 검사, 생성 프로젝트와 hosted acceptance
+2. [개발 및 검증](development-guide.md): 로컬 개발, `mise` 환경 구성, Java 포맷·품질 검사, 생성 프로젝트와 hosted acceptance
 3. [프로젝트 구조](project-structure.md): Gradle 모듈과 앱별 패키지 책임
 4. [아키텍처 경계](architecture-boundaries.md): 의존 방향, 조립, 오류·보안 경계
 5. [생성 파이프라인과 스키마](generation-pipeline.md): Tool IR, nullable·composition, 검증과 결정성
