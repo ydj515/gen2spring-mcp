@@ -10,6 +10,7 @@ runtime_env = "local"
 APP_ENV = "{{ vars.runtime_env }}"
 
 [tools]
+node = "24.22.3"
 java = ["21.0.2", "17.0.2"]
 
 [tasks.lint]
@@ -156,8 +157,8 @@ run = "deploy/hosted/bin/restore-rehearsal.sh"
 
 [tasks."bootstrap"]
 description = "Install pinned tools and project dependencies; do not start services"
-run_windows = "mise install java@21.0.2 java@17.0.2\nif errorlevel 1 exit /b %errorlevel%\ncall gradlew.bat --version"
-run = "mise install java@21.0.2 java@17.0.2\n./gradlew --version"
+run_windows = "mise install java@21.0.2 java@17.0.2 node@24.22.3\nif errorlevel 1 exit /b %errorlevel%\ncall gradlew.bat --version"
+run = "mise install java@21.0.2 java@17.0.2 node@24.22.3\n./gradlew --version"
 
 [tasks."config:check"]
 description = "Validate task references without starting applications"
