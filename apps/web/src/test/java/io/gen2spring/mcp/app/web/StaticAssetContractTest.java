@@ -22,7 +22,9 @@ class StaticAssetContractTest {
         assertTrue(tokens.contains("--app-danger-soft: #fff0f1"));
         assertTrue(tokens.contains("@font-face"));
         assertTrue(tokens.contains("font-family: gen2spring-bootstrap-icons"));
-        assertTrue(tokens.contains("/webjars/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2"));
+        assertTrue(
+                tokens.contains(
+                        "/webjars/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2"));
         assertFalse(tokens.contains("bootstrap-icons.woff2?"));
         assertTrue(tokens.contains("font-family: gen2spring-bootstrap-icons !important"));
         assertTrue(editor.contains("--bs-form-select-bg-img: url('/select-chevron.svg')"));
@@ -38,7 +40,8 @@ class StaticAssetContractTest {
         assertFalse(editor.isBlank());
         assertFalse(hosted.isBlank());
         assertTrue(WebSecurityConfiguration.CONTENT_SECURITY_POLICY.contains("font-src 'self'"));
-        assertFalse(WebSecurityConfiguration.CONTENT_SECURITY_POLICY.contains("img-src 'self' data:"));
+        assertFalse(
+                WebSecurityConfiguration.CONTENT_SECURITY_POLICY.contains("img-src 'self' data:"));
     }
 
     @Test
@@ -50,7 +53,8 @@ class StaticAssetContractTest {
 
         assertTrue(fragment.contains("th:fragment=\"head-assets(title)\""));
         assertTrue(fragment.contains("/webjars/bootstrap/5.3.8/css/bootstrap.min.css"));
-        assertTrue(fragment.contains("/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css"));
+        assertTrue(
+                fragment.contains("/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css"));
         assertTrue(fragment.contains("th:fragment=\"app-header(appMode)\""));
         assertTrue(fragment.contains("th:if=\"${appMode == 'hosted'}\""));
         assertFalse(fragment.contains("bootstrap.bundle"));
@@ -75,8 +79,9 @@ class StaticAssetContractTest {
         assertTrue(editor.contains("class=\"generation-summary summary-strip\""));
         assertTrue(editor.contains("class=\"generation-summary__item\""));
         assertTrue(editor.contains("class=\"generation-summary__icon"));
-        assertTrue(editor.indexOf("id=\"generation-summary\"")
-                < editor.indexOf("id=\"specification-step\""));
+        assertTrue(
+                editor.indexOf("id=\"generation-summary\"")
+                        < editor.indexOf("id=\"specification-step\""));
         assertTrue(editorStyles.contains("--editor-frame-width: 90rem"));
         assertTrue(editorStyles.contains("width: min(100%, var(--editor-frame-width))"));
         assertTrue(editorStyles.contains(".wizard-progress {\n  width: 100%;"));
@@ -102,7 +107,8 @@ class StaticAssetContractTest {
         assertTrue(operations.contains("customers: '고객'"));
         assertTrue(operations.contains("const groupExpansion = new Map()"));
         assertTrue(operations.contains("captureGroupExpansion(list, groupExpansion)"));
-        assertTrue(operations.contains("group.open = groupExpansion.get(resourceGroup.key) ?? true"));
+        assertTrue(
+                operations.contains("group.open = groupExpansion.get(resourceGroup.key) ?? true"));
         assertTrue(operations.contains("operation.issues"));
         assertTrue(operations.contains("group.replaceChildren"));
         assertTrue(operations.contains("operation.sourceIndex"));
@@ -182,14 +188,20 @@ class StaticAssetContractTest {
 
     @Test
     void exposesTheAccessibleFourStepEndpointEditor() throws Exception {
-        String index = resource("/templates/editor.html") + resource("/templates/fragments/ui.html");
+        String index =
+                resource("/templates/editor.html") + resource("/templates/fragments/ui.html");
         String styles = applicationStyles();
 
         assertTrue(index.contains("<html lang=\"ko\""));
-        assertTrue(index.contains("<h2 id=\"specification-title\" tabindex=\"-1\">API를 MCP 도구로 바꾸세요.</h2>"));
-        assertTrue(index.contains("<h2 id=\"operations-title\" tabindex=\"-1\">API endpoint 선택</h2>"));
+        assertTrue(
+                index.contains(
+                        "<h2 id=\"specification-title\" tabindex=\"-1\">API를 MCP 도구로 바꾸세요.</h2>"));
+        assertTrue(
+                index.contains("<h2 id=\"operations-title\" tabindex=\"-1\">API endpoint 선택</h2>"));
         assertTrue(index.contains("<h2 id=\"generation-title\" tabindex=\"-1\">생성 설정</h2>"));
-        assertTrue(index.contains("<h2 id=\"generation-run-title\" tabindex=\"-1\">설정 검증 및 프로젝트 생성</h2>"));
+        assertTrue(
+                index.contains(
+                        "<h2 id=\"generation-run-title\" tabindex=\"-1\">설정 검증 및 프로젝트 생성</h2>"));
         assertTrue(index.contains("<h2 id=\"generation-job-title\" tabindex=\"-1\">생성 진행</h2>"));
         assertFalse(index.contains("<h2>6."));
 
@@ -205,7 +217,9 @@ class StaticAssetContractTest {
         assertFalse(index.contains("id=\"step-next-4\""));
         assertTrue(index.contains("id=\"step-back-5\""));
         assertTrue(index.contains("tabindex=\"-1\""));
-        assertTrue(index.contains("id=\"specification-file\" class=\"visually-hidden\" type=\"file\" accept=\".yaml,.yml,.json\""));
+        assertTrue(
+                index.contains(
+                        "id=\"specification-file\" class=\"visually-hidden\" type=\"file\" accept=\".yaml,.yml,.json\""));
         assertTrue(index.contains("id=\"upload-dropzone\""));
         assertTrue(index.contains("data-upload-state=\"idle\""));
         assertTrue(index.contains("id=\"upload-live-status\""));
@@ -223,9 +237,10 @@ class StaticAssetContractTest {
         assertTrue(index.contains("class=\"tool-editor-panel col-12 col-xl-5\""));
         assertFalse(index.contains("id=\"operation-editor-home\""));
         assertTrue(index.contains("id=\"generation-summary\""));
-        for (String id : new String[] {
-                "summary-version", "summary-selected", "summary-excluded", "summary-profile"
-        }) {
+        for (String id :
+                new String[] {
+                    "summary-version", "summary-selected", "summary-excluded", "summary-profile"
+                }) {
             assertTrue(index.contains("id=\"" + id + "\""), id);
         }
         assertTrue(index.contains("id=\"target-profile\""));
@@ -234,13 +249,18 @@ class StaticAssetContractTest {
         assertTrue(index.contains("aria-controls=\"profile-help\""));
         assertTrue(index.contains("id=\"profile-help\""));
         assertTrue(index.contains("id=\"profile-notice-list\""));
-        assertTrue(index.contains("id=\"profile-help\" class=\"profile-help\" role=\"tooltip\"")
-                && index.contains("hidden"));
+        assertTrue(
+                index.contains("id=\"profile-help\" class=\"profile-help\" role=\"tooltip\"")
+                        && index.contains("hidden"));
         for (String policy : new String[] {"retry", "pagination", "parameters", "normalization"}) {
             assertTrue(index.contains("id=\"policy-" + policy + "-toggle\""), policy + " toggle");
-            assertTrue(index.contains("id=\"policy-" + policy + "-help-button\""), policy + " help button");
+            assertTrue(
+                    index.contains("id=\"policy-" + policy + "-help-button\""),
+                    policy + " help button");
             assertTrue(index.contains("id=\"policy-" + policy + "-help\""), policy + " help");
-            assertTrue(index.contains("aria-controls=\"policy-" + policy + "-panel\""), policy + " panel binding");
+            assertTrue(
+                    index.contains("aria-controls=\"policy-" + policy + "-panel\""),
+                    policy + " panel binding");
         }
         assertTrue(index.contains("id=\"policy-retry-status\""));
         assertTrue(index.contains("id=\"policy-pagination-status\""));
@@ -379,13 +399,21 @@ class StaticAssetContractTest {
         String compactStyles = editorStyles.substring(compactStart, phoneStart);
 
         assertTrue(workspaceStyles.contains(".tool-table-panel { border-right: 0;"));
-        assertTrue(workspaceStyles.contains(".tool-editor-panel { border-top: 1px solid var(--app-border);"));
+        assertTrue(
+                workspaceStyles.contains(
+                        ".tool-editor-panel { border-top: 1px solid var(--app-border);"));
         assertTrue(compactStyles.contains(".tool-table-header { display: none; }"));
-        assertTrue(compactStyles.contains(".tool-row-select { grid-template-columns: minmax(0, 1fr) auto;"));
-        assertTrue(compactStyles.contains(".parameter-row { grid-template-columns: 1fr; align-items: stretch; }"));
+        assertTrue(
+                compactStyles.contains(
+                        ".tool-row-select { grid-template-columns: minmax(0, 1fr) auto;"));
+        assertTrue(
+                compactStyles.contains(
+                        ".parameter-row { grid-template-columns: 1fr; align-items: stretch; }"));
         assertTrue(compactStyles.contains(".validation-checklist { grid-template-columns: 1fr;"));
         assertTrue(compactStyles.contains(".progress-overview { grid-template-columns: 1fr;"));
-        assertTrue(compactStyles.contains(".artifact-placeholder-list li { grid-template-columns: minmax(0, 1fr) auto;"));
+        assertTrue(
+                compactStyles.contains(
+                        ".artifact-placeholder-list li { grid-template-columns: minmax(0, 1fr) auto;"));
         assertTrue(compactStyles.contains(".endpoint-toolbar__meta { align-items: flex-start;"));
         assertTrue(editorStyles.contains(".endpoint-toolbar {\n  position: relative;"));
         assertFalse(editorStyles.contains(".endpoint-toolbar {\n  position: sticky;"));
@@ -424,8 +452,12 @@ class StaticAssetContractTest {
     void restoresTheHostedWizardStepAfterReloadingTheRetainedSpecification() throws Exception {
         String upload = resource("/static/upload.js");
 
-        assertTrue(upload.contains("const sameSpecification = getState().specificationId === specificationId;"));
-        assertTrue(upload.contains("const retainedStep = sameSpecification ? getState().currentStep : 1;"));
+        assertTrue(
+                upload.contains(
+                        "const sameSpecification = getState().specificationId === specificationId;"));
+        assertTrue(
+                upload.contains(
+                        "const retainedStep = sameSpecification ? getState().currentStep : 1;"));
         assertTrue(upload.contains("currentStep: retainedStep"));
     }
 
@@ -466,9 +498,16 @@ class StaticAssetContractTest {
         // Both modes' status vocabularies are covered: local emits VALIDATED and
         // UNVERIFIED, hosted emits SUCCEEDED and CANCELLED.
         assertTrue(progress.contains("export function stateLabel(state)"));
-        for (String status : new String[] {
-                "QUEUED", "RUNNING", "VALIDATED", "UNVERIFIED", "SUCCEEDED", "FAILED", "CANCELLED"
-        }) {
+        for (String status :
+                new String[] {
+                    "QUEUED",
+                    "RUNNING",
+                    "VALIDATED",
+                    "UNVERIFIED",
+                    "SUCCEEDED",
+                    "FAILED",
+                    "CANCELLED"
+                }) {
             assertTrue(progress.contains(status + ": '"), status);
         }
         assertTrue(app.contains("stateLabel(snapshot.state)"));
@@ -478,7 +517,8 @@ class StaticAssetContractTest {
         assertTrue(index.contains("id=\"artifact-status\" class=\"artifact-status\" hidden"));
         assertTrue(app.contains("ui['artifact-status'].hidden = downloads.length === 0;"));
         assertTrue(app.contains("label.textContent = '다운로드';"));
-        assertTrue(app.contains("button.setAttribute('aria-label', `${artifactTitle(name)} 다운로드`);"));
+        assertTrue(
+                app.contains("button.setAttribute('aria-label', `${artifactTitle(name)} 다운로드`);"));
         assertTrue(app.contains("name === 'archive' ? 'artifact-download-primary' : 'secondary'"));
         assertFalse(app.contains("생성 및 검증이 완료된 산출물입니다."));
         assertTrue(app.contains("프로젝트 아카이브"));
@@ -486,20 +526,30 @@ class StaticAssetContractTest {
         assertFalse(app.contains("`Download ${name}`"));
         assertTrue(progress.contains("if (status === 'SUCCESS') return 'bi bi-check-lg';"));
         assertTrue(styles.contains(".progress-fill"));
-        assertTrue(styles.contains(".job-progress-hero .progress-overview { margin-top: var(--app-space-8); }"));
-        assertTrue(styles.contains(".progress-overview li[data-status=\"SUCCESS\"]:not(:last-child)::after { border-top-color: rgba(var(--bs-primary-rgb), 0.68); }"));
-        assertTrue(styles.contains(".progress-overview li[data-status=\"SUCCESS\"] .pipeline-marker {\n"
-                + "  border-color: transparent;\n"
-                + "  background: transparent;\n"
-                + "  color: rgba(var(--bs-primary-rgb), 0.68);\n"
-                + "}"));
+        assertTrue(
+                styles.contains(
+                        ".job-progress-hero .progress-overview { margin-top: var(--app-space-8); }"));
+        assertTrue(
+                styles.contains(
+                        ".progress-overview li[data-status=\"SUCCESS\"]:not(:last-child)::after { border-top-color: rgba(var(--bs-primary-rgb), 0.68); }"));
+        assertTrue(
+                styles.contains(
+                        ".progress-overview li[data-status=\"SUCCESS\"] .pipeline-marker {\n"
+                                + "  border-color: transparent;\n"
+                                + "  background: transparent;\n"
+                                + "  color: rgba(var(--bs-primary-rgb), 0.68);\n"
+                                + "}"));
         assertTrue(styles.contains(".artifact-list,\n.artifact-placeholder-list {"));
         // A failure marks every later stage SKIPPED. Counting the full list would
         // render a build that died at stage 3 as 88% complete.
-        assertTrue(progress.contains("const counted = failed ? stages.slice(0, failedIndex) : stages;"));
+        assertTrue(
+                progress.contains(
+                        "const counted = failed ? stages.slice(0, failedIndex) : stages;"));
         assertTrue(progress.contains("const completed = snapshot.state === 'SUCCEEDED';"));
         assertTrue(progress.contains("const settled = completed ? stages.length"));
-        assertTrue(styles.contains(".progress-fill[data-state=\"failed\"] { background: var(--danger); }"));
+        assertTrue(
+                styles.contains(
+                        ".progress-fill[data-state=\"failed\"] { background: var(--danger); }"));
 
         assertFalse(progress.contains("innerHTML"));
         assertFalse(progress.contains("EventSource"));
@@ -514,14 +564,18 @@ class StaticAssetContractTest {
         assertTrue(styles.contains("color: rgba(var(--bs-primary-rgb), 0.68);"));
         assertTrue(styles.contains("border-left-color: rgba(var(--bs-primary-rgb), 0.68);"));
         assertTrue(styles.contains("#delete-job-button.secondary {"));
-        assertTrue(styles.contains("border-color: var(--app-danger);\n"
-                + "  background: var(--app-surface);\n"
-                + "  color: var(--app-danger);"));
-        assertTrue(styles.contains("#delete-job-button.secondary:hover:not(:disabled) {\n"
-                + "  border-color: var(--app-danger);\n"
-                + "  background: var(--app-danger-soft);\n"
-                + "  color: var(--app-danger);\n"
-                + "}"));
+        assertTrue(
+                styles.contains(
+                        "border-color: var(--app-danger);\n"
+                                + "  background: var(--app-surface);\n"
+                                + "  color: var(--app-danger);"));
+        assertTrue(
+                styles.contains(
+                        "#delete-job-button.secondary:hover:not(:disabled) {\n"
+                                + "  border-color: var(--app-danger);\n"
+                                + "  background: var(--app-danger-soft);\n"
+                                + "  color: var(--app-danger);\n"
+                                + "}"));
     }
 
     @Test
@@ -530,13 +584,17 @@ class StaticAssetContractTest {
         String styles = resource("/static/editor.css");
 
         assertTrue(index.contains("data-policy-section=\"retry\""));
-        assertTrue(index.contains("id=\"policy-retry-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\""));
+        assertTrue(
+                index.contains(
+                        "id=\"policy-retry-toggle\" class=\"policy-section__toggle policy-section__toggle--icon\""));
         assertTrue(index.contains("aria-expanded=\"false\" aria-controls=\"policy-retry-panel\""));
         assertTrue(index.contains("class=\"bi bi-chevron-down policy-section__chevron\""));
         assertTrue(styles.contains(".policy-section__summary"));
         assertTrue(styles.contains(".policy-section__chevron"));
         assertTrue(styles.contains(".policy-section.is-open .policy-section__chevron"));
-        assertTrue(index.contains("id=\"retry-enabled\" class=\"policy-switch\" type=\"checkbox\" role=\"switch\""));
+        assertTrue(
+                index.contains(
+                        "id=\"retry-enabled\" class=\"policy-switch\" type=\"checkbox\" role=\"switch\""));
         assertTrue(styles.contains(".policy-enable-checkbox"));
         assertTrue(styles.contains("width: 1.25rem;\n  height: 1.25rem;\n  min-height: 0;"));
     }
@@ -547,15 +605,21 @@ class StaticAssetContractTest {
         String progress = resource("/static/progress.js");
 
         assertTrue(styles.contains("@keyframes pipeline-spin"));
-        assertTrue(progress.contains("if (status === 'RUNNING') return 'bi bi-arrow-clockwise pipeline-spinner';"));
+        assertTrue(
+                progress.contains(
+                        "if (status === 'RUNNING') return 'bi bi-arrow-clockwise pipeline-spinner';"));
         assertTrue(styles.contains(".pipeline-spinner {"));
-        assertTrue(styles.contains(".pipeline-spinner::before {\n"
-                + "  content: '';\n"
-                + "  display: block;\n"
-                + "  width: 100%;\n"
-                + "  height: 100%;\n"
-                + "  background: currentColor;"));
-        assertTrue(styles.contains("mask: url('/webjars/bootstrap-icons/1.13.1/icons/arrow-clockwise.svg') center / contain no-repeat;"));
+        assertTrue(
+                styles.contains(
+                        ".pipeline-spinner::before {\n"
+                                + "  content: '';\n"
+                                + "  display: block;\n"
+                                + "  width: 100%;\n"
+                                + "  height: 100%;\n"
+                                + "  background: currentColor;"));
+        assertTrue(
+                styles.contains(
+                        "mask: url('/webjars/bootstrap-icons/1.13.1/icons/arrow-clockwise.svg') center / contain no-repeat;"));
         assertTrue(styles.contains("transform-origin: 50% 50%;"));
         assertTrue(styles.contains("animation: pipeline-spin 1s linear infinite;"));
         assertTrue(styles.contains("@media (prefers-reduced-motion: reduce)"));
@@ -609,7 +673,8 @@ class StaticAssetContractTest {
         String editor = resource("/static/editor.js");
         String scripts = app + api + state + upload + operations + editor;
 
-        for (String event : new String[] {"dragenter", "dragover", "dragleave", "drop", "change", "keydown"}) {
+        for (String event :
+                new String[] {"dragenter", "dragover", "dragleave", "drop", "change", "keydown"}) {
             assertTrue(upload.contains("'" + event + "'"), event);
         }
         assertTrue(upload.contains("idle"));
@@ -630,7 +695,8 @@ class StaticAssetContractTest {
         assertTrue(template.contains("id=\"step-hint-1\""));
         assertFalse(template.contains("id=\"analysis-transition-status\""));
         assertTrue(app.contains("item.className = 'analysis-summary__item';"));
-        assertTrue(applicationStyles().contains("grid-template-columns: repeat(4, minmax(0, 1fr));"));
+        assertTrue(
+                applicationStyles().contains("grid-template-columns: repeat(4, minmax(0, 1fr));"));
         assertTrue(app.contains("'전체 Endpoint'"));
         assertTrue(operations.contains("operation.issues"));
         assertTrue(operations.contains("operation.status"));
@@ -645,7 +711,9 @@ class StaticAssetContractTest {
         assertTrue(editor.contains("기본값"));
         assertTrue(editor.contains("사용자 설정"));
         assertTrue(editor.contains("selected-tool-list"));
-        assertTrue(editor.contains("checkbox.dataset.toolEnabledId"));
+        // Tool inclusion lives in the detail panel; a list checkbox repeated step 2.
+        assertTrue(editor.contains("elements['tool-enabled'].addEventListener('change'"));
+        assertFalse(editor.contains("checkbox.dataset.toolEnabledId"));
         assertTrue(editor.contains("filter(operation => operation.endpointSelected"));
         assertTrue(editor.contains("row.dataset.operationId"));
         assertTrue(editor.contains("row.setAttribute('aria-selected'"));
@@ -662,14 +730,21 @@ class StaticAssetContractTest {
         assertTrue(app.contains("initializeUpload"));
         assertTrue(app.contains("initializeOperations"));
         assertTrue(app.contains("resumeRetainedSpecification"));
-        assertTrue(app.contains("await resumeRetainedSpecification();\n  await resumeRetainedJob();"));
-        assertTrue(app.contains("onAnalysis: analysis => {\n    ui['preview-button'].disabled = false;"));
+        assertTrue(
+                app.contains("await resumeRetainedSpecification();\n  await resumeRetainedJob();"));
+        assertTrue(
+                app.contains(
+                        "onAnalysis: analysis => {\n    ui['preview-button'].disabled = false;"));
         assertFalse(app.contains("onReadyToAdvance"));
-        assertTrue(app.contains("initializeEditor(() => {\n  renderParameterSummary();\n  invalidatePreview();\n});"));
+        assertTrue(
+                app.contains(
+                        "initializeEditor(() => {\n  renderParameterSummary();\n  invalidatePreview();\n});"));
         assertTrue(app.contains("let previewRequestVersion = 0;"));
         assertTrue(app.contains("const requestVersion = ++previewRequestVersion;"));
         assertTrue(app.contains("if (requestVersion !== previewRequestVersion) return;"));
-        assertTrue(app.contains("function resetSpecificationPresentation() {\n  ui['preview-button'].disabled = true;"));
+        assertTrue(
+                app.contains(
+                        "function resetSpecificationPresentation() {\n  ui['preview-button'].disabled = true;"));
         assertTrue(app.contains("renderGenerationSummary"));
         assertTrue(app.contains("operation => operation.endpointSelected"));
         assertTrue(app.contains("['VALIDATED', 'UNVERIFIED', 'SUCCEEDED', 'FAILED', 'CANCELLED']"));
@@ -695,18 +770,30 @@ class StaticAssetContractTest {
         String editor = resource("/static/editor.js");
         String api = resource("/static/api.js");
 
-        for (String id : new String[] {
-                "output-mode",
-                "retry-enabled", "retry-status-codes", "retry-network-errors", "retry-max-retries",
-                "retry-initial-backoff", "retry-max-backoff", "retry-respect-retry-after",
-                "pagination-enabled", "pagination-request-parameter", "pagination-initial-value",
-                "pagination-items-path", "pagination-next-value-path", "pagination-max-pages",
-                "pagination-max-items"
-        }) {
+        for (String id :
+                new String[] {
+                    "output-mode",
+                    "retry-enabled",
+                    "retry-status-codes",
+                    "retry-network-errors",
+                    "retry-max-retries",
+                    "retry-initial-backoff",
+                    "retry-max-backoff",
+                    "retry-respect-retry-after",
+                    "pagination-enabled",
+                    "pagination-request-parameter",
+                    "pagination-initial-value",
+                    "pagination-items-path",
+                    "pagination-next-value-path",
+                    "pagination-max-pages",
+                    "pagination-max-items"
+                }) {
             assertTrue(index.contains("id=\"" + id + "\""), id);
             assertTrue(index.contains("for=\"" + id + "\""), id + " label");
         }
-        assertTrue(index.contains("id=\"tool-description\" class=\"form-control\" maxlength=\"1024\""));
+        assertTrue(
+                index.contains(
+                        "id=\"tool-description\" class=\"form-control\" maxlength=\"1024\""));
         assertTrue(editor.contains("['USER_INPUT', 'SERVER_SECRET']"));
         assertTrue(editor.contains("Number.isSafeInteger"));
         assertTrue(editor.contains("parseSafeJson(value('validation-arguments'))"));

@@ -79,8 +79,10 @@ Catalog는 immutable linear revision이다. Runtime 변경은 보수적 compatib
 
 ## 화면 흐름과 진행 전송
 
-현재 화면은 5단계이고 상단 stepper와 같은 폭의 summary/panel, 일반 흐름의 이전·다음 버튼을 사용한다.
-초기 3단계 설명과 floating action dock 제안은 현재 기준이 아니다. 분석 완료 후 자동 이동하는 초기 계획도
+현재 화면은 5단계이고 상단 stepper와 같은 폭의 summary/panel, 문서 흐름 안에서 viewport 하단에 붙는(sticky)
+이전·다음 버튼 줄을 사용한다. 38개 endpoint 기준 Step 2가 약 3,500px로 길어져 일반 흐름 버튼만으로는 다음 단계까지
+스크롤 부담이 컸다. 콘텐츠를 가리는 fixed 위치와 별도 하단 여백이 필요한 floating action dock은 여전히 쓰지 않는다.
+초기 3단계 설명은 현재 기준이 아니다. 분석 완료 후 자동 이동하는 초기 계획도
 사용자가 결과를 확인한 뒤 다음 버튼을 누르는 동작으로 대체했다.
 
 SSE는 browser polling을 기본 경로에서 대체하고 polling fallback을 보존한다. Hosted는 여전히 서버 read loop를

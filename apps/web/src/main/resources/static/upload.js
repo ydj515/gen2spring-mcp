@@ -28,6 +28,21 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
     surface.setAttribute('aria-busy', String(state === 'analyzing'));
   };
 
+  // Replacing the file discards selections, Tool settings, and any finished
+  // job. Ask first whenever there is work to lose; a fresh analysis has none.
+  const confirmDiscard = () => {
+    const state = getState();
+    const customized = state.operations.some(operation => operation.endpointSelected !== operation.supported
+      || operation.enabled !== operation.supported
+      || operation.toolName !== operation.defaultToolName
+      || operation.toolDescription !== operation.defaultToolDescription);
+    if (!state.jobId && !customized) return true;
+    const message = state.jobId
+      ? '파일을 바꾸면 생성한 작업 결과와 현재 선택·설정이 초기화됩니다. 계속할까요?'
+      : '파일을 바꾸면 현재 Endpoint 선택과 Tool 설정이 초기화됩니다. 계속할까요?';
+    return window.confirm?.(message) ?? true;
+  };
+
   const reset = () => {
     requestVersion += 1;
     input.value = '';
@@ -63,6 +78,12 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
   };
 
   const analyze = async file => {
+    if (getState().analysis && !confirmDiscard()) {
+      input.value = '';
+      dragDepth = 0;
+      setUploadState('completed');
+      return;
+    }
     const version = ++requestVersion;
     resetSpecificationState();
     onReset();
@@ -123,7 +144,9 @@ export function initializeUpload({onAnalysis, onReset, onFailure}) {
   replace.addEventListener('click', () => {
     input.click();
   });
-  remove.addEventListener('click', reset);
+  remove.addEventListener('click', () => {
+    if (confirmDiscard()) reset();
+  });
 
   for (const name of ['dragenter', 'dragover']) {
     surface.addEventListener(name, event => {

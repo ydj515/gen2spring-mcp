@@ -80,6 +80,13 @@
         <span id="upload-status-text">분석할 OpenAPI 파일을 선택해 주세요.</span>
       </p>
       <dl id="analysis-summary" class="summary-grid" aria-label="분석 결과"></dl>
+      <div id="analysis-unsupported" class="analysis-unsupported" role="region" aria-labelledby="analysis-unsupported-title" hidden>
+        <div class="analysis-unsupported__heading">
+          <h3 id="analysis-unsupported-title">지원하지 않는 Endpoint</h3>
+          <p>생성 대상에서 자동으로 제외됩니다.</p>
+        </div>
+        <ul id="analysis-unsupported-list" class="analysis-unsupported__list"></ul>
+      </div>
       <div class="wizard-nav wizard-nav--forward">
         <p id="step-hint-1" class="wizard-hint" role="status" aria-live="polite"></p>
         <button id="step-next-1" type="button" disabled>다음: Endpoint 선택 &rarr;</button>
@@ -100,19 +107,17 @@
               <i class="bi bi-search toolbar-search__icon" aria-hidden="true"></i>
               <input id="operation-search" class="form-control" type="search" placeholder="method, path, operationId, 설명 검색" autocomplete="off">
             </div>
-            <div class="field toolbar-filter col-12 col-md-auto">
-              <label for="operation-filter" class="visually-hidden">지원 상태</label>
-              <select id="operation-filter" class="form-select">
-                <option value="all">지원 상태: 전체</option>
-                <option value="supported">지원 상태: 선택 가능</option>
-                <option value="warning">지원 상태: 경고 있음</option>
-                <option value="unsupported">지원 상태: 지원하지 않음</option>
-              </select>
+            <div id="operation-filter" class="filter-chips col-12 col-md-auto" role="group" aria-label="목록 필터">
+              <button type="button" class="filter-chip" data-filter="all" aria-pressed="true">전체 <span data-filter-count="all">0</span></button>
+              <button type="button" class="filter-chip" data-filter="selected" aria-pressed="false">선택됨 <span data-filter-count="selected">0</span></button>
+              <button type="button" class="filter-chip" data-filter="unselected" aria-pressed="false">선택 안 함 <span data-filter-count="unselected">0</span></button>
+              <button type="button" class="filter-chip" data-filter="warning" aria-pressed="false" hidden>경고 <span data-filter-count="warning">0</span></button>
+              <button type="button" class="filter-chip" data-filter="unsupported" aria-pressed="false">미지원 <span data-filter-count="unsupported">0</span></button>
             </div>
           </div>
           <div class="endpoint-toolbar__meta">
             <label class="select-all" for="select-all-operations">
-              <input id="select-all-operations" type="checkbox" disabled> 선택 가능한 항목 전체
+              <input id="select-all-operations" type="checkbox" disabled> <span id="select-all-label">선택 가능한 항목 전체</span>
             </label>
             <p id="operation-counts" class="endpoint-counts" aria-live="polite">파일 분석 후 endpoint를 선택할 수 있습니다.</p>
             <button id="operation-refresh" type="button" class="toolbar-refresh" aria-label="새로고침">
@@ -121,13 +126,13 @@
           </div>
         </div>
         <div class="endpoint-column-head" aria-hidden="true">
-          <span>선택</span><span>ENDPOINT</span><span></span><span>지원 상태</span>
+          <span>선택</span><span>ENDPOINT</span><span>설명</span><span>지원 상태</span>
         </div>
         <ul id="operation-list" class="operation-list"></ul>
         <p id="operation-empty" class="empty-state" hidden>검색 조건에 맞는 endpoint가 없습니다.</p>
       </fieldset>
       <div class="wizard-nav">
-        <button id="step-back-2" class="secondary" type="button">이전: OpenAPI 파일</button>
+        <button id="step-back-2" class="secondary" type="button">이전<span class="nav-target">: 파일 가져오기</span></button>
         <p id="step-hint-2" class="wizard-hint" role="status" aria-live="polite"></p>
         <button id="step-next-2" type="button" disabled>다음: 생성 설정 &rarr;</button>
       </div>
@@ -199,17 +204,19 @@
               <span class="protocol-card__label">신형 버전만 지원</span>
               <span class="protocol-card__desc">초기화 없이 요청마다 MCP-Protocol-Version 헤더로 버전을 전달합니다.</span>
               <span class="protocol-card__endpoint"><code>POST /mcp</code> · 무상태 · 구형 요청 거부</span>
+              <span class="protocol-card__lock"><i class="bi bi-lock" aria-hidden="true"></i> MCP Java SDK에서 선택할 수 있습니다</span>
             </button>
             <button type="button" class="protocol-card" data-protocol="DUAL" aria-pressed="false" disabled>
               <span class="protocol-card__version">병행</span>
               <span class="protocol-card__label">두 버전 동시 지원</span>
               <span class="protocol-card__desc">단일 endpoint에서 헤더와 본문을 분석해 버전을 자동 판별합니다.</span>
               <span class="protocol-card__endpoint"><code>POST /mcp</code> · 자동 라우팅 · 클라이언트 설정 변경 불필요</span>
+              <span class="protocol-card__lock"><i class="bi bi-lock" aria-hidden="true"></i> MCP Java SDK에서 선택할 수 있습니다</span>
             </button>
           </div>
           <p id="mcp-protocol-description" class="field-hint" aria-live="polite">Spring AI는 2025-03-26을 지원합니다. 새 버전이나 병행 지원은 MCP Java SDK를 선택하세요.</p>
-          <details class="mt-3">
-            <summary>신형 MCP 기능 설정</summary>
+          <details class="mt-3 advanced-disclosure">
+            <summary><span>신형 MCP 기능 설정</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary>
             <label for="mcp-features">Resources · Prompts · Tasks · Skills · Apps 설정 (JSON)</label>
             <textarea id="mcp-features" class="form-control" rows="8" spellcheck="false" aria-describedby="mcp-features-hint">{}</textarea>
             <p id="mcp-features-hint" class="field-hint">MCP Java SDK의 신형 또는 병행 모드에서 적용됩니다. Tasks를 활성화하면 작업을 서버 디스크에 보존합니다. 배포 시 영속 저장 경로를 지정하세요.</p>
@@ -221,16 +228,23 @@
             <i class="bi bi-tools step3-section-icon" aria-hidden="true"></i>
             <div>
               <h3>Tool 생성 설정</h3>
-              <p class="step3-section-desc">체크박스로 생성 여부를 정하고, 행을 선택해 세부 정책을 편집하세요.</p>
+              <p class="step3-section-desc">행을 선택해 이름과 실행 정책을 편집하세요.</p>
             </div>
           </div>
           <div class="tool-workspace row g-0">
             <div id="selected-tool-list-container" class="tool-table-panel col-12 col-xl-7">
+              <div class="tool-table-toolbar">
+                <label for="tool-search" class="visually-hidden">Tool 검색</label>
+                <i class="bi bi-search tool-table-toolbar__icon" aria-hidden="true"></i>
+                <input id="tool-search" class="form-control" type="search" placeholder="Tool 이름, path 검색" autocomplete="off">
+                <span id="tool-count" class="tool-count" aria-live="polite"></span>
+              </div>
               <div class="tool-table-header" aria-hidden="true">
-                <span>생성</span><span>Tool · Endpoint</span>
+                <span>Tool · Endpoint</span>
               </div>
               <div id="selected-tool-list" class="tool-table" role="table" aria-label="MCP Tool 생성 설정"></div>
               <p id="selected-tool-empty" class="empty-state">설정할 수 있는 endpoint가 없습니다.</p>
+              <p id="tool-search-empty" class="empty-state" hidden>검색 조건에 맞는 Tool이 없습니다.</p>
             </div>
 
             <details id="tool-editor-panel" class="tool-editor-panel col-12 col-xl-5" open>
@@ -252,10 +266,14 @@
               <div class="tool-editor-body">
                 <fieldset id="operation-editor" disabled>
                 <legend class="visually-hidden">선택한 Tool 설정</legend>
+                <div class="tool-include">
+                  <label class="tool-include__switch" for="tool-enabled"><input id="tool-enabled" class="policy-switch" type="checkbox" role="switch" aria-describedby="tool-enabled-hint"> <span>이 Tool 생성</span></label>
+                  <span id="tool-enabled-hint" class="field-hint">끄면 Endpoint 선택은 유지하고 이 Tool만 생성에서 뺍니다.</span>
+                </div>
                 <div class="field-grid tool-basic-fields row g-3">
-                  <div class="field col-12 col-sm-7"><label for="tool-name">Tool name</label><input id="tool-name" class="form-control" type="text" maxlength="64" autocomplete="off"></div>
-                  <div class="field col-12 col-sm-5"><label for="output-mode">Output mode</label><select id="output-mode" class="form-select"><option value="GENERIC_JSON">Generic JSON</option><option value="TYPED">Typed DTO</option></select></div>
-                  <div class="field col-12"><label for="tool-description">Tool description</label><textarea id="tool-description" class="form-control" maxlength="1024" rows="3"></textarea></div>
+                  <div class="field col-12 col-sm-7"><label for="tool-name">Tool 이름</label><input id="tool-name" class="form-control" type="text" maxlength="64" autocomplete="off"><span id="tool-operation-id" class="field-hint"></span></div>
+                  <div class="field col-12 col-sm-5"><label for="output-mode">응답 형식</label><select id="output-mode" class="form-select"><option value="GENERIC_JSON">Generic JSON</option><option value="TYPED">Typed DTO</option></select></div>
+                  <div class="field col-12"><label for="tool-description">Tool 설명 <span class="field-label-note">MCP 클라이언트(LLM)에 노출됩니다</span></label><textarea id="tool-description" class="form-control" maxlength="1024" rows="3"></textarea></div>
                 </div>
 
                 <div class="tool-policy-accordion" aria-label="고급 Tool 정책">
@@ -371,9 +389,9 @@
         </div>
       </div>
       <div class="wizard-nav">
-        <button id="step-back-3" class="secondary" type="button">이전: Endpoint 선택</button>
+        <button id="step-back-3" class="secondary" type="button">이전<span class="nav-target">: Endpoint 선택</span></button>
         <p id="step-hint-3" class="wizard-hint" role="status" aria-live="polite"></p>
-        <button id="step-next-3" type="button" disabled>다음: 설정 검증 및 프로젝트 생성 &rarr;</button>
+        <button id="step-next-3" type="button" disabled>다음: 검증 및 생성 &rarr;</button>
       </div>
     </section>
 
@@ -390,12 +408,12 @@
       <div class="preview-workspace">
         <div class="preview-input">
           <div class="subsection-heading"><h3>검증에 사용할 입력</h3></div>
-          <div class="validation-input-field field"><label for="validation-operation">대표 Tool</label><select id="validation-operation"></select></div>
+          <div class="validation-input-field field"><label for="validation-operation">대표 Tool</label><select id="validation-operation" class="form-select" aria-describedby="validation-operation-hint"></select><p id="validation-operation-hint" class="field-hint">프로젝트를 생성한 뒤 런타임 검증에서 이 Tool을 실제로 호출합니다.</p></div>
           <div class="validation-input-field">
             <strong>테스트 입력</strong>
             <div id="validation-parameter-summary" class="validation-parameter-summary"></div>
             <details id="validation-arguments-details" class="validation-arguments-details">
-              <summary>테스트 입력 수정</summary>
+              <summary>JSON으로 직접 편집</summary>
               <div class="field"><label for="validation-arguments">호출 인자 JSON object</label><textarea id="validation-arguments" rows="6">{}</textarea></div>
             </details>
             <p class="validation-input-hint">입력을 변경하면 다시 검증해야 합니다.</p>
@@ -407,21 +425,20 @@
         </div>
       </div>
       <div id="preview-output" class="preview-output">
-        <p class="empty-state">설정을 검증하면 결과가 표시됩니다. 아래 설정 검증하기 버튼을 눌러 주세요.</p>
+        <p class="empty-state">설정을 검증하면 결과가 표시됩니다. 하단의 설정 검증하기 버튼을 눌러 주세요.</p>
       </div>
       <div id="validation-action" class="generation-primary-action" data-status="idle">
         <div id="validation-announcement" role="status" aria-live="polite" aria-atomic="true">
           <strong id="validation-action-title">프로젝트 생성 전, 설정 검증이 필요합니다.</strong>
           <p id="preview-status">검증을 완료하면 프로젝트를 생성할 수 있습니다.</p>
         </div>
+      </div>
+      <div class="wizard-nav validation-footer">
+        <button id="step-back-4" class="secondary" type="button">이전<span class="nav-target">: 생성 설정</span></button>
         <div class="validation-actions">
           <button id="preview-button" type="button" disabled aria-describedby="preview-status"><i class="bi bi-check2-circle" aria-hidden="true"></i> <span id="preview-button-label">설정 검증하기</span></button>
           <button id="generate-button" type="button" disabled hidden aria-describedby="preview-status"><i class="bi bi-play-fill" aria-hidden="true"></i> <span id="generate-button-label">프로젝트 생성</span></button>
         </div>
-      </div>
-      <div class="wizard-nav validation-footer">
-        <button id="step-back-4" class="secondary" type="button">이전: 생성 설정</button>
-        <p>런타임 검증은 프로젝트 생성 후 실행됩니다.</p>
       </div>
     </section>
 
@@ -485,13 +502,34 @@
           <li><span class="artifact-meta"><i class="bi bi-clipboard-check" aria-hidden="true"></i><strong>검증 리포트</strong></span><span>검증 완료 후 제공</span><button class="secondary" type="button" disabled><i class="bi bi-download" aria-hidden="true"></i>다운로드</button></li>
         </ul>
         <ul id="downloads" class="downloads artifact-list" aria-label="생성 산출물" hidden></ul>
+        <div id="run-guide" class="run-guide" role="region" aria-labelledby="run-guide-title" hidden>
+          <div class="run-guide__heading">
+            <h3 id="run-guide-title">실행 가이드</h3>
+            <p id="run-guide-requirement"></p>
+          </div>
+          <div class="run-guide__block">
+            <div class="run-guide__label"><strong>1. 압축을 푼 프로젝트 폴더에서 실행</strong><button type="button" class="secondary run-guide__copy" data-copy-target="run-guide-command" aria-label="실행 명령 복사"><i class="bi bi-copy" aria-hidden="true"></i> 복사</button></div>
+            <pre id="run-guide-command"></pre>
+          </div>
+          <div id="run-guide-secrets-block" class="run-guide__block" hidden>
+            <div class="run-guide__label"><strong>실행 전에 설정할 환경 변수</strong></div>
+            <pre id="run-guide-secrets"></pre>
+          </div>
+          <div class="run-guide__block">
+            <div class="run-guide__label"><strong>2. MCP 클라이언트에 등록</strong><button type="button" class="secondary run-guide__copy" data-copy-target="run-guide-client" aria-label="MCP 클라이언트 설정 복사"><i class="bi bi-copy" aria-hidden="true"></i> 복사</button></div>
+            <pre id="run-guide-client"></pre>
+            <p class="field-hint">MCP 엔드포인트는 <code>http://localhost:8080/mcp</code>입니다. 자세한 내용은 프로젝트의 README.md를 참고하세요.</p>
+          </div>
+          <p id="run-guide-copy-status" class="visually-hidden" role="status" aria-live="polite"></p>
+        </div>
       </div>
       <p id="download-status" class="status" role="status"></p>
-      <div class="button-row job-actions">
-        <button id="delete-job-button" class="secondary" type="button" disabled>작업 삭제</button>
-      </div>
-      <div class="wizard-nav">
+      <div class="wizard-nav job-nav">
         <button id="step-back-5" class="secondary" type="button">설정으로 돌아가기</button>
+        <div class="job-nav__actions">
+          <button id="delete-job-button" class="secondary" type="button" disabled>작업 삭제</button>
+          <button id="restart-button" class="secondary" type="button">새 OpenAPI 파일로 시작</button>
+        </div>
       </div>
     </section>
 

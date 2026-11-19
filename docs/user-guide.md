@@ -65,7 +65,7 @@ mise run ui:build
 binding은 `numeric loopback only`다. 기본 local mode는 public multi-user service가 아니다.
 remote address, 잘못된 `Host`·`Origin`, forwarded header를 거부하고 Spring Security session CSRF를 사용한다.
 
-UI는 OpenAPI 파일, Endpoint 선택, 생성 설정, 설정 검증 및 프로젝트 생성, 생성 진행의 5단계다.
+UI는 파일 가져오기, Endpoint 선택, 생성 설정, 검증 및 생성, 생성 진행의 5단계다.
 단계 이동과 SSE 진행 표시의 상세 계약은 [사용자 흐름](user-flows.md)을 따른다. 파일 input과 drag-and-drop은
 업로드·분석·완료·오류 상태를 표시하고, 파일을 교체하거나 제거하면 선택·override·preview·job 상태를 초기화한다.
 모든 endpoint를 보여 주되 지원 불가 항목은 이유와 함께 비활성화하고, 경고 포함 지원 항목은 선택할 수 있다.

@@ -3,10 +3,10 @@ import {getState, subscribe, updateState} from './state.js';
 const STEPS = [1, 2, 3, 4, 5];
 const LAST_STEP = 5;
 const TITLES = {
-  1: 'OpenAPI 파일',
+  1: '파일 가져오기',
   2: 'Endpoint 선택',
   3: '생성 설정',
-  4: '설정 검증 및 프로젝트 생성',
+  4: '검증 및 생성',
   5: '생성 진행'
 };
 const REQUIRED_PROJECT_FIELDS = [
@@ -39,6 +39,32 @@ export function blockingReason(step, state) {
   if (step === 4) {
     return state.jobId ? '' : '프로젝트 생성을 시작하면 진행 상황을 볼 수 있습니다.';
   }
+  return '';
+}
+
+// A completed chip names what the step produced, so the stepper doubles as a
+// running summary instead of repeating "완료" five times.
+export function completedStepDetail(step, state) {
+  const operations = state.operations ?? [];
+  if (step === 1) return state.analysis?.file?.name ?? '완료';
+  if (step === 2) {
+    const selected = operations.filter(operation => operation.endpointSelected).length;
+    return `${selected} / ${operations.length} 선택`;
+  }
+  if (step === 3) return `Tool ${operations.filter(operation => operation.enabled).length}개`;
+  if (step === 4) return state.jobId ? '생성 시작' : '검증 완료';
+  return '완료';
+}
+
+// When nothing blocks a step, its action row says what moving on will carry.
+export function readySummary(step, state) {
+  const operations = state.operations ?? [];
+  if (step === 1) {
+    const supported = operations.filter(operation => operation.supported).length;
+    return supported ? `생성 가능한 Endpoint ${supported}개가 다음 단계에서 기본 선택됩니다.` : '';
+  }
+  if (step === 2) return `Endpoint ${operations.filter(operation => operation.endpointSelected).length}개 선택`;
+  if (step === 3) return `Tool ${operations.filter(operation => operation.enabled).length}개를 생성합니다.`;
   return '';
 }
 
@@ -108,11 +134,18 @@ export function initializeWizard() {
       const complete = step < Math.min(furthestVisited, highestReachable()) && step !== current;
       chip.dataset.complete = String(complete);
       const status = chip.querySelector('.wizard-chip-status');
-      if (status) status.textContent = step === current ? '현재 단계' : complete ? '완료' : '대기';
+      if (status) {
+        status.textContent = step === current ? '현재 단계'
+          : complete ? completedStepDetail(step, getState()) : '대기';
+      }
       const next = document.querySelector(`#step-next-${step}`);
       if (next) next.disabled = !canAdvance(step, getState());
       const hint = document.querySelector(`#step-hint-${step}`);
-      if (hint) hint.textContent = step === current ? blockingReason(step, getState()) : '';
+      if (hint) {
+        const reason = step === current ? blockingReason(step, getState()) : '';
+        hint.textContent = step !== current ? '' : reason || readySummary(step, getState());
+        hint.dataset.tone = reason ? 'blocking' : 'info';
+      }
     }
     summary.hidden = current === 1;
     keepActiveStepVisible(current, forceStepVisibility);
@@ -139,7 +172,8 @@ export function initializeWizard() {
     const bounded = Math.min(Math.max(step, 1), LAST_STEP);
     const target = clamp && !isReachable(bounded, getState()) ? highestReachable() : bounded;
     furthestVisited = Math.max(furthestVisited, target);
-    if (target !== getState().currentStep) {
+    const changed = target !== getState().currentStep;
+    if (changed) {
       updateState({currentStep: target});
       if (!reducedMotion.matches) panels.get(target).animate?.([
         {opacity: 0.5, transform: 'translateY(6px)'},
@@ -152,6 +186,9 @@ export function initializeWizard() {
     if (window.location.hash !== `#step-${target}`) window.location.hash = `#step-${target}`;
     if (announce) live.textContent = `${LAST_STEP}단계 중 ${target}단계, ${TITLES[target]}`;
     if (focus) panels.get(target).querySelector('h2').focus();
+    // A long step leaves the page scrolled to its bottom navigation. The next
+    // step must open at its heading, not at the old scroll offset.
+    if (changed && focus) window.scrollTo?.({top: 0, behavior: 'instant'});
   };
 
   const syncGate = () => {

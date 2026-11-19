@@ -10,7 +10,8 @@ const elements = ids([
   'retry-initial-backoff', 'retry-max-backoff', 'retry-respect-retry-after',
   'pagination-enabled', 'pagination-request-parameter', 'pagination-initial-value',
   'pagination-items-path', 'pagination-next-value-path', 'pagination-max-pages', 'pagination-max-items',
-  'selected-tool-list-container', 'tool-editor-panel'
+  'selected-tool-list-container', 'tool-editor-panel', 'tool-search', 'tool-count', 'tool-search-empty',
+  'tool-enabled', 'tool-operation-id'
 ]);
 
 export function initializeEditor(onDirty) {
@@ -23,6 +24,7 @@ export function initializeEditor(onDirty) {
     elements[id].addEventListener('change', () => {
       saveSelectedOperation();
       updateToolSummary(getState().selectedOperationId);
+      if (id === 'tool-name') renderValidationOperations();
       const status = document.querySelector('#tool-edit-status');
       if (status) status.textContent = '변경사항 반영됨';
       if (id === 'retry-enabled' || id === 'pagination-enabled') {
@@ -43,17 +45,26 @@ export function initializeEditor(onDirty) {
     const button = event.target.closest('button[data-operation-id]');
     if (button) selectOperation(button.dataset.operationId);
   });
-  elements['selected-tool-list'].addEventListener('change', event => {
-    const checkbox = event.target.closest('input[data-tool-enabled-id]');
-    if (!checkbox) return;
+  // Inclusion is decided per Tool in the detail panel. A second checkbox column
+  // in the list read as a repeat of the step 2 endpoint selection.
+  elements['tool-enabled'].addEventListener('change', () => {
+    const operationId = getState().selectedOperationId;
+    if (!operationId) return;
     saveSelectedOperation();
-    const operations = getState().operations.map(operation => operation.operationId === checkbox.dataset.toolEnabledId
-      ? {...operation, enabled: operation.supported && checkbox.checked}
+    const included = elements['tool-enabled'].checked;
+    const operations = getState().operations.map(operation => operation.operationId === operationId
+      ? {...operation, enabled: operation.supported && included}
       : operation);
     updateState({operations});
     renderToolRows();
     renderValidationOperations();
     onDirty();
+  });
+  elements['tool-search'].addEventListener('input', renderToolRows);
+  // On a wide screen the list and editor sit side by side, so collapsing the
+  // editor only hides the thing the user selected a row to see.
+  elements['tool-editor-panel'].querySelector('summary')?.addEventListener('click', event => {
+    if (window.matchMedia('(min-width: 521px)').matches) event.preventDefault();
   });
   document.querySelectorAll('.policy-section__toggle').forEach(toggle => {
     setPolicySectionOpen(toggle.closest('.policy-section'), toggle.getAttribute('aria-expanded') === 'true');
@@ -117,7 +128,18 @@ function renderToolRows() {
   if (elements['selected-tool-list-container']) {
     elements['selected-tool-list-container'].classList.toggle('is-empty', !hasTools);
   }
-  elements['selected-tool-list'].replaceChildren(...tools.map(operation => toolRow(operation, selectedOperationId)));
+  const query = (elements['tool-search']?.value ?? '').trim().toLocaleLowerCase('ko');
+  const visible = query === '' ? tools : tools.filter(operation =>
+    [operation.toolName, operation.operationId, operation.method, operation.path, operation.summary]
+      .filter(Boolean).join(' ').toLocaleLowerCase('ko').includes(query));
+  if (elements['tool-search-empty']) elements['tool-search-empty'].hidden = !hasTools || visible.length !== 0;
+  if (elements['tool-count']) {
+    const included = tools.filter(operation => operation.enabled).length;
+    elements['tool-count'].textContent = query === ''
+      ? `${included} / ${tools.length}개 생성`
+      : `${visible.length}개 표시`;
+  }
+  elements['selected-tool-list'].replaceChildren(...visible.map(operation => toolRow(operation, selectedOperationId)));
   renderSelectedOperation();
 }
 
@@ -128,14 +150,7 @@ function toolRow(operation, selectedOperationId) {
   row.setAttribute('role', 'row');
   row.setAttribute('aria-selected', String(operation.operationId === selectedOperationId));
 
-  const enabledLabel = document.createElement('label');
-  enabledLabel.className = 'tool-enabled-toggle';
-  const checkbox = document.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = operation.enabled;
-  checkbox.dataset.toolEnabledId = operation.operationId;
-  checkbox.setAttribute('aria-label', `${operation.method} ${operation.path} Tool 생성`);
-  enabledLabel.append(checkbox);
+  row.dataset.enabled = String(operation.enabled);
 
   const select = document.createElement('button');
   select.type = 'button';
@@ -157,11 +172,11 @@ function toolRow(operation, selectedOperationId) {
   const configuration = document.createElement('span');
   configuration.className = 'configuration-state';
   configuration.dataset.role = 'configuration-state';
-  configuration.textContent = hasOverrides(operation) ? '사용자 설정' : '기본값';
+  setConfigurationState(configuration, operation);
   // Keep one name and endpoint in the navigator; the operation ID remains available on focus/hover.
   select.title = operation.operationId;
-  select.append(tool, identity, configuration);
-  row.append(enabledLabel, select);
+  select.append(tool, configuration, identity);
+  row.append(select);
   return row;
 }
 
@@ -171,8 +186,14 @@ function updateToolSummary(operationId) {
     .find(candidate => candidate.dataset.operationId === operationId);
   if (!operation || !row) return;
   row.querySelector('.tool-row-name').textContent = operation.toolName;
-  row.querySelector('[data-role="configuration-state"]').textContent = hasOverrides(operation)
-    ? '사용자 설정' : '기본값';
+  setConfigurationState(row.querySelector('[data-role="configuration-state"]'), operation);
+}
+
+// Only exceptions earn a badge. Thirty rows reading "기본값" was noise.
+function setConfigurationState(element, operation) {
+  const state = !operation.enabled ? 'excluded' : hasOverrides(operation) ? 'custom' : 'default';
+  element.dataset.state = state;
+  element.textContent = state === 'excluded' ? '생성 안 함' : state === 'custom' ? '사용자 설정' : '기본값';
 }
 
 function hasOverrides(operation) {
@@ -199,6 +220,8 @@ function renderSelectedOperation() {
     updatePolicySummaries(null);
     return;
   }
+  elements['tool-enabled'].checked = operation.enabled;
+  if (elements['tool-operation-id']) elements['tool-operation-id'].textContent = `operationId: ${operation.operationId}`;
   elements['tool-name'].value = operation.toolName;
   elements['tool-description'].value = operation.toolDescription;
   elements['output-mode'].value = operation.outputMode;
@@ -407,7 +430,8 @@ function renderValidationOperations() {
   const options = getState().operations.filter(operation => operation.enabled).map(operation => {
     const option = document.createElement('option');
     option.value = operation.operationId;
-    option.textContent = operation.operationId;
+    // Name the Tool the way the rest of the editor does; the value stays the operation ID.
+    option.textContent = `${operation.toolName || operation.operationId} — ${operation.method} ${operation.path}`;
     return option;
   });
   elements['validation-operation'].replaceChildren(...options);

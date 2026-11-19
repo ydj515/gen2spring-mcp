@@ -105,16 +105,33 @@ export function renderProgress(snapshot) {
   const settled = completed ? stages.length
     : counted.filter(entry => SETTLED.includes(entry.status)).length;
   const groupedStages = groupProgressStages(stages);
+  // The percentage and the "n / 5 단계" count must describe the same thing.
+  // Both now count the five visible groups; the running group contributes the
+  // share of its member stages already settled. Groups after a failure are
+  // SKIPPED and must not count as progress.
+  const failedGroupIndex = groupedStages.findIndex(group => group.status === 'FAILED');
+  const countedGroups = failedGroupIndex === -1 ? groupedStages : groupedStages.slice(0, failedGroupIndex);
   const settledGroups = completed ? groupedStages.length
-    : groupedStages.filter(group => SETTLED.includes(group.status)).length;
+    : countedGroups.filter(group => SETTLED.includes(group.status)).length;
+  const runningGroup = failed || completed ? undefined : groupedStages.find(group => group.status === 'RUNNING');
+  const runningShare = runningGroup
+    ? runningGroup.members.filter(entry => SETTLED.includes(entry.status)).length / runningGroup.stages.length
+    : 0;
 
-  const percentage = Math.round((settled / stages.length) * 100);
+  // Hosted timelines carry job-transition events that match no local group;
+  // those keep counting their own observed events.
+  const grouped = groupedStages.some(group => group.members.length > 0);
+  const percentage = grouped
+    ? Math.round(((settledGroups + runningShare) / groupedStages.length) * 100)
+    : Math.round((settled / stages.length) * 100);
   const fill = document.querySelector('#job-progress-fill');
   fill.style.width = `${percentage}%`;
   fill.dataset.state = failed ? 'failed' : 'running';
   fill.parentElement.setAttribute('aria-valuenow', String(percentage));
   document.querySelector('#job-progress-percent').textContent = `${percentage}%`;
-  document.querySelector('#job-progress-value').textContent = `${settledGroups} / ${groupedStages.length} 단계`;
+  document.querySelector('#job-progress-value').textContent = grouped
+    ? `${settledGroups} / ${groupedStages.length} 단계 완료`
+    : `${settled} / ${stages.length} 단계 완료`;
   document.querySelector('#job-stage-label').textContent = failed
     ? `${label(failed.stage)} 단계에서 실패했습니다.`
     : running ? `${label(running.stage)} 진행 중입니다.`

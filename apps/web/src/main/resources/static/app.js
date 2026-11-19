@@ -82,7 +82,20 @@ ui['mcp-protocol'].addEventListener('change', () => {
   renderProtocolDescription();
   describeProfile();
 });
-ui['validation-operation'].addEventListener('change', renderParameterSummary);
+ui['validation-operation'].addEventListener('change', () => {
+  // Arguments belong to one Tool; carrying them to another sends unknown keys.
+  byId('validation-arguments').value = '{}';
+  renderParameterSummary();
+  invalidatePreview();
+});
+byId('validation-arguments').addEventListener('input', syncArgumentFields);
+byId('restart-button').addEventListener('click', () => {
+  wizard.goToStep(1);
+  byId('specification-file').click?.();
+});
+document.querySelectorAll('[data-copy-target]').forEach(button => {
+  button.addEventListener('click', () => copyGuide(button));
+});
 
 loadProfiles();
 resumeRetainedState().then(() => wizard.syncGate());
@@ -156,17 +169,23 @@ function selectedProtocolLabel() {
 
 function renderProtocolDescription() {
   byId('mcp-features').disabled = ui['mcp-implementation'].value !== 'MCP_JAVA_SDK' || ui['mcp-protocol'].value === 'LEGACY';
-  const sdk = ui['mcp-implementation'].value === 'MCP_JAVA_SDK';
-  ui['mcp-protocol-description'].textContent = sdk
-    ? '' : 'Spring AI는 2025-03-26을 지원합니다. 새 버전이나 병행 지원은 MCP Java SDK를 선택하세요.';
+  // Each locked card states its own reason, so the shared line stays empty.
+  ui['mcp-protocol-description'].textContent = '';
 }
 
 function renderProtocolCards() {
   const selected = ui['mcp-protocol'].value;
+  const sdk = ui['mcp-implementation'].value === 'MCP_JAVA_SDK';
   document.querySelectorAll('[data-protocol]').forEach(card => {
     const option = [...ui['mcp-protocol'].options].find(o => o.value === card.dataset.protocol);
     card.disabled = option?.disabled ?? true;
     card.setAttribute('aria-pressed', String(card.dataset.protocol === selected));
+    const lock = card.querySelector('.protocol-card__lock');
+    if (lock) {
+      lock.lastChild.textContent = sdk
+        ? ' 선택한 생성 프로필에서 지원하지 않습니다'
+        : ' MCP Java SDK에서 선택할 수 있습니다';
+    }
   });
 }
 
@@ -328,6 +347,10 @@ async function removeJob() {
   clearFailure();
   const jobId = getState().jobId;
   if (!jobId) return;
+  const question = api.hostedMode
+    ? '진행 중인 생성 작업을 취소할까요?'
+    : '작업을 삭제하면 산출물을 다시 내려받을 수 없습니다. 삭제할까요?';
+  if (!(window.confirm?.(question) ?? true)) return;
   try {
     await api.deleteJob(jobId);
     if (api.hostedMode) {
@@ -474,14 +497,15 @@ function safeReferenceUrl(value) {
 
 function renderAnalysis(analysis) {
   const values = [
-    ['전체 Endpoint', String(analysis.counts.total)],
-    ['선택 가능', String(analysis.counts.supported + analysis.counts.supportedWithWarning)],
-    ['경고', String(analysis.counts.supportedWithWarning)],
-    ['지원하지 않음', String(analysis.counts.unsupported)]
+    ['전체 Endpoint', String(analysis.counts.total), 'total'],
+    ['생성 가능', String(analysis.counts.supported + analysis.counts.supportedWithWarning), 'supported'],
+    ['경고', String(analysis.counts.supportedWithWarning), 'warning'],
+    ['지원하지 않음', String(analysis.counts.unsupported), 'unsupported']
   ];
-  ui['analysis-summary'].replaceChildren(...values.map(([term, description]) => {
+  ui['analysis-summary'].replaceChildren(...values.map(([term, description, tone]) => {
     const item = document.createElement('div');
     item.className = 'analysis-summary__item';
+    item.dataset.tone = tone;
     const dt = document.createElement('dt');
     dt.textContent = term;
     const dd = document.createElement('dd');
@@ -559,6 +583,7 @@ function renderParameterSummary() {
     ui['validation-parameter-summary'].replaceChildren(empty);
     return;
   }
+  const values = currentArguments();
   const list = document.createElement('ul');
   parameters.forEach(parameter => {
     const item = document.createElement('li');
@@ -569,10 +594,99 @@ function renderParameterSummary() {
     const schemaType = parameter.schema?.type;
     const type = Array.isArray(schemaType) ? schemaType.join(' / ') : schemaType;
     meta.textContent = `${location} · ${type || '타입 정보 없음'}${parameter.required ? ' · 필수' : ' · 선택'}`;
-    item.append(name, meta);
+    item.append(name, meta, argumentField(parameter, values[parameter.name]));
     list.append(item);
   });
-  ui['validation-parameter-summary'].replaceChildren(list);
+  const nodes = [list];
+  if (operation.requestBody) {
+    const note = document.createElement('p');
+    note.className = 'validation-parameter-empty';
+    note.textContent = '요청 본문은 아래 JSON으로 직접 편집에서 입력하세요.';
+    nodes.push(note);
+  }
+  ui['validation-parameter-summary'].replaceChildren(...nodes);
+}
+
+// The known parameters become form fields that write into the JSON argument
+// object, so the common case never requires hand-written JSON.
+function argumentField(parameter, value) {
+  const type = String(Array.isArray(parameter.schema?.type)
+    ? parameter.schema.type.find(candidate => String(candidate).toLowerCase() !== 'null') ?? ''
+    : parameter.schema?.type ?? '').toLowerCase();
+  const enumValues = parameter.schema?.enumValues ?? [];
+  const choice = type === 'boolean' || enumValues.length > 0;
+  const field = document.createElement(choice ? 'select' : 'input');
+  field.className = choice ? 'form-select validation-argument' : 'form-control validation-argument';
+  field.dataset.argumentName = parameter.name;
+  field.dataset.argumentType = type;
+  field.setAttribute('aria-label', `${parameter.name} 테스트 값`);
+  if (choice) {
+    const options = ['', ...(type === 'boolean' ? ['true', 'false'] : enumValues.map(String))];
+    field.append(...options.map(optionValue => {
+      const option = document.createElement('option');
+      option.value = optionValue;
+      option.textContent = optionValue === '' ? '전달하지 않음' : optionValue;
+      return option;
+    }));
+  } else {
+    field.type = type === 'integer' || type === 'number' ? 'number' : 'text';
+    if (type === 'number') field.step = 'any';
+    const fallback = parameter.schema?.defaultValue;
+    field.placeholder = fallback === null || fallback === undefined
+      ? (parameter.required ? '값 입력' : '비워두면 전달하지 않음')
+      : `기본값 ${fallback}`;
+  }
+  field.value = value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  field.addEventListener('input', writeArgument);
+  field.addEventListener('change', writeArgument);
+  return field;
+}
+
+function writeArgument(event) {
+  const field = event.target;
+  const values = currentArguments();
+  const raw = String(field.value ?? '').trim();
+  const name = field.dataset.argumentName;
+  if (raw === '') delete values[name];
+  else values[name] = parseArgument(raw, field.dataset.argumentType);
+  const textarea = byId('validation-arguments');
+  textarea.value = JSON.stringify(values, null, 2);
+  textarea.dispatchEvent(new Event('input', {bubbles: true}));
+}
+
+function parseArgument(raw, type) {
+  if (type === 'integer' || type === 'number') {
+    const number = Number(raw);
+    return Number.isFinite(number) ? number : raw;
+  }
+  if (type === 'boolean') return raw === 'true';
+  if (type === 'array' || type === 'object') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
+}
+
+function currentArguments() {
+  try {
+    const parsed = JSON.parse(byId('validation-arguments').value || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function syncArgumentFields(event) {
+  // Fields write the JSON themselves; only a direct JSON edit needs mirroring.
+  if (event?.target !== byId('validation-arguments') || !document.activeElement?.closest?.('#validation-arguments-details')) return;
+  const values = currentArguments();
+  ui['validation-parameter-summary'].querySelectorAll?.('[data-argument-name]').forEach(field => {
+    const value = values[field.dataset.argumentName];
+    field.value = value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  });
 }
 
 function renderValidationChecklist(preview = null) {
@@ -580,27 +694,28 @@ function renderValidationChecklist(preview = null) {
   const enabledCount = state.operations.filter(operation => operation.enabled).length;
   const previewCount = preview?.tools?.length ?? 0;
   const representativeId = ui['validation-operation'].value;
-  const representativeIncluded = Boolean(preview?.tools?.some(tool => tool.operationId === representativeId));
+  const representative = preview?.tools?.find(tool => tool.operationId === representativeId);
+  const representativeName = representative?.name
+    ?? state.operations.find(operation => operation.operationId === representativeId)?.toolName
+    ?? representativeId;
+  // Analysis and selection are already settled by steps 1-3; repeating them as
+  // permanent green rows diluted the checks this step actually performs.
   const checks = [
     {
-      label: 'OpenAPI 분석',
-      detail: state.analysis ? `OpenAPI ${state.analysis.openApiVersion} 분석 완료` : '분석 대기',
-      status: state.analysis ? 'SUCCESS' : 'PENDING'
-    },
-    {
-      label: '생성 대상 Tool',
-      detail: enabledCount > 0 ? `${enabledCount}개 Tool 선택` : 'Tool 선택 대기',
-      status: enabledCount > 0 ? 'SUCCESS' : 'PENDING'
-    },
-    {
-      label: 'Tool 구성 검증',
-      detail: preview ? `${previewCount}개 Tool 확인` : '설정 검증 대기',
+      label: 'Tool 구성',
+      detail: preview ? `${previewCount}개 Tool 확인` : `${enabledCount}개 Tool 검증 대기`,
       status: preview ? 'SUCCESS' : 'PENDING'
     },
     {
-      label: '대표 Tool 포함 여부',
-      detail: preview ? (representativeIncluded ? representativeId : '대표 Tool 누락') : '설정 검증 대기',
-      status: preview ? (representativeIncluded ? 'SUCCESS' : 'FAILED') : 'PENDING'
+      label: '대표 Tool',
+      detail: preview ? (representative ? `${representativeName} · 생성 대상에 포함` : '대표 Tool 누락') : '설정 검증 대기',
+      status: preview ? (representative ? 'SUCCESS' : 'FAILED') : 'PENDING'
+    },
+    {
+      label: '런타임 검증',
+      detail: '컴파일 · 기동 · MCP 연결 · 대표 Tool 호출을 프로젝트 생성 후 실행합니다.',
+      status: 'PENDING',
+      badge: '생성 후 실행'
     }
   ];
   ui['validation-checklist'].replaceChildren(...checks.map(check => {
@@ -618,13 +733,14 @@ function renderValidationChecklist(preview = null) {
     content.append(label, detail);
     const badge = document.createElement('span');
     badge.className = 'validation-badge';
-    badge.textContent = check.status === 'SUCCESS' ? '완료' : check.status === 'FAILED' ? '수정 필요' : '검증 대기';
+    badge.textContent = check.badge
+      ?? (check.status === 'SUCCESS' ? '완료' : check.status === 'FAILED' ? '수정 필요' : '검증 대기');
     item.append(icon, content, badge);
     return item;
   }));
 }
 
-function renderPreviewEmpty(message = '설정을 검증하면 결과가 표시됩니다. 아래 설정 검증하기 버튼을 눌러 주세요.') {
+function renderPreviewEmpty(message = '설정을 검증하면 결과가 표시됩니다. 하단의 설정 검증하기 버튼을 눌러 주세요.') {
   const empty = document.createElement('p');
   empty.className = 'empty-state';
   empty.textContent = message;
@@ -661,7 +777,7 @@ function renderPreview(preview) {
   for (const [term, value] of [
     ['Endpoint', `${operation.method} ${operation.path}`],
     ['Operation ID', operation.operationId],
-    ['Output', tool.output?.mode ?? 'GENERIC_JSON']
+    ['응답 형식', OUTPUT_LABELS[tool.output?.mode ?? 'GENERIC_JSON'] ?? tool.output?.mode]
   ]) {
     const dt = document.createElement('dt');
     dt.textContent = term;
@@ -705,12 +821,17 @@ function renderPreview(preview) {
   ui['preview-output'].replaceChildren(result);
 }
 
+const OUTPUT_LABELS = {GENERIC_JSON: 'Generic JSON', TYPED: 'Typed DTO'};
+
 function renderJob(snapshot) {
   // The stage belongs to the progress bar, which names it in Korean. Repeating
   // it here produced a second, untranslated line reading RUNNING — COMPILE.
+  // While the job runs the progress heading already says what is happening.
+  const running = !TERMINAL_STATES.includes(snapshot.state);
   ui['job-status'].textContent = snapshot.error
     ? `${stateLabel(snapshot.state)} ${snapshot.error.message}`
-    : stateLabel(snapshot.state);
+    : running ? '' : stateLabel(snapshot.state);
+  ui['job-status'].hidden = ui['job-status'].textContent === '';
   renderProgress(snapshot);
   const hasArchive = (snapshot.downloads ?? []).some(artifact =>
     (typeof artifact === 'string' ? artifact : artifact.name) === 'archive');
@@ -777,15 +898,62 @@ function renderArtifacts(snapshot) {
       const status = byId('download-status');
       if (status) status.textContent = success ? `${artifactTitle(name)} 다운로드를 시작했습니다.` : '다운로드하지 못했습니다. 다시 시도해 주세요.';
     });
-    item.append(metadata, button);
+    const describedName = document.createElement('span');
+    describedName.className = 'artifact-description';
+    describedName.textContent = ARTIFACT_DESCRIPTIONS[name] ?? '';
+    item.append(metadata, describedName, button);
     return item;
   }));
+  renderRunGuide(downloads.some(artifact => (typeof artifact === 'string' ? artifact : artifact.name) === 'archive'));
+}
+
+// The completion screen promises a run guide; build it from the same profile
+// and settings that produced the archive, mirroring the generated README.
+function renderRunGuide(available) {
+  const guide = byId('run-guide');
+  if (!guide) return;
+  guide.hidden = !available;
+  if (!available) return;
+  const profile = getState().profiles.find(candidate => candidate.id === ui['target-profile'].value);
+  const maven = profile?.buildTool?.type === 'MAVEN';
+  const artifactId = byId('artifact-id').value.trim() || 'mcp-server';
+  byId('run-guide-requirement').textContent = profile
+    ? `Java ${profile.javaVersion} 이상이 필요합니다. ${maven ? 'Maven' : 'Gradle'} wrapper가 포함되어 있습니다.`
+    : '프로젝트 README.md의 실행 요구사항을 확인하세요.';
+  byId('run-guide-command').textContent = maven ? './mvnw spring-boot:run' : './gradlew bootRun';
+  const secrets = [...new Set(getState().operations.filter(operation => operation.enabled)
+    .flatMap(operation => operation.parameters)
+    .filter(parameter => parameter.source === 'SERVER_SECRET' && parameter.environmentVariable?.trim())
+    .map(parameter => parameter.environmentVariable.trim()))];
+  byId('run-guide-secrets-block').hidden = secrets.length === 0;
+  byId('run-guide-secrets').textContent = secrets.map(name => `export ${name}=...`).join('\n');
+  byId('run-guide-client').textContent = JSON.stringify({
+    mcpServers: {[artifactId]: {url: 'http://localhost:8080/mcp'}}
+  }, null, 2);
+}
+
+async function copyGuide(button) {
+  const source = byId(button.dataset.copyTarget);
+  const status = byId('run-guide-copy-status');
+  try {
+    await navigator.clipboard.writeText(source.textContent);
+    if (status) status.textContent = '클립보드에 복사했습니다.';
+    button.dataset.copied = 'true';
+    setTimeout(() => { delete button.dataset.copied; }, 1600);
+  } catch {
+    if (status) status.textContent = '복사하지 못했습니다. 직접 선택해 복사해 주세요.';
+  }
 }
 
 const ARTIFACT_LABELS = {
   archive: '프로젝트 아카이브',
   manifest: '매니페스트',
   report: '검증 리포트'
+};
+const ARTIFACT_DESCRIPTIONS = {
+  archive: '생성된 Spring MCP 서버 프로젝트 전체(ZIP)',
+  manifest: '생성된 Tool 목록과 생성 메타데이터',
+  report: '컴파일 · 기동 · MCP 호출 단계별 검증 결과'
 };
 
 function artifactTitle(name) {
